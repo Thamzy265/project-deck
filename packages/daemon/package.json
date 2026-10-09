@@ -1,0 +1,31 @@
+{
+  "name": "@project-deck/daemon",
+  "version": "0.0.0",
+  "description": "project-deck daemon: tracks running apps and serves the local HTTP + WebSocket API.",
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.1.4",
+    "@project-deck/core": "workspace:*",
+    "hono": "^4.13.13",
+    "ws": "^8.22.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.18.2"
+  }
+}
