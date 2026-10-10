@@ -120,4 +120,56 @@ describe('AppManager', () => {
     expect(onConnectorError).toHaveBeenCalledWith('broken', expect.any(Error));
     expect(manager.apps()).toEqual([]);
   });
+
+  it('keeps log entries that arrive while backfilling', async () => {
+    const registry = new Registry();
+    // Two apps, so nothing auto-attaches before the test is set up.
+    const connector = new FakeAppConnector('fake', [fakeApp(), fakeApp({ id: 'app-2' })]);
+    registry.connectors.register(connector);
+    const manager = new AppManager(registry, new EventBus());
+    await manager.start();
+    const source = (await connector.attach('app-1')).logs();
+    source.push(entry('before attach'));
+    const query = source.query.bind(source);
+    source.query = async (q) => {
+      const result = await query(q);
+      source.push(entry('during backfill'));
+      return result;
+    };
+
+    await manager.attach('app-1');
+    source.push(entry('after attach'));
+    expect((await manager.logs()?.query({}))?.map((e) => e.message)).toEqual([
+      'before attach',
+      'during backfill',
+      'after attach',
+    ]);
+  });
+
+  it('detaches the session when the app exits', async () => {
+    const { connector } = await setup();
+    const session = connector.sessions.get('app-1');
+    connector.removeApp('app-1');
+    await vi.waitFor(() => expect(session?.detached).toBe(true));
+  });
+
+  it('ignores a connector that finishes starting after stop', async () => {
+    const registry = new Registry();
+    const connector = new FakeAppConnector('slow', [fakeApp()]);
+    let finishStart = (): void => undefined;
+    connector.start = () =>
+      new Promise<void>((resolve) => {
+        finishStart = resolve;
+      });
+    registry.connectors.register(connector);
+    const manager = new AppManager(registry, new EventBus());
+    const starting = manager.start();
+    await manager.stop();
+    finishStart();
+    await starting;
+    connector.addApp(fakeApp({ id: 'app-2' }));
+    await new Promise((r) => setTimeout(r, 10));
+    expect(manager.apps()).toEqual([]);
+    expect(connector.sessions.size).toBe(0);
+  });
 });

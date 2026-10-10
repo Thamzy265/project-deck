@@ -41,6 +41,8 @@ export class AppManager {
   private autoAttach = true;
   private queue: Promise<unknown> = Promise.resolve();
   private readonly unsubscribers: (() => void)[] = [];
+  /** Set by stop(); connectors that finish starting afterwards are ignored. */
+  private stopped = false;
 
   constructor(
     private readonly registry: Registry,
@@ -53,6 +55,7 @@ export class AppManager {
   }
 
   async stop(): Promise<void> {
+    this.stopped = true;
     for (const off of this.unsubscribers.splice(0)) off();
     await this.serial(() => this.release());
     await Promise.all(this.registry.connectors.list().map((c) => c.stop()));
@@ -94,6 +97,7 @@ export class AppManager {
   private async startConnector(connector: AppConnector): Promise<void> {
     try {
       await connector.start();
+      if (this.stopped) return;
       this.unsubscribers.push(
         connector.onAppsChanged((apps) => this.onAppsChanged(connector, apps)),
       );
@@ -104,6 +108,7 @@ export class AppManager {
   }
 
   private onAppsChanged(connector: AppConnector, apps: RunningApp[]): void {
+    if (this.stopped) return;
     this.appsByConnector.set(connector.id, apps);
     this.bus.emit('apps.changed', { connectorId: connector.id, apps: this.apps() });
     const all = this.apps();
@@ -114,6 +119,7 @@ export class AppManager {
   }
 
   private async doAttach(appId: string): Promise<RunningApp> {
+    if (this.stopped) throw new Error('App manager is stopped');
     const connector = this.connectorFor(appId);
     if (this.attached?.session !== undefined && this.attached.app.id === appId) {
       return this.attached.app;
@@ -129,9 +135,14 @@ export class AppManager {
       logs.push(entry);
       this.bus.emit('app.log', { appId: app.id, entry });
     };
-    for (const entry of await session.logs().query({ limit: MAX_LOG_LIMIT })) logs.push(entry);
+    // Subscribe before backfilling so nothing that arrives during the query is lost.
+    // Entries seen both live and in the backfill are the same objects, so dedupe by identity.
+    let pending: LogEntry[] | undefined = [];
     attached.cleanup.push(
-      session.logs().subscribe(push),
+      session.logs().subscribe((entry) => {
+        if (pending === undefined) push(entry);
+        else pending.push(entry);
+      }),
       session.on('reloaded', (result) => {
         this.bus.emit('app.reloaded', { appId: app.id, result });
       }),
@@ -139,6 +150,12 @@ export class AppManager {
         void this.serial(() => this.onExit(attached, code));
       }),
     );
+    const backfill = await session.logs().query({ limit: MAX_LOG_LIMIT });
+    for (const entry of backfill) logs.push(entry);
+    const seen = new Set(backfill);
+    const live = pending;
+    pending = undefined;
+    for (const entry of live) if (!seen.has(entry)) push(entry);
     for (const feed of this.registry.logFeeds.list()) {
       const close = await feed.open(app, push).catch(() => undefined);
       if (close !== undefined) attached.cleanup.push(close);
@@ -149,9 +166,12 @@ export class AppManager {
   }
 
   private async onExit(attached: Attached, code: number | undefined): Promise<void> {
-    if (this.attached !== attached || attached.session === undefined) return;
+    const session = attached.session;
+    if (this.attached !== attached || session === undefined) return;
     await this.runCleanup(attached);
     attached.session = undefined;
+    // The app is gone, but the connector may still hold resources for the session.
+    await session.detach().catch(() => undefined);
     this.bus.emit(
       'app.exit',
       code === undefined ? { appId: attached.app.id } : { appId: attached.app.id, code },
