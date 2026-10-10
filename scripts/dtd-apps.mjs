@@ -14,7 +14,8 @@ function dataHome() {
   return join(process.env.XDG_STATE_HOME ?? join(homedir(), '.local', 'state'), 'Dart');
 }
 
-const mask = (uri) => uri?.replace(/\/[^/]+\/?$/, '/…/');
+// Auth codes can sit anywhere in the path (DTD: /<code>, VM service: /<code>=/ws), so hide the whole path.
+const mask = (uri) => uri?.replace(/^(\w+:\/\/[^/]+).*$/, '$1/…');
 
 function isAlive(pid) {
   try {
