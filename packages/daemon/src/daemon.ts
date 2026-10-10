@@ -90,7 +90,14 @@ export async function startDaemon(opts: DaemonOptions): Promise<Daemon> {
     throw err;
   }
   port = (server.address() as AddressInfo).port;
-  await writeRuntime(opts.projectDir, { pid: process.pid, port, token, startedAt: Date.now() });
+  try {
+    await writeRuntime(opts.projectDir, { pid: process.pid, port, token, startedAt: Date.now() });
+  } catch (err) {
+    // Without the runtime file no client can authenticate, so don't keep the port.
+    ws.close();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    throw err;
+  }
 
   // Connectors may take a while (or fail); the API is already usable meanwhile.
   void manager.start();

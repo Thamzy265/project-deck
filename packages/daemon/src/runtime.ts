@@ -1,4 +1,5 @@
-import { chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { randomBytes } from 'node:crypto';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { z } from 'zod';
 
@@ -18,13 +19,22 @@ export function runtimePath(projectDir: string): string {
   return join(projectDir, STATE_DIR, RUNTIME_FILE);
 }
 
-/** Writes the file readable by the current user only. */
+/**
+ * Writes the file readable by the current user only. The token goes into a fresh
+ * 0600 temp file that is renamed into place, so it is never readable through an
+ * older file with wider permissions.
+ */
 export async function writeRuntime(projectDir: string, info: RuntimeInfo): Promise<void> {
   const path = runtimePath(projectDir);
   await mkdir(join(projectDir, STATE_DIR), { recursive: true });
-  await writeFile(path, JSON.stringify(info, null, 2) + '\n', { mode: 0o600 });
-  // writeFile only applies `mode` when it creates the file.
-  await chmod(path, 0o600);
+  const tmp = `${path}.${randomBytes(6).toString('hex')}.tmp`;
+  try {
+    await writeFile(tmp, JSON.stringify(info, null, 2) + '\n', { mode: 0o600, flag: 'wx' });
+    await rename(tmp, path);
+  } catch (err) {
+    await rm(tmp, { force: true });
+    throw err;
+  }
 }
 
 export async function readRuntime(projectDir: string): Promise<RuntimeInfo | undefined> {

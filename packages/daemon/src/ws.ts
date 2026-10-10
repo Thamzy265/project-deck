@@ -5,6 +5,10 @@ import { WebSocket, WebSocketServer } from 'ws';
 import { isAllowedHost, isAllowedOrigin, tokenFromHeaders, tokensEqual } from './security.js';
 
 export const WS_PATH = '/ws';
+/** Clients never send us anything meaningful, so refuse large frames outright. */
+const MAX_INCOMING_BYTES = 4 * 1024;
+/** A client this far behind is stalled; drop it rather than buffer without bound. It can reconnect. */
+const MAX_BUFFERED_BYTES = 4 * 1024 * 1024;
 
 export interface WsOptions {
   server: Server;
@@ -24,7 +28,7 @@ function reject(socket: Duplex, status: number, text: string): void {
  * Browsers can't set headers on a WebSocket, so the token may also come as `?token=`.
  */
 export function attachWebSocket(opts: WsOptions): { close: () => void } {
-  const wss = new WebSocketServer({ noServer: true });
+  const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_INCOMING_BYTES });
 
   const onUpgrade = (req: IncomingMessage, socket: Duplex, head: Buffer): void => {
     const port = opts.port();
@@ -43,13 +47,17 @@ export function attachWebSocket(opts: WsOptions): { close: () => void } {
   };
 
   wss.on('connection', (ws) => {
+    // Without a listener, a malformed frame's 'error' event would crash the daemon.
+    ws.on('error', () => ws.terminate());
     ws.send(JSON.stringify({ type: 'hello', payload: opts.hello() }));
   });
 
   const offBus = opts.bus.onAny((type, payload) => {
     const message = JSON.stringify({ type, payload });
     for (const client of wss.clients) {
-      if (client.readyState === WebSocket.OPEN) client.send(message);
+      if (client.readyState !== WebSocket.OPEN) continue;
+      if (client.bufferedAmount > MAX_BUFFERED_BYTES) client.terminate();
+      else client.send(message);
     }
   });
 

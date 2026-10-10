@@ -1,5 +1,6 @@
 import { request as httpRequest } from 'node:http';
-import { mkdtemp, rm, stat } from 'node:fs/promises';
+import { mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
+import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Registry } from '@project-deck/core';
@@ -116,4 +117,38 @@ describe('startDaemon', () => {
     await d.closed;
     expect(await readRuntime(projectDir)).toBeUndefined();
   });
+
+  it('survives a client sending an oversized frame', async () => {
+    const d = await start();
+    const ws = openWs(d, d.token);
+    ws.on('error', () => undefined);
+    await nextMessage(ws);
+    const closed = new Promise((resolve) => ws.once('close', resolve));
+    ws.send('x'.repeat(10_000));
+    await closed;
+    expect((await fetch(`${d.url}/api/health`)).status).toBe(200);
+  });
+
+  it('releases the port when the runtime file cannot be written', async () => {
+    const port = await freePort();
+    const notADir = join(projectDir, 'file');
+    await writeFile(notADir, '');
+    await expect(
+      startDaemon({ projectDir: notADir, registry: new Registry(), port, log: () => undefined }),
+    ).rejects.toThrow();
+    const d = await start(port);
+    expect(d.port).toBe(port);
+  });
 });
+
+function freePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const srv = createServer();
+    srv.once('error', reject);
+    srv.listen(0, '127.0.0.1', () => {
+      const address = srv.address();
+      const port = typeof address === 'object' && address !== null ? address.port : 0;
+      srv.close(() => resolve(port));
+    });
+  });
+}
