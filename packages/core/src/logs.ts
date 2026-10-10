@@ -21,6 +21,13 @@ export const LogEntrySchema = z.object({
 export type LogEntry = z.infer<typeof LogEntrySchema>;
 
 export const DEFAULT_LOG_LIMIT = 200;
+/**
+ * Regex filters run on the daemon's only thread, so keep patterns short and
+ * only test them against the start of each entry. This bounds, but cannot fully
+ * prevent, catastrophic backtracking (no native RE2 allowed).
+ */
+export const MAX_LOG_REGEX_LENGTH = 200;
+export const MAX_REGEX_HAYSTACK = 4096;
 export const MAX_LOG_LIMIT = 5000;
 
 export const LogQuerySchema = z.object({
@@ -30,7 +37,11 @@ export const LogQuerySchema = z.object({
   /** Case-insensitive substring match on message and stack. */
   text: z.string().optional(),
   /** JavaScript regular expression matched against message and stack. */
-  regex: z.string().refine(isValidRegex, { message: 'Invalid regular expression' }).optional(),
+  regex: z
+    .string()
+    .max(MAX_LOG_REGEX_LENGTH)
+    .refine(isValidRegex, { message: 'Invalid regular expression' })
+    .optional(),
   tag: z.string().optional(),
   /** Most recent N matches. */
   limit: z.number().int().positive().max(MAX_LOG_LIMIT).optional(),
@@ -63,7 +74,7 @@ export function logMatcher(q: LogQuery): (e: LogEntry) => boolean {
     if (q.tag !== undefined && e.tag !== q.tag) return false;
     const haystack = e.stack === undefined ? e.message : `${e.message}\n${e.stack}`;
     if (text !== undefined && !haystack.toLowerCase().includes(text)) return false;
-    if (re !== undefined && !re.test(haystack)) return false;
+    if (re !== undefined && !re.test(haystack.slice(0, MAX_REGEX_HAYSTACK))) return false;
     return true;
   };
 }

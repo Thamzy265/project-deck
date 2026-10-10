@@ -72,6 +72,14 @@ describe('RingBufferLogSource', () => {
     expect((await logs.query({})).map((e) => e.ts)).toEqual([4]);
   });
 
+  it('only tests regexes against the start of long entries', async () => {
+    const logs = new RingBufferLogSource(10);
+    logs.push(entry(1, { message: 'x'.repeat(5000) + 'needle' }));
+    logs.push(entry(2, { message: 'needle at the start' }));
+    expect((await logs.query({ regex: 'needle' })).map((e) => e.ts)).toEqual([2]);
+    expect((await logs.query({ text: 'needle' })).map((e) => e.ts)).toEqual([1, 2]);
+  });
+
   it('rejects a non-positive capacity', () => {
     expect(() => new RingBufferLogSource(0)).toThrow(RangeError);
   });
@@ -82,5 +90,6 @@ describe('LogQuerySchema', () => {
     expect(LogQuerySchema.safeParse({ regex: '(' }).success).toBe(false);
     expect(LogQuerySchema.safeParse({ limit: 1_000_000 }).success).toBe(false);
     expect(LogQuerySchema.safeParse({ regex: 'a+', limit: 10 }).success).toBe(true);
+    expect(LogQuerySchema.safeParse({ regex: 'a'.repeat(201) }).success).toBe(false);
   });
 });

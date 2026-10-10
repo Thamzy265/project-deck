@@ -22,6 +22,14 @@ describe('domain schemas', () => {
   });
 });
 
+describe('TaskSchema', () => {
+  it('only accepts http(s) task links', () => {
+    expect(TaskSchema.safeParse(fakeTask({ url: 'http://linear.test/ENG-1' })).success).toBe(true);
+    expect(TaskSchema.safeParse(fakeTask({ url: 'javascript:alert(1)' })).success).toBe(false);
+    expect(TaskSchema.safeParse(fakeTask({ url: 'data:text/html,hi' })).success).toBe(false);
+  });
+});
+
 describe('API inputs', () => {
   it('db_query accepts scalar params only and caps the limit', () => {
     expect(
