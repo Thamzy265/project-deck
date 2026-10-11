@@ -1,3 +1,5 @@
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { RunningApp } from '@project-deck/core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DartConnector, appIdFor } from './connector.js';
@@ -197,5 +199,25 @@ describe('DartConnector', () => {
     await c.stop();
     await vi.waitFor(() => expect(vm.clientCount + d.clientCount).toBe(0));
     await expect(c.attach('dart-unknown')).rejects.toThrow(/No running Dart app/);
+  });
+  it('runs the dart CLI fallback at most once a minute when there is no pid-file directory', async () => {
+    let now = 1_000_000;
+    vi.spyOn(Date, 'now').mockImplementation(() => now);
+    const dartCli = vi.fn(() => Promise.resolve<DtdInfo[]>([]));
+    connector = new DartConnector({
+      dataHome: join(tmpdir(), 'deck-no-such-dart-home'),
+      dartCli,
+      scanIntervalMs: 0,
+      log: () => undefined,
+    });
+    await connector.start();
+    await connector.scan();
+    now += 59_000;
+    await connector.scan();
+    expect(dartCli).toHaveBeenCalledTimes(1);
+    now += 1_000;
+    await connector.scan();
+    expect(dartCli).toHaveBeenCalledTimes(2);
+    vi.restoreAllMocks();
   });
 });

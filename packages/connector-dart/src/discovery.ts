@@ -80,10 +80,10 @@ export async function readPidFiles(
   return out;
 }
 
+/** One entry of `dart tooling-daemon --list --machine`: the same fields as a pid file. */
 const CliEntrySchema = z.object({
-  wsUri: z.string().optional(),
-  uri: z.string().optional(),
-  pid: z.number().int().optional(),
+  wsUri: z.string(),
+  pid: z.number().int().positive().optional(),
   ideName: z.string().optional(),
   dartVersion: z.string().optional(),
 });
@@ -110,8 +110,8 @@ const defaultExec: ExecFn = (file, args) =>
 
 /**
  * Fallback for setups where we can't find the pid-file directory:
- * `dart tooling-daemon --list --machine`. Output format is not yet verified
- * against a live SDK, so accept either `wsUri` or `uri`.
+ * `dart tooling-daemon --list --machine`. Checked against Dart 3.12.2, which prints a JSON
+ * array of `{wsUri, epoch, pid, dartVersion, workspaceRoot, ideName}` (see the tests).
  */
 export async function listViaDartCli(exec: ExecFn = defaultExec): Promise<DtdInfo[]> {
   let stdout: string;
@@ -126,17 +126,20 @@ export async function listViaDartCli(exec: ExecFn = defaultExec): Promise<DtdInf
   } catch {
     return [];
   }
-  const entries = z.array(CliEntrySchema).safeParse(raw);
-  if (!entries.success) return [];
+  if (!Array.isArray(raw)) return [];
   const out: DtdInfo[] = [];
-  for (const e of entries.data) {
-    const wsUri = e.wsUri ?? e.uri;
-    if (wsUri === undefined || !isLoopbackWsUri(wsUri)) continue;
+  // Entry by entry, so one odd entry doesn't hide the others.
+  for (const item of raw) {
+    const parsed = CliEntrySchema.safeParse(item);
+    if (!parsed.success) continue;
+    const e = parsed.data;
+    if (!isLoopbackWsUri(e.wsUri)) continue;
     out.push({
-      wsUri,
+      wsUri: e.wsUri,
       source: 'dart-cli',
       ...(e.pid === undefined ? {} : { pid: e.pid }),
       ...(e.ideName === undefined ? {} : { ideName: e.ideName }),
+      ...(e.dartVersion === undefined ? {} : { dartVersion: e.dartVersion }),
     });
   }
   return out;

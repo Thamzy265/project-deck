@@ -68,25 +68,51 @@ describe('readPidFiles', () => {
 });
 
 describe('listViaDartCli', () => {
-  it('runs the fixed command and keeps loopback entries', async () => {
+  // `dart tooling-daemon --list --machine` on Dart 3.12.2 (macOS), address masked.
+  const REAL_OUTPUT =
+    '[{"wsUri":"ws://127.0.0.1:52011/MASKED=","epoch":1790934391303,"pid":21624,' +
+    '"dartVersion":"3.12.2 (stable) (Tue Jun 9 01:11:39 2026 -0700) on \\"macos_arm64\\"",' +
+    '"workspaceRoot":"/Users/u/flutter/bin/cache/dart-sdk","ideName":"Android Studio"}]\n';
+
+  it('parses the real output of the SDK', async () => {
     const calls: [string, string[]][] = [];
     const result = await listViaDartCli((file, args) => {
       calls.push([file, args]);
-      return Promise.resolve(
-        JSON.stringify([
-          { wsUri: 'ws://127.0.0.1:6000/x', pid: 1 },
-          { uri: 'ws://localhost:6001/y' },
-          { wsUri: 'ws://8.8.8.8:1/z' },
-        ]),
-      );
+      return Promise.resolve(REAL_OUTPUT);
     });
     expect(calls).toEqual([['dart', ['tooling-daemon', '--list', '--machine']]]);
-    expect(result.map((r) => r.wsUri)).toEqual(['ws://127.0.0.1:6000/x', 'ws://localhost:6001/y']);
+    expect(result).toEqual([
+      {
+        wsUri: 'ws://127.0.0.1:52011/MASKED=',
+        pid: 21624,
+        ideName: 'Android Studio',
+        dartVersion: '3.12.2 (stable) (Tue Jun 9 01:11:39 2026 -0700) on "macos_arm64"',
+        source: 'dart-cli',
+      },
+    ]);
+  });
+
+  it('keeps valid loopback entries and skips the rest one by one', async () => {
+    const result = await listViaDartCli(() =>
+      Promise.resolve(
+        JSON.stringify([
+          { wsUri: 'ws://127.0.0.1:6000/x', pid: 1 },
+          { wsUri: 'ws://localhost:6001/y', pid: 'not a number' },
+          { uri: 'ws://localhost:6002/z' },
+          { wsUri: 'ws://8.8.8.8:1/z' },
+          { wsUri: 'ws://[::1]:6003/w' },
+        ]),
+      ),
+    );
+    expect(result.map((r) => r.wsUri)).toEqual(['ws://127.0.0.1:6000/x', 'ws://[::1]:6003/w']);
   });
 
   it('returns nothing when dart is missing or prints garbage', async () => {
     expect(await listViaDartCli(() => Promise.reject(new Error('ENOENT')))).toEqual([]);
     expect(await listViaDartCli(() => Promise.resolve('Usage: ...'))).toEqual([]);
+    expect(await listViaDartCli(() => Promise.resolve('{"wsUri":"ws://127.0.0.1:1/x"}'))).toEqual(
+      [],
+    );
   });
 });
 

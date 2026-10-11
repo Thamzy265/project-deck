@@ -17,8 +17,13 @@ export interface DartConnectorOptions {
   vmServiceUris?: string[];
   /** How often to look for new DTDs (a terminal `flutter run` starts its own). 0 disables. */
   scanIntervalMs?: number;
-  /** Try `dart tooling-daemon --list --machine` when the pid-file directory is missing. */
+  /**
+   * Try `dart tooling-daemon --list --machine` when the pid-file directory is missing
+   * (SDKs before 3.12). It runs at most once a minute, scans in between reuse its answer.
+   */
   useDartCli?: boolean;
+  /** Replaces the `dart` CLI fallback (tests). */
+  dartCli?: () => Promise<DtdInfo[]>;
   /** Replaces discovery entirely (tests). */
   discover?: () => Promise<DtdInfo[]>;
   session?: DartAppSessionOptions;
@@ -41,6 +46,8 @@ interface ConnectedDtd {
 const DEFAULT_SCAN_INTERVAL_MS = 5000;
 /** Don't hammer a DTD that refused us; try again after this long. */
 const RETRY_AFTER_MS = 30_000;
+/** Spawning `dart` costs far more than reading pid files, so don't do it on every scan. */
+const DART_CLI_INTERVAL_MS = 60_000;
 
 /** Stable, opaque id: VM service URIs contain auth codes and must not leak into URLs or logs. */
 export function appIdFor(vmServiceUri: string): string {
@@ -83,6 +90,7 @@ export class DartConnector implements AppConnector {
   private timer: NodeJS.Timeout | undefined;
   private scanning: Promise<void> | undefined;
   private stopped = false;
+  private dartCliCache: { at: number; found: DtdInfo[] } | undefined;
 
   constructor(private readonly opts: DartConnectorOptions = {}) {}
 
@@ -171,8 +179,16 @@ export class DartConnector implements AppConnector {
       .map((wsUri) => ({ wsUri, source: 'manual' }));
     if (this.opts.discover !== undefined) return [...(await this.opts.discover()), ...manual];
     const fromFiles = await readPidFiles(this.opts.dataHome ?? dartDataHome());
-    const discovered = fromFiles ?? (this.opts.useDartCli === false ? [] : await listViaDartCli());
+    const discovered = fromFiles ?? (this.opts.useDartCli === false ? [] : await this.viaDartCli());
     return [...discovered, ...manual];
+  }
+
+  private async viaDartCli(): Promise<DtdInfo[]> {
+    const cached = this.dartCliCache;
+    if (cached !== undefined && Date.now() - cached.at < DART_CLI_INTERVAL_MS) return cached.found;
+    const found = await (this.opts.dartCli ?? listViaDartCli)();
+    this.dartCliCache = { at: Date.now(), found };
+    return found;
   }
 
   private async connectDtd(info: DtdInfo): Promise<void> {
