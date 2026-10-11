@@ -70,24 +70,27 @@ describe('DartConnector edge cases', () => {
     );
   });
 
-  it.fails(
-    'BUG: a DTD that accepts the socket but never answers delays apps from healthy DTDs by the 5 s call timeout',
-    async () => {
-      const good = await dtd([{ uri: APP, name: 'shop' }]);
-      const stuck = await hangingDtd();
-      const c = make(() =>
-        Promise.resolve([
-          { wsUri: stuck.uri, source: 'pid-file' },
-          { wsUri: good.uri, source: 'pid-file' },
-        ]),
-      );
-      void c.start();
-      await vi.waitFor(
-        async () => expect((await c.listApps()).map((a) => a.name)).toEqual(['shop']),
-        { timeout: 1500 },
-      );
-    },
-  );
+  it('B5: apps from healthy DTDs are listed without waiting for a DTD that never answers', async () => {
+    const good = await dtd([{ uri: APP, name: 'shop' }]);
+    const stuck = await hangingDtd();
+    const c = make(() =>
+      Promise.resolve([
+        { wsUri: stuck.uri, source: 'pid-file' },
+        { wsUri: good.uri, source: 'pid-file' },
+      ]),
+    );
+    const changes = vi.fn<(apps: RunningApp[]) => void>();
+    c.onAppsChanged(changes);
+    let started = false;
+    void c.start().then(() => (started = true));
+    await vi.waitFor(
+      async () => expect((await c.listApps()).map((a) => a.name)).toEqual(['shop']),
+      { timeout: 1500 },
+    );
+    expect(changes.mock.lastCall?.[0].map((a) => a.name)).toEqual(['shop']);
+    // The first scan is still waiting on the stuck DTD.
+    expect(started).toBe(false);
+  });
 
   it.fails(
     'BUG: stop() waits for a scan stuck on a DTD that never answers instead of closing it',

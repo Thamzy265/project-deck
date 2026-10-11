@@ -194,6 +194,8 @@ export class DartConnector implements AppConnector {
         this.dtds.delete(info.wsUri);
         this.recompute();
       });
+      // Don't make this DTD's apps wait for slower DTDs in the same scan.
+      this.recompute();
     } catch (err) {
       client?.close();
       this.failedAt.set(info.wsUri, Date.now());
