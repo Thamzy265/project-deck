@@ -148,15 +148,32 @@ describe('DartAppSession edge cases', () => {
     }
   });
 
-  it.fails(
-    'BUG: reload rejects instead of returning a ReloadResult when the reload call times out',
-    async () => {
-      const { server, session } = await attach({ timeoutMs: 100 });
-      server.handle('s0.reloadSources', () => new Promise(() => undefined));
-      const result = await session.reload().catch((e: unknown) => ({ threw: e }));
-      expect(result).toMatchObject({ ok: false });
-    },
-  );
+  it('B3: reload returns a ReloadResult when the reload call times out', async () => {
+    const { server, session } = await attach({ timeoutMs: 100 });
+    server.handle('s0.reloadSources', () => new Promise(() => undefined));
+    const result = await session.reload().catch((e: unknown) => ({ threw: e }));
+    expect(result).toMatchObject({
+      ok: false,
+      reason: 'not-attached',
+      message: expect.stringMatching(/no answer within/) as unknown,
+    });
+  });
+
+  it('B3: reload reports an unexpected error instead of rejecting', async () => {
+    const { server, session } = await attach();
+    // A getVM answer that fails schema validation makes the isolate refresh throw a ZodError.
+    server.handle('getVM', () => ({ isolates: 'nope' }));
+    (session as unknown as { isolateId: string | undefined }).isolateId = undefined;
+    const errors = vi.fn();
+    session.on('error', errors);
+    const result = await session.reload().catch((e: unknown) => ({ threw: e }));
+    expect(result).toMatchObject({
+      ok: false,
+      reason: 'not-attached',
+      message: expect.stringMatching(/^Hot reload failed unexpectedly/) as unknown,
+    });
+    expect(errors).toHaveBeenCalledOnce();
+  });
 
   it.fails(
     'BUG: reload says unsupported instead of not-attached when the app exits while waiting for the service',

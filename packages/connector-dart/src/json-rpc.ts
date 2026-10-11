@@ -16,6 +16,15 @@ export class ConnectionClosedError extends Error {
   }
 }
 
+export class CallTimeoutError extends Error {
+  constructor(
+    readonly method: string,
+    readonly timeoutMs: number,
+  ) {
+    super(`${method} timed out after ${timeoutMs} ms`);
+  }
+}
+
 export interface JsonRpcClientOptions {
   /** Per-call timeout. Reloads can take a while on big apps. */
   timeoutMs?: number;
@@ -134,7 +143,7 @@ export class JsonRpcClient {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
-        reject(new Error(`${method} timed out after ${this.timeoutMs} ms`));
+        reject(new CallTimeoutError(method, this.timeoutMs));
       }, this.timeoutMs);
       this.pending.set(id, { resolve, reject, timer });
       this.ws.send(JSON.stringify(message), (err) => {

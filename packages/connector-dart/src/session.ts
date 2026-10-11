@@ -10,7 +10,12 @@ import type {
 import { EventBus, RingBufferLogSource } from '@project-deck/core';
 import { z } from 'zod';
 import type { JsonRpcClientOptions } from './json-rpc.js';
-import { ConnectionClosedError, JsonRpcClient, JsonRpcError } from './json-rpc.js';
+import {
+  CallTimeoutError,
+  ConnectionClosedError,
+  JsonRpcClient,
+  JsonRpcError,
+} from './json-rpc.js';
 import { LineBuffer, entryFromLogRecord } from './vm-logs.js';
 
 /** Service names the Flutter tool registers on the app's VM service. */
@@ -195,6 +200,7 @@ export class DartAppSession implements AppSession {
         message: `This app has no ${service} service. It may not have been started by the Flutter tool.`,
       };
     }
+    const label = kind === 'hot-reload' ? 'Hot reload' : 'Hot restart';
     const started = performance.now();
     let result: ReloadResult;
     try {
@@ -204,7 +210,23 @@ export class DartAppSession implements AppSession {
       if (err instanceof ConnectionClosedError || err instanceof NoIsolateError) {
         return { ok: false, reason: 'not-attached', message: err.message };
       }
-      if (!(err instanceof JsonRpcError)) throw err;
+      if (err instanceof CallTimeoutError) {
+        return {
+          ok: false,
+          reason: 'not-attached',
+          message: `${label} got no answer within ${Math.round(err.timeoutMs / 1000)} s. The app may be paused in the debugger or busy; try again.`,
+        };
+      }
+      if (!(err instanceof JsonRpcError)) {
+        // Callers expect a ReloadResult, never a rejection.
+        const detail = err instanceof Error ? err.message : String(err);
+        this.events.emit('error', { message: `${label} failed unexpectedly`, cause: err });
+        return {
+          ok: false,
+          reason: 'not-attached',
+          message: `${label} failed unexpectedly: ${detail}`,
+        };
+      }
       result = reloadFailure(kind, err);
     }
     this.events.emit('reloaded', result);
