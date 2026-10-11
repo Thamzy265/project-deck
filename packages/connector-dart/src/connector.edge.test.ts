@@ -1,9 +1,9 @@
 import type { RunningApp } from '@project-deck/core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { DartConnector, appIdFor } from './connector.js';
+import { DartConnector, appIdFor, normalise } from './connector.js';
 import type { DtdInfo } from './discovery.js';
 import { FakeRpcServer } from './testing/fake-rpc-server.js';
-import { asDtd, vmServiceRegistered } from './testing/fixtures.js';
+import { asDtd, asFlutterVmService, vmServiceRegistered } from './testing/fixtures.js';
 
 const servers: FakeRpcServer[] = [];
 let connector: DartConnector | undefined;
@@ -152,19 +152,43 @@ describe('DartConnector edge cases', () => {
     expect(calls).toBe(1);
   });
 
-  it.fails(
-    'BUG: the same VM service advertised as localhost and 127.0.0.1 is listed as two apps',
-    async () => {
-      const a = await dtd([{ uri: 'ws://127.0.0.1:7200/L=/ws', name: 'shop' }]);
-      const b = await dtd([{ uri: 'ws://localhost:7200/L=/ws', name: 'shop' }]);
-      const c = make(() =>
-        Promise.resolve([
-          { wsUri: a.uri, source: 'pid-file' },
-          { wsUri: b.uri, source: 'pid-file' },
-        ]),
-      );
-      await c.start();
-      expect(await c.listApps()).toHaveLength(1);
-    },
-  );
+  it('B8: the same VM service advertised as localhost and 127.0.0.1 is listed once', async () => {
+    const a = await dtd([{ uri: 'ws://localhost:7200/L=/ws', name: 'shop' }]);
+    const b = await dtd([{ uri: 'ws://127.0.0.1:7200/L=/ws', name: 'shop' }]);
+    const c = make(() =>
+      Promise.resolve([
+        { wsUri: a.uri, source: 'pid-file' },
+        { wsUri: b.uri, source: 'pid-file' },
+      ]),
+    );
+    await c.start();
+    expect(await c.listApps()).toHaveLength(1);
+  });
+
+  it('B8: keeps connecting to the address as advertised', async () => {
+    const vm = await FakeRpcServer.start('/M=/ws');
+    servers.push(vm);
+    asFlutterVmService(vm);
+    const port = new URL(vm.uri).port;
+    const d = await dtd([{ uri: `ws://localhost:${port}/M=/ws`, name: 'shop' }]);
+    const c = make(() => Promise.resolve([{ wsUri: d.uri, source: 'pid-file' }]));
+    await c.start();
+    const [app] = await c.listApps();
+    expect(app?.id).toBe(appIdFor(`ws://127.0.0.1:${port}/M=/ws`));
+    const known = (c as unknown as { known: Map<string, { vmServiceUri: string }> }).known;
+    expect([...known.values()].map((k) => k.vmServiceUri)).toEqual([
+      `ws://localhost:${port}/M=/ws`,
+    ]);
+    // The session dials the advertised localhost address, not the canonical key.
+    const session = await c.attach(app?.id ?? '');
+    expect(vm.calls.some((x) => x.method === 'getVM')).toBe(true);
+    await session.detach();
+  });
+
+  it('B8: canonicalises every loopback spelling in the dedupe key only', () => {
+    for (const host of ['localhost', '127.0.0.1', '[::1]'])
+      expect(normalise(`http://${host}:7300/N=/`)).toBe('ws://127.0.0.1:7300/N=/ws');
+    expect(normalise('ws://10.0.2.2:7300/N=/ws')).toBe('ws://10.0.2.2:7300/N=/ws');
+    expect(normalise('not a uri')).toBeUndefined();
+  });
 });

@@ -47,9 +47,19 @@ export function appIdFor(vmServiceUri: string): string {
   return 'dart-' + createHash('sha256').update(vmServiceUri).digest('base64url').slice(0, 16);
 }
 
-/** Undefined for an address we can't parse; callers skip those entries. */
-function normalise(uri: string): string | undefined {
-  return toVmServiceWsUri(uri)?.replace(/\/$/, '');
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+
+/**
+ * Dedupe key for a VM service address; undefined if we can't parse it (callers skip those).
+ * Loopback spellings collapse to one so the same app isn't listed twice. Only the key:
+ * we still connect to the address as advertised.
+ */
+export function normalise(uri: string): string | undefined {
+  const ws = toVmServiceWsUri(uri);
+  if (ws === undefined) return undefined;
+  const url = new URL(ws);
+  if (LOOPBACK_HOSTS.has(url.hostname)) url.hostname = '127.0.0.1';
+  return url.toString().replace(/\/$/, '');
 }
 
 /**
