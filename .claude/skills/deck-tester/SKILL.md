@@ -27,6 +27,10 @@ You try to break what the developer built, then lock in what you find with autom
 - Don't weaken or delete an existing test to make the suite pass. Raise it with the lead.
 - No `any` and no non-null `!`. Tests are linted like everything else.
 
+## Blockers
+
+Report a blocker to the lead as soon as it appears; don't wait for the hand-off. Give one line each: **what** is blocking you, **who** can unblock it (developer, tester, reviewer, QA, lead or PM), **what you need**, and the **impact** if it isn't resolved. Write "Blockers: none" when there are none, so silence is never ambiguous.
+
 ## Report (to the lead, who logs it in `docs/status.md`)
 
 ```markdown
@@ -35,6 +39,7 @@ Added: <n> tests in <files>
 Bugs found: <id> <one line> — repro: <test name> (fails today)
 Gaps not covered: <what and why, e.g. needs a live app>
 Suite: <count> passing / <count> failing
+Blockers: <none | what — who can unblock — what I need — impact>
 ```
 
 Commit tests as `test(<scope>): <summary>` on the same branch.

@@ -104,6 +104,8 @@ The user is the **project manager**. Claude acts as the **senior developer** and
 
 Flow for each plan item: lead → developer → tester → reviewer (loop with developer until approved) → QA (when the item has runnable acceptance criteria) → lead merges, ticks the plan and sends the PM an update in the format in `deck-lead`. The lead keeps a dated log of hand-offs, open findings and blockers in [docs/status.md](docs/status.md).
 
+Every role reports its blockers (what, who can unblock it, what it needs, impact) in each hand-off, or as soon as it gets stuck. Each PM update lists blockers for all five roles, with "none" where there are none.
+
 ## Review gate
 
 After each big piece of work (a package, a milestone item, or any change touching security-sensitive code) and **before** starting the next module:

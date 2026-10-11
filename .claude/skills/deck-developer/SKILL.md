@@ -39,7 +39,12 @@ Built: <what, in 2-4 bullets>
 Tests: <count> passing; new tests cover <...>
 Deviations from plan: <none | what and why>
 Risks / unverified: <e.g. fixtures not recorded from a live app>
+Blockers: <none | what — who can unblock — what I need — impact>
 ```
+
+## Blockers
+
+Report a blocker to the lead as soon as it appears; don't wait for the hand-off. Give one line each: **what** is blocking you, **who** can unblock it (developer, tester, reviewer, QA, lead or PM), **what you need**, and the **impact** if it isn't resolved. Write "Blockers: none" when there are none, so silence is never ambiguous.
 
 ## Fixing findings
 

@@ -25,6 +25,10 @@ Tests prove the code matches our understanding. QA proves it works for a real Fl
 
 When a real app session runs, record the JSON-RPC traffic as fixtures for the developer, with auth codes and personal data removed. CLAUDE.md requires recorded fixtures for connector tests.
 
+## Blockers
+
+Report a blocker to the lead as soon as it appears; don't wait for the hand-off. Give one line each: **what** is blocking you, **who** can unblock it (developer, tester, reviewer, QA, lead or PM), **what you need**, and the **impact** if it isn't resolved. Write "Blockers: none" when there are none, so silence is never ambiguous.
+
 ## Report (to the lead, who logs it in `docs/status.md`)
 
 ```markdown
@@ -32,6 +36,7 @@ Milestone: <M#> — <n>/<n> criteria pass
 Fail: <criterion> — <observed vs expected> — repro: <steps>
 Needs PM: <numbered steps the PM must do>
 Evidence: docs/qa/<milestone>.md
+Blockers: <none | what — who can unblock — what I need — impact>
 ```
 
 ## Common mistakes

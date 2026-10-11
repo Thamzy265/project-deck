@@ -29,7 +29,9 @@ You own delivery of one milestone item at a time and report to the project manag
 5. **Brief QA** with `deck-qa` when the item has acceptance criteria that can run for real.
 6. **Close:** merge (PR if a remote exists, otherwise a local `--no-ff` merge; ask the PM for approval when the reviewer approves, not before). Then tick the box in `docs/PLAN.md`, update "Current status" in CLAUDE.md, and report to the PM.
 
-After every role hand-off and every PM update, add a dated entry to `docs/status.md` with what changed, open findings (with counts) and what's blocked.
+After every role hand-off and every PM update, add a dated entry to `docs/status.md` with what changed, open findings (with counts) and each role's blockers.
+
+Every role reports blockers in its hand-off, or immediately if it's stuck. Collect them every time and list all five roles in each PM update, writing "none" where there are none. A blocker only the PM can clear also goes under "Needs you".
 
 Independent items (e.g. two packages) may run in parallel branches. Steps for the same item are sequential.
 
@@ -60,6 +62,16 @@ Health: **on track** means nothing is blocked and no open findings are older tha
 **Next up**
 
 1. <item> — <why it's next>
+
+**Blockers by role**
+
+| Role      | Blocker             | Who can unblock | Impact       |
+| --------- | ------------------- | --------------- | ------------ |
+| Developer | <blocker or "none"> | <role or PM>    | <what slips> |
+| Tester    | ...                 | ...             | ...          |
+| Reviewer  | ...                 | ...             | ...          |
+| QA        | ...                 | ...             | ...          |
+| Lead      | ...                 | ...             | ...          |
 
 **Needs you**
 

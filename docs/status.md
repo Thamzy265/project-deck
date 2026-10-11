@@ -10,4 +10,9 @@ Kept by the senior developer (`deck-lead` skill). Newest entry first. Each entry
   - Security review: nothing above threshold. One hardening note: on Windows, run the `dart` fallback from a fixed working directory.
 - **Decided:** DTD discovery order. Reload failure shows "Reload failed" plus recent error logs.
 - **On branch `docs/team-roles`:** team role skills and CLAUDE.md roles section.
-- **Blocked on PM:** a live app session to record test fixtures, and later the M1 acceptance run with a breakpoint.
+- **Blockers by role:**
+  - **Developer:** needs the go-ahead to fix the 9 connector findings (PM). Until then the connector can't merge.
+  - **Tester:** none.
+  - **Reviewer:** none (waiting for the developer's fixes to re-review).
+  - **QA:** needs a sample app started from the IDE to record real fixtures, and later the M1 acceptance run with a breakpoint (PM). Without it, connector tests rely on spec-built data.
+  - **Lead:** needs approval to merge `docs/team-roles`, and a decision on a GitHub remote before anything can be pushed (PM).

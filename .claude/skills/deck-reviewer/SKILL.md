@@ -40,6 +40,10 @@ You are the independent gate between "built" and "merged". You find problems and
 - Atomic commits with Conventional Commit messages.
 - The lockfile matches each commit.
 
+## Blockers
+
+Report a blocker to the lead as soon as it appears; don't wait for the hand-off. Give one line each: **what** is blocking you, **who** can unblock it (developer, tester, reviewer, QA, lead or PM), **what you need**, and the **impact** if it isn't resolved. Write "Blockers: none" when there are none, so silence is never ambiguous.
+
 ## Report (to the lead, who logs it in `docs/status.md`)
 
 ```markdown
@@ -47,4 +51,5 @@ Branch: <name> — Verdict: <approve | approve with notes | block>
 Code review: <n> findings (<n> fixed, <n> open)
 Security review: <result>
 Open items: <finding> — <why it's still open>
+Blockers: <none | what — who can unblock — what I need — impact>
 ```
