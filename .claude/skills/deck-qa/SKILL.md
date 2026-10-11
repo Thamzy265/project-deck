@@ -21,6 +21,10 @@ Tests prove the code matches our understanding. QA proves it works for a real Fl
 4. Steps that need the project manager's machine (start the app from Android Studio or VS Code, set a breakpoint, look at a device) go to the lead as a short, numbered request. Never pretend they ran.
 5. A failure becomes a bug for the developer, with steps to reproduce.
 
+## PM check steps
+
+After every finished task, turn the developer's "How to verify" draft into the PM's "How you can check it" steps, in the format described in `deck-lead`. Run them yourself, exactly as written, on a clean shell, and confirm each expected result. Save them under "PM check" in `docs/qa/<milestone>.md`. If a step only works with knowledge the PM won't have, rewrite it.
+
 ## Also capture
 
 When a real app session runs, record the JSON-RPC traffic as fixtures for the developer, with auth codes and personal data removed. CLAUDE.md requires recorded fixtures for connector tests.
@@ -36,6 +40,7 @@ Milestone: <M#> — <n>/<n> criteria pass
 Fail: <criterion> — <observed vs expected> — repro: <steps>
 Needs PM: <numbered steps the PM must do>
 Evidence: docs/qa/<milestone>.md
+PM check steps: <verified yes/no> — docs/qa/<milestone>.md#pm-check
 Blockers: <none | what — who can unblock — what I need — impact>
 ```
 

@@ -106,6 +106,8 @@ Flow for each plan item: lead → developer → tester → reviewer (loop with d
 
 Every role reports its blockers (what, who can unblock it, what it needs, impact) in each hand-off, or as soon as it gets stuck. Each PM update lists blockers for all five roles, with "none" where there are none.
 
+After every finished task the PM gets **"How you can check it"** steps: numbered actions with copy-paste commands, the expected result for each, and a clean-up step. The developer drafts them, and QA runs them exactly as written before they reach the PM. They're kept in `docs/qa/<milestone>.md`.
+
 ## Review gate
 
 After each big piece of work (a package, a milestone item, or any change touching security-sensitive code) and **before** starting the next module:

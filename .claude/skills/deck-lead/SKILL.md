@@ -35,6 +35,23 @@ Every role reports blockers in its hand-off, or immediately if it's stuck. Colle
 
 Independent items (e.g. two packages) may run in parallel branches. Steps for the same item are sequential.
 
+## "How you can check it" (after every finished task)
+
+Whenever something is reported as done, give the PM numbered steps to check it themselves:
+
+- **Before you start:** what must already be running or installed (e.g. "a Flutter app running from Android Studio").
+- **One action per step.** Each command goes in its own fenced `bash` block (no `$` prompt, no output inside the block), with paths the PM can copy as-is.
+- **Expected result** after each step, in plain words, plus how to tell it failed ("if you see `401`, the token wasn't loaded; redo step 2").
+- **Clean-up step** at the end (stop the daemon, delete temp folders).
+- About how long it takes.
+
+Rules:
+
+- QA (or you) must have **run the exact steps** first and seen the expected results. Never hand over untested steps.
+- Steps check behaviour the PM cares about (an app appears, reload works, logs show up), not internals.
+- If a step needs something the PM doesn't have yet, say so up front instead of letting it fail halfway.
+- Keep them in `docs/qa/<milestone>.md` under "PM check" so they can be rerun later.
+
 ## Escalate to the PM (don't decide alone)
 
 - Open decisions in the plan, scope changes, or deviations from the plan.
@@ -44,7 +61,7 @@ Independent items (e.g. two packages) may run in parallel branches. Steps for th
 
 ## PM update format
 
-Plain language, no code. Keep it under about 300 words; put evidence in brackets, not sentences.
+Plain language. No code except the copy-paste commands in "How you can check it". Keep the rest under about 300 words; put evidence in brackets, not sentences.
 
 Health: **on track** means nothing is blocked and no open findings are older than one work loop. **At risk** means open findings or a dependency is late, but there's a plan. **Blocked** means waiting on the PM or something outside the team. "Needs you" lists only what is needed now; later needs go under "Next up".
 
@@ -54,6 +71,10 @@ Health: **on track** means nothing is blocked and no open findings are older tha
 **Done since last update**
 
 - <outcome, in user terms> (<evidence: tests passing, review result, demo>)
+
+**How you can check it**
+
+1. <step, with commands in their own `bash` blocks> → expect <result>
 
 **In progress**
 
