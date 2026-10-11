@@ -103,7 +103,10 @@ export class DartConnector implements AppConnector {
   async attach(appId: string): Promise<DartAppSession> {
     const known = [...this.known.values()].find((k) => k.app.id === appId);
     if (known === undefined) throw new Error(`No running Dart app with id '${appId}'`);
-    const session = await DartAppSession.attach(known.vmServiceUri, known.app, this.opts.session);
+    const session = await DartAppSession.attach(known.vmServiceUri, known.app, {
+      onListenerError: (err) => this.opts.log?.('VM service listener failed', err),
+      ...this.opts.session,
+    });
     this.sessions.add(session);
     session.on('exit', () => this.sessions.delete(session));
     return session;
@@ -142,7 +145,11 @@ export class DartConnector implements AppConnector {
     this.connecting.add(info.wsUri);
     let client: DtdClient | undefined;
     try {
-      client = await DtdClient.connect(info.wsUri, { connectTimeoutMs: 3000, timeoutMs: 5000 });
+      client = await DtdClient.connect(info.wsUri, {
+        connectTimeoutMs: 3000,
+        timeoutMs: 5000,
+        onListenerError: (err) => this.opts.log?.('DTD listener failed', err),
+      });
       if (!(await client.supportsConnectedApp()))
         throw new Error('DTD has no ConnectedApp service');
       const dtd: ConnectedDtd = { info, client, services: new Map() };

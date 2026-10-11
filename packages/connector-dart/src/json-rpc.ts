@@ -21,6 +21,8 @@ export interface JsonRpcClientOptions {
   timeoutMs?: number;
   /** How long to wait for the WebSocket handshake. */
   connectTimeoutMs?: number;
+  /** Told when a notification or close listener throws. The error never reaches the socket. */
+  onListenerError?: (err: unknown) => void;
 }
 
 interface Pending {
@@ -59,6 +61,7 @@ export class JsonRpcClient {
   private constructor(
     private readonly ws: WebSocket,
     private readonly timeoutMs: number,
+    private readonly onListenerError: (err: unknown) => void,
   ) {
     ws.on('message', (data) => {
       this.onMessage(data as Buffer);
@@ -90,7 +93,13 @@ export class JsonRpcClient {
       });
       ws.once('open', () => {
         ws.removeAllListeners();
-        resolve(new JsonRpcClient(ws, opts.timeoutMs ?? DEFAULT_TIMEOUT_MS));
+        resolve(
+          new JsonRpcClient(
+            ws,
+            opts.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+            opts.onListenerError ?? (() => undefined),
+          ),
+        );
       });
     });
   }
@@ -160,7 +169,8 @@ export class JsonRpcClient {
 
     if (typeof m.method === 'string') {
       if (m.id === undefined) {
-        for (const cb of [...(this.notificationListeners.get(m.method) ?? [])]) cb(m.params);
+        for (const cb of [...(this.notificationListeners.get(m.method) ?? [])])
+          this.runListener(() => cb(m.params));
       } else {
         this.ws.send(
           JSON.stringify({
@@ -200,7 +210,20 @@ export class JsonRpcClient {
       p.reject(new ConnectionClosedError());
     }
     this.pending.clear();
-    for (const cb of [...this.closeListeners]) cb();
+    for (const cb of [...this.closeListeners]) this.runListener(cb);
     this.closeListeners.clear();
+  }
+
+  /** Listeners run inside ws event handlers, where a throw would crash the process. */
+  private runListener(cb: () => void): void {
+    try {
+      cb();
+    } catch (err) {
+      try {
+        this.onListenerError(err);
+      } catch {
+        // A failing error reporter must not crash the process either.
+      }
+    }
   }
 }

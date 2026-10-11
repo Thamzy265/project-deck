@@ -62,6 +62,29 @@ describe('JsonRpcClient', () => {
     await expect(rpc.call('ping')).rejects.toBeInstanceOf(ConnectionClosedError);
   });
 
+  it('keeps delivering when a notification or close listener throws', async () => {
+    server = await FakeRpcServer.start();
+    const onListenerError = vi.fn();
+    const rpc = await JsonRpcClient.connect(server.uri, { onListenerError });
+    const boom = new Error('listener bug');
+    rpc.onNotification('streamNotify', () => {
+      throw boom;
+    });
+    const notified = vi.fn();
+    rpc.onNotification('streamNotify', notified);
+    rpc.onClose(() => {
+      throw boom;
+    });
+    const closed = vi.fn();
+    rpc.onClose(closed);
+    server.notify({ streamId: 'X' });
+    await vi.waitFor(() => expect(notified).toHaveBeenCalledWith({ streamId: 'X' }));
+    expect(() => rpc.close()).not.toThrow();
+    expect(closed).toHaveBeenCalledOnce();
+    expect(onListenerError).toHaveBeenCalledTimes(2);
+    expect(onListenerError).toHaveBeenCalledWith(boom);
+  });
+
   it('times out calls that never answer', async () => {
     server = (await FakeRpcServer.start()).handle('hang', () => new Promise(() => undefined));
     const rpc = await JsonRpcClient.connect(server.uri, { timeoutMs: 50 });
