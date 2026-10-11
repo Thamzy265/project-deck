@@ -55,6 +55,7 @@ export class LineBuffer {
   /** When the first chunk of the pending line arrived; replayed history keeps its real time. */
   private partialTs = 0;
   private timer: NodeJS.Timeout | undefined;
+  private disposed = false;
 
   constructor(
     private readonly onLine: (line: string, ts: number) => void,
@@ -62,6 +63,7 @@ export class LineBuffer {
   ) {}
 
   write(chunk: string, ts: number): void {
+    if (this.disposed) return;
     if (this.partial === '') this.partialTs = ts;
     const parts = (this.partial + chunk).split('\n');
     this.partial = parts.pop() ?? '';
@@ -70,7 +72,9 @@ export class LineBuffer {
       this.partialTs = ts;
     }
     clearTimeout(this.timer);
-    this.timer = this.partial === '' ? undefined : setTimeout(() => this.flush(), this.idleFlushMs);
+    // Unref'd: a pending partial line must never keep the daemon alive.
+    this.timer =
+      this.partial === '' ? undefined : setTimeout(() => this.flush(), this.idleFlushMs).unref();
   }
 
   flush(): void {
@@ -80,5 +84,11 @@ export class LineBuffer {
     const line = this.partial.replace(/\r$/, '');
     this.partial = '';
     this.onLine(line, this.partialTs);
+  }
+
+  /** Emits any partial line and ignores later writes; the session is gone. */
+  dispose(): void {
+    this.flush();
+    this.disposed = true;
   }
 }

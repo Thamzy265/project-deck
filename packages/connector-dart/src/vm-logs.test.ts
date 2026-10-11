@@ -80,4 +80,33 @@ describe('LineBuffer', () => {
     expect(onLine).toHaveBeenCalledWith('no newline', 7);
     vi.useRealTimers();
   });
+
+  it('never lets the idle timer keep the process alive', () => {
+    const spy = vi.spyOn(globalThis, 'setTimeout');
+    try {
+      const buf = new LineBuffer(() => undefined);
+      buf.write('partial', 1);
+      const timer = spy.mock.results.at(-1)?.value as NodeJS.Timeout | undefined;
+      expect(timer?.hasRef()).toBe(false);
+      buf.flush();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('flushes on dispose and ignores later writes', () => {
+    vi.useFakeTimers();
+    try {
+      const onLine = vi.fn();
+      const buf = new LineBuffer(onLine);
+      buf.write('last words', 5);
+      buf.dispose();
+      expect(onLine).toHaveBeenCalledExactlyOnceWith('last words', 5);
+      buf.write('late\n', 6);
+      expect(onLine).toHaveBeenCalledOnce();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

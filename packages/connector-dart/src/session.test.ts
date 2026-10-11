@@ -154,6 +154,15 @@ describe('DartAppSession', () => {
     expect(await session.reload()).toMatchObject({ ok: false, reason: 'not-attached' });
   });
 
+  it('keeps a partial stdout line when detaching', async () => {
+    const { server, session } = await attach();
+    server.notify(writeEvent('Stdout', 'no newline yet', 20));
+    // Long enough to arrive, well short of the 250 ms idle flush.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await session.detach();
+    expect((await session.logs().query({})).map((e) => e.message)).toEqual(['no newline yet']);
+  });
+
   it('detach only closes the connection', async () => {
     const { server, session } = await attach();
     const before = server.calls.length;

@@ -131,8 +131,7 @@ export class DartAppSession implements AppSession {
       this.onStreamNotify(params);
     });
     this.rpc.onClose(() => {
-      this.stdout.flush();
-      this.stderr.flush();
+      this.disposeBuffers();
       this.events.emit('exit', {});
     });
     await Promise.all(
@@ -165,6 +164,7 @@ export class DartAppSession implements AppSession {
 
   /** Closes our connection only. The app and the IDE's debug session keep running. */
   detach(): Promise<void> {
+    this.disposeBuffers();
     this.rpc.close();
     return Promise.resolve();
   }
@@ -301,6 +301,11 @@ export class DartAppSession implements AppSession {
         return;
       }
     }
+  }
+
+  private disposeBuffers(): void {
+    this.stdout.dispose();
+    this.stderr.dispose();
   }
 
   private pushLine(line: string, ts: number, level: 'info' | 'error', tag: string): void {
