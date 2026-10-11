@@ -61,6 +61,8 @@ export class DartAppSession implements AppSession {
   private readonly serviceWaiters = new Set<() => void>();
   private isolateId: string | undefined;
   private refreshing: Promise<void> | undefined;
+  /** A follow-up refresh, requested while one was running. */
+  private refreshQueued: Promise<void> | undefined;
   private readonly stdout: LineBuffer;
   private readonly stderr: LineBuffer;
 
@@ -207,9 +209,22 @@ export class DartAppSession implements AppSession {
     }
   }
 
-  /** Hot restart replaces the main isolate, so re-read it whenever isolates change. */
+  /**
+   * Hot restart replaces the main isolate, so re-read it whenever isolates change.
+   * A request made while a getVM is in flight queues one more: that getVM may
+   * predate the event (e.g. IsolateStart arriving during the IsolateExit refresh).
+   */
   private refreshIsolate(): Promise<void> {
-    this.refreshing ??= (async () => {
+    if (this.refreshing !== undefined) {
+      this.refreshQueued ??= this.refreshing
+        .catch(() => undefined)
+        .then(() => {
+          this.refreshQueued = undefined;
+          return this.refreshIsolate();
+        });
+      return this.refreshQueued;
+    }
+    this.refreshing = (async () => {
       try {
         const vm = VmSchema.parse(await this.rpc.call('getVM', {}));
         const isolates = vm.isolates.filter((i) => i.isSystemIsolate !== true);

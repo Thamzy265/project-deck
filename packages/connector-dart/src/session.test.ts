@@ -2,7 +2,14 @@ import type { RunningApp } from '@project-deck/core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DartAppSession } from './session.js';
 import { FakeRpcServer, RpcFault } from './testing/fake-rpc-server.js';
-import { asFlutterVmService, loggingEvent, writeEvent } from './testing/fixtures.js';
+import {
+  asFlutterVmService,
+  isolateEvent,
+  loggingEvent,
+  success,
+  vmResponse,
+  writeEvent,
+} from './testing/fixtures.js';
 
 const app: RunningApp = { id: 'dart-x', name: 'shop', framework: 'flutter', startedBy: 'ide' };
 let server: FakeRpcServer | undefined;
@@ -47,6 +54,33 @@ describe('DartAppSession', () => {
     const { session } = await attach();
     expect(await session.restart()).toMatchObject({ ok: true, kind: 'hot-restart' });
     // The fake rejects a stale isolate id, so this only passes if the session refreshed it.
+    await vi.waitFor(async () => {
+      expect(await session.reload()).toMatchObject({ ok: true });
+    });
+  });
+
+  it('re-reads the isolate when IsolateStart arrives during an in-flight refresh', async () => {
+    const { server, session } = await attach();
+    let release: () => void = () => undefined;
+    let getVmCalls = 0;
+    server.handle('getVM', () => {
+      getVmCalls++;
+      // The refresh started by IsolateExit is answered late, and still with the old isolate.
+      if (getVmCalls === 1)
+        return new Promise((resolve) => {
+          release = () => resolve(vmResponse('isolates/1'));
+        });
+      return vmResponse('isolates/2');
+    });
+    server.handle('s0.reloadSources', (params) => {
+      if (params?.isolateId !== 'isolates/2') throw new RpcFault(-32602, 'stale isolate');
+      return success;
+    });
+    server.notify(isolateEvent('IsolateExit', 'isolates/1'));
+    await vi.waitFor(() => expect(getVmCalls).toBe(1));
+    // Sent before the getVM answer on the same socket, so the session sees it mid-refresh.
+    server.notify(isolateEvent('IsolateStart', 'isolates/2'));
+    release();
     await vi.waitFor(async () => {
       expect(await session.reload()).toMatchObject({ ok: true });
     });
