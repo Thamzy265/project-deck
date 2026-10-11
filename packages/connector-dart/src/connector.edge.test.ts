@@ -1,3 +1,5 @@
+import type { AddressInfo, Socket } from 'node:net';
+import { createServer } from 'node:net';
 import type { RunningApp } from '@project-deck/core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DartConnector, appIdFor, normalise } from './connector.js';
@@ -92,20 +94,39 @@ describe('DartConnector edge cases', () => {
     expect(started).toBe(false);
   });
 
-  it.fails(
-    'BUG: stop() waits for a scan stuck on a DTD that never answers instead of closing it',
-    async () => {
-      const stuck = await hangingDtd();
-      const c = make(() => Promise.resolve([{ wsUri: stuck.uri, source: 'pid-file' }]));
-      void c.start();
-      await vi.waitFor(() =>
-        expect(stuck.calls.some((x) => x.method === 'getRegisteredServices')).toBe(true),
+  it('B6: stop() closes a DTD that never answers instead of waiting for the scan', async () => {
+    const stuck = await hangingDtd();
+    const c = make(() => Promise.resolve([{ wsUri: stuck.uri, source: 'pid-file' }]));
+    void c.start();
+    await vi.waitFor(() =>
+      expect(stuck.calls.some((x) => x.method === 'getRegisteredServices')).toBe(true),
+    );
+    const stopped = c.stop().then(() => 'stopped');
+    const timeout = new Promise((resolve) => setTimeout(() => resolve('still waiting'), 1000));
+    expect(await Promise.race([stopped, timeout])).toBe('stopped');
+    await vi.waitFor(() => expect(stuck.clientCount).toBe(0));
+  });
+
+  it('B6: stop() cancels a DTD handshake that never completes', async () => {
+    // Accepts TCP and never answers the WebSocket upgrade.
+    const sockets = new Set<Socket>();
+    const tcp = createServer((socket) => sockets.add(socket));
+    await new Promise<void>((resolve) => tcp.listen(0, '127.0.0.1', resolve));
+    const { port } = tcp.address() as AddressInfo;
+    try {
+      const c = make(() =>
+        Promise.resolve([{ wsUri: `ws://127.0.0.1:${port}/dtd`, source: 'pid-file' }]),
       );
+      void c.start();
+      await vi.waitFor(() => expect(sockets.size).toBe(1));
       const stopped = c.stop().then(() => 'stopped');
       const timeout = new Promise((resolve) => setTimeout(() => resolve('still waiting'), 1000));
       expect(await Promise.race([stopped, timeout])).toBe('stopped');
-    },
-  );
+    } finally {
+      for (const socket of sockets) socket.destroy();
+      await new Promise((resolve) => tcp.close(resolve));
+    }
+  });
 
   it('does not retry a failed DTD before RETRY_AFTER_MS, then retries', async () => {
     const old = await FakeRpcServer.start('/old');

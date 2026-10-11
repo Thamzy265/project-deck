@@ -30,6 +30,8 @@ export interface JsonRpcClientOptions {
   timeoutMs?: number;
   /** How long to wait for the WebSocket handshake. */
   connectTimeoutMs?: number;
+  /** Aborts a handshake still in progress (e.g. on shutdown). Ignored once connected. */
+  signal?: AbortSignal;
   /** Told when a notification or close listener throws. The error never reaches the socket. */
   onListenerError?: (err: unknown) => void;
 }
@@ -99,21 +101,27 @@ export class JsonRpcClient {
     if (!isLoopbackWsUri(uri)) {
       return Promise.reject(new Error('Refusing to connect to a non-loopback address'));
     }
+    const { signal } = opts;
+    if (signal?.aborted === true) return Promise.reject(new ConnectionClosedError());
     return new Promise((resolve, reject) => {
       const ws = new WebSocket(uri, {
         handshakeTimeout: opts.connectTimeoutMs ?? DEFAULT_CONNECT_TIMEOUT_MS,
       });
+      const onAbort = (): void => fail(new ConnectionClosedError());
       const fail = (err: Error): void => {
+        signal?.removeEventListener('abort', onAbort);
         ws.removeAllListeners();
         ws.on('error', () => undefined);
         ws.terminate();
         reject(err);
       };
+      signal?.addEventListener('abort', onAbort, { once: true });
       ws.once('error', fail);
       ws.once('unexpected-response', (_req, res) => {
         fail(new Error(`Handshake rejected with HTTP ${res.statusCode ?? 0}`));
       });
       ws.once('open', () => {
+        signal?.removeEventListener('abort', onAbort);
         ws.removeAllListeners();
         resolve(
           new JsonRpcClient(

@@ -72,6 +72,10 @@ export class DartConnector implements AppConnector {
   private readonly dtds = new Map<string, ConnectedDtd>();
   private readonly failedAt = new Map<string, number>();
   private readonly connecting = new Set<string>();
+  /** DTD clients still being set up; stop() closes them so a stuck DTD can't hold it up. */
+  private readonly inflight = new Set<DtdClient>();
+  /** Cancels WebSocket handshakes still in progress when stop() runs. */
+  private abort = new AbortController();
   private readonly listeners = new Set<(apps: RunningApp[]) => void>();
   private readonly sessions = new Set<DartAppSession>();
   private known = new Map<string, Known>();
@@ -84,6 +88,7 @@ export class DartConnector implements AppConnector {
 
   async start(): Promise<void> {
     this.stopped = false;
+    this.abort = new AbortController();
     await this.scan();
     const interval = this.opts.scanIntervalMs ?? DEFAULT_SCAN_INTERVAL_MS;
     if (interval > 0) {
@@ -98,6 +103,8 @@ export class DartConnector implements AppConnector {
   async stop(): Promise<void> {
     this.stopped = true;
     clearInterval(this.timer);
+    this.abort.abort();
+    for (const client of this.inflight) client.close();
     await this.scanning;
     for (const dtd of this.dtds.values()) dtd.client.close();
     this.dtds.clear();
@@ -129,6 +136,11 @@ export class DartConnector implements AppConnector {
     this.sessions.add(session);
     session.on('exit', () => this.sessions.delete(session));
     return session;
+  }
+
+  /** A method, so a check after an await isn't narrowed away by one made before it. */
+  private isStopped(): boolean {
+    return this.stopped;
   }
 
   /** One discovery pass. Overlapping calls share the same pass. */
@@ -167,8 +179,12 @@ export class DartConnector implements AppConnector {
       client = await DtdClient.connect(info.wsUri, {
         connectTimeoutMs: 3000,
         timeoutMs: 5000,
+        signal: this.abort.signal,
         onListenerError: (err) => this.opts.log?.('DTD listener failed', err),
       });
+      this.inflight.add(client);
+      // stop() may have run during the handshake, before this client was tracked.
+      if (this.stopped) throw new Error('The Dart connector was stopped');
       if (!(await client.supportsConnectedApp()))
         throw new Error('DTD has no ConnectedApp service');
       const dtd: ConnectedDtd = { info, client, services: new Map() };
@@ -184,7 +200,7 @@ export class DartConnector implements AppConnector {
         const key = normalise(s.uri);
         if (key !== undefined) dtd.services.set(key, s);
       }
-      if (this.stopped) {
+      if (this.isStopped()) {
         client.close();
         return;
       }
@@ -198,12 +214,15 @@ export class DartConnector implements AppConnector {
       this.recompute();
     } catch (err) {
       client?.close();
+      // Shutting down is not the DTD's fault; don't hold it back from the next start().
+      if (this.stopped) return;
       this.failedAt.set(info.wsUri, Date.now());
       this.opts.log?.(
         `Could not use DTD from ${info.source}${info.pid === undefined ? '' : ` (pid ${info.pid})`}`,
         err,
       );
     } finally {
+      if (client !== undefined) this.inflight.delete(client);
       this.connecting.delete(info.wsUri);
     }
   }
