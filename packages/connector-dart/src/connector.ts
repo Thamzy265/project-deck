@@ -111,6 +111,11 @@ export class DartConnector implements AppConnector {
       onListenerError: (err) => this.opts.log?.('VM service listener failed', err),
       ...this.opts.session,
     });
+    // stop() ran while we were connecting and won't see this session, so it must not outlive it.
+    if (this.stopped) {
+      await session.detach();
+      throw new Error('The Dart connector was stopped while attaching');
+    }
     this.sessions.add(session);
     session.on('exit', () => this.sessions.delete(session));
     return session;

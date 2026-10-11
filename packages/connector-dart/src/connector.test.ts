@@ -6,6 +6,7 @@ import { FakeRpcServer } from './testing/fake-rpc-server.js';
 import {
   asDtd,
   asFlutterVmService,
+  vmResponse,
   vmServiceRegistered,
   vmServiceUnregistered,
 } from './testing/fixtures.js';
@@ -163,6 +164,27 @@ describe('DartConnector', () => {
     });
     await c.start();
     await vi.waitFor(() => expect(log).toHaveBeenCalledWith('Background scan failed', boom));
+  });
+
+  it('detaches a session whose attach finishes after stop', async () => {
+    const vm = await vmService();
+    let release: () => void = () => undefined;
+    vm.handle(
+      'getVM',
+      () =>
+        new Promise((resolve) => {
+          release = () => resolve(vmResponse());
+        }),
+    );
+    const c = make([], { vmServiceUris: [vm.uri] });
+    await c.start();
+    const [app] = await c.listApps();
+    const attaching = c.attach(app?.id ?? '');
+    await vi.waitFor(() => expect(vm.calls.some((x) => x.method === 'getVM')).toBe(true));
+    await c.stop();
+    release();
+    await expect(attaching).rejects.toThrow(/stopped while attaching/);
+    await vi.waitFor(() => expect(vm.clientCount).toBe(0));
   });
 
   it('attaches end to end through a DTD and detaches on stop', async () => {
