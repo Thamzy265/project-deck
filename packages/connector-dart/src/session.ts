@@ -25,11 +25,15 @@ export const RESTART_SERVICE = 'hotRestart';
 /** VM service error: the stream is already subscribed (another call or a reconnect). */
 const STREAM_ALREADY_SUBSCRIBED = 103;
 const METHOD_NOT_FOUND = -32601;
-const INTERNAL_ERROR = -32603;
+/** The VM service's answer to an isolate id that no longer exists (e.g. after a hot restart). */
+const INVALID_PARAMS = -32602;
 /** What flutter_tools sends when the reload or restart itself fails (usually a compile error). */
 const FLUTTER_TOOL_FAILURE = /Unable to (reload sources|restart)/i;
 
-/** Maps a JSON-RPC error from the Flutter tool's reload/restart service onto a ReloadResult. */
+/**
+ * Maps a JSON-RPC error from the Flutter tool's reload/restart service onto a ReloadResult.
+ * `unsupported` hides the button in the UI, so it only means the capability is absent.
+ */
 function reloadFailure(
   kind: 'hot-reload' | 'hot-restart',
   err: JsonRpcError,
@@ -42,7 +46,8 @@ function reloadFailure(
       message: `${label} is not available on this app: ${err.message}.`,
     };
   }
-  if (err.code === INTERNAL_ERROR || FLUTTER_TOOL_FAILURE.test(err.message)) {
+  // Matched on the message, not -32603: a missing code also becomes -32603 and is not a compile error.
+  if (FLUTTER_TOOL_FAILURE.test(err.message)) {
     // The Flutter tool reports only "Unable to reload sources"; the details go to its own output.
     return {
       ok: false,
@@ -50,11 +55,11 @@ function reloadFailure(
       message: `${label} failed: ${err.message}. Check the latest error logs.`,
     };
   }
-  // No ReloadResult reason fits an unexpected protocol error; say plainly what happened.
+  // Transient or unknown: keep the button and say plainly what happened.
   return {
     ok: false,
-    reason: 'unsupported',
-    message: `${label} could not run: the VM service returned error ${err.code} (${err.message}).`,
+    reason: 'not-attached',
+    message: `${label} could not run: the VM service returned error ${err.code} (${err.message}). Try again.`,
   };
 }
 
@@ -152,9 +157,26 @@ export class DartAppSession implements AppSession {
   reload(): Promise<ReloadResult> {
     return this.invoke(RELOAD_SERVICE, 'hot-reload', async (method) => {
       if (this.isolateId === undefined) await this.refreshIsolate();
-      if (this.isolateId === undefined) throw new NoIsolateError();
-      await this.rpc.call(method, { isolateId: this.isolateId });
+      try {
+        await this.reloadIsolate(method);
+      } catch (err) {
+        if (!(err instanceof JsonRpcError && err.code === INVALID_PARAMS)) throw err;
+        // A hot restart replaced the isolate between our last refresh and this call.
+        await this.refreshIsolate();
+        try {
+          await this.reloadIsolate(method);
+        } catch (retryErr) {
+          if (retryErr instanceof JsonRpcError && retryErr.code === INVALID_PARAMS)
+            throw new IsolateChangedError();
+          throw retryErr;
+        }
+      }
     });
+  }
+
+  private async reloadIsolate(method: string): Promise<void> {
+    if (this.isolateId === undefined) throw new NoIsolateError();
+    await this.rpc.call(method, { isolateId: this.isolateId });
   }
 
   restart(): Promise<ReloadResult> {
@@ -207,7 +229,11 @@ export class DartAppSession implements AppSession {
       await run(method);
       result = { ok: true, kind, durationMs: Math.round(performance.now() - started) };
     } catch (err) {
-      if (err instanceof ConnectionClosedError || err instanceof NoIsolateError) {
+      if (
+        err instanceof ConnectionClosedError ||
+        err instanceof NoIsolateError ||
+        err instanceof IsolateChangedError
+      ) {
         return { ok: false, reason: 'not-attached', message: err.message };
       }
       if (err instanceof CallTimeoutError) {
@@ -341,6 +367,12 @@ export class DartAppSession implements AppSession {
   private pushLine(line: string, ts: number, level: 'info' | 'error', tag: string): void {
     if (line === '') return;
     this.logSource.push({ ts, level, source: 'app', tag, message: line });
+  }
+}
+
+class IsolateChangedError extends Error {
+  constructor() {
+    super("The app's isolate changed during the reload (probably a hot restart). Try again.");
   }
 }
 

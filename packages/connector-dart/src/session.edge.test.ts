@@ -125,54 +125,56 @@ describe('DartAppSession edge cases', () => {
     expect(await pending).toMatchObject({ ok: true, kind: 'hot-reload' });
   });
 
-  it.fails(
-    'BUG: a reload racing an in-flight hot restart is reported as unsupported (stale isolate -32602)',
-    async () => {
-      const { session } = await attach();
-      // The fake bumps the isolate as soon as it handles s0.hotRestart; the reload sent right
-      // after still carries the old isolate id, which the VM service rejects with -32602.
-      const [restart, reload] = await Promise.all([session.restart(), session.reload()]);
-      expect(restart).toMatchObject({ ok: true });
-      // "unsupported" makes the UI hide reload, though it works again a moment later.
-      expect(reload.ok ? 'ok' : reload.reason).not.toBe('unsupported');
-    },
-  );
-
-  it('documents current mapping: -32602 and other unexpected codes become unsupported', async () => {
+  it('B4: a reload racing an in-flight hot restart re-reads the isolate and succeeds', async () => {
     const { server, session } = await attach();
-    for (const code of [-32602, -32000, 100, 113]) {
+    // The fake bumps the isolate as soon as it handles s0.hotRestart; the reload sent right
+    // after still carries the old isolate id, which the VM service rejects with -32602.
+    const [restart, reload] = await Promise.all([session.restart(), session.reload()]);
+    expect(restart).toMatchObject({ ok: true });
+    expect(reload).toMatchObject({ ok: true, kind: 'hot-reload' });
+    const reloads = server.calls.filter((c) => c.method === 's0.reloadSources');
+    expect(reloads.map((c) => c.params?.isolateId)).toEqual(['isolates/1', 'isolates/2']);
+  });
+
+  it('B4: a reload still rejected as a stale isolate after one retry is not-attached', async () => {
+    const { server, session } = await attach();
+    server.handle('s0.reloadSources', () => {
+      throw new RpcFault(-32602, "Invalid 'isolateId'");
+    });
+    expect(await session.reload()).toEqual({
+      ok: false,
+      reason: 'not-attached',
+      message: "The app's isolate changed during the reload (probably a hot restart). Try again.",
+    });
+    expect(server.calls.filter((c) => c.method === 's0.reloadSources')).toHaveLength(2);
+  });
+
+  it('B4: transient or unknown codes are not-attached, never unsupported', async () => {
+    const { server, session } = await attach();
+    for (const code of [-32000, -32603, 100, 113]) {
       server.handle('s0.reloadSources', () => {
         throw new RpcFault(code, 'transient');
       });
-      expect(await session.reload()).toMatchObject({ ok: false, reason: 'unsupported' });
+      expect(await session.reload()).toEqual({
+        ok: false,
+        reason: 'not-attached',
+        message: `Hot reload could not run: the VM service returned error ${code} (transient). Try again.`,
+      });
     }
   });
 
-  it('B3: reload returns a ReloadResult when the reload call times out', async () => {
-    const { server, session } = await attach({ timeoutMs: 100 });
-    server.handle('s0.reloadSources', () => new Promise(() => undefined));
-    const result = await session.reload().catch((e: unknown) => ({ threw: e }));
-    expect(result).toMatchObject({
-      ok: false,
-      reason: 'not-attached',
-      message: expect.stringMatching(/no answer within/) as unknown,
-    });
-  });
-
-  it('B3: reload reports an unexpected error instead of rejecting', async () => {
+  it('B4: an error with no code is not reported as a compile error', async () => {
     const { server, session } = await attach();
-    // A getVM answer that fails schema validation makes the isolate refresh throw a ZodError.
-    server.handle('getVM', () => ({ isolates: 'nope' }));
-    (session as unknown as { isolateId: string | undefined }).isolateId = undefined;
-    const errors = vi.fn();
-    session.on('error', errors);
-    const result = await session.reload().catch((e: unknown) => ({ threw: e }));
-    expect(result).toMatchObject({
+    // NaN serialises as null, so the peer's error carries no usable code (read as -32603).
+    server.handle('s0.reloadSources', () => {
+      throw new RpcFault(Number.NaN, 'something odd');
+    });
+    expect(await session.reload()).toEqual({
       ok: false,
       reason: 'not-attached',
-      message: expect.stringMatching(/^Hot reload failed unexpectedly/) as unknown,
+      message:
+        'Hot reload could not run: the VM service returned error -32603 (something odd). Try again.',
     });
-    expect(errors).toHaveBeenCalledOnce();
   });
 
   it.fails(

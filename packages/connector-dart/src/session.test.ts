@@ -119,9 +119,8 @@ describe('DartAppSession', () => {
     });
     expect(await session.reload()).toEqual({
       ok: false,
-      reason: 'unsupported',
-      message:
-        "Hot reload could not run: the VM service returned error -32602 (Invalid 'isolateId').",
+      reason: 'not-attached',
+      message: "The app's isolate changed during the reload (probably a hot restart). Try again.",
     });
   });
 
