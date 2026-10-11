@@ -139,9 +139,17 @@ export async function listViaDartCli(exec: ExecFn = defaultExec): Promise<DtdInf
   return out;
 }
 
-/** Turns an http VM service address (as printed by `flutter run`) into its WebSocket form. */
-export function toVmServiceWsUri(uri: string): string {
-  const url = new URL(uri);
+/**
+ * Turns an http VM service address (as printed by `flutter run`) into its WebSocket form.
+ * Returns undefined for anything unparseable: these come from DTDs and users, not from us.
+ */
+export function toVmServiceWsUri(uri: string): string | undefined {
+  let url: URL;
+  try {
+    url = new URL(uri);
+  } catch {
+    return undefined;
+  }
   if (url.protocol === 'http:') url.protocol = 'ws:';
   if (url.protocol === 'https:') url.protocol = 'wss:';
   const path = url.pathname.replace(/\/+$/, '');

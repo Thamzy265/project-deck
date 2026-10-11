@@ -47,8 +47,9 @@ export function appIdFor(vmServiceUri: string): string {
   return 'dart-' + createHash('sha256').update(vmServiceUri).digest('base64url').slice(0, 16);
 }
 
-function normalise(uri: string): string {
-  return toVmServiceWsUri(uri).replace(/\/$/, '');
+/** Undefined for an address we can't parse; callers skip those entries. */
+function normalise(uri: string): string | undefined {
+  return toVmServiceWsUri(uri)?.replace(/\/$/, '');
 }
 
 /**
@@ -155,12 +156,16 @@ export class DartConnector implements AppConnector {
       const dtd: ConnectedDtd = { info, client, services: new Map() };
       // Subscribe first so a registration racing with the initial list is not lost.
       await client.watch((change) => {
-        if (change.kind === 'registered')
-          dtd.services.set(normalise(change.service.uri), change.service);
-        else dtd.services.delete(normalise(change.uri));
+        const key = normalise(change.kind === 'registered' ? change.service.uri : change.uri);
+        if (key === undefined) return;
+        if (change.kind === 'registered') dtd.services.set(key, change.service);
+        else dtd.services.delete(key);
         this.recompute();
       });
-      for (const s of await client.getVmServices()) dtd.services.set(normalise(s.uri), s);
+      for (const s of await client.getVmServices()) {
+        const key = normalise(s.uri);
+        if (key !== undefined) dtd.services.set(key, s);
+      }
       if (this.stopped) {
         client.close();
         return;
@@ -189,7 +194,7 @@ export class DartConnector implements AppConnector {
     for (const dtd of this.dtds.values()) {
       for (const [key, service] of dtd.services) {
         const vmServiceUri = toVmServiceWsUri(service.uri);
-        if (!isLoopbackWsUri(vmServiceUri)) continue;
+        if (vmServiceUri === undefined || !isLoopbackWsUri(vmServiceUri)) continue;
         const startedBy = dtd.info.ideName === undefined ? 'unknown' : 'ide';
         const existing = next.get(key);
         // The same app can be registered in both the IDE's DTD and its own; prefer the IDE's view.
@@ -209,6 +214,7 @@ export class DartConnector implements AppConnector {
     for (const uri of this.opts.vmServiceUris ?? []) {
       const vmServiceUri = toVmServiceWsUri(uri);
       const key = normalise(uri);
+      if (vmServiceUri === undefined || key === undefined) continue;
       if (!isLoopbackWsUri(vmServiceUri) || next.has(key)) continue;
       next.set(key, {
         vmServiceUri,

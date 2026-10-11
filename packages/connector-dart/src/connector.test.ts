@@ -127,6 +127,31 @@ describe('DartConnector', () => {
     expect(await session.reload()).toMatchObject({ ok: true });
   });
 
+  it('skips unparseable app addresses from DTDs and pasted lists', async () => {
+    const vm = await vmService();
+    const d = await dtd([
+      { uri: 'not a uri', name: 'broken' },
+      { uri: vm.uri, name: 'shop' },
+    ]);
+    const log = vi.fn();
+    const c = make([{ wsUri: d.uri, source: 'pid-file' }], {
+      vmServiceUris: ['::nonsense::'],
+      log,
+    });
+    const changes = vi.fn<(apps: RunningApp[]) => void>();
+    c.onAppsChanged(changes);
+    await c.start();
+    expect((await c.listApps()).map((a) => a.name)).toEqual(['shop']);
+
+    d.notify(vmServiceRegistered('also not a uri', 'broken again'));
+    d.notify(vmServiceRegistered('ws://127.0.0.1:7003/Q=/ws', 'second'));
+    await vi.waitFor(() =>
+      expect(changes.mock.lastCall?.[0].map((a) => a.name)).toEqual(['shop', 'second']),
+    );
+    await c.scan();
+    expect(log).not.toHaveBeenCalled();
+  });
+
   it('attaches end to end through a DTD and detaches on stop', async () => {
     const vm = await vmService();
     const d = await dtd([{ uri: vm.uri, name: 'shop' }]);

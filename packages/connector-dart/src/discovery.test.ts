@@ -93,4 +93,9 @@ describe('toVmServiceWsUri', () => {
     expect(toVmServiceWsUri('ws://127.0.0.1:5555/AbC=/ws')).toBe('ws://127.0.0.1:5555/AbC=/ws');
     expect(toVmServiceWsUri('ws://127.0.0.1:5555/AbC=/ws/')).toBe('ws://127.0.0.1:5555/AbC=/ws');
   });
+
+  it('returns undefined instead of throwing for an unparseable address', () => {
+    expect(toVmServiceWsUri('not a uri')).toBeUndefined();
+    expect(toVmServiceWsUri('')).toBeUndefined();
+  });
 });
