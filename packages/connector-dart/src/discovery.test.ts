@@ -1,8 +1,11 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { dartDataHome, listViaDartCli, readPidFiles, toVmServiceWsUri } from './discovery.js';
+
+const execFileMock = vi.hoisted(() => vi.fn());
+vi.mock('node:child_process', () => ({ execFile: execFileMock }));
 
 describe('dartDataHome', () => {
   it('follows DART_DATA_HOME, then the platform default', () => {
@@ -97,5 +100,22 @@ describe('toVmServiceWsUri', () => {
   it('returns undefined instead of throwing for an unparseable address', () => {
     expect(toVmServiceWsUri('not a uri')).toBeUndefined();
     expect(toVmServiceWsUri('')).toBeUndefined();
+  });
+});
+
+describe('listViaDartCli default exec', () => {
+  it('runs dart from the home directory, never the current one', async () => {
+    execFileMock.mockImplementation(
+      (_file: string, _args: string[], _opts: object, cb: (err: null, stdout: string) => void) => {
+        cb(null, '[]');
+      },
+    );
+    expect(await listViaDartCli()).toEqual([]);
+    expect(execFileMock).toHaveBeenCalledWith(
+      'dart',
+      ['tooling-daemon', '--list', '--machine'],
+      expect.objectContaining({ cwd: homedir() }),
+      expect.any(Function),
+    );
   });
 });

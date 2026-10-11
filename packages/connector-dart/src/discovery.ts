@@ -93,11 +93,14 @@ export type ExecFn = (file: string, args: string[]) => Promise<string>;
 const defaultExec: ExecFn = (file, args) =>
   new Promise((resolve, reject) => {
     // `dart` is a .bat on Windows, which can only be started through a shell.
-    // The arguments are fixed constants, so there is nothing to inject.
+    // The arguments are fixed constants, so there is nothing to inject. cmd.exe
+    // looks in the current directory before PATH, so run from the home directory
+    // rather than wherever the daemon was started: a `dart.bat` planted in a
+    // cloned project must not run in place of the SDK.
     execFile(
       file,
       args,
-      { timeout: 5000, windowsHide: true, shell: process.platform === 'win32' },
+      { timeout: 5000, windowsHide: true, shell: process.platform === 'win32', cwd: homedir() },
       (err, stdout) => {
         if (err) reject(new Error(err.message, { cause: err }));
         else resolve(stdout);
