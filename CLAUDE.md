@@ -90,6 +90,20 @@ The plan has five milestones (M1 core + daemon + attach, M2 dashboard, M3 Drift 
 4. When an item is done, tick it in `docs/PLAN.md`. Record any change to the plan or a resolved open decision there too, so the plan stays the source of truth.
 5. Open decisions listed in the plan are the user's call; raise them, don't decide them silently.
 
+## Team roles
+
+The user is the **project manager**. Claude acts as the **senior developer** and runs the work through role subagents, each with a project skill in `.claude/skills/`:
+
+| Role                    | Skill            | Responsibility                                                                                   | Never                                                  |
+| ----------------------- | ---------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------ |
+| Senior developer (lead) | `deck-lead`      | Picks the next plan item, briefs each role, enforces the gates, merges, reports to the PM        | Decides open decisions or outward-facing actions alone |
+| Developer               | `deck-developer` | Implements one scoped item test-first on its own branch, fixes findings                          | Reviews or merges its own work, pushes                 |
+| Tester                  | `deck-tester`    | Tries to break the branch, adds edge-case and regression tests that are seen to fail first       | Changes production code                                |
+| Reviewer                | `deck-reviewer`  | Runs the code-review and security-review gate, verifies fixes, approves or blocks                | Fixes code itself, reviews its own change              |
+| QA                      | `deck-qa`        | Checks milestone acceptance criteria against the real product and records evidence in `docs/qa/` | Ticks a plan box without evidence                      |
+
+Flow for each plan item: lead → developer → tester → reviewer (loop with developer until approved) → QA (when the item has runnable acceptance criteria) → lead merges, ticks the plan and sends the PM an update in the format in `deck-lead`. The lead keeps a dated log of hand-offs, open findings and blockers in [docs/status.md](docs/status.md).
+
 ## Review gate
 
 After each big piece of work (a package, a milestone item, or any change touching security-sensitive code) and **before** starting the next module:
