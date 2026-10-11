@@ -1,4 +1,5 @@
 import { performance } from 'node:perf_hooks';
+import { StringDecoder } from 'node:string_decoder';
 import type {
   AppSession,
   AppSessionEvents,
@@ -98,6 +99,9 @@ export class DartAppSession implements AppSession {
   private refreshQueued: Promise<void> | undefined;
   private readonly stdout: LineBuffer;
   private readonly stderr: LineBuffer;
+  /** One per stream: a multibyte character can be split across WriteEvents. */
+  private readonly stdoutDecoder = new StringDecoder('utf8');
+  private readonly stderrDecoder = new StringDecoder('utf8');
 
   private constructor(
     readonly app: RunningApp,
@@ -288,11 +292,11 @@ export class DartAppSession implements AppSession {
       case 'Stdout':
       case 'Stderr':
         if (event.bytes !== undefined) {
-          const text = Buffer.from(event.bytes, 'base64').toString('utf8');
-          (streamId === 'Stdout' ? this.stdout : this.stderr).write(
-            text,
-            event.timestamp ?? Date.now(),
+          const out = streamId === 'Stdout';
+          const text = (out ? this.stdoutDecoder : this.stderrDecoder).write(
+            Buffer.from(event.bytes, 'base64'),
           );
+          (out ? this.stdout : this.stderr).write(text, event.timestamp ?? Date.now());
         }
         return;
       case 'Logging': {
@@ -304,6 +308,10 @@ export class DartAppSession implements AppSession {
   }
 
   private disposeBuffers(): void {
+    // Emit any incomplete trailing bytes (as U+FFFD) rather than dropping them.
+    const now = Date.now();
+    this.stdout.write(this.stdoutDecoder.end(), now);
+    this.stderr.write(this.stderrDecoder.end(), now);
     this.stdout.dispose();
     this.stderr.dispose();
   }

@@ -3,7 +3,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { DartAppSessionOptions } from './session.js';
 import { DartAppSession } from './session.js';
 import { FakeRpcServer, RpcFault } from './testing/fake-rpc-server.js';
-import { asFlutterVmService, isolateEvent, success, vmResponse } from './testing/fixtures.js';
+import {
+  asFlutterVmService,
+  isolateEvent,
+  loggingEvent,
+  success,
+  vmResponse,
+} from './testing/fixtures.js';
 
 const app: RunningApp = { id: 'dart-x', name: 'shop', framework: 'flutter', startedBy: 'ide' };
 let server: FakeRpcServer | undefined;
@@ -36,21 +42,28 @@ const serviceUnregistered = (service: string, method: string) => ({
 });
 
 describe('DartAppSession edge cases', () => {
-  it.fails(
-    'BUG: a multibyte character split across two Stdout WriteEvents is corrupted (per-chunk utf8 decode)',
-    async () => {
-      const { server, session } = await attach();
-      const bytes = Buffer.from('café 🎉\n', 'utf8');
-      // Split inside "é" (2 bytes) and inside the emoji (4 bytes).
-      const e = bytes.indexOf(0xa9); // second byte of "é"
-      const emoji = bytes.indexOf(0xf0) + 2;
-      server.notify(rawWrite('Stdout', bytes.subarray(0, e), 1));
-      server.notify(rawWrite('Stdout', bytes.subarray(e, emoji), 2));
-      server.notify(rawWrite('Stdout', bytes.subarray(emoji), 3));
-      await vi.waitFor(async () => expect(await session.logs().query({})).toHaveLength(1));
-      expect((await session.logs().query({}))[0]?.message).toBe('café 🎉');
-    },
-  );
+  it('B2: a multibyte character split across Stdout WriteEvents is decoded intact', async () => {
+    const { server, session } = await attach();
+    const bytes = Buffer.from('café 🎉\n', 'utf8');
+    // Split inside "é" (2 bytes) and inside the emoji (4 bytes).
+    const e = bytes.indexOf(0xa9); // second byte of "é"
+    const emoji = bytes.indexOf(0xf0) + 2;
+    server.notify(rawWrite('Stdout', bytes.subarray(0, e), 1));
+    server.notify(rawWrite('Stdout', bytes.subarray(e, emoji), 2));
+    server.notify(rawWrite('Stdout', bytes.subarray(emoji), 3));
+    await vi.waitFor(async () => expect(await session.logs().query({})).toHaveLength(1));
+    expect((await session.logs().query({}))[0]?.message).toBe('café 🎉');
+  });
+
+  it('B2: flushes an incomplete trailing character when the session is detached', async () => {
+    const { server, session } = await attach();
+    server.notify(rawWrite('Stderr', Buffer.from([0x6f, 0x6b, 0xc3]), 1));
+    // Notifications arrive in order, so once this one lands the write above has too.
+    server.notify(loggingEvent({ message: 'marker', time: 0 }));
+    await vi.waitFor(async () => expect(await session.logs().query({})).toHaveLength(1));
+    await session.detach();
+    expect((await session.logs().query({})).map((l) => l.message)).toEqual(['marker', 'ok\uFFFD']);
+  });
 
   it('keeps multibyte characters intact when each WriteEvent holds whole characters', async () => {
     const { server, session } = await attach();
