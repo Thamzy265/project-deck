@@ -2,6 +2,25 @@
 
 Kept by the senior developer (`deck-lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
 
+## 2026-10-12 — M1 at risk (connector approved; port clash and CI found)
+
+- **Connector (`feat/connector-dart`, PR #3):** approved with notes after the full team flow:
+  - first review: 9 findings, all fixed;
+  - tester: 8 bugs (B1–B8), all fixed;
+  - second review: blocked on 6 findings, including real compile errors being misreported; all fixed;
+  - re-review: approved.
+  - Security review clean. 159 tests pass, and every commit builds alone.
+  - Open, non-blocking: F6 recorded fixtures (QA), F7 framework label (needs a core change), N1 failed-start release ordering (low), N2 60 s CLI result cache (low).
+- **QA found:** the default daemon port **9100 clashes with Dart DevTools**, which Android Studio starts on 9100. On a typical Flutter machine the daemon can't start there, and `main.ts` crashes with a raw stack trace instead of a clear message.
+- **CI has never run:** the workflow is active and Actions is enabled, but GitHub shows 0 runs for PRs #1–#3.
+- **Other PRs:** #1 (team roles) and #2 (README and corrected DTD notes) are waiting for PM approval.
+- **Blockers by role:**
+  - **Developer:** waiting for the PM to choose the new default port, then fixes the clash and the crash message. Until then the real-app check must use `--port`.
+  - **Tester:** none.
+  - **Reviewer:** none.
+  - **QA:** needs the PM to run a Flutter app from Android Studio to finish acceptance and record real fixtures (F6).
+  - **Lead:** needs PM approval to merge PRs #1–#3, and needs the PM to check the repo's Actions page for why CI doesn't run.
+
 ## 2026-10-11 — M1 at risk (connector findings open)
 
 - **Merged to `main`:** scaffold, `core`, daemon. Code review found 10 issues, all fixed with regression tests. Security review found nothing above threshold.
