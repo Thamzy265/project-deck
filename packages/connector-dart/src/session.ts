@@ -18,6 +18,39 @@ export const RESTART_SERVICE = 'hotRestart';
 
 /** VM service error: the stream is already subscribed (another call or a reconnect). */
 const STREAM_ALREADY_SUBSCRIBED = 103;
+const METHOD_NOT_FOUND = -32601;
+const INTERNAL_ERROR = -32603;
+/** What flutter_tools sends when the reload or restart itself fails (usually a compile error). */
+const FLUTTER_TOOL_FAILURE = /Unable to (reload sources|restart)/i;
+
+/** Maps a JSON-RPC error from the Flutter tool's reload/restart service onto a ReloadResult. */
+function reloadFailure(
+  kind: 'hot-reload' | 'hot-restart',
+  err: JsonRpcError,
+): Extract<ReloadResult, { ok: false }> {
+  const label = kind === 'hot-reload' ? 'Hot reload' : 'Hot restart';
+  if (err.code === METHOD_NOT_FOUND) {
+    return {
+      ok: false,
+      reason: 'unsupported',
+      message: `${label} is not available on this app: ${err.message}.`,
+    };
+  }
+  if (err.code === INTERNAL_ERROR || FLUTTER_TOOL_FAILURE.test(err.message)) {
+    // The Flutter tool reports only "Unable to reload sources"; the details go to its own output.
+    return {
+      ok: false,
+      reason: 'compile-error',
+      message: `${label} failed: ${err.message}. Check the latest error logs.`,
+    };
+  }
+  // No ReloadResult reason fits an unexpected protocol error; say plainly what happened.
+  return {
+    ok: false,
+    reason: 'unsupported',
+    message: `${label} could not run: the VM service returned error ${err.code} (${err.message}).`,
+  };
+}
 
 const StreamNotifySchema = z.object({
   streamId: z.string(),
@@ -168,12 +201,7 @@ export class DartAppSession implements AppSession {
         return { ok: false, reason: 'not-attached', message: err.message };
       }
       if (!(err instanceof JsonRpcError)) throw err;
-      // The Flutter tool reports only "Unable to reload sources"; the details go to its own output.
-      result = {
-        ok: false,
-        reason: 'compile-error',
-        message: `${kind === 'hot-reload' ? 'Hot reload' : 'Hot restart'} failed: ${err.message}. Check the latest error logs.`,
-      };
+      result = reloadFailure(kind, err);
     }
     this.events.emit('reloaded', result);
     return result;

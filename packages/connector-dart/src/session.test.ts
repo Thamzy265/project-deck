@@ -98,6 +98,33 @@ describe('DartAppSession', () => {
     });
   });
 
+  it('only reports compile-error for the Flutter tool failure', async () => {
+    const { server, session } = await attach();
+    server.handle('s0.hotRestart', () => {
+      throw new RpcFault(-32000, 'Unable to restart');
+    });
+    expect(await session.restart()).toMatchObject({ ok: false, reason: 'compile-error' });
+
+    server.handle('s0.reloadSources', () => {
+      throw new RpcFault(-32601, 'Method not found');
+    });
+    expect(await session.reload()).toEqual({
+      ok: false,
+      reason: 'unsupported',
+      message: 'Hot reload is not available on this app: Method not found.',
+    });
+
+    server.handle('s0.reloadSources', () => {
+      throw new RpcFault(-32602, "Invalid 'isolateId'");
+    });
+    expect(await session.reload()).toEqual({
+      ok: false,
+      reason: 'unsupported',
+      message:
+        "Hot reload could not run: the VM service returned error -32602 (Invalid 'isolateId').",
+    });
+  });
+
   it('says unsupported when no Flutter tool service is announced', async () => {
     const { session } = await attach({ withFlutterTool: false });
     expect(await session.reload()).toMatchObject({ ok: false, reason: 'unsupported' });
