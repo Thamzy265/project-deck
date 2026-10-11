@@ -177,15 +177,18 @@ describe('DartAppSession edge cases', () => {
     });
   });
 
-  it.fails(
-    'BUG: reload says unsupported instead of not-attached when the app exits while waiting for the service',
-    async () => {
-      const { server, session } = await attach({ withFlutterTool: false, serviceWaitMs: 300 });
-      const pending = session.reload();
-      server.disconnectAll();
-      expect(await pending).toMatchObject({ ok: false, reason: 'not-attached' });
-    },
-  );
+  it('B7: reload says not-attached, promptly, when the app exits while waiting for the service', async () => {
+    const { server, session } = await attach({ withFlutterTool: false, serviceWaitMs: 5000 });
+    const started = Date.now();
+    const pending = session.reload();
+    server.disconnectAll();
+    expect(await pending).toEqual({
+      ok: false,
+      reason: 'not-attached',
+      message: 'The app has exited',
+    });
+    expect(Date.now() - started).toBeLessThan(2000);
+  });
 
   it('ignores malformed stream notifications', async () => {
     const { server, session } = await attach();

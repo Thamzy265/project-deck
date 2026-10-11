@@ -145,6 +145,8 @@ export class DartAppSession implements AppSession {
       this.onStreamNotify(params);
     });
     this.rpc.onClose(() => {
+      // Wake reloads waiting for a service that can no longer be announced.
+      for (const check of [...this.serviceWaiters]) check();
       this.disposeBuffers();
       this.events.emit('exit', {});
     });
@@ -212,9 +214,9 @@ export class DartAppSession implements AppSession {
     kind: 'hot-reload' | 'hot-restart',
     run: (method: string) => Promise<void>,
   ): Promise<ReloadResult> {
+    const method = await this.serviceMethod(service);
     if (this.rpc.closed)
       return { ok: false, reason: 'not-attached', message: 'The app has exited' };
-    const method = await this.serviceMethod(service);
     if (method === undefined) {
       return {
         ok: false,
@@ -262,11 +264,12 @@ export class DartAppSession implements AppSession {
   private serviceMethod(service: string): Promise<string | undefined> {
     const known = this.services.get(service);
     if (known !== undefined) return Promise.resolve(known);
+    // Nothing can be announced on a closed connection.
+    if (this.rpc.closed) return Promise.resolve(undefined);
     return new Promise((resolve) => {
       const check = (): void => {
         const method = this.services.get(service);
-        if (method === undefined) return;
-        done(method);
+        if (method !== undefined || this.rpc.closed) done(method);
       };
       const done = (method: string | undefined): void => {
         clearTimeout(timer);
