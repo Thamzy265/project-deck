@@ -152,6 +152,19 @@ describe('DartConnector', () => {
     expect(log).not.toHaveBeenCalled();
   });
 
+  it('logs a failing background scan instead of leaving the rejection unhandled', async () => {
+    const boom = new Error('discovery broke');
+    let calls = 0;
+    const log = vi.fn();
+    const c = make([], {
+      discover: () => (calls++ === 0 ? Promise.resolve([]) : Promise.reject(boom)),
+      scanIntervalMs: 10,
+      log,
+    });
+    await c.start();
+    await vi.waitFor(() => expect(log).toHaveBeenCalledWith('Background scan failed', boom));
+  });
+
   it('attaches end to end through a DTD and detaches on stop', async () => {
     const vm = await vmService();
     const d = await dtd([{ uri: vm.uri, name: 'shop' }]);

@@ -77,7 +77,10 @@ export class DartConnector implements AppConnector {
     await this.scan();
     const interval = this.opts.scanIntervalMs ?? DEFAULT_SCAN_INTERVAL_MS;
     if (interval > 0) {
-      this.timer = setInterval(() => void this.scan(), interval);
+      this.timer = setInterval(() => {
+        // A rejection here would be unhandled and take the whole daemon down.
+        this.scan().catch((err: unknown) => this.opts.log?.('Background scan failed', err));
+      }, interval);
       this.timer.unref();
     }
   }
