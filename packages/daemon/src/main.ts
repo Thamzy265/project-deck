@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 /**
  * Development entrypoint until the CLI exists (M2):
- *   node packages/daemon/dist/main.js [--port 9100] [--project <dir>] [--fake]
- * `--fake` registers an in-memory app so the API can be exercised without Flutter.
+ *   node packages/daemon/dist/main.js [--port 9100] [--project <dir>]
+ *     [--dtd-uri <ws://…>]... [--vm-service-uri <ws://…|http://…>]... [--fake]
+ * By default it discovers running Dart/Flutter apps through every local DTD.
+ * `--fake` uses an in-memory app instead, so the API can be exercised without Flutter.
  */
 import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
+import { DartConnector } from '@project-deck/connector-dart';
 import { Registry } from '@project-deck/core';
 import { FakeAppConnector, fakeApp } from '@project-deck/core/testing';
 import { DEFAULT_PORT, startDaemon } from './daemon.js';
@@ -15,6 +18,8 @@ const { values } = parseArgs({
     port: { type: 'string', default: String(DEFAULT_PORT) },
     project: { type: 'string', default: process.cwd() },
     fake: { type: 'boolean', default: false },
+    'dtd-uri': { type: 'string', multiple: true, default: [] },
+    'vm-service-uri': { type: 'string', multiple: true, default: [] },
   },
 });
 
@@ -36,6 +41,14 @@ if (values.fake) {
       message: 'Heartbeat from the fake app',
     });
   }, 2000).unref();
+} else {
+  registry.connectors.register(
+    new DartConnector({
+      dtdUris: values['dtd-uri'],
+      vmServiceUris: values['vm-service-uri'],
+      log: (message, err) => console.error(message, err instanceof Error ? err.message : ''),
+    }),
+  );
 }
 
 const daemon = await startDaemon({ projectDir: resolve(values.project), registry, port });
