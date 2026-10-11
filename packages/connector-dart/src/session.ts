@@ -25,8 +25,6 @@ export const RESTART_SERVICE = 'hotRestart';
 /** VM service error: the stream is already subscribed (another call or a reconnect). */
 const STREAM_ALREADY_SUBSCRIBED = 103;
 const METHOD_NOT_FOUND = -32601;
-/** The VM service's answer to an isolate id that no longer exists (e.g. after a hot restart). */
-const INVALID_PARAMS = -32602;
 /**
  * What flutter_tools sends when the reload or restart itself fails (usually a compile error):
  * `RPCError('Unable to reload sources', kInternalError, '')`. The text is `callingMethod`,
@@ -164,20 +162,8 @@ export class DartAppSession implements AppSession {
   reload(): Promise<ReloadResult> {
     return this.invoke(RELOAD_SERVICE, 'hot-reload', async (method) => {
       if (this.isolateId === undefined) await this.refreshIsolate();
-      try {
-        await this.reloadIsolate(method);
-      } catch (err) {
-        if (!(err instanceof JsonRpcError && err.code === INVALID_PARAMS)) throw err;
-        // A hot restart replaced the isolate between our last refresh and this call.
-        await this.refreshIsolate();
-        try {
-          await this.reloadIsolate(method);
-        } catch (retryErr) {
-          if (retryErr instanceof JsonRpcError && retryErr.code === INVALID_PARAMS)
-            throw new IsolateChangedError();
-          throw retryErr;
-        }
-      }
+      // The Flutter tool only checks that the id is a non-empty string, so a stale one is fine.
+      await this.reloadIsolate(method);
     });
   }
 
@@ -236,11 +222,7 @@ export class DartAppSession implements AppSession {
       await run(method);
       result = { ok: true, kind, durationMs: Math.round(performance.now() - started) };
     } catch (err) {
-      if (
-        err instanceof ConnectionClosedError ||
-        err instanceof NoIsolateError ||
-        err instanceof IsolateChangedError
-      ) {
+      if (err instanceof ConnectionClosedError || err instanceof NoIsolateError) {
         return { ok: false, reason: 'not-attached', message: err.message };
       }
       if (err instanceof CallTimeoutError) {
@@ -375,12 +357,6 @@ export class DartAppSession implements AppSession {
   private pushLine(line: string, ts: number, level: 'info' | 'error', tag: string): void {
     if (line === '') return;
     this.logSource.push({ ts, level, source: 'app', tag, message: line });
-  }
-}
-
-class IsolateChangedError extends Error {
-  constructor() {
-    super("The app's isolate changed during the reload (probably a hot restart). Try again.");
   }
 }
 

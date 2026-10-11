@@ -125,18 +125,7 @@ describe('DartAppSession edge cases', () => {
     expect(await pending).toMatchObject({ ok: true, kind: 'hot-reload' });
   });
 
-  it('B4: a reload racing an in-flight hot restart re-reads the isolate and succeeds', async () => {
-    const { server, session } = await attach();
-    // The fake bumps the isolate as soon as it handles s0.hotRestart; the reload sent right
-    // after still carries the old isolate id, which the VM service rejects with -32602.
-    const [restart, reload] = await Promise.all([session.restart(), session.reload()]);
-    expect(restart).toMatchObject({ ok: true });
-    expect(reload).toMatchObject({ ok: true, kind: 'hot-reload' });
-    const reloads = server.calls.filter((c) => c.method === 's0.reloadSources');
-    expect(reloads.map((c) => c.params?.isolateId)).toEqual(['isolates/1', 'isolates/2']);
-  });
-
-  it('B4: a reload still rejected as a stale isolate after one retry is not-attached', async () => {
+  it('B4: an invalid-params error is not-attached with its code, and is not retried', async () => {
     const { server, session } = await attach();
     server.handle('s0.reloadSources', () => {
       throw new RpcFault(-32602, "Invalid 'isolateId'");
@@ -144,9 +133,10 @@ describe('DartAppSession edge cases', () => {
     expect(await session.reload()).toEqual({
       ok: false,
       reason: 'not-attached',
-      message: "The app's isolate changed during the reload (probably a hot restart). Try again.",
+      message:
+        "Hot reload could not run: the VM service returned error -32602 (Invalid 'isolateId'). Try again.",
     });
-    expect(server.calls.filter((c) => c.method === 's0.reloadSources')).toHaveLength(2);
+    expect(server.calls.filter((c) => c.method === 's0.reloadSources')).toHaveLength(1);
   });
 
   it('B4: transient or unknown codes are not-attached, never unsupported', async () => {

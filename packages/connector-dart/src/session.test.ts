@@ -6,7 +6,6 @@ import {
   asFlutterVmService,
   isolateEvent,
   loggingEvent,
-  success,
   vmResponse,
   writeEvent,
 } from './testing/fixtures.js';
@@ -21,6 +20,11 @@ afterEach(async () => {
   session = undefined;
   server = undefined;
 });
+
+/** The isolate id sent with the most recent reload. */
+function lastReloadIsolate(server: FakeRpcServer): unknown {
+  return server.calls.filter((c) => c.method === 's0.reloadSources').at(-1)?.params?.isolateId;
+}
 
 async function attach(opts: { withFlutterTool?: boolean } = {}) {
   server = await FakeRpcServer.start('/AbC=/ws');
@@ -51,11 +55,11 @@ describe('DartAppSession', () => {
   });
 
   it('follows the new isolate after a hot restart', async () => {
-    const { session } = await attach();
+    const { server, session } = await attach();
     expect(await session.restart()).toMatchObject({ ok: true, kind: 'hot-restart' });
-    // The fake rejects a stale isolate id, so this only passes if the session refreshed it.
     await vi.waitFor(async () => {
       expect(await session.reload()).toMatchObject({ ok: true });
+      expect(lastReloadIsolate(server)).toBe('isolates/2');
     });
   });
 
@@ -72,10 +76,6 @@ describe('DartAppSession', () => {
         });
       return vmResponse('isolates/2');
     });
-    server.handle('s0.reloadSources', (params) => {
-      if (params?.isolateId !== 'isolates/2') throw new RpcFault(-32602, 'stale isolate');
-      return success;
-    });
     server.notify(isolateEvent('IsolateExit', 'isolates/1'));
     await vi.waitFor(() => expect(getVmCalls).toBe(1));
     // Sent before the getVM answer on the same socket, so the session sees it mid-refresh.
@@ -83,6 +83,7 @@ describe('DartAppSession', () => {
     release();
     await vi.waitFor(async () => {
       expect(await session.reload()).toMatchObject({ ok: true });
+      expect(lastReloadIsolate(server)).toBe('isolates/2');
     });
   });
 
@@ -134,7 +135,8 @@ describe('DartAppSession', () => {
     expect(await session.reload()).toEqual({
       ok: false,
       reason: 'not-attached',
-      message: "The app's isolate changed during the reload (probably a hot restart). Try again.",
+      message:
+        "Hot reload could not run: the VM service returned error -32602 (Invalid 'isolateId'). Try again.",
     });
   });
 

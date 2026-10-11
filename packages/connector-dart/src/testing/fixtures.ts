@@ -136,9 +136,10 @@ export function asFlutterVmService(
   server
     .handle('streamListen', () => success)
     .handle('getVM', () => vmResponse(isolateId))
+    // Like flutter_tools: the isolate id must be a non-empty string but is otherwise ignored.
     .handle('s0.reloadSources', (params) => {
-      if (params?.isolateId !== isolateId)
-        throw new RpcFault(-32602, `Invalid 'isolateId': ${String(params?.isolateId)}`);
+      if (typeof params?.isolateId !== 'string' || params.isolateId === '')
+        throw new RpcFault(-32602, "Invalid 'isolateId'");
       return success;
     })
     .handle('s0.hotRestart', () => {
