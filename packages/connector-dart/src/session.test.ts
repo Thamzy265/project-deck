@@ -86,24 +86,38 @@ describe('DartAppSession', () => {
     });
   });
 
-  it('reports a failed reload without throwing', async () => {
+  // flutter_tools throws RPCError('Unable to reload sources', -32603, ''); the first argument
+  // is callingMethod and isn't serialised, so the wire carries {"code":-32603,"message":""}.
+  it('reports a failed reload (the Flutter tool sends -32603 with an empty message) as compile-error', async () => {
     const { server, session } = await attach();
     server.handle('s0.reloadSources', () => {
-      throw new RpcFault(-32603, 'Unable to reload sources');
+      throw new RpcFault(-32603, '');
     });
     expect(await session.reload()).toEqual({
       ok: false,
       reason: 'compile-error',
-      message: 'Hot reload failed: Unable to reload sources. Check the latest error logs.',
+      message: 'Hot reload failed, probably a compile error. Check the latest error logs.',
     });
   });
 
-  it('only reports compile-error for the Flutter tool failure', async () => {
+  it('reports a failed hot restart (-32603 with an empty message) as compile-error', async () => {
+    const { server, session } = await attach();
+    server.handle('s0.hotRestart', () => {
+      throw new RpcFault(-32603, '');
+    });
+    expect(await session.restart()).toEqual({
+      ok: false,
+      reason: 'compile-error',
+      message: 'Hot restart failed, probably a compile error. Check the latest error logs.',
+    });
+  });
+
+  it('only reports compile-error for the Flutter tool failure code', async () => {
     const { server, session } = await attach();
     server.handle('s0.hotRestart', () => {
       throw new RpcFault(-32000, 'Unable to restart');
     });
-    expect(await session.restart()).toMatchObject({ ok: false, reason: 'compile-error' });
+    expect(await session.restart()).toMatchObject({ ok: false, reason: 'not-attached' });
 
     server.handle('s0.reloadSources', () => {
       throw new RpcFault(-32601, 'Method not found');

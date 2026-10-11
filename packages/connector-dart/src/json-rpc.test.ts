@@ -35,14 +35,15 @@ describe('JsonRpcClient', () => {
     rpc.close();
   });
 
-  it('surfaces JSON-RPC errors with their code', async () => {
+  it('surfaces JSON-RPC errors with their code, even with an empty message', async () => {
+    // What the Flutter tool's failed reloadSources looks like on the wire.
     server = (await FakeRpcServer.start()).handle('boom', () => {
-      throw new RpcFault(-32603, 'Unable to reload sources');
+      throw new RpcFault(-32603, '');
     });
     const rpc = await JsonRpcClient.connect(server.uri);
     const err: unknown = await rpc.call('boom').catch((e: unknown) => e);
     expect(err).toBeInstanceOf(JsonRpcError);
-    expect(err).toMatchObject({ code: -32603, message: 'Unable to reload sources' });
+    expect(err).toMatchObject({ code: -32603, message: '' });
     rpc.close();
   });
 

@@ -2,7 +2,8 @@ import WebSocket from 'ws';
 
 export class JsonRpcError extends Error {
   constructor(
-    readonly code: number,
+    /** Undefined when the peer sent no numeric code: that must not pass for a real -32603. */
+    readonly code: number | undefined,
     message: string,
     readonly data?: unknown,
   ) {
@@ -61,11 +62,11 @@ export function isLoopbackWsUri(uri: string): boolean {
 /** Builds an error from whatever the peer sent: a well-formed error object or anything else. */
 function toJsonRpcError(error: unknown): JsonRpcError {
   if (typeof error !== 'object' || error === null) {
-    return new JsonRpcError(-32603, typeof error === 'string' ? error : 'Unknown error');
+    return new JsonRpcError(undefined, typeof error === 'string' ? error : 'Unknown error');
   }
   const e = error as { code?: unknown; message?: unknown; data?: unknown };
   return new JsonRpcError(
-    typeof e.code === 'number' ? e.code : -32603,
+    typeof e.code === 'number' ? e.code : undefined,
     typeof e.message === 'string' ? e.message : 'Unknown error',
     e.data,
   );

@@ -151,7 +151,7 @@ describe('DartAppSession edge cases', () => {
 
   it('B4: transient or unknown codes are not-attached, never unsupported', async () => {
     const { server, session } = await attach();
-    for (const code of [-32000, -32603, 100, 113]) {
+    for (const code of [-32000, 100, 113]) {
       server.handle('s0.reloadSources', () => {
         throw new RpcFault(code, 'transient');
       });
@@ -165,7 +165,7 @@ describe('DartAppSession edge cases', () => {
 
   it('B4: an error with no code is not reported as a compile error', async () => {
     const { server, session } = await attach();
-    // NaN serialises as null, so the peer's error carries no usable code (read as -32603).
+    // NaN serialises as null, so the peer's error carries no usable code.
     server.handle('s0.reloadSources', () => {
       throw new RpcFault(Number.NaN, 'something odd');
     });
@@ -173,7 +173,7 @@ describe('DartAppSession edge cases', () => {
       ok: false,
       reason: 'not-attached',
       message:
-        'Hot reload could not run: the VM service returned error -32603 (something odd). Try again.',
+        'Hot reload could not run: the VM service returned an error with no code (something odd). Try again.',
     });
   });
 

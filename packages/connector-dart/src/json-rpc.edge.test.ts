@@ -109,14 +109,24 @@ describe('JsonRpcClient edge cases', () => {
     expect(await call).toBe('ok');
   });
 
-  it('maps an error without a code to -32603 and without a message to Unknown error', async () => {
+  it('records an error without a code as having none, and without a message as Unknown error', async () => {
     const { peer, rpc, ws } = await connect();
     const call = rpc.call('a');
     const id = await idOfFrame(peer, 1);
     ws.send(JSON.stringify({ jsonrpc: '2.0', id, error: { data: { detail: 'x' } } }));
     const err: unknown = await call.catch((e: unknown) => e);
     expect(err).toBeInstanceOf(JsonRpcError);
-    expect(err).toMatchObject({ code: -32603, message: 'Unknown error', data: { detail: 'x' } });
+    expect(err).toMatchObject({ code: undefined, message: 'Unknown error', data: { detail: 'x' } });
+  });
+
+  it('keeps -32603 with an empty message exactly as the Flutter tool sends it', async () => {
+    const { peer, rpc, ws } = await connect();
+    const call = rpc.call('s0.reloadSources', { isolateId: 'isolates/1' });
+    const id = await idOfFrame(peer, 1);
+    ws.send(`{"jsonrpc":"2.0","id":${JSON.stringify(id)},"error":{"code":-32603,"message":""}}`);
+    const err: unknown = await call.catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(JsonRpcError);
+    expect(err).toMatchObject({ code: -32603, message: '' });
   });
 
   it('B1: a response with "error": null (JSON-RPC 1.0 style) resolves with its result instead of throwing', async () => {
@@ -139,7 +149,7 @@ describe('JsonRpcClient edge cases', () => {
     ws.send(JSON.stringify({ jsonrpc: '2.0', id, error: 'boom' }));
     const err: unknown = await call.catch((e: unknown) => e);
     expect(err).toBeInstanceOf(JsonRpcError);
-    expect(err).toMatchObject({ code: -32603, message: 'boom' });
+    expect(err).toMatchObject({ code: undefined, message: 'boom' });
   });
 
   it('handles a very large response', async () => {

@@ -27,8 +27,12 @@ const STREAM_ALREADY_SUBSCRIBED = 103;
 const METHOD_NOT_FOUND = -32601;
 /** The VM service's answer to an isolate id that no longer exists (e.g. after a hot restart). */
 const INVALID_PARAMS = -32602;
-/** What flutter_tools sends when the reload or restart itself fails (usually a compile error). */
-const FLUTTER_TOOL_FAILURE = /Unable to (reload sources|restart)/i;
+/**
+ * What flutter_tools sends when the reload or restart itself fails (usually a compile error):
+ * `RPCError('Unable to reload sources', kInternalError, '')`. The text is `callingMethod`,
+ * which isn't serialised, so the wire carries only `{"code":-32603,"message":""}`.
+ */
+const FLUTTER_TOOL_FAILURE = -32603;
 
 /**
  * Maps a JSON-RPC error from the Flutter tool's reload/restart service onto a ReloadResult.
@@ -46,20 +50,21 @@ function reloadFailure(
       message: `${label} is not available on this app: ${err.message}.`,
     };
   }
-  // Matched on the message, not -32603: a missing code also becomes -32603 and is not a compile error.
-  if (FLUTTER_TOOL_FAILURE.test(err.message)) {
-    // The Flutter tool reports only "Unable to reload sources"; the details go to its own output.
+  if (err.code === FLUTTER_TOOL_FAILURE) {
+    // The details go to the Flutter tool's own output, not to us.
+    const detail = err.message === '' ? '' : ` (${err.message})`;
     return {
       ok: false,
       reason: 'compile-error',
-      message: `${label} failed: ${err.message}. Check the latest error logs.`,
+      message: `${label} failed, probably a compile error${detail}. Check the latest error logs.`,
     };
   }
   // Transient or unknown: keep the button and say plainly what happened.
+  const what = err.code === undefined ? 'an error with no code' : `error ${err.code}`;
   return {
     ok: false,
     reason: 'not-attached',
-    message: `${label} could not run: the VM service returned error ${err.code} (${err.message}). Try again.`,
+    message: `${label} could not run: the VM service returned ${what} (${err.message}). Try again.`,
   };
 }
 
