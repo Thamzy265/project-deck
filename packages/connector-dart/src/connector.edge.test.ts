@@ -128,6 +128,29 @@ describe('DartConnector edge cases', () => {
     }
   });
 
+  it('stop() during the first scan leaves no scan interval behind', async () => {
+    let release: () => void = () => undefined;
+    let scans = 0;
+    const c = make(
+      () => {
+        scans++;
+        if (scans > 1) return Promise.resolve([]);
+        return new Promise<DtdInfo[]>((resolve) => {
+          release = () => resolve([]);
+        });
+      },
+      { scanIntervalMs: 10 },
+    );
+    const started = c.start();
+    await vi.waitFor(() => expect(scans).toBe(1));
+    const stopped = c.stop();
+    release();
+    await Promise.all([started, stopped]);
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(scans).toBe(1);
+    expect((c as unknown as { timer: unknown }).timer).toBeUndefined();
+  });
+
   it('does not retry a failed DTD before RETRY_AFTER_MS, then retries', async () => {
     const old = await FakeRpcServer.start('/old');
     servers.push(old);

@@ -90,6 +90,8 @@ export class DartConnector implements AppConnector {
     this.stopped = false;
     this.abort = new AbortController();
     await this.scan();
+    // stop() may have run during the first scan; an interval set now would never be cleared.
+    if (this.isStopped()) return;
     const interval = this.opts.scanIntervalMs ?? DEFAULT_SCAN_INTERVAL_MS;
     if (interval > 0) {
       this.timer = setInterval(() => {
@@ -103,6 +105,7 @@ export class DartConnector implements AppConnector {
   async stop(): Promise<void> {
     this.stopped = true;
     clearInterval(this.timer);
+    this.timer = undefined;
     this.abort.abort();
     for (const client of this.inflight) client.close();
     await this.scanning;
