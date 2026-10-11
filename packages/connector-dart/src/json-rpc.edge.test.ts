@@ -119,23 +119,28 @@ describe('JsonRpcClient edge cases', () => {
     expect(err).toMatchObject({ code: -32603, message: 'Unknown error', data: { detail: 'x' } });
   });
 
-  it.fails(
-    'BUG: a response with "error": null (JSON-RPC 1.0 style) throws a TypeError inside the message handler',
-    async () => {
-      const { peer, rpc } = await connect();
-      const call = rpc.call('a');
-      const id = await idOfFrame(peer, 1);
-      // Fed straight to the handler: through the socket the TypeError is thrown inside a
-      // ws 'message' listener, which would crash the process (and the test runner).
-      const onMessage = (rpc as unknown as { onMessage: (data: Buffer) => void }).onMessage.bind(
-        rpc,
-      );
-      expect(() =>
-        onMessage(Buffer.from(JSON.stringify({ jsonrpc: '2.0', id, result: 'ok', error: null }))),
-      ).not.toThrow();
-      expect(await call).toBe('ok');
-    },
-  );
+  it('B1: a response with "error": null (JSON-RPC 1.0 style) resolves with its result instead of throwing', async () => {
+    const { peer, rpc } = await connect();
+    const call = rpc.call('a');
+    const id = await idOfFrame(peer, 1);
+    // Fed straight to the handler: through the socket the TypeError is thrown inside a
+    // ws 'message' listener, which would crash the process (and the test runner).
+    const onMessage = (rpc as unknown as { onMessage: (data: Buffer) => void }).onMessage.bind(rpc);
+    expect(() =>
+      onMessage(Buffer.from(JSON.stringify({ jsonrpc: '2.0', id, result: 'ok', error: null }))),
+    ).not.toThrow();
+    expect(await call).toBe('ok');
+  });
+
+  it('B1: rejects with a JsonRpcError when the error is a bare string', async () => {
+    const { peer, rpc, ws } = await connect();
+    const call = rpc.call('a');
+    const id = await idOfFrame(peer, 1);
+    ws.send(JSON.stringify({ jsonrpc: '2.0', id, error: 'boom' }));
+    const err: unknown = await call.catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(JsonRpcError);
+    expect(err).toMatchObject({ code: -32603, message: 'boom' });
+  });
 
   it('handles a very large response', async () => {
     const { peer, rpc, ws } = await connect();

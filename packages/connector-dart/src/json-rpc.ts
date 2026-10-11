@@ -47,6 +47,19 @@ export function isLoopbackWsUri(uri: string): boolean {
   }
 }
 
+/** Builds an error from whatever the peer sent: a well-formed error object or anything else. */
+function toJsonRpcError(error: unknown): JsonRpcError {
+  if (typeof error !== 'object' || error === null) {
+    return new JsonRpcError(-32603, typeof error === 'string' ? error : 'Unknown error');
+  }
+  const e = error as { code?: unknown; message?: unknown; data?: unknown };
+  return new JsonRpcError(
+    typeof e.code === 'number' ? e.code : -32603,
+    typeof e.message === 'string' ? e.message : 'Unknown error',
+    e.data,
+  );
+}
+
 /**
  * Minimal JSON-RPC 2.0 client over WebSocket, enough for DTD and the VM service.
  * We never register services, so incoming requests are answered with "method not found".
@@ -196,17 +209,11 @@ export class JsonRpcClient {
     if (pending === undefined) return;
     this.pending.delete(m.id);
     clearTimeout(pending.timer);
-    if (m.error !== undefined) {
-      const e = m.error as { code?: unknown; message?: unknown; data?: unknown };
-      pending.reject(
-        new JsonRpcError(
-          typeof e.code === 'number' ? e.code : -32603,
-          typeof e.message === 'string' ? e.message : 'Unknown error',
-          e.data,
-        ),
-      );
-    } else {
+    // JSON-RPC 1.0 style peers send `"error": null` alongside a successful result.
+    if (m.error === undefined || m.error === null) {
       pending.resolve(m.result);
+    } else {
+      pending.reject(toJsonRpcError(m.error));
     }
   }
 
