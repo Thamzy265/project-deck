@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type WebSocket from 'ws';
 import { ConnectionClosedError, JsonRpcClient, JsonRpcError, isLoopbackWsUri } from './json-rpc.js';
 import { FakeRpcServer, RpcFault } from './testing/fake-rpc-server.js';
 
@@ -83,6 +84,22 @@ describe('JsonRpcClient', () => {
     expect(closed).toHaveBeenCalledOnce();
     expect(onListenerError).toHaveBeenCalledTimes(2);
     expect(onListenerError).toHaveBeenCalledWith(boom);
+  });
+
+  it('rejects a call at once while the socket is closing', async () => {
+    server = (await FakeRpcServer.start()).handle('ping', () => 'pong');
+    const rpc = await JsonRpcClient.connect(server.uri, { timeoutMs: 60_000 });
+    // Close the raw socket so it sits in CLOSING without the client having noticed yet.
+    const ws = (rpc as unknown as { ws: WebSocket }).ws;
+    const order: string[] = [];
+    ws.once('close', () => order.push('close'));
+    ws.close();
+    const err: unknown = await rpc.call('ping').catch((e: unknown) => {
+      order.push('rejected');
+      return e;
+    });
+    expect(err).toBeInstanceOf(ConnectionClosedError);
+    expect(order[0]).toBe('rejected');
   });
 
   it('times out calls that never answer', async () => {

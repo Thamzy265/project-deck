@@ -110,7 +110,9 @@ export class JsonRpcClient {
 
   /** Omit `params` for methods that take none: DTD rejects an empty object. */
   call(method: string, params?: Record<string, unknown>): Promise<unknown> {
-    if (this.isClosed) return Promise.reject(new ConnectionClosedError());
+    // While CLOSING, ws drops sends silently and a dead peer may take long to finish the close.
+    if (this.isClosed || this.ws.readyState !== WebSocket.OPEN)
+      return Promise.reject(new ConnectionClosedError());
     const id = this.nextId++;
     const message =
       params === undefined
@@ -122,7 +124,13 @@ export class JsonRpcClient {
         reject(new Error(`${method} timed out after ${this.timeoutMs} ms`));
       }, this.timeoutMs);
       this.pending.set(id, { resolve, reject, timer });
-      this.ws.send(JSON.stringify(message));
+      this.ws.send(JSON.stringify(message), (err) => {
+        // ws may pass null on success at runtime, whatever the types say.
+        if (!(err instanceof Error) || !this.pending.has(id)) return;
+        clearTimeout(timer);
+        this.pending.delete(id);
+        reject(new ConnectionClosedError());
+      });
     });
   }
 
