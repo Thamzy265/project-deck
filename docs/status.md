@@ -15,4 +15,4 @@ Kept by the senior developer (`deck-lead` skill). Newest entry first. Each entry
   - **Tester:** none.
   - **Reviewer:** none (waiting for the developer's fixes to re-review).
   - **QA:** needs a sample app started from the IDE to record real fixtures, and later the M1 acceptance run with a breakpoint (PM). Without it, connector tests rely on spec-built data.
-  - **Lead:** needs approval to merge `docs/team-roles`, and a decision on a GitHub remote before anything can be pushed (PM).
+  - **Lead:** needs approval to merge `docs/team-roles` (PM). The remote is now set up: public repo https://github.com/Thamzy265/project-deck, so merges can go through pull requests.
