@@ -257,7 +257,7 @@ Guidelines:
 
 ## Dashboard
 
-The dashboard is a single-page React app the daemon serves at `http://127.0.0.1:<port>` (default 9100). It must work well in a narrow pane (420 px wide), so it uses tabs rather than side-by-side panels.
+The dashboard is a single-page React app the daemon serves at `http://127.0.0.1:<port>` (default 9147; *changed 12 Oct 2026* from 9100, which Dart DevTools uses. If the port is busy, the daemon uses the next free port and records it in `.flutterdeck/runtime.json`). It must work well in a narrow pane (420 px wide), so it uses tabs rather than side-by-side panels.
 
 **Opening it in Claude Desktop:** `flutterdeck init` adds an entry to `.claude/launch.json` so the dashboard opens in the Browser pane. Confirm the exact schema in the Claude Code docs (“Configure preview servers”). It also works in any browser.
 
@@ -336,7 +336,7 @@ plugin/
 
 **Hooks**
 
-- `Stop` and `SubagentStop` send `claude.done` to `POST http://127.0.0.1:9100/api/events`; `Notification` sends `claude.waiting`.
+- `Stop` and `SubagentStop` send `claude.done` to `POST http://127.0.0.1:<port>/api/events`, with the port read from `.flutterdeck/runtime.json`; `Notification` sends `claude.waiting`.
 - Hooks fail silently if the daemon isn't running.
 
 **`flutterdeck init`**
@@ -371,7 +371,7 @@ Five milestones, each ending in something usable. Claude should not start the ne
 - [x] Monorepo scaffolded (pnpm, strict TypeScript, Vitest, lint, GitHub Actions CI)
 - [x] `core` interfaces, zod schemas, registry, fake implementations
 - [x] Daemon with HTTP + WS API, token auth, localhost-only checks
-- [ ] `connector-dart`: DTD connection, app discovery, VM service attach, reload and restart, VM log streams
+- [x] `connector-dart`: DTD connection, app discovery, VM service attach, reload and restart, VM log streams (12 Oct 2026: PR #3; real-app check in [qa/M1.md](qa/M1.md))
 - [ ] `logs-android` logcat by PID
 - [ ] `.mcp.json` example that runs the official Dart MCP server alongside FlutterDeck
 - [ ] Accept: start a sample app from VS Code or Android Studio with a breakpoint set; the daemon lists it, a `curl` reload works, logs stream, and the breakpoint still hits
