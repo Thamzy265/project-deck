@@ -5,7 +5,8 @@ import { EventBus } from '@project-deck/core';
 import { getRequestListener } from '@hono/node-server';
 import { createApi } from './api.js';
 import { AppManager } from './app-manager.js';
-import { readRuntime, removeRuntime, writeRuntime } from './runtime.js';
+import { findRunningDaemon } from './running.js';
+import { removeRuntime, writeRuntime } from './runtime.js';
 import { generateToken } from './security.js';
 import { attachWebSocket } from './ws.js';
 
@@ -43,6 +44,9 @@ export class DaemonAlreadyRunningError extends Error {
 
 export async function startDaemon(opts: DaemonOptions): Promise<Daemon> {
   const log = opts.log ?? ((message, err) => console.error(message, err ?? ''));
+  const running = await findRunningDaemon(opts.projectDir);
+  if (running !== undefined) throw new DaemonAlreadyRunningError(running);
+
   const token = generateToken();
   const bus = new EventBus((err, event) => log(`Listener for ${event} threw`, err));
   const manager = new AppManager(opts.registry, bus, {
@@ -83,10 +87,6 @@ export async function startDaemon(opts: DaemonOptions): Promise<Daemon> {
     });
   } catch (err) {
     ws.close();
-    const existing = await readRuntime(opts.projectDir);
-    if ((err as NodeJS.ErrnoException).code === 'EADDRINUSE' && existing?.port === port) {
-      throw new DaemonAlreadyRunningError(port);
-    }
     throw err;
   }
   port = (server.address() as AddressInfo).port;

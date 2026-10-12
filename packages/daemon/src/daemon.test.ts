@@ -1,5 +1,6 @@
 import { request as httpRequest } from 'node:http';
 import { mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -9,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import type { Daemon } from './daemon.js';
 import { DaemonAlreadyRunningError, startDaemon } from './daemon.js';
-import { readRuntime, runtimePath } from './runtime.js';
+import { readRuntime, runtimePath, writeRuntime } from './runtime.js';
 
 let projectDir: string;
 let daemon: Daemon | undefined;
@@ -103,12 +104,43 @@ describe('startDaemon', () => {
     expect(await rejection(openWs(d, d.token, 'https://evil.example'))).toBe(403);
   });
 
-  it('reports an already-running daemon on the same port', async () => {
+  it('refuses a second daemon for the same project, naming its port', async () => {
     const d = await start();
-    const registry = new Registry();
-    await expect(
-      startDaemon({ projectDir, registry, port: d.port, log: () => undefined }),
-    ).rejects.toBeInstanceOf(DaemonAlreadyRunningError);
+    const second = startDaemon({ projectDir, registry: new Registry(), log: () => undefined });
+    await expect(second).rejects.toBeInstanceOf(DaemonAlreadyRunningError);
+    await expect(second).rejects.toThrow(String(d.port));
+  });
+
+  it('starts normally over a runtime file whose daemon no longer answers', async () => {
+    const deadPort = await freePort();
+    await writeRuntime(projectDir, {
+      pid: process.pid,
+      port: deadPort,
+      token: 't'.repeat(43),
+      startedAt: 0,
+    });
+    const d = await start();
+    expect((await readRuntime(projectDir))?.token).toBe(d.token);
+  });
+
+  it('starts normally over a runtime file whose pid is dead', async () => {
+    // A daemon for another project answers on the recorded port; only the pid is stale.
+    const otherDir = await mkdtemp(join(tmpdir(), 'deck-'));
+    const other = await startDaemon({ projectDir: otherDir, registry: new Registry(), port: 0 });
+    try {
+      const pid = await exitedPid();
+      await writeRuntime(projectDir, {
+        pid,
+        port: other.port,
+        token: 't'.repeat(43),
+        startedAt: 0,
+      });
+      const d = await start();
+      expect(d.port).not.toBe(other.port);
+    } finally {
+      await other.stop();
+      await rm(otherDir, { recursive: true, force: true });
+    }
   });
 
   it('removes the runtime file and resolves closed on shutdown', async () => {
@@ -140,6 +172,15 @@ describe('startDaemon', () => {
     expect(d.port).toBe(port);
   });
 });
+
+/** The pid of a process that has already exited. */
+function exitedPid(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, ['-e', '']);
+    child.once('error', reject);
+    child.once('exit', () => resolve(child.pid ?? -1));
+  });
+}
 
 function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
