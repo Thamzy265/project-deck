@@ -42,7 +42,7 @@ Every DTD on Dart 3.12+ writes a pid file at `<DartDataHome>/dtd/<pid>`, contain
 - flutter_tools registers the services `reloadSources` and `hotRestart` on the app's VM service. DDS namespaces them as `s<N>.<name>`.
 - To find the callable name, `streamListen{streamId:"Service"}`. DDS replays existing registrations as `ServiceRegistered{service, method, alias}`; call the `method` value.
 - Params: `reloadSources{isolateId, force?, pause?}`, `hotRestart{pause?}`.
-- Results: success is `{type:"Success"}`. Failure is JSON-RPC error -32603 ("Unable to reload sources" / "Unable to restart") with empty details. **Compile error text is not available through this path.** The Dart MCP server has the same limitation.
+- Results: success is `{type:"Success"}`. Failure arrives on the wire as `{"code":-32603,"message":""}`. flutter_tools throws `RPCError('Unable to reload sources' | 'Unable to restart', -32603, '')`, but that first argument is vm_service's `callingMethod`, which is never serialised. So treat -32603 from the Flutter tool's own service as a failed reload and **don't match on message text**. Corrected 12 Oct 2026 after review. **Compile error text is not available through this path.** The Dart MCP server has the same limitation.
 - Don't call `ext.flutter.reassemble`; `reloadSources` already does it.
 
 ## Logs
