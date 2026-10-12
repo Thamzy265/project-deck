@@ -6,6 +6,14 @@ import { isAlive } from './running.js';
 import { STATE_DIR } from './runtime.js';
 
 export const LOCK_FILE = 'startup.lock';
+/** A lock older than this is left over from a crash, even if its pid is alive. */
+export const DEFAULT_STALE_MS = 15_000;
+/**
+ * Waits past the stale age, so a lock left by a crash is taken over instead of failing
+ * every start for the next 15 s. Starts are normally instant, so the long wait only
+ * costs time after a crash.
+ */
+export const DEFAULT_WAIT_MS = DEFAULT_STALE_MS + 1000;
 
 // pid 0 and negative pids name process groups, so kill(pid, 0) succeeds and they would
 // look alive forever.
@@ -14,16 +22,26 @@ const LockSchema = z.object({ pid: z.number().int().positive(), createdAt: z.num
 export interface StartupLockOptions {
   /** How often a held lock is checked again. */
   retryMs?: number;
-  /** How long to wait for a held lock before giving up. */
+  /** How long to wait for a held lock before giving up. Defaults to `staleMs` + 1 s. */
   waitMs?: number;
   /** A lock older than this is left over from a crash, even if its pid is alive. */
   staleMs?: number;
 }
 
 export class StartupLockBusyError extends Error {
-  constructor(readonly holderPid: number | undefined) {
+  constructor(
+    readonly holderPid: number | undefined,
+    /** How long until the lock is treated as stale, when known. */
+    readonly staleInMs: number | undefined,
+  ) {
+    const holder = holderPid === undefined ? '' : ` (pid ${holderPid})`;
+    const when =
+      staleInMs === undefined
+        ? 'shortly'
+        : `in about ${Math.max(1, Math.ceil(staleInMs / 1000))} s`;
     super(
-      `Another project-deck daemon${holderPid === undefined ? '' : ` (pid ${holderPid})`} is still starting for this project`,
+      `Another project-deck daemon${holder} is still starting for this project. If it ` +
+        `crashed, its startup lock is treated as stale ${when}; try again then.`,
     );
   }
 }
@@ -41,7 +59,8 @@ export async function acquireStartupLock(
   projectDir: string,
   opts: StartupLockOptions = {},
 ): Promise<() => Promise<void>> {
-  const { retryMs = 100, waitMs = 5000, staleMs = 15_000 } = opts;
+  const { retryMs = 100, staleMs = DEFAULT_STALE_MS } = opts;
+  const waitMs = opts.waitMs ?? staleMs + 1000;
   const path = startupLockPath(projectDir);
   await mkdir(join(projectDir, STATE_DIR), { recursive: true });
   const deadline = Date.now() + waitMs;
@@ -59,7 +78,9 @@ export async function acquireStartupLock(
       if ((await readLock(path))?.raw === held.raw) await rm(path, { force: true });
       continue;
     }
-    if (Date.now() >= deadline) throw new StartupLockBusyError(held?.lock?.pid);
+    if (Date.now() >= deadline) {
+      throw new StartupLockBusyError(held?.lock?.pid, await staleIn(path, held, staleMs));
+    }
     await sleep(retryMs);
   }
 }
@@ -96,6 +117,19 @@ async function isStale(path: string, held: HeldLock, staleMs: number): Promise<b
     return Date.now() - (await stat(path)).mtimeMs > staleMs;
   } catch {
     return false;
+  }
+}
+
+async function staleIn(
+  path: string,
+  held: HeldLock | undefined,
+  staleMs: number,
+): Promise<number | undefined> {
+  if (held?.lock !== undefined) return held.lock.createdAt + staleMs - Date.now();
+  try {
+    return (await stat(path)).mtimeMs + staleMs - Date.now();
+  } catch {
+    return undefined;
   }
 }
 

@@ -4,7 +4,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { STATE_DIR } from './runtime.js';
-import { StartupLockBusyError, acquireStartupLock, startupLockPath } from './startup-lock.js';
+import {
+  DEFAULT_STALE_MS,
+  DEFAULT_WAIT_MS,
+  StartupLockBusyError,
+  acquireStartupLock,
+  startupLockPath,
+} from './startup-lock.js';
 
 let projectDir: string;
 
@@ -78,6 +84,28 @@ describe('acquireStartupLock', () => {
     } finally {
       await release();
     }
+  });
+
+  it('waits past the stale age by default, so a crash-left lock never fails a start', () => {
+    expect(DEFAULT_WAIT_MS).toBeGreaterThan(DEFAULT_STALE_MS);
+  });
+
+  it('with no waitMs, takes over a crash-left lock held by a live pid once it goes stale', async () => {
+    // Small injected timings stand in for the real 15 s / 16 s.
+    await plant(JSON.stringify({ pid: process.pid, createdAt: Date.now() }));
+    const release = await acquireStartupLock(projectDir, { retryMs: 10, staleMs: 200 });
+    const lock = JSON.parse(await readFile(startupLockPath(projectDir), 'utf8')) as {
+      createdAt: number;
+    };
+    expect(Date.now() - lock.createdAt).toBeLessThan(1000);
+    await release();
+  });
+
+  it('says in the busy error when the lock will be treated as stale', async () => {
+    await plant(JSON.stringify({ pid: process.pid, createdAt: Date.now() }));
+    const attempt = acquireStartupLock(projectDir, { retryMs: 10, waitMs: 50, staleMs: 15_000 });
+    await expect(attempt).rejects.toThrow(/treated as stale in about 1[45] s/);
+    await expect(attempt).rejects.toMatchObject({ staleInMs: expect.any(Number) as number });
   });
 
   it('takes over a lock whose pid is dead', async () => {
