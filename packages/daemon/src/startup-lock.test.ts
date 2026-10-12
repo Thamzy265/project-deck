@@ -33,6 +33,22 @@ async function plant(content: string, ageMs = 0): Promise<void> {
   }
 }
 
+function errno(code: string): NodeJS.ErrnoException {
+  return Object.assign(new Error(`${code}: simulated`), { code });
+}
+
+/** A create hook that fails with each code in turn, then creates the file for real. */
+function failingCreate(...codes: string[]) {
+  const calls: string[] = [];
+  const create = async (path: string, content: string): Promise<void> => {
+    const code = codes[calls.length];
+    calls.push(code ?? 'ok');
+    if (code !== undefined) throw errno(code);
+    await writeFile(path, content, { flag: 'wx', mode: 0o600 });
+  };
+  return { create, calls };
+}
+
 function exists(path: string): Promise<boolean> {
   return access(path).then(
     () => true,
@@ -106,6 +122,29 @@ describe('acquireStartupLock', () => {
     const attempt = acquireStartupLock(projectDir, { retryMs: 10, waitMs: 50, staleMs: 15_000 });
     await expect(attempt).rejects.toThrow(/treated as stale in about 1[45] s/);
     await expect(attempt).rejects.toMatchObject({ staleInMs: expect.any(Number) as number });
+  });
+
+  it('treats EPERM and EBUSY from the create (Windows) as held and retries', async () => {
+    const { create, calls } = failingCreate('EPERM', 'EBUSY', 'EPERM');
+    const release = await acquireStartupLock(projectDir, { ...FAST, hooks: { create } });
+    expect(calls).toEqual(['EPERM', 'EBUSY', 'EPERM', 'ok']);
+    expect(await exists(startupLockPath(projectDir))).toBe(true);
+    await release();
+  });
+
+  it('gives up with StartupLockBusyError when EPERM persists until the deadline', async () => {
+    const { create } = failingCreate(...Array<string>(1000).fill('EPERM'));
+    await expect(
+      acquireStartupLock(projectDir, { ...FAST, waitMs: 100, hooks: { create } }),
+    ).rejects.toBeInstanceOf(StartupLockBusyError);
+  });
+
+  it('still throws other create errors at once', async () => {
+    const { create, calls } = failingCreate('EACCES');
+    await expect(
+      acquireStartupLock(projectDir, { ...FAST, hooks: { create } }),
+    ).rejects.toMatchObject({ code: 'EACCES' });
+    expect(calls).toEqual(['EACCES']);
   });
 
   it('takes over a lock whose pid is dead', async () => {

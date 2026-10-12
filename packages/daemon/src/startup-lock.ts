@@ -26,6 +26,23 @@ export interface StartupLockOptions {
   waitMs?: number;
   /** A lock older than this is left over from a crash, even if its pid is alive. */
   staleMs?: number;
+  /** Test seams for interleavings and platform errors that timing can't produce. */
+  hooks?: StartupLockHooks;
+}
+
+export interface StartupLockHooks {
+  /** Replaces the exclusive create of the lock file. */
+  create?: (path: string, content: string) => Promise<void>;
+}
+
+/**
+ * Codes from the exclusive create that mean "someone else has it". Windows gives EPERM
+ * or EBUSY instead of EEXIST while another process is creating or deleting the file.
+ */
+const HELD_CODES = new Set(['EEXIST', 'EPERM', 'EBUSY']);
+
+function createExclusive(path: string, content: string): Promise<void> {
+  return writeFile(path, content, { flag: 'wx', mode: 0o600 });
 }
 
 export class StartupLockBusyError extends Error {
@@ -60,6 +77,7 @@ export async function acquireStartupLock(
   opts: StartupLockOptions = {},
 ): Promise<() => Promise<void>> {
   const { retryMs = 100, staleMs = DEFAULT_STALE_MS } = opts;
+  const create = opts.hooks?.create ?? createExclusive;
   const waitMs = opts.waitMs ?? staleMs + 1000;
   const path = startupLockPath(projectDir);
   await mkdir(join(projectDir, STATE_DIR), { recursive: true });
@@ -67,10 +85,11 @@ export async function acquireStartupLock(
   for (;;) {
     const content = JSON.stringify({ pid: process.pid, createdAt: Date.now() });
     try {
-      await writeFile(path, content, { flag: 'wx', mode: 0o600 });
+      await create(path, content);
       return () => releaseIfOurs(path, content);
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === undefined || !HELD_CODES.has(code)) throw err;
     }
     const held = await readLock(path);
     if (held !== undefined && (await isStale(path, held, staleMs))) {
