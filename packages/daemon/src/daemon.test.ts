@@ -1,6 +1,7 @@
 import { request as httpRequest } from 'node:http';
 import { mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
+import type { Server } from 'node:net';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -9,7 +10,7 @@ import { FakeAppConnector, fakeApp } from '@project-deck/core/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import type { Daemon } from './daemon.js';
-import { DaemonAlreadyRunningError, startDaemon } from './daemon.js';
+import { DEFAULT_PORT, DaemonAlreadyRunningError, startDaemon } from './daemon.js';
 import { readRuntime, runtimePath, writeRuntime } from './runtime.js';
 
 let projectDir: string;
@@ -172,6 +173,87 @@ describe('startDaemon', () => {
     expect(d.port).toBe(port);
   });
 });
+
+describe('port selection', () => {
+  const servers: Server[] = [];
+  afterEach(async () => {
+    await Promise.all(servers.splice(0).map((s) => new Promise((r) => s.close(r))));
+  });
+
+  async function occupy(count: number): Promise<number> {
+    for (;;) {
+      const base = await freePort();
+      if (base + count > 65535) continue;
+      const taken: Server[] = [];
+      for (let i = 0; i < count; i++) {
+        const srv = await tryListen(base + i);
+        if (srv === undefined) break;
+        taken.push(srv);
+      }
+      if (taken.length === count) {
+        servers.push(...taken);
+        return base;
+      }
+      await Promise.all(taken.map((s) => new Promise((r) => s.close(r))));
+    }
+  }
+
+  async function startOn(port: number, extra: { portAttempts?: number } = {}) {
+    const messages: string[] = [];
+    const registry = new Registry();
+    daemon = await startDaemon({
+      projectDir,
+      registry,
+      port,
+      ...extra,
+      log: (message) => messages.push(message),
+    });
+    return { d: daemon, messages };
+  }
+
+  it('defaults to port 9147', () => {
+    expect(DEFAULT_PORT).toBe(9147);
+  });
+
+  it('uses the next port when the chosen one is busy, and says so', async () => {
+    const busy = await occupy(1);
+    const { d, messages } = await startOn(busy);
+    expect(d.port).toBe(busy + 1);
+    expect(messages).toContain(`Port ${busy} is in use; using ${busy + 1}`);
+    expect((await readRuntime(projectDir))?.port).toBe(busy + 1);
+  });
+
+  it('keeps going past several busy ports', async () => {
+    const busy = await occupy(3);
+    const { d, messages } = await startOn(busy);
+    expect(d.port).toBe(busy + 3);
+    expect(messages).toContain(`Port ${busy} is in use; using ${busy + 3}`);
+  });
+
+  it('falls back to an OS-assigned port when every attempt is busy', async () => {
+    const busy = await occupy(2);
+    const { d, messages } = await startOn(busy, { portAttempts: 2 });
+    expect(d.port).not.toBe(busy);
+    expect(d.port).not.toBe(busy + 1);
+    expect(d.port).toBeGreaterThan(0);
+    expect(messages).toContain(`Port ${busy} is in use; using ${d.port}`);
+  });
+
+  it('says nothing when the chosen port is free', async () => {
+    const port = await freePort();
+    const { d, messages } = await startOn(port);
+    expect(d.port).toBe(port);
+    expect(messages).toEqual([]);
+  });
+});
+
+function tryListen(port: number): Promise<Server | undefined> {
+  return new Promise((resolve) => {
+    const srv = createServer();
+    srv.once('error', () => resolve(undefined));
+    srv.listen(port, '127.0.0.1', () => resolve(srv));
+  });
+}
 
 /** The pid of a process that has already exited. */
 function exitedPid(): Promise<number> {

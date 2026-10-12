@@ -42,10 +42,10 @@ To run the daemon with a built-in fake app (no Flutter needed):
 node packages/daemon/dist/main.js --fake
 ```
 
-It listens on `http://127.0.0.1:9100`. Every request except `/api/health` needs the session token from `.flutterdeck/runtime.json`. For example:
+It listens on `http://127.0.0.1:9147`. If that port is busy it uses the next free one and says so; the actual port is always in `.flutterdeck/runtime.json`. Every request except `/api/health` needs the session token from `.flutterdeck/runtime.json`. For example:
 
 ```bash
-curl -s -H "x-deck-token: $(node -p "require('./.flutterdeck/runtime.json').token")" http://127.0.0.1:9100/api/status
+curl -s -H "x-deck-token: $(node -p "require('./.flutterdeck/runtime.json').token")" "http://127.0.0.1:$(node -p "require('./.flutterdeck/runtime.json').port")/api/status"
 ```
 
 To see which running Dart and Flutter apps your tooling daemons know about:

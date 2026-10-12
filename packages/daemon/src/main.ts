@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 /**
  * Development entrypoint until the CLI exists (M2):
- *   node packages/daemon/dist/main.js [--port 9100] [--project <dir>]
+ *   node packages/daemon/dist/main.js [--port 9147] [--project <dir>]
  *     [--dtd-uri <ws://…>]... [--vm-service-uri <ws://…|http://…>]... [--fake]
+ * If the port is busy it uses the next free one; clients read it from runtime.json.
  * By default it discovers running Dart/Flutter apps through every local DTD.
  * Addresses can also come from DECK_DTD_URIS and DECK_VM_SERVICE_URIS (comma-separated).
  * They carry auth codes, and env vars keep them out of `ps`, unlike the flags.
