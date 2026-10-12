@@ -30,6 +30,22 @@ importers:
         specifier: ^5.0.3
         version: 5.0.3(@types/node@22.20.5)(vite@8.3.4(@types/node@22.20.5))
 
+  packages/connector-dart:
+    dependencies:
+      '@project-deck/core':
+        specifier: workspace:*
+        version: link:../core
+      ws:
+        specifier: ^8.22.0
+        version: 8.22.0
+      zod:
+        specifier: ^4.6.5
+        version: 4.6.5
+    devDependencies:
+      '@types/ws':
+        specifier: ^8.18.2
+        version: 8.18.2
+
   packages/core:
     dependencies:
       zod:
@@ -41,6 +57,9 @@ importers:
       '@hono/node-server':
         specifier: ^2.1.4
         version: 2.1.4(hono@4.13.13)
+      '@project-deck/connector-dart':
+        specifier: workspace:*
+        version: link:../connector-dart
       '@project-deck/core':
         specifier: workspace:*
         version: link:../core

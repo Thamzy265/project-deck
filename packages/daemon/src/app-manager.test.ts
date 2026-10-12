@@ -172,4 +172,66 @@ describe('AppManager', () => {
     expect(manager.apps()).toEqual([]);
     expect(connector.sessions.size).toBe(0);
   });
+  it('B5: lists apps a connector reports before its start() resolves', async () => {
+    const registry = new Registry();
+    const connector = new FakeAppConnector('slow');
+    let finishStart = (): void => undefined;
+    connector.start = () =>
+      new Promise<void>((resolve) => {
+        finishStart = resolve;
+      });
+    registry.connectors.register(connector);
+    const bus = new EventBus<DeckEvents>();
+    const changed = vi.fn();
+    bus.on('apps.changed', changed);
+    const manager = new AppManager(registry, bus);
+    const starting = manager.start();
+    // A DTD that connected early, while slower ones in the same first scan are still pending.
+    connector.addApp(fakeApp());
+    expect(manager.apps().map((a) => a.id)).toEqual(['app-1']);
+    expect(changed).toHaveBeenCalled();
+    finishStart();
+    await starting;
+    expect(manager.apps().map((a) => a.id)).toEqual(['app-1']);
+    await manager.stop();
+  });
+
+  it('drops apps reported by a connector whose start() then fails', async () => {
+    const registry = new Registry();
+    const connector = new FakeAppConnector('flaky', [fakeApp(), fakeApp({ id: 'app-2' })]);
+    let failStart = (): void => undefined;
+    connector.start = () =>
+      new Promise<void>((_resolve, reject) => {
+        failStart = () => reject(new Error('DTD unreachable'));
+      });
+    registry.connectors.register(connector);
+    const onConnectorError = vi.fn();
+    const manager = new AppManager(registry, new EventBus(), { onConnectorError });
+    const starting = manager.start();
+    connector.addApp(fakeApp({ id: 'app-3' }));
+    failStart();
+    await starting;
+    expect(onConnectorError).toHaveBeenCalledWith('flaky', expect.any(Error));
+    expect(manager.apps()).toEqual([]);
+    connector.addApp(fakeApp({ id: 'app-4' }));
+    expect(manager.apps()).toEqual([]);
+  });
+  it('detaches an app auto-attached from a connector whose start() then fails', async () => {
+    const registry = new Registry();
+    const connector = new FakeAppConnector('flaky');
+    let failStart = (): void => undefined;
+    connector.start = () =>
+      new Promise<void>((_resolve, reject) => {
+        failStart = () => reject(new Error('DTD unreachable'));
+      });
+    registry.connectors.register(connector);
+    const manager = new AppManager(registry, new EventBus());
+    const starting = manager.start();
+    connector.addApp(fakeApp());
+    await vi.waitFor(() => expect(manager.attachedApp()).toBeDefined());
+    failStart();
+    await starting;
+    await vi.waitFor(() => expect(connector.sessions.get('app-1')?.detached).toBe(true));
+    expect(manager.attachedApp()).toBeUndefined();
+  });
 });

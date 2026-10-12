@@ -95,15 +95,30 @@ export class AppManager {
   }
 
   private async startConnector(connector: AppConnector): Promise<void> {
+    // Subscribe before start(): a connector may report apps while its first scan is still running.
+    const off = connector.onAppsChanged((apps) => this.onAppsChanged(connector, apps));
+    this.unsubscribers.push(off);
     try {
       await connector.start();
       if (this.stopped) return;
-      this.unsubscribers.push(
-        connector.onAppsChanged((apps) => this.onAppsChanged(connector, apps)),
-      );
       this.onAppsChanged(connector, await connector.listApps());
     } catch (err) {
+      off();
+      this.forgetConnector(connector);
       this.opts.onConnectorError?.(connector.id, err);
+    }
+  }
+
+  /** Drops whatever a connector that failed to start reported while it was starting. */
+  private forgetConnector(connector: AppConnector): void {
+    const apps = this.appsByConnector.get(connector.id);
+    if (apps === undefined) return;
+    this.appsByConnector.delete(connector.id);
+    if (this.stopped) return;
+    this.bus.emit('apps.changed', { connectorId: connector.id, apps: this.apps() });
+    const attachedId = this.attached?.app.id;
+    if (attachedId !== undefined && apps.some((a) => a.id === attachedId)) {
+      void this.serial(() => this.release()).catch(() => undefined);
     }
   }
 

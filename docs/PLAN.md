@@ -264,7 +264,7 @@ The dashboard is a single-page React app the daemon serves at `http://127.0.0.1:
 **Header bar**
 
 - App picker: running apps found through DTD, with device and how each was started. “No app running” shows a short hint on how to start one.
-- Hot reload and hot restart buttons (`r` / `R` keys), plus the last result: green with duration, or red with the first compile error.
+- Hot reload and hot restart buttons (`r` / `R` keys), plus the last result: green with duration, or red with the first compile error. *Changed 11 Oct 2026:* the Flutter tool's reload service only reports success or failure, so on failure show “Reload failed” plus the most recent error-level log lines.
 - Current task chip, linking to the Tasks tab.
 
 **Tabs**
@@ -423,7 +423,7 @@ The remaining risks are known and each has a mitigation; the open decisions don'
 
 - [ ] **Project name.** Check npm, pub.dev and GitHub availability (before M5). 9 Oct 2026: npm packages use the `@project-deck/*` scope; the product name, CLI binary and `.flutterdeck/` folder are still open.
 - [ ] **Live Drift mechanism.** Own `flutterdeck_drift` package vs. reusing the Drift DevTools extension's hooks (before M3).
-- [ ] **DTD URI discovery.** How much can be auto-detected vs. pasted by the user (during M1). Research 9 Oct 2026 in [notes/dtd.md](notes/dtd.md): Dart 3.12+ writes discoverable DTD pid files.
+- [x] **DTD URI discovery.** How much can be auto-detected vs. pasted by the user (during M1). Decided 11 Oct 2026 (research in [notes/dtd.md](notes/dtd.md)): scan Dart 3.12+ DTD pid files, fall back to `dart tooling-daemon --list --machine`, then a user-pasted DTD URI, then a user-pasted VM service URI.
 - [ ] **Also ship the inspector as a DevTools extension?** Would reach developers who don't use Claude (after M5).
 - [ ] **Device mirroring.** Embedded scrcpy view vs. a docked window (after M5).
 - [x] **Licence.** MIT vs. Apache-2.0 (before M5). Decided 9 Oct 2026: MIT.
