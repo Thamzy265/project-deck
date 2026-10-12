@@ -7,7 +7,8 @@ export const PORT_ATTEMPTS = 20;
 /**
  * Listens on `port`, or on the next free one when it is taken (other tools, such as
  * Dart DevTools, grab fixed ports too). After `attempts` busy ports it takes an
- * OS-assigned port. Errors other than EADDRINUSE are thrown as is.
+ * OS-assigned port. Errors other than EADDRINUSE are thrown as is. A port that isn't an
+ * integer in 0-65535 is rejected up front rather than quietly replaced by an OS port.
  */
 export async function listenWithFallback(
   server: Server,
@@ -15,6 +16,11 @@ export async function listenWithFallback(
   port: number,
   attempts = PORT_ATTEMPTS,
 ): Promise<number> {
+  if (!Number.isInteger(port) || port < 0 || port > 65535) {
+    throw Object.assign(new RangeError(`Port must be an integer from 0 to 65535, got ${port}`), {
+      code: 'ERR_SOCKET_BAD_PORT',
+    });
+  }
   const candidates: number[] = [];
   if (port !== 0) {
     for (let p = port; p < port + attempts && p <= 65535; p++) candidates.push(p);

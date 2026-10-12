@@ -102,13 +102,15 @@ describe('listenWithFallback', () => {
     });
   });
 
-  it.fails(
-    'BUG: a port above 65535 is silently replaced by an OS-assigned one instead of rejected',
-    async () => {
-      // -1 throws ERR_SOCKET_BAD_PORT (above), but 70000 skips the loop and listens on 0.
-      await expect(listenWithFallback(httpServer(), HOST, 70000)).rejects.toMatchObject({
-        code: 'ERR_SOCKET_BAD_PORT',
-      });
+  it.each([70000, 65536, 1.5, Number.NaN])(
+    'rejects port %s with a RangeError before trying to listen',
+    async (bad) => {
+      const srv = httpServer();
+      const calls = failingListen(srv, 'EADDRINUSE');
+      const attempt = listenWithFallback(srv, HOST, bad);
+      await expect(attempt).rejects.toBeInstanceOf(RangeError);
+      await expect(attempt).rejects.toMatchObject({ code: 'ERR_SOCKET_BAD_PORT' });
+      expect(calls).toEqual([]);
     },
   );
 
