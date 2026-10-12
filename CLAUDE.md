@@ -128,7 +128,11 @@ Follows [GitHub flow](https://docs.github.com/en/get-started/using-github/github
   - Types: `feat`, `fix`, `docs`, `test`, `refactor`, `perf`, `build`, `ci`, `chore`, `revert`.
   - Scope is the package or area: `core`, `daemon`, `connector-dart`, `mcp`, `dashboard`, `cli`, `plugin`, `scripts`, `deps`.
   - Breaking changes to a frozen interface use `!` (e.g. `feat(core)!: ...`) plus a `BREAKING CHANGE:` footer.
-- A branch merges into `main` through a pull request whose description says what changed, why, how it was verified, and which plan items it ticks. The review gate runs before the PR is opened.
+- A branch merges into `main` through a pull request. The review gate runs before the PR is opened.
+- **PR descriptions** are written in [ASD-STE100](https://www.asd-ste100.org/) Simplified Technical English:
+  - short sentences, active voice, present tense, one statement per sentence;
+  - sections `Changes`, `Reason`, `Verification`, and `Limitations` when there are any.
+  - They say only what changed, why and how it was verified. Never put the conversation, progress summaries, review history or blockers in a PR. Those go to the PM in the chat.
 - Never commit secrets, `.flutterdeck/state.json` or `.flutterdeck/runtime.json`. Never force-push `main`. Only commit or push when the user has asked.
 
 ## Current status

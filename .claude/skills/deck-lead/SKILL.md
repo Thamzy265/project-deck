@@ -27,7 +27,7 @@ You own delivery of one milestone item at a time and report to the project manag
 3. **Brief the tester** with `deck-tester` once the developer hands off. The tester tries to break it and adds regression tests.
 4. **Brief the reviewer** with `deck-reviewer`. It runs code review and security review on the branch diff. The developer fixes; the reviewer re-checks until approved.
 5. **Brief QA** with `deck-qa` when the item has acceptance criteria that can run for real.
-6. **Close:** merge (PR if a remote exists, otherwise a local `--no-ff` merge; ask the PM for approval when the reviewer approves, not before). Then tick the box in `docs/PLAN.md`, update "Current status" in CLAUDE.md, and report to the PM.
+6. **Close:** open the PR with a description that follows the PR rules in CLAUDE.md (ASD-STE100; changes, reason, verification only; no blockers or chat summaries). Merge (PR if a remote exists, otherwise a local `--no-ff` merge; ask the PM for approval when the reviewer approves, not before). Then tick the box in `docs/PLAN.md`, update "Current status" in CLAUDE.md, and report to the PM.
 
 After every role hand-off and every PM update, add a dated entry to `docs/status.md` with what changed, open findings (with counts) and each role's blockers.
 
