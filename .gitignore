@@ -7,3 +7,4 @@ coverage/
 .flutterdeck/runtime.json
 .flutterdeck/startup.lock
 .flutterdeck/*.tmp
+.flutterdeck/*.stale

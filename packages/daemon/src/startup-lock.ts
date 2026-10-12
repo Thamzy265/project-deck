@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { link, mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { link, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { z } from 'zod';
@@ -89,6 +89,7 @@ export async function acquireStartupLock(
     const content = JSON.stringify({ pid: process.pid, createdAt: Date.now() });
     try {
       await create(path, content);
+      await sweepLeftovers(join(projectDir, STATE_DIR), staleMs);
       return () => releaseIfOurs(path, content);
     } catch (err) {
       const code = (err as NodeJS.ErrnoException).code;
@@ -176,6 +177,27 @@ async function removeStale(path: string, staleRaw: string): Promise<boolean> {
   }
   await rm(aside, { force: true });
   return true;
+}
+
+/**
+ * A crash between renaming a stale lock aside and deleting it leaves a `.stale` file.
+ * Only old ones are removed, so a waiter still checking its own aside file is unaffected.
+ */
+async function sweepLeftovers(dir: string, staleMs: number): Promise<void> {
+  try {
+    const prefix = `${LOCK_FILE}.`;
+    for (const name of await readdir(dir)) {
+      if (!name.startsWith(prefix) || !name.endsWith('.stale')) continue;
+      const file = join(dir, name);
+      try {
+        if (Date.now() - (await stat(file)).mtimeMs > staleMs) await rm(file, { force: true });
+      } catch {
+        // Removed by another daemon, or not ours to remove: leave it.
+      }
+    }
+  } catch {
+    // Cleanup is best effort and must never fail a start.
+  }
 }
 
 async function staleIn(

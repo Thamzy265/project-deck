@@ -241,4 +241,20 @@ describe('acquireStartupLock', () => {
     await release();
     expect(await readFile(startupLockPath(projectDir), 'utf8')).toBe(theirs);
   });
+
+  it('removes leftover .stale files older than the stale limit and keeps fresh ones', async () => {
+    const dir = join(projectDir, STATE_DIR);
+    await mkdir(dir, { recursive: true });
+    const old = join(dir, 'startup.lock.123.aaaaaaaaaaaa.stale');
+    const fresh = join(dir, 'startup.lock.456.bbbbbbbbbbbb.stale');
+    await writeFile(old, '{}');
+    await writeFile(fresh, '{}');
+    const then = new Date(Date.now() - 20_000);
+    await utimes(old, then, then);
+    const release = await acquireStartupLock(projectDir, FAST);
+    await release();
+    const left = await readdir(dir);
+    expect(left).not.toContain('startup.lock.123.aaaaaaaaaaaa.stale');
+    expect(left).toContain('startup.lock.456.bbbbbbbbbbbb.stale');
+  });
 });
