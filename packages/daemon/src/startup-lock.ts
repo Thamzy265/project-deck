@@ -7,7 +7,9 @@ import { STATE_DIR } from './runtime.js';
 
 export const LOCK_FILE = 'startup.lock';
 
-const LockSchema = z.object({ pid: z.number().int(), createdAt: z.number() });
+// pid 0 and negative pids name process groups, so kill(pid, 0) succeeds and they would
+// look alive forever.
+const LockSchema = z.object({ pid: z.number().int().positive(), createdAt: z.number() });
 
 export interface StartupLockOptions {
   /** How often a held lock is checked again. */
@@ -86,7 +88,8 @@ async function readLock(path: string): Promise<HeldLock | undefined> {
 
 async function isStale(path: string, held: HeldLock, staleMs: number): Promise<boolean> {
   if (held.lock !== undefined) {
-    return !isAlive(held.lock.pid) || Date.now() - held.lock.createdAt > staleMs;
+    // abs: a createdAt in the future (clock moved back) mustn't keep the lock fresh.
+    return !isAlive(held.lock.pid) || Math.abs(Date.now() - held.lock.createdAt) > staleMs;
   }
   // Unreadable: maybe still being written, so judge it by age only.
   try {

@@ -96,6 +96,24 @@ describe('acquireStartupLock', () => {
     await release();
   });
 
+  it.each([0, -1, 1.5])(
+    'judges a lock with pid %s by file age, since that pid can never be checked',
+    async (pid) => {
+      // kill(0) and kill(-1) signal process groups and succeed, so such a pid would look
+      // alive forever. Rejecting it falls back to the file's age, which does go stale.
+      await plant(JSON.stringify({ pid, createdAt: Date.now() }), 20_000);
+      const release = await acquireStartupLock(projectDir, FAST);
+      await release();
+    },
+  );
+
+  it('takes over a lock whose createdAt is further in the future than the stale limit', async () => {
+    // A clock that jumped back would otherwise make the lock look fresh for a long time.
+    await plant(JSON.stringify({ pid: process.pid, createdAt: Date.now() + 20_000 }));
+    const release = await acquireStartupLock(projectDir, FAST);
+    await release();
+  });
+
   it('waits on a fresh unreadable lock (still being written) instead of deleting it', async () => {
     await plant('');
     await expect(acquireStartupLock(projectDir, FAST)).rejects.toBeInstanceOf(StartupLockBusyError);
