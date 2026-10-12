@@ -20,7 +20,7 @@ export async function findRunningDaemon(projectDir: string): Promise<number | un
   return (await acceptsToken(info.port, info.token)) ? info.port : undefined;
 }
 
-function isAlive(pid: number): boolean {
+export function isAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
     return true;

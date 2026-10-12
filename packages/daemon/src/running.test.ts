@@ -256,14 +256,27 @@ describe('two daemons started at the same moment', () => {
     expect((await readRuntime(dirB))?.port).toBe(b.port);
   });
 
-  it.fails(
-    'BUG: for the same project both start, and one is orphaned once its runtime file is overwritten',
-    async () => {
-      const results = await Promise.allSettled([launch(projectDir), launch(projectDir)]);
-      for (const r of results) if (r.status === 'fulfilled') cleanups.push(() => r.value.stop());
-      const rejected = results.filter((r) => r.status === 'rejected');
-      expect(rejected).toHaveLength(1);
-      expect(rejected[0]?.reason).toBeInstanceOf(DaemonAlreadyRunningError);
-    },
-  );
+  it('for the same project only one starts; the other is refused with its port', async () => {
+    const results = await Promise.allSettled([launch(projectDir), launch(projectDir)]);
+    const started: Daemon[] = [];
+    for (const r of results) if (r.status === 'fulfilled') started.push(r.value);
+    for (const d of started) cleanups.push(() => d.stop());
+    const rejected = results.filter((r) => r.status === 'rejected');
+    expect(started).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0]?.reason).toBeInstanceOf(DaemonAlreadyRunningError);
+    expect((rejected[0]?.reason as DaemonAlreadyRunningError).port).toBe(started[0]?.port);
+    expect((await readRuntime(projectDir))?.token).toBe(started[0]?.token);
+  });
+
+  it('for the same project, five at once still leave exactly one running', async () => {
+    const results = await Promise.allSettled(Array.from({ length: 5 }, () => launch(projectDir)));
+    const started: Daemon[] = [];
+    for (const r of results) if (r.status === 'fulfilled') started.push(r.value);
+    for (const d of started) cleanups.push(() => d.stop());
+    expect(started).toHaveLength(1);
+    for (const r of results) {
+      if (r.status === 'rejected') expect(r.reason).toBeInstanceOf(DaemonAlreadyRunningError);
+    }
+  });
 });

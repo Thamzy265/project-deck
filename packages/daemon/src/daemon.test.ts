@@ -1,5 +1,5 @@
 import { request as httpRequest } from 'node:http';
-import { mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import type { Server } from 'node:net';
 import { createServer } from 'node:net';
@@ -12,6 +12,7 @@ import WebSocket from 'ws';
 import type { Daemon } from './daemon.js';
 import { DEFAULT_PORT, DaemonAlreadyRunningError, startDaemon } from './daemon.js';
 import { readRuntime, runtimePath, writeRuntime } from './runtime.js';
+import { startupLockPath } from './startup-lock.js';
 
 let projectDir: string;
 let daemon: Daemon | undefined;
@@ -162,15 +163,30 @@ describe('startDaemon', () => {
     expect((await fetch(`${d.url}/api/health`)).status).toBe(200);
   });
 
-  it('releases the port when the runtime file cannot be written', async () => {
+  it('releases the port and the startup lock when the runtime file cannot be written', async () => {
     const port = await freePort();
+    // A directory where runtime.json should go: the lock is taken, the rename fails.
+    await mkdir(runtimePath(projectDir), { recursive: true });
+    await expect(
+      startDaemon({ projectDir, registry: new Registry(), port, log: () => undefined }),
+    ).rejects.toThrow();
+    await expect(access(startupLockPath(projectDir))).rejects.toMatchObject({ code: 'ENOENT' });
+    await rm(runtimePath(projectDir), { recursive: true });
+    const d = await start(port);
+    expect(d.port).toBe(port);
+  });
+
+  it('removes the startup lock once runtime.json is written', async () => {
+    await start();
+    await expect(access(startupLockPath(projectDir))).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('fails with one clear error when the project path is a file', async () => {
     const notADir = join(projectDir, 'file');
     await writeFile(notADir, '');
     await expect(
-      startDaemon({ projectDir: notADir, registry: new Registry(), port, log: () => undefined }),
-    ).rejects.toThrow();
-    const d = await start(port);
-    expect(d.port).toBe(port);
+      startDaemon({ projectDir: notADir, registry: new Registry(), log: () => undefined }),
+    ).rejects.toMatchObject({ code: 'ENOTDIR' });
   });
 });
 

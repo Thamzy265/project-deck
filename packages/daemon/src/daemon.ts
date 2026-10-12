@@ -8,6 +8,8 @@ import { listenWithFallback } from './listen.js';
 import { findRunningDaemon } from './running.js';
 import { removeRuntime, writeRuntime } from './runtime.js';
 import { generateToken } from './security.js';
+import type { StartupLockOptions } from './startup-lock.js';
+import { StartupLockBusyError, acquireStartupLock } from './startup-lock.js';
 import { attachWebSocket } from './ws.js';
 
 /** Not 9100: Dart DevTools, which Android Studio starts, listens there. */
@@ -25,6 +27,8 @@ export interface DaemonOptions {
   /** Ports tried from `port` upwards before falling back to an OS-assigned one. */
   portAttempts?: number;
   logCapacity?: number;
+  /** Timings for the per-project startup lock; defaults suit real use. */
+  startupLock?: StartupLockOptions;
   log?: (message: string, err?: unknown) => void;
 }
 
@@ -46,6 +50,24 @@ export class DaemonAlreadyRunningError extends Error {
 }
 
 export async function startDaemon(opts: DaemonOptions): Promise<Daemon> {
+  // Held from the "is one running?" check until runtime.json is written, so two daemons
+  // started together for the same project can't both pass the check.
+  let release: () => Promise<void>;
+  try {
+    release = await acquireStartupLock(opts.projectDir, opts.startupLock);
+  } catch (err) {
+    if (!(err instanceof StartupLockBusyError)) throw err;
+    const running = await findRunningDaemon(opts.projectDir);
+    throw running === undefined ? err : new DaemonAlreadyRunningError(running);
+  }
+  try {
+    return await startLocked(opts);
+  } finally {
+    await release();
+  }
+}
+
+async function startLocked(opts: DaemonOptions): Promise<Daemon> {
   const log =
     opts.log ??
     ((message, err) => (err === undefined ? console.error(message) : console.error(message, err)));
