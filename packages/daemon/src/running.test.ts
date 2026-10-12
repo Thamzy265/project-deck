@@ -82,8 +82,25 @@ function freePort(): Promise<number> {
   });
 }
 
+const TOKEN = 't'.repeat(43);
+
 function record(port: number, pid = process.pid): Promise<void> {
-  return writeRuntime(projectDir, { pid, port, token: 't'.repeat(43), startedAt: 0 });
+  return writeRuntime(projectDir, { pid, port, token: TOKEN, startedAt: 0 });
+}
+
+/** Answers like a daemon's /api/status, but only for this project's token. */
+function status(delayMs = 0) {
+  return (req: IncomingMessage, res: ServerResponse) => {
+    setTimeout(() => {
+      res.setHeader('content-type', 'application/json');
+      if (req.url !== '/api/status' || req.headers['x-deck-token'] !== TOKEN) {
+        res.statusCode = 401;
+        res.end(JSON.stringify({ error: 'Missing or invalid token' }));
+        return;
+      }
+      res.end(JSON.stringify({ version: '0.0.0', apps: [], attached: null }));
+    }, delayMs);
+  };
 }
 
 function health(name: unknown, delayMs = 0) {
@@ -129,6 +146,11 @@ describe('findRunningDaemon', () => {
     expect((await readRuntime(projectDir))?.token).toBe(d.token);
   });
 
+  it('ignores a server that answers health as project-deck but rejects the token', async () => {
+    await record(await httpOn(health('project-deck')));
+    expect(await findRunningDaemon(projectDir)).toBeUndefined();
+  });
+
   it('ignores a server on the recorded port that names another product', async () => {
     await record(await httpOn(health('something-else')));
     expect(await findRunningDaemon(projectDir)).toBeUndefined();
@@ -150,24 +172,30 @@ describe('findRunningDaemon', () => {
     expect(await findRunningDaemon(projectDir)).toBeUndefined();
   });
 
-  it('accepts a daemon that answers just under the 1 s limit', async () => {
-    const port = await httpOn(health('project-deck', 500));
+  it('sends the recorded token and accepts a 200 status answer', async () => {
+    const port = await httpOn(status());
     await record(port);
     expect(await findRunningDaemon(projectDir)).toBe(port);
   });
 
-  it('gives up on a daemon that answers just over the 1 s limit', async () => {
-    await record(await httpOn(health('project-deck', 1300)));
+  it('accepts a daemon that answers just under the 2 s limit', async () => {
+    const port = await httpOn(status(1500));
+    await record(port);
+    expect(await findRunningDaemon(projectDir)).toBe(port);
+  });
+
+  it('gives up on a daemon that answers just over the 2 s limit', async () => {
+    await record(await httpOn(status(2300)));
     const { value, ms } = await timed(findRunningDaemon(projectDir));
     expect(value).toBeUndefined();
-    expect(ms).toBeLessThan(1800);
+    expect(ms).toBeLessThan(2800);
   });
 
   it('does not hang on a peer that accepts the connection and never answers', async () => {
     await record(await silentTcp());
     const { value, ms } = await timed(findRunningDaemon(projectDir));
     expect(value).toBeUndefined();
-    expect(ms).toBeLessThan(2000);
+    expect(ms).toBeLessThan(3000);
   });
 
   it('does not hang on a peer that sends headers and then stalls the body', async () => {
@@ -179,14 +207,14 @@ describe('findRunningDaemon', () => {
     );
     const { value, ms } = await timed(findRunningDaemon(projectDir));
     expect(value).toBeUndefined();
-    expect(ms).toBeLessThan(2000);
+    expect(ms).toBeLessThan(3000);
   });
 
   it('lets startup proceed promptly past a silent peer on the recorded port', async () => {
     await record(await silentTcp());
     const { value, ms } = await timed(daemonFor(projectDir));
     expect(value.port).toBeGreaterThan(0);
-    expect(ms).toBeLessThan(2500);
+    expect(ms).toBeLessThan(3500);
   });
 
   it.skipIf(process.platform === 'win32')(
@@ -201,18 +229,16 @@ describe('findRunningDaemon', () => {
     },
   );
 
-  it.fails(
-    'BUG: a stale runtime file whose pid was reused refuses startup because another project owns the port',
-    async () => {
-      // After a crash or reboot the recorded pid can belong to an unrelated live process,
-      // and with every project defaulting to 9147 the port can now be another project's
-      // daemon. The health probe only checks the product name, not which project it serves.
-      const other = await daemonFor(await otherProject());
-      await record(other.port, process.pid);
-      const d = await daemonFor(projectDir);
-      expect(d.port).not.toBe(other.port);
-    },
-  );
+  it("starts over a stale runtime file whose reused pid points at another project's daemon", async () => {
+    // After a crash or reboot the recorded pid can belong to an unrelated live process,
+    // and with every project defaulting to 9147 the port can now be another project's
+    // daemon. That daemon rejects this project's token, so it doesn't count.
+    const other = await daemonFor(await otherProject());
+    await record(other.port, process.pid);
+    expect(await findRunningDaemon(projectDir)).toBeUndefined();
+    const d = await daemonFor(projectDir);
+    expect(d.port).not.toBe(other.port);
+  });
 });
 
 describe('two daemons started at the same moment', () => {
