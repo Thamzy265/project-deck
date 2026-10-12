@@ -106,9 +106,13 @@ describe('main.js startup failures', () => {
     }
   });
 
-  it.fails('BUG: an empty --port is accepted as port 0 instead of rejected', async () => {
-    const run = await runMain(['--project', projectDir, '--port', ''], 'Token in');
-    expect(run.code).toBe(2);
-    expect(run.stderr).toContain('Invalid --port');
-  });
+  it.each(['', 'abc', '0x10', ' 9147', '9147abc', '1e3', '70000'])(
+    'rejects --port %j with one line and exit code 2',
+    async (bad) => {
+      const run = await runMain(['--project', projectDir, '--port', bad], 'Token in');
+      expect(run.code).toBe(2);
+      expect(run.stdout).toBe('');
+      expect(run.stderr).toBe(`Invalid --port: '${bad}' (expected a number from 0 to 65535)\n`);
+    },
+  );
 });

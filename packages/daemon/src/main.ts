@@ -28,9 +28,10 @@ const { values } = parseArgs({
   },
 });
 
-const port = Number(values.port);
+// Digits only: Number() would read '' as 0 and accept '0x10' or ' 9147 '.
+const port = /^\d{1,5}$/.test(values.port) ? Number(values.port) : Number.NaN;
 if (!Number.isInteger(port) || port < 0 || port > 65535) {
-  console.error(`Invalid --port: ${values.port}`);
+  console.error(`Invalid --port: '${values.port}' (expected a number from 0 to 65535)`);
   process.exit(2);
 }
 
