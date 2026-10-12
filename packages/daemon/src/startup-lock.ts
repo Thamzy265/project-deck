@@ -1,4 +1,5 @@
-import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { randomBytes } from 'node:crypto';
+import { link, mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { z } from 'zod';
@@ -33,6 +34,8 @@ export interface StartupLockOptions {
 export interface StartupLockHooks {
   /** Replaces the exclusive create of the lock file. */
   create?: (path: string, content: string) => Promise<void>;
+  /** Runs after a lock has been judged stale, just before it is removed. */
+  beforeStaleRemove?: (path: string) => Promise<void>;
 }
 
 /**
@@ -93,9 +96,8 @@ export async function acquireStartupLock(
     }
     const held = await readLock(path);
     if (held !== undefined && (await isStale(path, held, staleMs))) {
-      // Re-check just before removing, so a lock another waiter has just retaken is kept.
-      if ((await readLock(path))?.raw === held.raw) await rm(path, { force: true });
-      continue;
+      await opts.hooks?.beforeStaleRemove?.(path);
+      if (await removeStale(path, held.raw)) continue;
     }
     if (Date.now() >= deadline) {
       throw new StartupLockBusyError(held?.lock?.pid, await staleIn(path, held, staleMs));
@@ -137,6 +139,43 @@ async function isStale(path: string, held: HeldLock, staleMs: number): Promise<b
   } catch {
     return false;
   }
+}
+
+/**
+ * Removes the lock only if it still holds `staleRaw`. A read-then-delete could delete a
+ * fresh lock another waiter took in between, so the lock is first renamed to a name
+ * only we know (atomic), then checked there. Returns false when the lock couldn't be
+ * moved for now, so the caller waits instead of spinning.
+ */
+async function removeStale(path: string, staleRaw: string): Promise<boolean> {
+  const aside = `${path}.${process.pid}.${randomBytes(6).toString('hex')}.stale`;
+  try {
+    await rename(path, aside);
+  } catch (err) {
+    // ENOENT: another waiter removed it first, so try the create again at once.
+    // EPERM/EBUSY (Windows): it is being replaced right now, so wait and look again.
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT') return true;
+    if (code !== undefined && HELD_CODES.has(code)) return false;
+    throw err;
+  }
+  let moved: string | undefined;
+  try {
+    moved = await readFile(aside, 'utf8');
+  } catch {
+    moved = undefined;
+  }
+  if (moved !== staleRaw) {
+    // We moved another waiter's fresh lock. Put it back without overwriting: link fails
+    // if a newer lock already exists, and then that one wins.
+    try {
+      await link(aside, path);
+    } catch {
+      // A newer lock took its place, or the file system can't link: leave it.
+    }
+  }
+  await rm(aside, { force: true });
+  return true;
 }
 
 async function staleIn(

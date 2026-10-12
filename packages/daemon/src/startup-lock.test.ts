@@ -1,5 +1,15 @@
 import { spawn } from 'node:child_process';
-import { access, mkdir, mkdtemp, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises';
+import {
+  access,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  stat,
+  utimes,
+  writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -154,6 +164,37 @@ describe('acquireStartupLock', () => {
       pid: number;
     };
     expect(lock.pid).toBe(process.pid);
+    await release();
+  });
+
+  it("never removes another waiter's fresh lock that replaced the stale one", async () => {
+    // Waiter A judges the lock stale; before it removes it, waiter B removes the same
+    // stale lock and takes a fresh one. A must leave B's lock alone.
+    await plant(JSON.stringify({ pid: await exitedPid(), createdAt: Date.now() }));
+    const path = startupLockPath(projectDir);
+    const theirs = JSON.stringify({ pid: process.pid, createdAt: Date.now() });
+    let interleaved = 0;
+    const beforeStaleRemove = async (): Promise<void> => {
+      interleaved++;
+      await rm(path);
+      await writeFile(path, theirs, { flag: 'wx' });
+    };
+    await expect(
+      acquireStartupLock(projectDir, { ...FAST, waitMs: 100, hooks: { beforeStaleRemove } }),
+    ).rejects.toBeInstanceOf(StartupLockBusyError);
+    expect(interleaved).toBe(1);
+    expect(await readFile(path, 'utf8')).toBe(theirs);
+    expect(await readdir(join(projectDir, STATE_DIR))).toEqual(['startup.lock']);
+  });
+
+  it('retries the create when another waiter removed the stale lock first', async () => {
+    await plant(JSON.stringify({ pid: await exitedPid(), createdAt: Date.now() }));
+    const path = startupLockPath(projectDir);
+    const beforeStaleRemove = (): Promise<void> => rm(path);
+    const release = await acquireStartupLock(projectDir, { ...FAST, hooks: { beforeStaleRemove } });
+    const lock = JSON.parse(await readFile(path, 'utf8')) as { pid: number };
+    expect(lock.pid).toBe(process.pid);
+    expect(await readdir(join(projectDir, STATE_DIR))).toEqual(['startup.lock']);
     await release();
   });
 
