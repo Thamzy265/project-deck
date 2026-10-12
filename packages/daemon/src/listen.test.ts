@@ -55,6 +55,23 @@ function failingListen(server: HttpServer, code: string): number[] {
   return calls;
 }
 
+/** Makes only the first `listen` call fail with `code`; later calls really listen. */
+function failFirstListen(server: HttpServer, code: string): number[] {
+  const calls: number[] = [];
+  const real = server.listen.bind(server);
+  server.listen = ((port: number, ...rest: unknown[]) => {
+    calls.push(port);
+    if (calls.length === 1) {
+      process.nextTick(() =>
+        server.emit('error', Object.assign(new Error(`listen ${code}: simulated`), { code })),
+      );
+      return server;
+    }
+    return (real as (...args: unknown[]) => HttpServer)(port, ...rest);
+  }) as typeof server.listen;
+  return calls;
+}
+
 describe('listenWithFallback', () => {
   it('falls back to an OS port when 65535 is busy instead of trying 65536', async () => {
     // Already taken by someone else is just as good for this test.
@@ -80,11 +97,31 @@ describe('listenWithFallback', () => {
     expect(port).toBeGreaterThan(0);
   });
 
-  it('rethrows a non-EADDRINUSE error without trying other ports', async () => {
+  it('rethrows an error other than EADDRINUSE or EACCES without trying other ports', async () => {
+    const srv = httpServer();
+    const calls = failingListen(srv, 'EADDRNOTAVAIL');
+    await expect(listenWithFallback(srv, HOST, 5000)).rejects.toMatchObject({
+      code: 'EADDRNOTAVAIL',
+    });
+    expect(calls).toEqual([5000]);
+  });
+
+  it('moves to the next port on EACCES (a Windows reserved port range)', async () => {
+    const start = await freePort();
+    const srv = httpServer();
+    const calls = failFirstListen(srv, 'EACCES');
+    const port = await listenWithFallback(srv, HOST, start, 3);
+    expect(calls[0]).toBe(start);
+    expect(calls.length).toBeGreaterThan(1);
+    expect(port).not.toBe(start);
+    expect(port).toBe((srv.address() as AddressInfo).port);
+  });
+
+  it('rethrows EACCES from the OS-assigned attempt instead of looping', async () => {
     const srv = httpServer();
     const calls = failingListen(srv, 'EACCES');
-    await expect(listenWithFallback(srv, HOST, 80)).rejects.toMatchObject({ code: 'EACCES' });
-    expect(calls).toEqual([80]);
+    await expect(listenWithFallback(srv, HOST, 5000, 2)).rejects.toMatchObject({ code: 'EACCES' });
+    expect(calls).toEqual([5000, 5001, 0]);
   });
 
   it('rethrows EADDRINUSE from the OS-assigned attempt instead of looping', async () => {
