@@ -33,11 +33,14 @@ export function isAlive(pid: number): boolean {
 /**
  * Only a 200 with a status-shaped JSON body counts. Any other status (401 from another
  * project's daemon), a timeout, a stalled body or a connection error means not running.
+ * Redirects are never followed: fetch would forward the token header to wherever a
+ * listener on the recorded port points it, so a 3xx just means not running.
  */
 async function acceptsToken(port: number, token: string): Promise<boolean> {
   try {
     const res = await fetch(`http://127.0.0.1:${port}/api/status`, {
       headers: { [TOKEN_HEADER]: token },
+      redirect: 'manual',
       signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
     });
     if (res.status !== 200) {

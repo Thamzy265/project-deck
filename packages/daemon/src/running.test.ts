@@ -178,6 +178,21 @@ describe('findRunningDaemon', () => {
     expect(await findRunningDaemon(projectDir)).toBe(port);
   });
 
+  it('does not follow a redirect, so the token never reaches another server', async () => {
+    let reached = 0;
+    const target = await httpOn((req, res) => {
+      reached++;
+      status()(req, res);
+    });
+    const port = await httpOn((_req, res) => {
+      res.writeHead(302, { location: `http://127.0.0.1:${target}/api/status` });
+      res.end();
+    });
+    await record(port);
+    expect(await findRunningDaemon(projectDir)).toBeUndefined();
+    expect(reached).toBe(0);
+  });
+
   it('accepts a daemon that answers just under the 2 s limit', async () => {
     const port = await httpOn(status(1500));
     await record(port);
