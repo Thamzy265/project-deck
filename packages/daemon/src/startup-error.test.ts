@@ -38,23 +38,51 @@ describe('formatStartupError', () => {
     expect(line).toContain('a b');
   });
 
-  it.fails('BUG: an error-like object that is not an Error prints [object Object]', () => {
+  it('uses the message of an error-like object that is not an Error', () => {
     const line = formatStartupError({ message: 'listen EADDRNOTAVAIL', code: 'EADDRNOTAVAIL' });
-    expect(line).toContain('EADDRNOTAVAIL');
+    expect(line).toBe('project-deck daemon could not start: listen EADDRNOTAVAIL');
   });
 
-  it.fails('BUG: an Error with an empty message prints nothing after the colon', () => {
+  it('falls back to the code of an error-like object without a message', () => {
+    expect(formatStartupError({ code: 'EADDRNOTAVAIL' })).toBe(
+      'project-deck daemon could not start: EADDRNOTAVAIL',
+    );
+  });
+
+  it('falls back to the code, then the name, when an Error has an empty message', () => {
     const err = Object.assign(new Error(''), { code: 'EADDRNOTAVAIL' });
-    expect(formatStartupError(err)).toContain('EADDRNOTAVAIL');
+    expect(formatStartupError(err)).toBe('project-deck daemon could not start: EADDRNOTAVAIL');
+    expect(formatStartupError(new TypeError('  '))).toBe(
+      'project-deck daemon could not start: TypeError',
+    );
   });
 
-  it.fails('BUG: an AggregateError with no message of its own drops the inner reasons', () => {
+  it('joins the inner reasons of an AggregateError with no message of its own', () => {
     // Node's own multi-address connect failures are shaped like this.
-    const err = new AggregateError([new Error('connect ECONNREFUSED 127.0.0.1:1')], '');
-    expect(formatStartupError(err)).toContain('ECONNREFUSED');
+    const err = new AggregateError(
+      [new Error('connect ECONNREFUSED 127.0.0.1:1'), new Error('connect ECONNREFUSED ::1:1')],
+      '',
+    );
+    expect(formatStartupError(err)).toBe(
+      'project-deck daemon could not start: connect ECONNREFUSED 127.0.0.1:1; connect ECONNREFUSED ::1:1',
+    );
   });
 
-  it.fails('BUG: a null-prototype object makes the formatter itself throw', () => {
-    expect(() => formatStartupError(Object.create(null))).not.toThrow();
+  it('prints a safe line for a null-prototype object instead of throwing', () => {
+    expect(formatStartupError(Object.create(null))).toBe(
+      'project-deck daemon could not start: unknown error',
+    );
+  });
+
+  it('does not throw when reading the error itself throws', () => {
+    const hostile = new Proxy(
+      {},
+      {
+        get() {
+          throw new Error('trap');
+        },
+      },
+    );
+    expect(formatStartupError(hostile)).toBe('project-deck daemon could not start: unknown error');
   });
 });
