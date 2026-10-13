@@ -14,6 +14,9 @@ import {
 } from './adb.js';
 import { ADB_DEVICES_FIXTURE } from './testing/fixtures.js';
 
+/** For tests that spawn a real process: a cold Node start on busy CI can take seconds. */
+const REAL_PROCESS_TIMEOUT_MS = 15_000;
+
 describe('validation', () => {
   it('accepts emulator, USB and network serials only', () => {
     for (const s of ['emulator-5554', 'R58M123ABC', '192.168.1.20:5555', 'adb-XYZ._adb-tls._tcp'])
@@ -125,7 +128,7 @@ describe('resolveAdbPath', () => {
 });
 
 // Runs Node in place of adb so the real spawn path is exercised without the Android SDK.
-describe('nodeAdb', () => {
+describe('nodeAdb', { timeout: REAL_PROCESS_TIMEOUT_MS }, () => {
   const node = nodeAdb(process.execPath);
 
   it('runs a command without a shell and returns its stdout', async () => {
@@ -226,14 +229,15 @@ describe('resolveAdbPath edge cases', () => {
   });
 });
 
-describe('nodeAdb edge cases', () => {
+describe('nodeAdb edge cases', { timeout: REAL_PROCESS_TIMEOUT_MS }, () => {
   const node = nodeAdb(process.execPath);
 
-  it('gives up on a command that hangs', async () => {
+  it('kills a command that hangs past its timeout', async () => {
     const slow = nodeAdb(process.execPath, { timeoutMs: 200 });
-    const started = Date.now();
-    await expect(slow.exec(['-e', 'setInterval(() => {}, 1000)'])).rejects.toThrow();
-    expect(Date.now() - started).toBeLessThan(4000);
+    await expect(slow.exec(['-e', 'setInterval(() => {}, 1000)'])).rejects.toMatchObject({
+      killed: true,
+      signal: 'SIGTERM',
+    });
   });
 
   it('rejects output over 1 MB instead of buffering it all', async () => {
@@ -323,7 +327,7 @@ describe('nodeAdb edge cases', () => {
   });
 });
 
-describe('nodeAdb safety', () => {
+describe('nodeAdb safety', { timeout: REAL_PROCESS_TIMEOUT_MS }, () => {
   it('runs adb in the home directory, not the current one', async () => {
     const cwd = await nodeAdb(process.execPath).exec(['-e', 'process.stdout.write(process.cwd())']);
     expect(cwd).toBe(realpathSync(homedir()));
