@@ -1,6 +1,13 @@
 import type { LogEntry, LogFeedFactory, RunningApp } from '@project-deck/core';
 import type { AdbRunner } from './adb.js';
-import { AdbMissingError, isPackageName, isPid, nodeAdb, parseDevices } from './adb.js';
+import {
+  AdbExitError,
+  AdbMissingError,
+  isPackageName,
+  isPid,
+  nodeAdb,
+  parseDevices,
+} from './adb.js';
 import { ThreadtimeParser } from './threadtime.js';
 
 export interface AndroidLogFeedOptions {
@@ -20,6 +27,14 @@ export interface AndroidLogFeedOptions {
 
 const DEFAULT_FLUSH_AFTER_MS = 100;
 export const DEFAULT_DROP_TAGS: readonly string[] = ['flutter'];
+
+function exitDetail(err: Error | undefined): string {
+  if (err === undefined) return 'code 0';
+  if (err instanceof AdbExitError) {
+    return err.code === null ? `signal ${err.signal ?? 'unknown'}` : `code ${err.code}`;
+  }
+  return err.message;
+}
 
 /**
  * Android native logs for the attached app: `adb logcat --pid` on the device that
@@ -64,8 +79,15 @@ export class AndroidLogFeed implements LogFeedFactory {
         if (closed) return;
         clearTimeout(timer);
         parser.flush();
-        if (err === undefined) return;
         this.report(`Android logcat stopped for pid ${pid} on ${serial}`, err);
+        // Say so in the log itself; otherwise native logs just go quiet. No restart.
+        onEntry({
+          ts: (this.opts.now?.() ?? new Date()).getTime(),
+          level: 'warn',
+          source: 'tool',
+          tag: 'logs-android',
+          message: `Android native logs stopped: logcat exited (${exitDetail(err)})`,
+        });
       },
     });
     return () => {

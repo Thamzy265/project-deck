@@ -10,6 +10,16 @@ export class AdbMissingError extends Error {
   }
 }
 
+/** A streaming adb command ended on its own with a failure exit. */
+export class AdbExitError extends Error {
+  constructor(
+    readonly code: number | null,
+    readonly signal: string | null,
+  ) {
+    super(`adb exited with ${code === null ? `signal ${signal ?? '?'}` : `code ${code}`}`);
+  }
+}
+
 export interface AdbStream {
   /** Stops the adb client process. The app on the device is not affected. */
   kill(): void;
@@ -140,12 +150,7 @@ export function nodeAdb(path: string = resolveAdbPath(), opts: NodeAdbOptions = 
       child.stdout.on('error', (err) => finish(err));
       child.on('close', (code, signal) => {
         if (killed || code === 0) finish(undefined);
-        else
-          finish(
-            new Error(
-              `adb exited with ${code === null ? `signal ${signal ?? '?'}` : `code ${code}`}`,
-            ),
-          );
+        else finish(new AdbExitError(code, signal));
       });
       return {
         kill() {

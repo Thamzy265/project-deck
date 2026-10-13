@@ -2,7 +2,7 @@ import type { LogEntry, RunningApp } from '@project-deck/core';
 import { Registry } from '@project-deck/core';
 import { describe, expect, it, vi } from 'vitest';
 import type { AdbStreamHandlers } from './adb.js';
-import { AdbMissingError } from './adb.js';
+import { AdbExitError, AdbMissingError } from './adb.js';
 import type { AndroidLogFeedOptions } from './feed.js';
 import { AndroidLogFeed } from './feed.js';
 import { FakeAdb, FakeAdbStream } from './testing/fake-adb.js';
@@ -284,13 +284,59 @@ describe('AndroidLogFeed edge cases', () => {
     },
   );
 
-  it.fails('BUG: says so when logcat ends on its own without an error', async () => {
+  it('logs and adds a warning entry when logcat ends on its own without an error', async () => {
     const adb = new FakeAdb();
-    const { open, log } = setup(adb);
+    const { open, log, entries } = setup(adb, { now: () => new Date(2026, 9, 13, 15) });
     const close = await open();
     adb.streams[0]?.end();
     expect(log).toHaveBeenCalledWith(expect.stringMatching(/logcat stopped/), undefined);
+    expect(entries).toEqual([
+      {
+        ts: new Date(2026, 9, 13, 15).getTime(),
+        level: 'warn',
+        source: 'tool',
+        tag: 'logs-android',
+        message: 'Android native logs stopped: logcat exited (code 0)',
+      },
+    ]);
     await close?.();
+  });
+
+  it('says which exit code or signal stopped logcat, after the last native entry', async () => {
+    const adb = new FakeAdb();
+    const { open, entries } = setup(adb, { flushAfterMs: 60_000 });
+    const close = await open();
+    adb.streams[0]?.emit(`${header}last words\n`);
+    adb.streams[0]?.end(new AdbExitError(255, null));
+    expect(entries.map((e) => [e.source, e.message])).toEqual([
+      ['native', 'last words'],
+      ['tool', 'Android native logs stopped: logcat exited (code 255)'],
+    ]);
+    await close?.();
+  });
+
+  it('names the signal or error when logcat has no exit code', async () => {
+    for (const [err, detail] of [
+      [new AdbExitError(null, 'SIGKILL'), 'signal SIGKILL'],
+      [new AdbMissingError('adb'), "adb was not found (looked for 'adb')"],
+    ] as const) {
+      const adb = new FakeAdb();
+      const { open, entries } = setup(adb);
+      const close = await open();
+      adb.streams[0]?.end(err);
+      expect(entries.at(-1)?.message).toBe(
+        `Android native logs stopped: logcat exited (${detail})`,
+      );
+      await close?.();
+    }
+  });
+
+  it('adds no warning entry when the feed itself closes logcat', async () => {
+    const adb = new FakeAdb();
+    const { open, entries } = setup(adb);
+    const close = await open();
+    await close?.();
+    expect(entries).toEqual([]);
   });
 
   it('does not restart logcat after it stops on its own', async () => {
