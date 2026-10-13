@@ -118,6 +118,7 @@ export interface RunningApp {
   id: string;                    // stable for the life of the app
   name: string;                  // e.g. package name
   device?: DeviceInfo;
+  pid?: number;                  // process id on its device, once known (after attach)
   framework: 'flutter' | 'compose' | 'web';
   startedBy: 'ide' | 'terminal' | 'mcp' | 'unknown';
 }
