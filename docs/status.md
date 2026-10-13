@@ -1,6 +1,6 @@
 # Team status log
 
-Kept by the senior developer (`deck-lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
+Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
 
 ## 2026-10-12 — M1 at risk (connector approved; port clash and CI found)
 
