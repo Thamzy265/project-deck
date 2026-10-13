@@ -94,7 +94,7 @@ The plan has five milestones (M1 core + daemon + attach, M2 dashboard, M3 Drift 
 
 The user is the **project manager (PM)**. The team is the [`my-tech-team`](https://github.com/Thamzy265/my-tech-team) plugin, v0.1.0, enabled in `.claude/settings.json`. Its roles are `/my-tech-team:lead`, `/my-tech-team:developer`, `/my-tech-team:tester`, `/my-tech-team:reviewer`, `/my-tech-team:qa` and `/my-tech-team:marketer`. Claude acts as the lead and runs the flow: it briefs each role, enforces the gates, merges and reports to the PM. Claude Code loads the repo settings only after the folder is trusted, and headless `claude -p` runs ignore them.
 
-Project rules here override the plugin's generic defaults where they differ. For example, PR descriptions use the sections `Changes`, `Reason`, `Verification` and `Limitations` from "Git workflow".
+Project rules set paths, commands and formats, and add rules. They never relax a plugin gate, the never-deferred list, or the rule that only the PM accepts a known risk: a confirmed finding that is not fixed needs the PM's dated decision in docs/status.md. For example, PR descriptions use the sections `Changes`, `Reason`, `Verification` and `Limitations` from "Git workflow".
 
 **Settings the plugin reads**
 
