@@ -1,6 +1,6 @@
 import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, posix, win32 } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import {
   AdbMissingError,
@@ -59,16 +59,16 @@ describe('resolveAdbPath', () => {
     const exists = (p: string): boolean => p.startsWith('/sdk');
     expect(
       resolveAdbPath({ ANDROID_HOME: '/sdk1', ANDROID_SDK_ROOT: '/sdk2' }, 'darwin', '/h', exists),
-    ).toBe(join('/sdk1', 'platform-tools', 'adb'));
+    ).toBe(posix.join('/sdk1', 'platform-tools', 'adb'));
     expect(resolveAdbPath({ ANDROID_SDK_ROOT: '/sdk2' }, 'darwin', '/h', exists)).toBe(
-      join('/sdk2', 'platform-tools', 'adb'),
+      posix.join('/sdk2', 'platform-tools', 'adb'),
     );
   });
 
   it("falls back to Android Studio's default SDK, then to adb on the PATH", () => {
-    const studio = join('/h', 'Library', 'Android', 'sdk', 'platform-tools', 'adb');
+    const studio = posix.join('/h', 'Library', 'Android', 'sdk', 'platform-tools', 'adb');
     expect(resolveAdbPath({}, 'darwin', '/h', (p) => p === studio)).toBe(studio);
-    const onPath = join('/opt/homebrew/bin', 'adb');
+    const onPath = posix.join('/opt/homebrew/bin', 'adb');
     expect(
       resolveAdbPath({ PATH: '/usr/bin:/opt/homebrew/bin' }, 'darwin', '/h', (p) => p === onPath),
     ).toBe(onPath);
@@ -80,11 +80,11 @@ describe('resolveAdbPath', () => {
     for (const sdk of ['sdk', '.', './sdk', '..']) {
       expect(
         resolveAdbPath({ ANDROID_HOME: sdk, ANDROID_SDK_ROOT: sdk }, 'linux', '/h', anywhere),
-      ).toBe(join('/h', 'Android', 'Sdk', 'platform-tools', 'adb'));
+      ).toBe(posix.join('/h', 'Android', 'Sdk', 'platform-tools', 'adb'));
     }
     expect(
       resolveAdbPath({ LOCALAPPDATA: 'AppData', PATH: 'C:\\tools' }, 'win32', 'C:\\h', anywhere),
-    ).toBe(join('C:\\tools', 'adb.exe'));
+    ).toBe(win32.join('C:\\tools', 'adb.exe'));
   });
 
   it('never resolves adb from the current directory or a relative PATH entry', () => {
@@ -94,22 +94,22 @@ describe('resolveAdbPath', () => {
     ).toBeUndefined();
     expect(
       resolveAdbPath({ PATH: '.:bin:/opt/bin' }, 'linux', '/h', (p) => !p.includes('Sdk')),
-    ).toBe(join('/opt/bin', 'adb'));
+    ).toBe(posix.join('/opt/bin', 'adb'));
   });
 
   it('walks a Windows PATH (either spelling) for adb.exe, skipping . and relative entries', () => {
     const notSdk = (p: string): boolean => !p.includes('Sdk');
     expect(
       resolveAdbPath({ PATH: '.;tools;C:\\platform-tools' }, 'win32', 'C:\\Users\\me', notSdk),
-    ).toBe(join('C:\\platform-tools', 'adb.exe'));
+    ).toBe(win32.join('C:\\platform-tools', 'adb.exe'));
     expect(resolveAdbPath({ Path: '.;C:\\platform-tools' }, 'win32', 'C:\\Users\\me', notSdk)).toBe(
-      join('C:\\platform-tools', 'adb.exe'),
+      win32.join('C:\\platform-tools', 'adb.exe'),
     );
     expect(resolveAdbPath({ PATH: '.;tools' }, 'win32', 'C:\\Users\\me', notSdk)).toBeUndefined();
   });
 
   it('uses adb.exe under LOCALAPPDATA on Windows', () => {
-    const studio = join(
+    const studio = win32.join(
       'C:\\Users\\me\\AppData\\Local',
       'Android',
       'Sdk',
@@ -198,14 +198,28 @@ describe('parseDevices edge cases', () => {
 });
 
 describe('resolveAdbPath edge cases', () => {
+  // Paths follow the target platform's rules, whatever the host, so CI on any OS agrees.
+  it('builds paths with the target platform, not the host', () => {
+    const anywhere = (): boolean => true;
+    expect(resolveAdbPath({}, 'darwin', '/h', anywhere)).toBe(
+      '/h/Library/Android/sdk/platform-tools/adb',
+    );
+    expect(resolveAdbPath({ PATH: 'C:\\tools' }, 'win32', 'C:\\h', anywhere)).toBe(
+      'C:\\tools\\adb.exe',
+    );
+    expect(
+      resolveAdbPath({ ANDROID_HOME: 'D:\\sdk' }, 'win32', 'C:\\h', (p) => p.startsWith('D:')),
+    ).toBe('D:\\sdk\\platform-tools\\adb.exe');
+  });
+
   it('keeps an SDK path with spaces as one path', () => {
     const sdk = '/Users/me/Android SDK';
-    const want = join(sdk, 'platform-tools', 'adb');
+    const want = posix.join(sdk, 'platform-tools', 'adb');
     expect(resolveAdbPath({ ANDROID_HOME: sdk }, 'darwin', '/h', (p) => p === want)).toBe(want);
   });
 
   it('skips an SDK without adb and tries the next one', () => {
-    const want = join('/sdk2', 'platform-tools', 'adb');
+    const want = posix.join('/sdk2', 'platform-tools', 'adb');
     expect(
       resolveAdbPath(
         { ANDROID_HOME: '/sdk1', ANDROID_SDK_ROOT: '/sdk2' },
@@ -217,7 +231,7 @@ describe('resolveAdbPath edge cases', () => {
   });
 
   it('uses ~/Android/Sdk on Linux and ignores empty variables', () => {
-    const want = join('/home/me', 'Android', 'Sdk', 'platform-tools', 'adb');
+    const want = posix.join('/home/me', 'Android', 'Sdk', 'platform-tools', 'adb');
     expect(
       resolveAdbPath(
         { ANDROID_HOME: '', ANDROID_SDK_ROOT: '' },

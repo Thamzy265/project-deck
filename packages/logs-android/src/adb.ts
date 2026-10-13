@@ -1,7 +1,7 @@
 import { execFile, spawn } from 'node:child_process';
 import { statSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join, posix, win32 } from 'node:path';
+import { posix, win32 } from 'node:path';
 
 /** adb itself is not installed or not where we looked. */
 export class AdbMissingError extends Error {
@@ -112,20 +112,22 @@ export function resolveAdbPath(
   exists: (path: string) => boolean = isFile,
 ): string | undefined {
   const win = platform === 'win32';
+  // The target platform's path rules, not the host's, so results don't depend on where this runs.
+  const path = win ? win32 : posix;
   const exe = win ? 'adb.exe' : 'adb';
   // A relative directory would resolve against the cwd, so every source must be absolute.
   const absolute = (dir: string | undefined): dir is string =>
-    dir !== undefined && (win ? win32.isAbsolute(dir) : posix.isAbsolute(dir));
+    dir !== undefined && path.isAbsolute(dir);
   const sdks: (string | undefined)[] = [env.ANDROID_HOME, env.ANDROID_SDK_ROOT];
-  if (platform === 'darwin') sdks.push(join(home, 'Library', 'Android', 'sdk'));
+  if (platform === 'darwin') sdks.push(path.join(home, 'Library', 'Android', 'sdk'));
   else if (win) {
-    if (absolute(env.LOCALAPPDATA)) sdks.push(join(env.LOCALAPPDATA, 'Android', 'Sdk'));
-  } else sdks.push(join(home, 'Android', 'Sdk'));
+    if (absolute(env.LOCALAPPDATA)) sdks.push(path.join(env.LOCALAPPDATA, 'Android', 'Sdk'));
+  } else sdks.push(path.join(home, 'Android', 'Sdk'));
   const dirs = [
-    ...sdks.filter(absolute).map((sdk) => join(sdk, 'platform-tools')),
+    ...sdks.filter(absolute).map((sdk) => path.join(sdk, 'platform-tools')),
     ...(env.PATH ?? env.Path ?? '').split(win ? ';' : ':').filter(absolute),
   ];
-  const candidates = dirs.map((dir) => join(dir, exe));
+  const candidates = dirs.map((dir) => path.join(dir, exe));
   return candidates.find((candidate) => exists(candidate));
 }
 
