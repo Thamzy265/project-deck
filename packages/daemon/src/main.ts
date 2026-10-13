@@ -4,17 +4,18 @@
  *   node packages/daemon/dist/main.js [--port 9147] [--project <dir>]
  *     [--dtd-uri <ws://…>]... [--vm-service-uri <ws://…|http://…>]... [--fake]
  * If the port is busy it uses the next free one; clients read it from runtime.json.
- * By default it discovers running Dart/Flutter apps through every local DTD.
+ * By default it discovers running Dart/Flutter apps through every local DTD, and streams
+ * Android native logs (adb logcat) for an attached app on an Android device.
  * Addresses can also come from DECK_DTD_URIS and DECK_VM_SERVICE_URIS (comma-separated).
  * They carry auth codes, and env vars keep them out of `ps`, unlike the flags.
  * `--fake` uses an in-memory app instead, so the API can be exercised without Flutter.
  */
 import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { DartConnector } from '@project-deck/connector-dart';
 import { Registry } from '@project-deck/core';
 import { FakeAppConnector, fakeApp } from '@project-deck/core/testing';
 import { DEFAULT_PORT, startDaemon } from './daemon.js';
+import { registerLive } from './live.js';
 import { formatStartupError } from './startup-error.js';
 import { connectorUris } from './uri-options.js';
 
@@ -52,11 +53,8 @@ if (values.fake) {
     { dtdUris: values['dtd-uri'], vmServiceUris: values['vm-service-uri'] },
     process.env,
   );
-  registry.connectors.register(
-    new DartConnector({
-      ...uris,
-      log: (message, err) => console.error(message, err instanceof Error ? err.message : ''),
-    }),
+  registerLive(registry, uris, (message, err) =>
+    console.error(message, err instanceof Error ? err.message : ''),
   );
 }
 
