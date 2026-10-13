@@ -297,12 +297,18 @@ describe('nodeAdb edge cases', () => {
         { onData: () => undefined, onExit: resolve },
       );
     });
-    await vi.waitFor(() => expect(existsSync(pidFile)).toBe(true));
-    const childPid = Number(readFileSync(pidFile, 'utf8'));
-    rmSync(pidFile);
-    stream?.kill();
-    expect(await exited).toBeUndefined();
-    expect(() => process.kill(childPid, 0)).toThrow();
+    try {
+      // A cold Node start on a busy CI machine can take seconds.
+      await vi.waitFor(() => expect(existsSync(pidFile)).toBe(true), { timeout: 10_000 });
+      const childPid = Number(readFileSync(pidFile, 'utf8'));
+      stream?.kill();
+      expect(await exited).toBeUndefined();
+      expect(() => process.kill(childPid, 0)).toThrow();
+    } finally {
+      // Never leave the child running if an assertion above failed.
+      stream?.kill();
+      rmSync(pidFile, { force: true });
+    }
   });
 
   it.skipIf(process.platform === 'win32')('runs adb from a path with spaces', async () => {
