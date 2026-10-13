@@ -4,7 +4,7 @@ Date: 2026-10-13. Status: approved by the PM (deck: [docs/slides/team-plugin.htm
 
 ## Context
 
-The team-role skills began here as `.claude/skills/deck-*` (PR #1). They are now released as the public plugin [`my-tech-team` v0.1.0](https://github.com/Thamzy265/my-tech-team/releases/tag/v0.1.0), which is generic. The plugin adds a marketer role, MVP phases with a Later list, system-design, UI and privacy checks, and slides for large items. Keeping two copies would let them drift apart.
+The team-role skills began here as `.claude/skills/deck-*` (PR #1). They are now released as the public plugin [`my-tech-team` v0.2.0](https://github.com/Thamzy265/my-tech-team/releases/tag/v0.2.0), which is generic. The plugin adds a marketer role, MVP phases with a Later list, system-design, UI and privacy checks, and slides for large items. Keeping two copies would let them drift apart.
 
 ## Requirements and non-goals
 
@@ -14,7 +14,7 @@ The team-role skills began here as `.claude/skills/deck-*` (PR #1). They are now
 
 ## Decision
 
-1. `.claude/settings.json` declares the marketplace (GitHub `Thamzy265/my-tech-team`, pinned to `ref: v0.1.0`) in `extraKnownMarketplaces`, and enables `my-tech-team@my-tech-team` in `enabledPlugins`.
+1. `.claude/settings.json` declares the marketplace (GitHub `Thamzy265/my-tech-team`, pinned to `ref: v0.2.0`) in `extraKnownMarketplaces`, and enables `my-tech-team@my-tech-team` in `enabledPlugins`.
 2. Delete `.claude/skills/deck-*`.
 3. CLAUDE.md: replace "Team roles" with "Team setup" (paths, commands, phase, privacy regions and per-role project rules).
 4. `docs/PLAN.md` gains an empty "Later" section. `docs/status.md` gains a switch-over entry. The 2026-10-12 entry is already on `main`.
@@ -23,7 +23,7 @@ Options considered: pin to a tag (chosen; upgrades are a one-line PR the PM appr
 
 ## Trust boundaries and abuse cases
 
-- New outside source: the plugin repo on GitHub. It contains skills only, with no hooks, MCP servers or scripts.
+- New outside source: the plugin repo on GitHub. It contains skills and, from v0.2.0, one Claude Code hook: a guard script that asks the PM before risky Bash commands and never denies. It has no MCP servers.
 - Abuse case: a bad change to the skills repo silently changes agent behaviour here. Mitigations: the tag pin; Claude Code ignores repo settings until the folder is trusted; upgrades go through a PR.
 
 ## Rollout and rollback

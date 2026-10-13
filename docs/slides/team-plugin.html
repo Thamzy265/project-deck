@@ -364,7 +364,7 @@
               <ul>
                 <li>
                   <code>.claude/settings.json</code>: add the marketplace and enable the plugin,
-                  pinned to v0.1.0
+                  pinned to v0.2.0
                 </li>
                 <li>Delete <code>.claude/skills/deck-*</code></li>
                 <li>
@@ -397,10 +397,10 @@
       <section class="slide" aria-label="Options">
         <div class="inner">
           <p class="kicker">Options</p>
-          <h2>Pin to v0.1.0, or follow the latest version?</h2>
+          <h2>Pin to v0.2.0, or follow the latest version?</h2>
           <div class="grid g2">
             <div class="card">
-              <h3>Option A: pin to the v0.1.0 tag</h3>
+              <h3>Option A: pin to the v0.2.0 tag</h3>
               <ul>
                 <li>project-deck changes only when you choose to upgrade</li>
                 <li>Each upgrade is a one-line PR</li>
@@ -493,8 +493,8 @@
               <h3>Trust boundary</h3>
               <p>
                 A new outside source: the plugin is fetched from
-                <code>Thamzy265/my-tech-team</code> on GitHub. It contains skills only, with no
-                hooks, MCP servers or scripts.
+                <code>Thamzy265/my-tech-team</code> on GitHub. It contains skills and one guard hook
+                that asks before risky Bash commands. It has no MCP servers.
               </p>
             </div>
             <div class="card">
@@ -579,7 +579,7 @@
             <ul>
               <li>Open project-deck in Claude Code and trust the folder</li>
               <li>
-                Run <code>/plugin</code> and see <code>my-tech-team</code> enabled, version 0.1.0
+                Run <code>/plugin</code> and see <code>my-tech-team</code> enabled, version 0.2.0
               </li>
               <li>
                 Type <code>/my-tech-team:lead</code> and ask "where are we?" to get an update in the
@@ -597,7 +597,7 @@
           <h2>Four answers before I brief the developer</h2>
           <div class="grid g2">
             <div class="card accent">
-              <h3>1. Pin to v0.1.0?</h3>
+              <h3>1. Pin to v0.2.0?</h3>
               <p>Recommendation: yes (Option A).</p>
             </div>
             <div class="card accent">
