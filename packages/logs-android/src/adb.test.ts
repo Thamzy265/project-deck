@@ -72,6 +72,18 @@ describe('resolveAdbPath', () => {
     expect(resolveAdbPath({ PATH: '/usr/bin' }, 'darwin', '/h', none)).toBeUndefined();
   });
 
+  it('ignores relative SDK variables, which would resolve against the cwd', () => {
+    const anywhere = (): boolean => true;
+    for (const sdk of ['sdk', '.', './sdk', '..']) {
+      expect(
+        resolveAdbPath({ ANDROID_HOME: sdk, ANDROID_SDK_ROOT: sdk }, 'linux', '/h', anywhere),
+      ).toBe(join('/h', 'Android', 'Sdk', 'platform-tools', 'adb'));
+    }
+    expect(
+      resolveAdbPath({ LOCALAPPDATA: 'AppData', PATH: 'C:\\tools' }, 'win32', 'C:\\h', anywhere),
+    ).toBe(join('C:\\tools', 'adb.exe'));
+  });
+
   it('never resolves adb from the current directory or a relative PATH entry', () => {
     // Every candidate "exists", so only the PATH filtering decides.
     expect(

@@ -113,18 +113,19 @@ export function resolveAdbPath(
 ): string | undefined {
   const win = platform === 'win32';
   const exe = win ? 'adb.exe' : 'adb';
-  const sdks = [env.ANDROID_HOME, env.ANDROID_SDK_ROOT];
+  // A relative directory would resolve against the cwd, so every source must be absolute.
+  const absolute = (dir: string | undefined): dir is string =>
+    dir !== undefined && (win ? win32.isAbsolute(dir) : posix.isAbsolute(dir));
+  const sdks: (string | undefined)[] = [env.ANDROID_HOME, env.ANDROID_SDK_ROOT];
   if (platform === 'darwin') sdks.push(join(home, 'Library', 'Android', 'sdk'));
   else if (win) {
-    if (env.LOCALAPPDATA !== undefined) sdks.push(join(env.LOCALAPPDATA, 'Android', 'Sdk'));
+    if (absolute(env.LOCALAPPDATA)) sdks.push(join(env.LOCALAPPDATA, 'Android', 'Sdk'));
   } else sdks.push(join(home, 'Android', 'Sdk'));
-  const candidates = sdks
-    .filter((sdk) => sdk !== undefined && sdk !== '')
-    .map((sdk) => join(sdk ?? '', 'platform-tools', exe));
-  const pathVar = env.PATH ?? env.Path ?? '';
-  for (const dir of pathVar.split(win ? ';' : ':')) {
-    if (win ? win32.isAbsolute(dir) : posix.isAbsolute(dir)) candidates.push(join(dir, exe));
-  }
+  const dirs = [
+    ...sdks.filter(absolute).map((sdk) => join(sdk, 'platform-tools')),
+    ...(env.PATH ?? env.Path ?? '').split(win ? ';' : ':').filter(absolute),
+  ];
+  const candidates = dirs.map((dir) => join(dir, exe));
   return candidates.find((candidate) => exists(candidate));
 }
 
