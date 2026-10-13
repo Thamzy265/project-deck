@@ -14,7 +14,8 @@ const androidApp = fakeApp({
 function setup(adb: FakeAdb) {
   const registry = new Registry();
   registry.connectors.register(new FakeAppConnector('fake', [androidApp]));
-  registry.logFeeds.register(new AndroidLogFeed({ adb, flushAfterMs: 5 }));
+  // Held entries come out on close, so assertions follow manager.stop() instead of a timer.
+  registry.logFeeds.register(new AndroidLogFeed({ adb, flushAfterMs: 60_000, drainQuietMs: 0 }));
   const bus = new EventBus<DeckEvents>();
   const logged: LogEntry[] = [];
   bus.onAny((type, payload) => {
@@ -31,12 +32,13 @@ describe('AppManager with the Android logcat feed', () => {
     await manager.start();
     await vi.waitFor(() => expect(adb.streams).toHaveLength(1));
     adb.streams[0]?.emit(THREADTIME_FIXTURE);
-    await vi.waitFor(() => expect(logged).toHaveLength(9));
-    expect(logged.every((e) => e.source === 'native')).toBe(true);
-    const buffered = (await manager.logs()?.query({ limit: 100 })) ?? [];
-    expect(buffered.filter((e) => e.source === 'native')).toHaveLength(9);
+    const buffer = manager.logs();
     await manager.stop();
     expect(adb.streams[0]?.killed).toBe(true);
+    expect(logged).toHaveLength(9);
+    expect(logged.every((e) => e.source === 'native')).toBe(true);
+    const buffered = (await buffer?.query({ limit: 100 })) ?? [];
+    expect(buffered.filter((e) => e.source === 'native')).toHaveLength(9);
   });
 
   it('kills logcat on detach even when detach arrives during the device lookup', async () => {

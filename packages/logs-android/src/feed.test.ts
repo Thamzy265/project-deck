@@ -14,6 +14,10 @@ import {
   THREADTIME_FIXTURE,
 } from './testing/fixtures.js';
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 const androidApp: RunningApp = {
   id: 'dart-1',
   name: FIXTURE_PACKAGE,
@@ -37,8 +41,15 @@ const logcatArgs = (serial: string): string[] => [
 
 function setup(adb: FakeAdb, opts: Omit<AndroidLogFeedOptions, 'adb'> = {}) {
   const log = vi.fn();
-  // No drain by default, so tests that close don't wait; the drain has its own tests.
-  const feed = new AndroidLogFeed({ adb, log, flushAfterMs: 5, drainQuietMs: 0, ...opts });
+  // No quiet-period flush and no drain by default: entries held by the parser come out on
+  // close, so tests assert after `await close()` instead of racing timers.
+  const feed = new AndroidLogFeed({
+    adb,
+    log,
+    flushAfterMs: 60_000,
+    drainQuietMs: 0,
+    ...opts,
+  });
   const entries: LogEntry[] = [];
   const open = (app: RunningApp = androidApp) => feed.open(app, (e) => entries.push(e));
   return { feed, log, entries, open };
@@ -59,10 +70,10 @@ describe('AndroidLogFeed', () => {
     const [stream] = adb.streams;
     expect(stream?.args).toEqual(logcatArgs(FIXTURE_SERIAL));
     stream?.emit(THREADTIME_FIXTURE);
-    await vi.waitFor(() => expect(entries).toHaveLength(9));
+    await close?.();
+    expect(entries).toHaveLength(9);
     expect(entries.every((e) => e.source === 'native')).toBe(true);
     expect(entries.at(-1)).toMatchObject({ level: 'fatal', tag: 'libc' });
-    await close?.();
   });
 
   it('asks the device its API level with a fixed getprop', async () => {
@@ -114,9 +125,9 @@ describe('AndroidLogFeed', () => {
     const close = await open();
     expect(adb.streams[0]?.args).toEqual(logcatArgs(FIXTURE_SERIAL));
     adb.streams[0]?.emit(EPOCH_FIXTURE);
-    await vi.waitFor(() => expect(entries).toHaveLength(4));
-    expect(entries[0]?.ts).toBe(1697050000123);
     await close?.();
+    expect(entries).toHaveLength(4);
+    expect(entries[0]?.ts).toBe(1697050000123);
   });
 
   it("drops lines tagged 'flutter' by default; the VM service already has them", async () => {
@@ -124,10 +135,10 @@ describe('AndroidLogFeed', () => {
     const { entries, open } = setup(adb);
     const close = await open();
     adb.streams[0]?.emit(THREADTIME_FIXTURE);
-    await vi.waitFor(() => expect(entries).toHaveLength(9));
+    await close?.();
+    expect(entries).toHaveLength(9);
     expect(entries.some((e) => e.tag === 'flutter')).toBe(false);
     expect(entries.filter((e) => e.tag === 'FlutterJNI')).toHaveLength(2);
-    await close?.();
   });
 
   it('keeps flutter lines when dropTags is empty', async () => {
@@ -135,9 +146,9 @@ describe('AndroidLogFeed', () => {
     const { entries, open } = setup(adb, { dropTags: [] });
     const close = await open();
     adb.streams[0]?.emit(THREADTIME_FIXTURE);
-    await vi.waitFor(() => expect(entries).toHaveLength(11));
-    expect(entries.filter((e) => e.tag === 'flutter')).toHaveLength(2);
     await close?.();
+    expect(entries).toHaveLength(11);
+    expect(entries.filter((e) => e.tag === 'flutter')).toHaveLength(2);
   });
 
   it('drops a whole multi-line flutter entry without touching its neighbours', async () => {
@@ -250,22 +261,26 @@ describe('AndroidLogFeed', () => {
   });
 
   it('emits a held multi-line entry once the stream goes quiet', async () => {
+    vi.useFakeTimers();
     const adb = new FakeAdb();
-    const { open, entries } = setup(adb);
+    const { open, entries } = setup(adb, { flushAfterMs: 100 });
     const close = await open();
     adb.streams[0]?.emit(
       '10-13 14:02:35.442  4242  4242 E AndroidRuntime: FATAL EXCEPTION: main\n',
     );
     adb.streams[0]?.emit('10-13 14:02:35.442  4242  4242 E AndroidRuntime: \tat a.B.c(B.java:1)\n');
-    await vi.waitFor(() =>
-      expect(entries).toEqual([
-        expect.objectContaining({
-          message: 'FATAL EXCEPTION: main',
-          stack: '\tat a.B.c(B.java:1)',
-        }),
-      ]),
-    );
-    await close?.();
+    await vi.advanceTimersByTimeAsync(99);
+    expect(entries).toEqual([]);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(entries).toEqual([
+      expect.objectContaining({
+        message: 'FATAL EXCEPTION: main',
+        stack: '\tat a.B.c(B.java:1)',
+      }),
+    ]);
+    const closed = close?.();
+    await vi.runAllTimersAsync();
+    await closed;
   });
 
   it('kills logcat on close and keeps the last entry', async () => {
@@ -314,18 +329,21 @@ describe('AndroidLogFeed edge cases', () => {
   const header = '10-13 14:02:35.442  4242  4242 E Native  : ';
 
   it('emits nothing that logcat prints after close', async () => {
+    vi.useFakeTimers();
     const adb = new LaggingAdb();
-    const { open, entries } = setup(adb, { flushAfterMs: 1 });
+    const { open, entries } = setup(adb, { flushAfterMs: 100 });
     const close = await open();
     adb.handlers?.onData(`${header}before close\n`);
-    await close?.();
-    const seen = entries.length;
+    const closed = close?.();
+    await vi.runAllTimersAsync();
+    await closed;
+    expect(entries.map((e) => e.message)).toEqual(['before close']);
     // Still in the pipe when the signal landed, then the process exits.
     adb.handlers?.onData(`${header.replace('35.442', '35.443')}after close\n`);
     adb.handlers?.onExit(undefined);
-    await new Promise((r) => setTimeout(r, 20));
+    await vi.runAllTimersAsync();
     expect(adb.killCount).toBe(1);
-    expect(entries).toHaveLength(seen);
+    expect(entries.map((e) => e.message)).toEqual(['before close']);
   });
 
   it('does not stream logs of a system process that happens to have the pid', async () => {
