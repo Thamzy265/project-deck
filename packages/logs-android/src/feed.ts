@@ -9,10 +9,17 @@ export interface AndroidLogFeedOptions {
   log?: (message: string, err?: unknown) => void;
   /** How long logcat must be quiet before the last (possibly multi-line) entry is emitted. */
   flushAfterMs?: number;
+  /**
+   * Tags (exact, case-sensitive) whose entries are dropped. Defaults to `flutter`: the
+   * VM service already delivers Dart's print output with real timestamps and without
+   * logcat's line-length limit. Pass `[]` to keep everything.
+   */
+  dropTags?: readonly string[];
   now?: () => Date;
 }
 
 const DEFAULT_FLUSH_AFTER_MS = 100;
+export const DEFAULT_DROP_TAGS: readonly string[] = ['flutter'];
 
 /**
  * Android native logs for the attached app: `adb logcat --pid` on the device that
@@ -36,7 +43,11 @@ export class AndroidLogFeed implements LogFeedFactory {
     const serial = await this.findDevice(pid, app.name);
     if (serial === undefined) return undefined;
 
-    const parser = new ThreadtimeParser(onEntry, this.opts.now);
+    const drop = new Set(this.opts.dropTags ?? DEFAULT_DROP_TAGS);
+    // Filter whole entries after grouping, so a dropped multi-line message goes with all its lines.
+    const parser = new ThreadtimeParser((entry) => {
+      if (entry.tag === undefined || !drop.has(entry.tag)) onEntry(entry);
+    }, this.opts.now);
     let timer: NodeJS.Timeout | undefined;
     let closed = false;
     const stream = this.adb.stream(['-s', serial, 'logcat', '-v', 'threadtime', `--pid=${pid}`], {

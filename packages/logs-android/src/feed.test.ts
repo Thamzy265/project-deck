@@ -53,10 +53,55 @@ describe('AndroidLogFeed', () => {
     const [stream] = adb.streams;
     expect(stream?.args).toEqual(logcatArgs(FIXTURE_SERIAL));
     stream?.emit(THREADTIME_FIXTURE);
-    await vi.waitFor(() => expect(entries).toHaveLength(11));
+    await vi.waitFor(() => expect(entries).toHaveLength(9));
     expect(entries.every((e) => e.source === 'native')).toBe(true);
     expect(entries.at(-1)).toMatchObject({ level: 'fatal', tag: 'libc' });
     await close?.();
+  });
+
+  it("drops lines tagged 'flutter' by default; the VM service already has them", async () => {
+    const adb = new FakeAdb();
+    const { entries, open } = setup(adb);
+    const close = await open();
+    adb.streams[0]?.emit(THREADTIME_FIXTURE);
+    await vi.waitFor(() => expect(entries).toHaveLength(9));
+    expect(entries.some((e) => e.tag === 'flutter')).toBe(false);
+    expect(entries.filter((e) => e.tag === 'FlutterJNI')).toHaveLength(2);
+    await close?.();
+  });
+
+  it('keeps flutter lines when dropTags is empty', async () => {
+    const adb = new FakeAdb();
+    const { entries, open } = setup(adb, { dropTags: [] });
+    const close = await open();
+    adb.streams[0]?.emit(THREADTIME_FIXTURE);
+    await vi.waitFor(() => expect(entries).toHaveLength(11));
+    expect(entries.filter((e) => e.tag === 'flutter')).toHaveLength(2);
+    await close?.();
+  });
+
+  it('drops a whole multi-line flutter entry without touching its neighbours', async () => {
+    const adb = new FakeAdb();
+    const { entries, open } = setup(adb, { flushAfterMs: 60_000 });
+    const close = await open();
+    adb.streams[0]?.emit(
+      [
+        '10-13 14:02:40.001  4242  4281 I flutter : Exception caught by widgets library',
+        '10-13 14:02:40.001  4242  4281 I flutter : #0      main (package:shop/main.dart:12:3)',
+        '10-13 14:02:40.002  4242  4281 E Flutter : engine line one',
+        '10-13 14:02:40.002  4242  4281 E Flutter : \tat io.flutter.Foo.bar(Foo.java:1)',
+        '10-13 14:02:40.003  4242  4281 I flutter : trailing print',
+        '',
+      ].join('\n'),
+    );
+    await close?.();
+    expect(entries).toEqual([
+      expect.objectContaining({
+        tag: 'Flutter',
+        message: 'engine line one',
+        stack: '\tat io.flutter.Foo.bar(Foo.java:1)',
+      }),
+    ]);
   });
 
   it.each([
