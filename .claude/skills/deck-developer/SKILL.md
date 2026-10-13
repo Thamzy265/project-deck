@@ -40,7 +40,10 @@ Tests: <count> passing; new tests cover <...>
 Deviations from plan: <none | what and why>
 Risks / unverified: <e.g. fixtures not recorded from a live app>
 Blockers: <none | what — who can unblock — what I need — impact>
+How to verify: <numbered steps a non-developer can follow: commands to copy, what they should see>
 ```
+
+Draft "How to verify" from the user's point of view. QA runs your steps exactly as written and fixes any gaps before they reach the PM.
 
 ## Blockers
 
