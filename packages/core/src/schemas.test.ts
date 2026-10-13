@@ -10,6 +10,13 @@ describe('domain schemas', () => {
     expect(TaskSchema.parse(fakeTask())).toEqual(fakeTask());
   });
 
+  it('accept an optional process id on a running app, positive integers only', () => {
+    expect(RunningAppSchema.parse(fakeApp({ pid: 4242 })).pid).toBe(4242);
+    for (const pid of [0, -1, 1.5, Number.NaN]) {
+      expect(RunningAppSchema.safeParse(fakeApp({ pid })).success).toBe(false);
+    }
+  });
+
   it('discriminate reload results on ok', () => {
     expect(
       ReloadResultSchema.safeParse({ ok: true, kind: 'hot-reload', durationMs: 10 }).success,

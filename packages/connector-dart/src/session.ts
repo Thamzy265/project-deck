@@ -81,6 +81,9 @@ const StreamNotifySchema = z.object({
 });
 
 const VmSchema = z.object({
+  // Informational only: a malformed value must not stop us finding the isolate.
+  pid: z.number().optional().catch(undefined),
+  operatingSystem: z.string().optional().catch(undefined),
   isolates: z.array(
     z.object({ id: z.string(), name: z.string(), isSystemIsolate: z.boolean().optional() }),
   ),
@@ -115,12 +118,14 @@ export class DartAppSession implements AppSession {
   /** One per stream: a multibyte character can be split across WriteEvents. */
   private readonly stdoutDecoder = new StringDecoder('utf8');
   private readonly stderrDecoder = new StringDecoder('utf8');
+  private currentApp: RunningApp;
 
   private constructor(
-    readonly app: RunningApp,
+    app: RunningApp,
     private readonly rpc: JsonRpcClient,
     private readonly opts: DartAppSessionOptions,
   ) {
+    this.currentApp = app;
     this.logSource = new RingBufferLogSource(opts.logCapacity ?? DEFAULT_SESSION_LOG_CAPACITY);
     this.stdout = new LineBuffer((line, ts) => this.pushLine(line, ts, 'info', 'stdout'));
     this.stderr = new LineBuffer((line, ts) => this.pushLine(line, ts, 'error', 'stderr'));
@@ -157,6 +162,11 @@ export class DartAppSession implements AppSession {
       ['Service', 'Isolate', 'Stdout', 'Stderr', 'Logging'].map((id) => this.streamListen(id)),
     );
     await this.refreshIsolate();
+  }
+
+  /** Gains `pid` and, on Android, `device.platform` once the VM has been read during attach. */
+  get app(): RunningApp {
+    return this.currentApp;
   }
 
   reload(): Promise<ReloadResult> {
@@ -297,6 +307,7 @@ export class DartAppSession implements AppSession {
     this.refreshing = (async () => {
       try {
         const vm = VmSchema.parse(await this.rpc.call('getVM', {}));
+        this.recordProcess(vm);
         const isolates = vm.isolates.filter((i) => i.isSystemIsolate !== true);
         this.isolateId = (isolates.find((i) => i.name === 'main') ?? isolates[0])?.id;
       } catch (err) {
@@ -306,6 +317,21 @@ export class DartAppSession implements AppSession {
       }
     })();
     return this.refreshing;
+  }
+
+  /**
+   * The VM's pid is the app's process on its device (on Android, the app process
+   * itself), which log feeds such as logcat need. The device serial is unknown here.
+   */
+  private recordProcess(vm: z.infer<typeof VmSchema>): void {
+    if (this.currentApp.pid !== undefined) return;
+    const { pid, operatingSystem } = vm;
+    if (pid === undefined || !Number.isSafeInteger(pid) || pid <= 0) return;
+    const next: RunningApp = { ...this.currentApp, pid };
+    if (operatingSystem === 'android' && next.device === undefined) {
+      next.device = { id: 'unknown', name: 'Android device', platform: 'android' };
+    }
+    this.currentApp = next;
   }
 
   private onStreamNotify(params: unknown): void {

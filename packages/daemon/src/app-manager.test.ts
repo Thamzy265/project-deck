@@ -89,6 +89,32 @@ describe('AppManager', () => {
     expect(close).toHaveBeenCalledOnce();
   });
 
+  it("opens log feeds with the session's app, which knows more than the listing", async () => {
+    const registry = new Registry();
+    const connector = new FakeAppConnector('fake', [fakeApp()]);
+    registry.connectors.register(connector);
+    const attach = connector.attach.bind(connector);
+    // Like DartAppSession: the pid is only known once the VM service has been read.
+    vi.spyOn(connector, 'attach').mockImplementation(async (id) => {
+      const session = await attach(id);
+      Object.defineProperty(session, 'app', { value: { ...session.app, pid: 4242 } });
+      return session;
+    });
+    const opened: unknown[] = [];
+    registry.logFeeds.register({
+      id: 'native',
+      open: (app) => {
+        opened.push(app);
+        return Promise.resolve(undefined);
+      },
+    });
+    const manager = new AppManager(registry, new EventBus());
+    await manager.start();
+    await vi.waitFor(() => expect(opened).toEqual([{ ...fakeApp(), pid: 4242 }]));
+    expect(manager.attachedApp()?.pid).toBe(4242);
+    await manager.stop();
+  });
+
   it('keeps logs after the app exits and re-attaches when it comes back', async () => {
     const { manager, connector, events } = await setup();
     connector.sessions.get('app-1')?.logs().push(entry('before exit'));

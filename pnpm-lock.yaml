@@ -63,6 +63,9 @@ importers:
       '@project-deck/core':
         specifier: workspace:*
         version: link:../core
+      '@project-deck/logs-android':
+        specifier: workspace:*
+        version: link:../logs-android
       hono:
         specifier: ^4.13.13
         version: 4.13.13
@@ -76,6 +79,12 @@ importers:
       '@types/ws':
         specifier: ^8.18.2
         version: 8.18.2
+
+  packages/logs-android:
+    dependencies:
+      '@project-deck/core':
+        specifier: workspace:*
+        version: link:../core
 
 packages:
 

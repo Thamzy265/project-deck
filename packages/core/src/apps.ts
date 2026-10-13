@@ -15,6 +15,8 @@ export const RunningAppSchema = z.object({
   /** Human name, e.g. the package name. */
   name: z.string(),
   device: DeviceInfoSchema.optional(),
+  /** The app's process id on its device, once known (usually after attach). */
+  pid: z.number().int().positive().optional(),
   framework: z.enum(['flutter', 'compose', 'web']),
   startedBy: z.enum(['ide', 'terminal', 'mcp', 'unknown']),
 });
