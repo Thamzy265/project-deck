@@ -282,17 +282,49 @@ describe('ThreadtimeParser edge cases', () => {
   });
 });
 
+describe('ThreadtimeParser date validation', () => {
+  it('treats a header-like line with an impossible date as continuation text', () => {
+    const entries = parse(
+      [
+        '10-13 14:02:31.004  4242  4242 I a: real',
+        '13-45 14:02:31.004  4242  4242 I a: not a date',
+        '02-30 14:02:31.004  4242  4242 I a: nor this',
+        '',
+      ].join('\n'),
+    );
+    expect(entries).toEqual([
+      expect.objectContaining({
+        message:
+          'real\n13-45 14:02:31.004  4242  4242 I a: not a date\n02-30 14:02:31.004  4242  4242 I a: nor this',
+      }),
+    ]);
+  });
+});
+
 describe('timestampFor edge cases', () => {
   // A 29 February line can only come from a leap year; Date silently rolls it over to 1 March.
-  it.fails('BUG: does not turn 29 February into 1 March in a non-leap year', () => {
+  it('puts 29 February in the latest leap year that is not in the future', () => {
     const now = new Date(2027, 2, 5, 12);
-    expect(new Date(timestampFor(2, 29, 12, 0, 0, 0, now)).getDate()).toBe(29);
+    expect(timestampFor(2, 29, 12, 0, 0, 0, now)).toBe(new Date(2024, 1, 29, 12).getTime());
+  });
+
+  it.each([
+    [13, 1, 0, 0, 0],
+    [0, 10, 0, 0, 0],
+    [10, 0, 0, 0, 0],
+    [4, 31, 0, 0, 0],
+    [2, 30, 0, 0, 0],
+    [10, 13, 24, 0, 0],
+    [10, 13, 23, 60, 0],
+    [10, 13, 23, 59, 60],
+  ])('rejects the impossible date %i-%i %i:%i:%i', (mo, d, h, mi, s) => {
+    expect(timestampFor(mo, d, h, mi, s, 0, NOW)).toBeUndefined();
   });
 
   it('keeps millisecond order across midnight on 31 December', () => {
     const now = new Date(2027, 0, 1, 0, 0, 5);
     const before = timestampFor(12, 31, 23, 59, 59, 999, now);
     const after = timestampFor(1, 1, 0, 0, 0, 1, now);
-    expect(after - before).toBe(2);
+    expect((after ?? Number.NaN) - (before ?? Number.NaN)).toBe(2);
   });
 });

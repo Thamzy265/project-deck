@@ -37,11 +37,17 @@ interface Pending {
 /** How far ahead of the host a device clock may run before a line is taken as last year's. */
 const CLOCK_SKEW_MS = 24 * 60 * 60 * 1000;
 
+function daysIn(year: number, month: number): number {
+  // Day 0 of the next month is the last day of this one.
+  return new Date(year, month, 0).getDate();
+}
+
 /**
- * Epoch ms for a threadtime timestamp, read as local time. The format has no year, so
- * take the latest year that doesn't put the line in the future: a December line read
- * on 1 January is last year's, and a 1 January line from a device clock slightly ahead
- * on 31 December is next year's.
+ * Epoch ms for a threadtime timestamp, read as local time, or undefined when no such
+ * date exists. The format has no year, so take the latest year in which the date exists
+ * and isn't in the future: a December line read on 1 January is last year's, a 1 January
+ * line from a device clock slightly ahead on 31 December is next year's, and 29 February
+ * belongs to the latest leap year.
  */
 export function timestampFor(
   month: number,
@@ -51,15 +57,19 @@ export function timestampFor(
   second: number,
   ms: number,
   now: Date,
-): number {
-  const at = (y: number): number => new Date(y, month - 1, day, hour, minute, second, ms).getTime();
+): number | undefined {
+  if (month < 1 || month > 12 || day < 1 || hour > 23 || minute > 59 || second > 59) {
+    return undefined;
+  }
   const limit = now.getTime() + CLOCK_SKEW_MS;
   const year = now.getFullYear();
-  for (const y of [year + 1, year]) {
-    const t = at(y);
+  // Five years back always reaches a leap year.
+  for (let y = year + 1; y >= year - 4; y--) {
+    if (day > daysIn(y, month)) continue;
+    const t = new Date(y, month - 1, day, hour, minute, second, ms).getTime();
     if (t <= limit) return t;
   }
-  return at(year - 1);
+  return undefined;
 }
 
 /**
@@ -103,13 +113,26 @@ export class ThreadtimeParser {
 
   private line(line: string): void {
     const m = HEADER.exec(line);
-    if (m === null) {
-      // Separators such as `--------- beginning of main`; anything else continues the last entry.
+    const [, mo, d, h, mi, s, ms, pid, tid, lvl, tag, message] = m ?? [];
+    const ts =
+      m === null
+        ? undefined
+        : timestampFor(
+            Number(mo),
+            Number(d),
+            Number(h),
+            Number(mi),
+            Number(s),
+            Number(ms),
+            this.now(),
+          );
+    if (ts === undefined) {
+      // Separators such as `--------- beginning of main`; anything else (including a
+      // header-like line with an impossible date) continues the last entry.
       if (line === '' || line.startsWith('--------- ')) return;
       if (this.pending !== undefined) this.append(this.pending, line);
       return;
     }
-    const [, mo, d, h, mi, s, ms, pid, tid, lvl, tag, message] = m;
     const key = `${mo}-${d} ${h}:${mi}:${s}.${ms} ${pid} ${tid} ${lvl} ${tag}`;
     const text = message ?? '';
     if (this.pending?.key === key) {
@@ -119,15 +142,7 @@ export class ThreadtimeParser {
     this.flush();
     this.pending = {
       key,
-      ts: timestampFor(
-        Number(mo),
-        Number(d),
-        Number(h),
-        Number(mi),
-        Number(s),
-        Number(ms),
-        this.now(),
-      ),
+      ts,
       level: LEVELS[lvl ?? ''] ?? 'info',
       tag: tag ?? '',
       first: text,
