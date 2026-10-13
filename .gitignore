@@ -8,3 +8,4 @@ coverage/
 .flutterdeck/startup.lock
 .flutterdeck/*.tmp
 .flutterdeck/*.stale
+.claude/worktrees/
