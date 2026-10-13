@@ -1,6 +1,6 @@
 import type { LogEntry, RunningApp } from '@project-deck/core';
 import { Registry } from '@project-deck/core';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AdbStreamHandlers } from './adb.js';
 import { AdbExitError, AdbMissingError } from './adb.js';
 import type { AndroidLogFeedOptions } from './feed.js';
@@ -37,7 +37,8 @@ const logcatArgs = (serial: string): string[] => [
 
 function setup(adb: FakeAdb, opts: Omit<AndroidLogFeedOptions, 'adb'> = {}) {
   const log = vi.fn();
-  const feed = new AndroidLogFeed({ adb, log, flushAfterMs: 5, ...opts });
+  // No drain by default, so tests that close don't wait; the drain has its own tests.
+  const feed = new AndroidLogFeed({ adb, log, flushAfterMs: 5, drainQuietMs: 0, ...opts });
   const entries: LogEntry[] = [];
   const open = (app: RunningApp = androidApp) => feed.open(app, (e) => entries.push(e));
   return { feed, log, entries, open };
@@ -567,5 +568,100 @@ describe('AndroidLogFeed edge cases', () => {
     const { open, log } = setup(adb);
     expect(await open()).toBeUndefined();
     expect(log).toHaveBeenCalledOnce();
+  });
+});
+
+describe('AndroidLogFeed close drain', () => {
+  const line = (n: number): string =>
+    `10-13 14:02:35.${String(n).padStart(3, '0')}  4242  4242 E AndroidRuntime: line ${n}\n`;
+
+  function drainSetup(onEntry?: (e: LogEntry) => void) {
+    const adb = new FakeAdb();
+    const entries: LogEntry[] = [];
+    const feed = new AndroidLogFeed({
+      adb,
+      flushAfterMs: 60_000,
+      drainQuietMs: 200,
+      drainMaxMs: 1000,
+    });
+    const open = () => feed.open(androidApp, onEntry ?? ((e) => entries.push(e)));
+    return { adb, entries, open };
+  }
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('captures what logcat prints in the 150 ms after close starts', async () => {
+    vi.useFakeTimers();
+    const { adb, entries, open } = drainSetup();
+    const close = await open();
+    let done = false;
+    const closed = close?.().then(() => (done = true));
+    for (const n of [1, 2, 3]) {
+      await vi.advanceTimersByTimeAsync(50);
+      adb.streams[0]?.emit(line(n));
+    }
+    expect(adb.streams[0]?.killed).toBe(false);
+    await vi.advanceTimersByTimeAsync(199);
+    expect(done).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    await closed;
+    expect(entries.map((e) => e.message)).toEqual(['line 1', 'line 2', 'line 3']);
+    expect(adb.streams[0]?.killed).toBe(true);
+  });
+
+  it('stops waiting after 1 s when logcat never goes quiet', async () => {
+    vi.useFakeTimers();
+    const { adb, entries, open } = drainSetup();
+    const close = await open();
+    let n = 0;
+    const chatter = setInterval(() => adb.streams[0]?.emit(line(++n)), 100);
+    let done = false;
+    const closed = close?.().then(() => (done = true));
+    await vi.advanceTimersByTimeAsync(999);
+    expect(done).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    await closed;
+    clearInterval(chatter);
+    expect(adb.streams[0]?.killed).toBe(true);
+    const seen = entries.length;
+    expect(seen).toBeGreaterThan(0);
+    adb.streams[0]?.emit(line(999));
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(entries).toHaveLength(seen);
+  });
+
+  it('ends the drain early, without a warning, when logcat exits during it', async () => {
+    vi.useFakeTimers();
+    const { adb, entries, open } = drainSetup();
+    const close = await open();
+    const closed = close?.();
+    adb.streams[0]?.emit(line(1));
+    adb.streams[0]?.end();
+    await closed;
+    expect(entries.map((e) => [e.source, e.message])).toEqual([['native', 'line 1']]);
+  });
+
+  it('still kills logcat when onEntry throws while flushing', async () => {
+    vi.useFakeTimers();
+    const { adb, open } = drainSetup(() => {
+      throw new Error('listener failed');
+    });
+    const close = await open();
+    adb.streams[0]?.emit(line(1));
+    const closed = close?.();
+    const settled = expect(closed).rejects.toThrow('listener failed');
+    await vi.advanceTimersByTimeAsync(200);
+    await settled;
+    expect(adb.streams[0]?.killed).toBe(true);
+  });
+
+  it('returns the same promise when closed twice', async () => {
+    const { open } = drainSetup();
+    const close = await open();
+    const first = close?.();
+    expect(close?.()).toBe(first);
+    await first;
   });
 });

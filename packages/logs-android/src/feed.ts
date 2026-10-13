@@ -23,10 +23,19 @@ export interface AndroidLogFeedOptions {
    * logcat's line-length limit. Pass `[]` to keep everything.
    */
   dropTags?: readonly string[];
+  /**
+   * On close, keep reading until logcat has been quiet this long, so the crash lines
+   * that follow an app exit are captured.
+   */
+  drainQuietMs?: number;
+  /** Upper bound on that wait, for an app that never stops logging. */
+  drainMaxMs?: number;
   now?: () => Date;
 }
 
 const DEFAULT_FLUSH_AFTER_MS = 100;
+const DEFAULT_DRAIN_QUIET_MS = 200;
+const DEFAULT_DRAIN_MAX_MS = 1000;
 /** `logcat --pid` and `-v epoch` exist from Android 7.0 (API 24). */
 const PID_FILTER_MIN_SDK = 24;
 /** Before Android 8.0 (API 26), `ps` is toolbox, which has no `-o` or `-p <pid>`. */
@@ -90,6 +99,9 @@ export class AndroidLogFeed implements LogFeedFactory {
       if (entry.tag === undefined || !drop.has(entry.tag)) onEntry(entry);
     }, this.opts.now);
     let timer: NodeJS.Timeout | undefined;
+    let exited = false;
+    /** Set while close() drains; called on every chunk and on exit. */
+    let drainWake: ((ended: boolean) => void) | undefined;
     // Epoch seconds avoid guessing the year and the device's timezone (emulators often run
     // in UTC). If the API level couldn't be read, plain threadtime is the safe choice.
     const epoch = device.sdk !== undefined;
@@ -101,11 +113,18 @@ export class AndroidLogFeed implements LogFeedFactory {
         clearTimeout(timer);
         timer = setTimeout(() => parser.flush(), this.opts.flushAfterMs ?? DEFAULT_FLUSH_AFTER_MS);
         timer.unref();
+        drainWake?.(false);
       },
       onExit: (err) => {
+        exited = true;
         if (closed) return;
         clearTimeout(timer);
         parser.flush();
+        if (drainWake !== undefined) {
+          // We are closing anyway: not worth a warning.
+          drainWake(true);
+          return;
+        }
         this.report(`Android logcat stopped for pid ${pid} on ${serial}`, err);
         // Say so in the log itself; otherwise native logs just go quiet. No restart.
         onEntry({
@@ -117,14 +136,45 @@ export class AndroidLogFeed implements LogFeedFactory {
         });
       },
     });
+
+    // Resolves once logcat has been quiet for drainQuietMs, has exited, or drainMaxMs passed.
+    const drain = (): Promise<void> =>
+      new Promise((resolve) => {
+        if (exited) {
+          resolve();
+          return;
+        }
+        const quietMs = this.opts.drainQuietMs ?? DEFAULT_DRAIN_QUIET_MS;
+        let quiet = setTimeout(done, quietMs);
+        const cap = setTimeout(done, this.opts.drainMaxMs ?? DEFAULT_DRAIN_MAX_MS);
+        drainWake = (ended) => {
+          clearTimeout(quiet);
+          if (ended) done();
+          else quiet = setTimeout(done, quietMs);
+        };
+        function done(): void {
+          clearTimeout(quiet);
+          clearTimeout(cap);
+          resolve();
+        }
+      });
+
+    let closing: Promise<void> | undefined;
     return () => {
-      if (closed) return Promise.resolve();
-      // A crash is often the last thing logged: emit what arrived before close, then nothing more.
-      clearTimeout(timer);
-      parser.flush();
-      closed = true;
-      stream.kill();
-      return Promise.resolve();
+      closing ??= (async () => {
+        try {
+          // A crash is logged just as the app goes away: read it before stopping logcat.
+          await drain();
+          clearTimeout(timer);
+          parser.flush();
+        } finally {
+          // Even if onEntry threw, logcat must not outlive the feed.
+          closed = true;
+          clearTimeout(timer);
+          stream.kill();
+        }
+      })();
+      return closing;
     };
   }
 
