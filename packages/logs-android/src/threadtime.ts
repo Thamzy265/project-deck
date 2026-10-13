@@ -21,6 +21,8 @@ const LEVELS: Record<string, LogLevel> = {
  */
 const HEADER =
   /^(\d\d)-(\d\d) (\d\d):(\d\d):(\d\d)\.(\d{3})\s+(\d+)\s+(\d+) ([VDIWEFA]) (.*?)\s*:(?: (.*))?$/;
+/** `-v epoch` (Android 7.0+): seconds since the epoch, right-aligned, instead of a local date. */
+const EPOCH_HEADER = /^\s*(\d{1,15})\.(\d{3})\s+(\d+)\s+(\d+) ([VDIWEFA]) (.*?)\s*:(?: (.*))?$/;
 const FRAME = /^\s+at |^\s+\.\.\. \d+ more$/;
 
 interface Pending {
@@ -73,7 +75,7 @@ export function timestampFor(
 }
 
 /**
- * Turns `adb logcat -v threadtime` output into log entries. logcat prints a multi-line
+ * Turns `adb logcat -v threadtime` output, with or without `-v epoch`, into log entries. logcat prints a multi-line
  * message (such as a Java stack trace) as one line per text line with the same header,
  * so consecutive lines with an identical header are joined into one entry. The last
  * entry is held until a different header arrives or `flush()` is called.
@@ -112,6 +114,18 @@ export class ThreadtimeParser {
   }
 
   private line(line: string): void {
+    const e = EPOCH_HEADER.exec(line);
+    if (e !== null) {
+      const [, secs, ms, pid, tid, lvl, tag, message] = e;
+      this.header(
+        `${secs}.${ms} ${pid} ${tid} ${lvl} ${tag}`,
+        Number(secs) * 1000 + Number(ms),
+        lvl,
+        tag,
+        message,
+      );
+      return;
+    }
     const m = HEADER.exec(line);
     const [, mo, d, h, mi, s, ms, pid, tid, lvl, tag, message] = m ?? [];
     const ts =
@@ -133,7 +147,23 @@ export class ThreadtimeParser {
       if (this.pending !== undefined) this.append(this.pending, line);
       return;
     }
-    const key = `${mo}-${d} ${h}:${mi}:${s}.${ms} ${pid} ${tid} ${lvl} ${tag}`;
+    this.header(
+      `${mo}-${d} ${h}:${mi}:${s}.${ms} ${pid} ${tid} ${lvl} ${tag}`,
+      ts,
+      lvl,
+      tag,
+      message,
+    );
+  }
+
+  /** `key` is the whole header: identical consecutive headers belong to one log call. */
+  private header(
+    key: string,
+    ts: number,
+    lvl: string | undefined,
+    tag: string | undefined,
+    message: string | undefined,
+  ): void {
     const text = message ?? '';
     if (this.pending?.key === key) {
       this.append(this.pending, text);

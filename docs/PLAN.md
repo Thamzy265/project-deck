@@ -210,7 +210,7 @@ The daemon attaches to apps that are already running; it never launches or stops
 **Logs**
 
 - Subscribe to the VM service `Stdout`, `Stderr` and `Logging` streams for app output and `developer.log` entries with levels.
-- Android native logs via `adb logcat -v threadtime --pid=<pid>` (`logs-android`). The PID comes from the VM service (`getVM`), since the connector rarely knows the applicationId; the device is the one whose `ps -o NAME= -p <pid>` names the app (first plausible match if ambiguous). A full restart is a new app, so the PID is re-read on attach. adb is taken from `ANDROID_HOME`/`ANDROID_SDK_ROOT`, Android Studio's default SDK, then the PATH.
+- Android native logs via `adb logcat -v threadtime -v epoch --pid=<pid>` (`logs-android`; plain threadtime below API 24, read from `getprop ro.build.version.sdk`). The PID comes from the VM service (`getVM`), since the connector rarely knows the applicationId; the device is the one whose `ps -o NAME= -p <pid>` names the app (first plausible match if ambiguous). A full restart is a new app, so the PID is re-read on attach. adb is taken from `ANDROID_HOME`/`ANDROID_SDK_ROOT`, Android Studio's default SDK, then the PATH.
 - Ring buffer per app (default 20,000 entries); group repeated exceptions by first stack frame.
 
 **Drift: two backends**

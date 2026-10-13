@@ -35,6 +35,21 @@ export const THREADTIME_FIXTURE = `--------- beginning of main
 10-13 14:02:35.460  4242  4242 F libc    : Fatal signal 6 (SIGABRT), code -1 (SI_QUEUE) in tid 4242 (example.shop), pid 4242 (example.shop)
 `;
 
+/**
+ * `adb logcat -v threadtime -v epoch --pid=4242` (Android 7.0+): seconds since the epoch
+ * instead of a local date, so there is no year or timezone to guess. logcat right-aligns
+ * the seconds in a 19-character field; the first line shows the unpadded form too.
+ */
+export const EPOCH_FIXTURE = `--------- beginning of main
+1697050000.123  4242  4242 I FlutterJNI: Beginning load of flutter...
+         1697050000.456  4242  4281 I flutter : Shop app started
+         1697050001.002  4242  4264 W ResourceType: For resource 0x0101053d, entry index(1341) is beyond type entryCount(1)
+         1697050002.870  4242  4300 E OkHttp  : Request to /api/cart failed
+         1697050002.870  4242  4300 E OkHttp  : java.net.SocketTimeoutException: timeout
+         1697050002.870  4242  4300 E OkHttp  : 	at okhttp3.internal.http2.Http2Stream.takeHeaders(Http2Stream.kt:143)
+         1697050003.460  4242  4242 F libc    : Fatal signal 6 (SIGABRT), code -1 (SI_QUEUE) in tid 4242 (example.shop), pid 4242 (example.shop)
+`;
+
 /** `adb devices` with an emulator, a USB phone, one unauthorized and one offline device. */
 export const ADB_DEVICES_FIXTURE = `List of devices attached
 emulator-5554\tdevice

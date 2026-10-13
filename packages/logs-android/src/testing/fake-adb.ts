@@ -7,6 +7,8 @@ export interface FakeAdbOptions {
   devices?: string;
   /** serial → pid → process name, answered by `shell ps -o NAME= -p <pid>`. */
   processes?: Record<string, Record<number, string>>;
+  /** serial → `getprop ro.build.version.sdk` answer; null makes it fail. Defaults to '35'. */
+  sdk?: Record<string, string | null>;
   /** Behave as if adb is not installed. */
   missing?: boolean;
 }
@@ -50,6 +52,7 @@ export class FakeAdb implements AdbRunner {
     this.opts = {
       devices: opts.devices ?? ADB_DEVICES_FIXTURE,
       processes: opts.processes ?? { [FIXTURE_SERIAL]: { [FIXTURE_PID]: FIXTURE_PACKAGE } },
+      sdk: opts.sdk ?? {},
       missing: opts.missing ?? false,
     };
   }
@@ -60,6 +63,18 @@ export class FakeAdb implements AdbRunner {
     if (args.length === 1 && args[0] === 'devices') return Promise.resolve(this.opts.devices);
     if (args.length === 1 && args[0] === 'version')
       return Promise.resolve('Android Debug Bridge version 1.0.41\n');
+    if (
+      args.length === 5 &&
+      args[0] === '-s' &&
+      args[2] === 'shell' &&
+      args[3] === 'getprop' &&
+      args[4] === 'ro.build.version.sdk'
+    ) {
+      const sdk = this.opts.sdk[args[1] ?? ''];
+      return sdk === null
+        ? Promise.reject(new Error('adb exited with code 1'))
+        : Promise.resolve(`${sdk ?? '35'}\n`);
+    }
     const [s, serial, shell, ps, o, fmt, p, pid] = args;
     if (
       args.length === 8 &&

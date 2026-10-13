@@ -9,6 +9,7 @@ import { FakeAdb, FakeAdbStream } from './testing/fake-adb.js';
 import {
   FIXTURE_PACKAGE,
   FIXTURE_PID,
+  EPOCH_FIXTURE,
   FIXTURE_SERIAL,
   THREADTIME_FIXTURE,
 } from './testing/fixtures.js';
@@ -29,6 +30,8 @@ const logcatArgs = (serial: string): string[] => [
   'logcat',
   '-v',
   'threadtime',
+  '-v',
+  'epoch',
   `--pid=${FIXTURE_PID}`,
 ];
 
@@ -58,6 +61,48 @@ describe('AndroidLogFeed', () => {
     await vi.waitFor(() => expect(entries).toHaveLength(9));
     expect(entries.every((e) => e.source === 'native')).toBe(true);
     expect(entries.at(-1)).toMatchObject({ level: 'fatal', tag: 'libc' });
+    await close?.();
+  });
+
+  it('asks the device its API level with a fixed getprop', async () => {
+    const adb = new FakeAdb();
+    const close = await setup(adb).open();
+    expect(adb.calls).toContainEqual([
+      '-s',
+      FIXTURE_SERIAL,
+      'shell',
+      'getprop',
+      'ro.build.version.sdk',
+    ]);
+    await close?.();
+  });
+
+  it.each([
+    ['API 23', { [FIXTURE_SERIAL]: '23' }],
+    ['a getprop failure', { [FIXTURE_SERIAL]: null }],
+    ['a non-numeric answer', { [FIXTURE_SERIAL]: '35; reboot' }],
+  ])('falls back to plain threadtime on %s', async (_, sdk) => {
+    const adb = new FakeAdb({ sdk });
+    const close = await setup(adb).open();
+    expect(adb.streams[0]?.args).toEqual([
+      '-s',
+      FIXTURE_SERIAL,
+      'logcat',
+      '-v',
+      'threadtime',
+      `--pid=${FIXTURE_PID}`,
+    ]);
+    await close?.();
+  });
+
+  it('uses epoch time from API 24', async () => {
+    const adb = new FakeAdb({ sdk: { [FIXTURE_SERIAL]: '24' } });
+    const { open, entries } = setup(adb);
+    const close = await open();
+    expect(adb.streams[0]?.args).toEqual(logcatArgs(FIXTURE_SERIAL));
+    adb.streams[0]?.emit(EPOCH_FIXTURE);
+    await vi.waitFor(() => expect(entries).toHaveLength(4));
+    expect(entries[0]?.ts).toBe(1697050000123);
     await close?.();
   });
 

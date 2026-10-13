@@ -26,6 +26,8 @@ export interface AndroidLogFeedOptions {
 }
 
 const DEFAULT_FLUSH_AFTER_MS = 100;
+/** `logcat -v epoch` exists from Android 7.0 (API 24). */
+const EPOCH_MIN_SDK = 24;
 export const DEFAULT_DROP_TAGS: readonly string[] = ['flutter'];
 
 function exitDetail(err: Error | undefined): string {
@@ -67,7 +69,10 @@ export class AndroidLogFeed implements LogFeedFactory {
       if (entry.tag === undefined || !drop.has(entry.tag)) onEntry(entry);
     }, this.opts.now);
     let timer: NodeJS.Timeout | undefined;
-    const stream = this.adb.stream(['-s', serial, 'logcat', '-v', 'threadtime', `--pid=${pid}`], {
+    // Epoch seconds avoid guessing the year and the device's timezone (emulators often run in UTC).
+    const epoch = ((await this.sdkLevel(serial)) ?? 0) >= EPOCH_MIN_SDK;
+    const format = epoch ? ['-v', 'threadtime', '-v', 'epoch'] : ['-v', 'threadtime'];
+    const stream = this.adb.stream(['-s', serial, 'logcat', ...format, `--pid=${pid}`], {
       onData: (text) => {
         if (closed) return;
         parser.write(text);
@@ -141,6 +146,18 @@ export class AndroidLogFeed implements LogFeedFactory {
       // Old Android without `ps -o` can't tell us, but with one device it must be that one.
       (serials.length === 1 ? serials[0] : undefined)
     );
+  }
+
+  /** The device's API level, or undefined when it can't be read. */
+  private async sdkLevel(serial: string): Promise<number | undefined> {
+    try {
+      const out = (
+        await this.adb.exec(['-s', serial, 'shell', 'getprop', 'ro.build.version.sdk'])
+      ).trim();
+      return /^\d{1,3}$/.test(out) ? Number(out) : undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   private report(message: string, err?: unknown): void {

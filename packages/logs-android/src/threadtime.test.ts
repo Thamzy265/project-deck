@@ -1,7 +1,7 @@
 import type { LogEntry } from '@project-deck/core';
 import { LogEntrySchema } from '@project-deck/core';
 import { describe, expect, it } from 'vitest';
-import { THREADTIME_FIXTURE } from './testing/fixtures.js';
+import { EPOCH_FIXTURE, THREADTIME_FIXTURE } from './testing/fixtures.js';
 import { MAX_LINES_PER_ENTRY, ThreadtimeParser, timestampFor } from './threadtime.js';
 
 const NOW = new Date(2026, 9, 13, 15, 0, 0);
@@ -326,5 +326,35 @@ describe('timestampFor edge cases', () => {
     const before = timestampFor(12, 31, 23, 59, 59, 999, now);
     const after = timestampFor(1, 1, 0, 0, 0, 1, now);
     expect((after ?? Number.NaN) - (before ?? Number.NaN)).toBe(2);
+  });
+});
+
+describe('ThreadtimeParser with -v epoch', () => {
+  it('reads epoch seconds exactly, whatever the host date or timezone', () => {
+    const entries = parse(EPOCH_FIXTURE, new Date(2031, 0, 1));
+    for (const e of entries) expect(LogEntrySchema.parse(e)).toEqual(e);
+    expect(entries.map((e) => [e.ts, e.level, e.tag])).toEqual([
+      [1697050000123, 'info', 'FlutterJNI'],
+      [1697050000456, 'info', 'flutter'],
+      [1697050001002, 'warn', 'ResourceType'],
+      [1697050002870, 'error', 'OkHttp'],
+      [1697050003460, 'fatal', 'libc'],
+    ]);
+  });
+
+  it('groups a multi-line epoch message and splits off its stack', () => {
+    const okhttp = parse(EPOCH_FIXTURE).find((e) => e.tag === 'OkHttp');
+    expect(okhttp).toMatchObject({
+      message: 'Request to /api/cart failed',
+      stack:
+        'java.net.SocketTimeoutException: timeout\n\tat okhttp3.internal.http2.Http2Stream.takeHeaders(Http2Stream.kt:143)',
+    });
+  });
+
+  it('accepts either format in the same stream', () => {
+    const entries = parse(
+      '1697050000.123  4242  4242 I a: epoch\n10-13 14:02:31.004  4242  4242 I b: threadtime\n',
+    );
+    expect(entries.map((e) => e.tag)).toEqual(['a', 'b']);
   });
 });
