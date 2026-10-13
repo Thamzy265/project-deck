@@ -3,21 +3,71 @@
 // name and its tools, then kills the process. Proves the config works without Claude Code.
 // Runs only the command and args written in the file, without a shell.
 // Usage: node scripts/check-mcp-config.mjs [path/to/.mcp.json]   (default: plugin/.mcp.json)
-import { spawn } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { createInterface } from 'node:readline';
+import { setTimeout as sleep } from 'node:timers/promises';
 
 const TIMEOUT_MS = 30_000;
 const PROTOCOL_VERSION = '2025-06-18';
 
+const KILL_GRACE_MS = 2_000;
+const isWindows = process.platform === 'win32';
+
 const isObject = (value) => typeof value === 'object' && value !== null && !Array.isArray(value);
+
+// Kills the server and everything it started. Wrappers such as `npx` leave a grandchild that
+// keeps stdout open, and some servers ignore SIGTERM, so a plain child.kill() is not enough.
+async function killTree(child) {
+  const pid = child.pid;
+  if (pid === undefined) return; // Never started.
+  if (isWindows) {
+    await new Promise((done) =>
+      execFile('taskkill', ['/pid', String(pid), '/T', '/F'], () => done()),
+    );
+  } else {
+    // The child leads its own process group (detached: true), so -pid reaches all of it.
+    const signalGroup = (signal) => {
+      try {
+        process.kill(-pid, signal);
+        return true;
+      } catch {
+        return false; // The group is gone.
+      }
+    };
+    if (signalGroup('SIGTERM')) {
+      for (let waited = 0; waited < KILL_GRACE_MS && signalGroup(0); waited += 100)
+        await sleep(100);
+      signalGroup('SIGKILL');
+    }
+  }
+  child.stdin.destroy();
+  child.stdout.destroy();
+  child.stderr.destroy();
+  child.unref();
+}
+
+let running; // The child being checked, so Ctrl-C can clean it up.
+for (const signal of ['SIGINT', 'SIGTERM'])
+  process.on(signal, () => {
+    if (running?.pid !== undefined && !isWindows) {
+      try {
+        process.kill(-running.pid, 'SIGKILL');
+      } catch {
+        // Already gone.
+      }
+    }
+    process.exit(130);
+  });
 
 function checkServer(entry) {
   return new Promise((resolve, reject) => {
     const child = spawn(entry.command, entry.args ?? [], {
       env: { ...process.env, ...entry.env },
       stdio: ['pipe', 'pipe', 'pipe'],
+      detached: !isWindows, // Own process group on POSIX; on Windows it would open a console.
     });
+    running = child;
     const pending = new Map();
     let stderr = '';
     let done = false;
@@ -25,8 +75,7 @@ function checkServer(entry) {
       if (done) return;
       done = true;
       clearTimeout(timer);
-      child.kill();
-      fn();
+      void killTree(child).then(fn);
     };
     const timer = setTimeout(
       () => finish(() => reject(new Error(`timed out after ${TIMEOUT_MS} ms`))),
@@ -120,4 +169,5 @@ for (const [name, entry] of Object.entries(mcpServers)) {
   }
 }
 
-process.exitCode = failed ? 1 : 0;
+// Exit explicitly: anything the kill missed must not keep this script alive.
+process.exit(failed ? 1 : 0);
