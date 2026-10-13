@@ -77,11 +77,23 @@ describe('AndroidLogFeed', () => {
     await close?.();
   });
 
+  it('does not apply below API 24, where logcat has no --pid, and says so once', async () => {
+    const adb = new FakeAdb({ sdk: { [FIXTURE_SERIAL]: '23' } });
+    const { open, log } = setup(adb);
+    expect(await open()).toBeUndefined();
+    expect(await open()).toBeUndefined();
+    expect(adb.streams).toEqual([]);
+    expect(log).toHaveBeenCalledOnce();
+    expect(log).toHaveBeenCalledWith(
+      'Android native logs need Android 7.0 (API 24) or newer',
+      undefined,
+    );
+  });
+
   it.each([
-    ['API 23', { [FIXTURE_SERIAL]: '23' }],
     ['a getprop failure', { [FIXTURE_SERIAL]: null }],
     ['a non-numeric answer', { [FIXTURE_SERIAL]: '35; reboot' }],
-  ])('falls back to plain threadtime on %s', async (_, sdk) => {
+  ])('falls back to plain threadtime when the API level is unknown (%s)', async (_, sdk) => {
     const adb = new FakeAdb({ sdk });
     const close = await setup(adb).open();
     expect(adb.streams[0]?.args).toEqual([
@@ -365,7 +377,7 @@ describe('AndroidLogFeed edge cases', () => {
   it('uses the only device when old ps lists no row for the pid', async () => {
     const adb = new FakeAdb({
       devices: 'List of devices attached\nemulator-5554\tdevice\n',
-      sdk: { 'emulator-5554': '23' },
+      sdk: { 'emulator-5554': '25' },
       processes: {},
     });
     const close = await setup(adb).open();

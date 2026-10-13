@@ -27,8 +27,8 @@ export interface AndroidLogFeedOptions {
 }
 
 const DEFAULT_FLUSH_AFTER_MS = 100;
-/** `logcat -v epoch` exists from Android 7.0 (API 24). */
-const EPOCH_MIN_SDK = 24;
+/** `logcat --pid` and `-v epoch` exist from Android 7.0 (API 24). */
+const PID_FILTER_MIN_SDK = 24;
 /** Before Android 8.0 (API 26), `ps` is toolbox, which has no `-o` or `-p <pid>`. */
 const TOYBOX_PS_MIN_SDK = 26;
 
@@ -58,6 +58,7 @@ export class AndroidLogFeed implements LogFeedFactory {
   readonly id = 'android-logcat';
   private readonly adb: AdbRunner;
   private warnedMissing = false;
+  private warnedOldSdk = false;
 
   constructor(private readonly opts: AndroidLogFeedOptions = {}) {
     this.adb = opts.adb ?? nodeAdb();
@@ -72,6 +73,13 @@ export class AndroidLogFeed implements LogFeedFactory {
     const device = await this.findDevice(pid, app.name);
     if (device === undefined) return undefined;
     const { serial } = device;
+    if (device.sdk !== undefined && device.sdk < PID_FILTER_MIN_SDK) {
+      if (!this.warnedOldSdk) {
+        this.warnedOldSdk = true;
+        this.report('Android native logs need Android 7.0 (API 24) or newer');
+      }
+      return undefined;
+    }
 
     const drop = new Set(this.opts.dropTags ?? DEFAULT_DROP_TAGS);
     // Filter whole entries after grouping, so a dropped multi-line message goes with all its lines.
@@ -82,8 +90,9 @@ export class AndroidLogFeed implements LogFeedFactory {
       if (entry.tag === undefined || !drop.has(entry.tag)) onEntry(entry);
     }, this.opts.now);
     let timer: NodeJS.Timeout | undefined;
-    // Epoch seconds avoid guessing the year and the device's timezone (emulators often run in UTC).
-    const epoch = (device.sdk ?? 0) >= EPOCH_MIN_SDK;
+    // Epoch seconds avoid guessing the year and the device's timezone (emulators often run
+    // in UTC). If the API level couldn't be read, plain threadtime is the safe choice.
+    const epoch = device.sdk !== undefined;
     const format = epoch ? ['-v', 'threadtime', '-v', 'epoch'] : ['-v', 'threadtime'];
     const stream = this.adb.stream(['-s', serial, 'logcat', ...format, `--pid=${pid}`], {
       onData: (text) => {
