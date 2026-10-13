@@ -147,7 +147,7 @@ Tester:
 Reviewer:
 
 - Run the code-review skill at `high` effort and the security-review skill on the branch diff against `main`.
-- security-review diffs against `origin/HEAD`. If that ref is missing, create it with `git update-ref refs/remotes/origin/HEAD main` and delete it afterwards with `git update-ref -d refs/remotes/origin/HEAD`.
+- security-review diffs against `origin/HEAD`. If that ref is missing, run `git remote set-head origin --auto`. Only if the repo has no remote, create it with `git update-ref refs/remotes/origin/HEAD main` and delete it afterwards with `git update-ref -d refs/remotes/origin/HEAD`.
 - Always check:
   - Host, Origin and token checks on every new route or socket;
   - loopback-only connections;
