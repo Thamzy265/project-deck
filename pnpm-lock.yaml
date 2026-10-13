@@ -77,6 +77,12 @@ importers:
         specifier: ^8.18.2
         version: 8.18.2
 
+  packages/logs-android:
+    dependencies:
+      '@project-deck/core':
+        specifier: workspace:*
+        version: link:../core
+
 packages:
 
   '@eslint-community/eslint-utils@4.10.1':
