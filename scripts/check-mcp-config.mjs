@@ -166,6 +166,13 @@ for (const [name, entry] of Object.entries(mcpServers)) {
   } catch (err) {
     failed = true;
     console.log(`${name}: FAILED - ${err.message}`);
+    // Node refuses to run .bat/.cmd files without a shell (CVE-2024-27980), and Flutter's `dart`
+    // on Windows is dart.bat. Using a shell would let the file inject commands, so explain instead.
+    if (isWindows && err.code === 'EINVAL')
+      console.log(
+        `  Hint: "${entry.command}" is probably a .bat or .cmd file. Put the Dart SDK's dart.exe ` +
+          '(<flutter>\\bin\\cache\\dart-sdk\\bin) first on PATH, or use its full path.',
+      );
   }
 }
 
