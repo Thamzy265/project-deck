@@ -45,31 +45,36 @@ export class AndroidLogFeed implements LogFeedFactory {
 
     const drop = new Set(this.opts.dropTags ?? DEFAULT_DROP_TAGS);
     // Filter whole entries after grouping, so a dropped multi-line message goes with all its lines.
+    let closed = false;
     const parser = new ThreadtimeParser((entry) => {
+      // kill() only sends a signal: output already in the pipe can still arrive afterwards.
+      if (closed) return;
       if (entry.tag === undefined || !drop.has(entry.tag)) onEntry(entry);
     }, this.opts.now);
     let timer: NodeJS.Timeout | undefined;
-    let closed = false;
     const stream = this.adb.stream(['-s', serial, 'logcat', '-v', 'threadtime', `--pid=${pid}`], {
       onData: (text) => {
+        if (closed) return;
         parser.write(text);
         clearTimeout(timer);
         timer = setTimeout(() => parser.flush(), this.opts.flushAfterMs ?? DEFAULT_FLUSH_AFTER_MS);
         timer.unref();
       },
       onExit: (err) => {
+        if (closed) return;
         clearTimeout(timer);
         parser.flush();
-        if (closed || err === undefined) return;
+        if (err === undefined) return;
         this.report(`Android logcat stopped for pid ${pid} on ${serial}`, err);
       },
     });
     return () => {
-      closed = true;
-      stream.kill();
-      // A crash is often the last thing logged; don't lose it to the quiet-period timer.
+      if (closed) return Promise.resolve();
+      // A crash is often the last thing logged: emit what arrived before close, then nothing more.
       clearTimeout(timer);
       parser.flush();
+      closed = true;
+      stream.kill();
       return Promise.resolve();
     };
   }

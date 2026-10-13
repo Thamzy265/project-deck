@@ -255,7 +255,7 @@ class LaggingAdb extends FakeAdb {
 describe('AndroidLogFeed edge cases', () => {
   const header = '10-13 14:02:35.442  4242  4242 E Native  : ';
 
-  it.fails('BUG: emits nothing that logcat prints after close', async () => {
+  it('emits nothing that logcat prints after close', async () => {
     const adb = new LaggingAdb();
     const { open, entries } = setup(adb, { flushAfterMs: 1 });
     const close = await open();
