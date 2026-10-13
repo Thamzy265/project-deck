@@ -156,6 +156,8 @@ for (const [name, entry] of Object.entries(mcpServers)) {
     console.log(`${name}: skipped (uses \${...} variables that only Claude Code expands)`);
     continue;
   }
+  // Say what is about to run, since the file decides it. Env values may be secrets: never print them.
+  console.log(`${name}: running ${[entry.command, ...(entry.args ?? [])].join(' ')}`);
   try {
     const { init, tools } = await checkServer(entry);
     const info = init.serverInfo ?? {};

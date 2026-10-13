@@ -51,6 +51,8 @@ node scripts/check-mcp-config.mjs
 
 The script starts each server listed in `plugin/.mcp.json`, sends the MCP `initialize` and `tools/list` requests, prints the server name and its tools, and stops the server. Pass another path to check a different file, for example `node scripts/check-mcp-config.mjs ../my_app/.mcp.json`. It prints `FAILED` and exits with code 1 if a server doesn't start or answer within 30 seconds.
 
+This runs the commands in the file. Only point it at files you trust. Before starting each server it prints the command and arguments it is about to run (never `env` values).
+
 **Windows:** the script starts commands without a shell, and Node refuses to run `.bat` files that way. Flutter's `dart` on Windows is `dart.bat`, so put the Dart SDK's `dart.exe` (in `<flutter>\bin\cache\dart-sdk\bin`) first on your `PATH` before running the check. The script prints this hint if it hits the problem.
 
 ### The FlutterDeck server comes in M2
