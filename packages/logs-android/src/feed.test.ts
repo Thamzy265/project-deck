@@ -1,9 +1,11 @@
 import type { LogEntry, RunningApp } from '@project-deck/core';
 import { Registry } from '@project-deck/core';
 import { describe, expect, it, vi } from 'vitest';
+import type { AdbStreamHandlers } from './adb.js';
+import { AdbMissingError } from './adb.js';
 import type { AndroidLogFeedOptions } from './feed.js';
 import { AndroidLogFeed } from './feed.js';
-import { FakeAdb } from './testing/fake-adb.js';
+import { FakeAdb, FakeAdbStream } from './testing/fake-adb.js';
 import {
   FIXTURE_PACKAGE,
   FIXTURE_PID,
@@ -229,5 +231,194 @@ describe('AndroidLogFeed', () => {
     adb.streams[0]?.end(new Error('adb exited with code 1'));
     expect(log).toHaveBeenCalledWith(expect.stringMatching(/logcat stopped/), expect.any(Error));
     await close?.();
+  });
+});
+
+/**
+ * Behaves like nodeAdb's stream: kill() only sends a signal, so output already in the
+ * pipe can still arrive, followed by onExit once the process is reaped.
+ */
+class LaggingAdb extends FakeAdb {
+  handlers: AdbStreamHandlers | undefined;
+  killCount = 0;
+
+  override stream(args: readonly string[], handlers: AdbStreamHandlers): FakeAdbStream {
+    this.handlers = handlers;
+    const stream = super.stream(args, { onData: () => undefined, onExit: () => undefined });
+    stream.kill = () => {
+      this.killCount++;
+    };
+    return stream;
+  }
+}
+
+describe('AndroidLogFeed edge cases', () => {
+  const header = '10-13 14:02:35.442  4242  4242 E Native  : ';
+
+  it.fails('BUG: emits nothing that logcat prints after close', async () => {
+    const adb = new LaggingAdb();
+    const { open, entries } = setup(adb, { flushAfterMs: 1 });
+    const close = await open();
+    adb.handlers?.onData(`${header}before close\n`);
+    await close?.();
+    const seen = entries.length;
+    // Still in the pipe when the signal landed, then the process exits.
+    adb.handlers?.onData(`${header.replace('35.442', '35.443')}after close\n`);
+    adb.handlers?.onExit(undefined);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(adb.killCount).toBe(1);
+    expect(entries).toHaveLength(seen);
+  });
+
+  it.fails(
+    'BUG: does not stream logs of a system process that happens to have the pid',
+    async () => {
+      const adb = new FakeAdb({
+        devices: TWO_DEVICES,
+        // The app runs on a device we can't see (unauthorized, another adb server);
+        // the emulator's process at that pid is a system daemon, not the app.
+        processes: { 'emulator-5554': { [FIXTURE_PID]: 'system_server' } },
+      });
+      expect(await setup(adb).open({ ...androidApp, name: 'Shop' })).toBeUndefined();
+      expect(adb.streams).toEqual([]);
+    },
+  );
+
+  it.fails('BUG: says so when logcat ends on its own without an error', async () => {
+    const adb = new FakeAdb();
+    const { open, log } = setup(adb);
+    const close = await open();
+    adb.streams[0]?.end();
+    expect(log).toHaveBeenCalledWith(expect.stringMatching(/logcat stopped/), undefined);
+    await close?.();
+  });
+
+  it('does not restart logcat after it stops on its own', async () => {
+    const adb = new FakeAdb();
+    const close = await setup(adb).open();
+    adb.streams[0]?.end(new Error('adb exited with code 1'));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(adb.streams).toHaveLength(1);
+    await close?.();
+  });
+
+  it('never passes an option-like serial from adb devices to adb', async () => {
+    const adb = new FakeAdb({
+      devices: 'List of devices attached\n-s\tdevice\n--wait\tdevice\nemulator-5554\tdevice\n',
+      processes: { 'emulator-5554': { [FIXTURE_PID]: FIXTURE_PACKAGE } },
+    });
+    const close = await setup(adb).open();
+    expect(adb.calls.flat()).not.toContain('--wait');
+    expect(adb.streams[0]?.args).toEqual(logcatArgs('emulator-5554'));
+    await close?.();
+  });
+
+  it('passes the pid to ps and logcat as plain digits', async () => {
+    const adb = new FakeAdb();
+    const close = await setup(adb).open();
+    expect(adb.calls).toContainEqual([
+      '-s',
+      FIXTURE_SERIAL,
+      'shell',
+      'ps',
+      '-o',
+      'NAME=',
+      '-p',
+      '4242',
+    ]);
+    expect(adb.streams[0]?.args.at(-1)).toBe('--pid=4242');
+    await close?.();
+  });
+
+  it('reads only the first line of ps output, ignoring CRLF and injected lines', async () => {
+    const adb = new FakeAdb({
+      devices: TWO_DEVICES,
+      processes: {
+        'emulator-5554': { [FIXTURE_PID]: `kworker/0:1\n${FIXTURE_PACKAGE}` },
+        R58M123ABC: { [FIXTURE_PID]: `${FIXTURE_PACKAGE}\r` },
+      },
+    });
+    const close = await setup(adb).open();
+    expect(adb.streams[0]?.args).toEqual(logcatArgs('R58M123ABC'));
+    await close?.();
+  });
+
+  it('when the pid is reused on two devices, picks the one running the named package', async () => {
+    const adb = new FakeAdb({
+      devices: TWO_DEVICES,
+      processes: {
+        'emulator-5554': { [FIXTURE_PID]: 'com.other.app' },
+        R58M123ABC: { [FIXTURE_PID]: FIXTURE_PACKAGE },
+      },
+    });
+    const close = await setup(adb).open({ ...androidApp, name: FIXTURE_PACKAGE });
+    expect(adb.streams[0]?.args).toEqual(logcatArgs('R58M123ABC'));
+    await close?.();
+  });
+
+  it('keeps logging a missing adb only once across repeated attach and detach', async () => {
+    const adb = new FakeAdb({ missing: true });
+    const { open, log } = setup(adb);
+    for (let i = 0; i < 5; i++) expect(await open()).toBeUndefined();
+    expect(log).toHaveBeenCalledOnce();
+  });
+
+  it('logs a missing adb when the stream fails to start, after the lookup worked', async () => {
+    const adb = new FakeAdb();
+    vi.spyOn(adb, 'stream').mockImplementation((args, handlers) => {
+      const s = new FakeAdbStream(args, handlers);
+      s.end(new AdbMissingError('adb'));
+      return s;
+    });
+    const { open, log } = setup(adb);
+    const close = await open();
+    expect(log).toHaveBeenCalledWith(
+      expect.stringMatching(/logcat stopped/),
+      expect.any(AdbMissingError),
+    );
+    await close?.();
+  });
+
+  it('drops only the exact tag; case variants and other tags are kept', async () => {
+    const adb = new FakeAdb();
+    const { open, entries } = setup(adb, { flushAfterMs: 60_000 });
+    const close = await open();
+    adb.streams[0]?.emit(
+      ['flutter', 'Flutter', 'FLUTTER', 'flutter_engine', 'flutter ']
+        .map((tag, i) => `10-13 14:02:40.00${i}  4242  4281 I ${tag}: m${i}`)
+        .join('\n') + '\n',
+    );
+    await close?.();
+    expect(entries.map((e) => e.tag)).toEqual(['Flutter', 'FLUTTER', 'flutter_engine']);
+  });
+
+  it('honours custom drop tags', async () => {
+    const adb = new FakeAdb();
+    const { open, entries } = setup(adb, { flushAfterMs: 60_000, dropTags: ['OkHttp', 'libc'] });
+    const close = await open();
+    adb.streams[0]?.emit(THREADTIME_FIXTURE);
+    await close?.();
+    expect(entries.some((e) => e.tag === 'OkHttp' || e.tag === 'libc')).toBe(false);
+    expect(entries.filter((e) => e.tag === 'flutter')).toHaveLength(2);
+  });
+
+  it('runs one logcat per open and closes each independently', async () => {
+    const adb = new FakeAdb();
+    const a = setup(adb);
+    const closeA = await a.open();
+    const closeB = await a.open();
+    expect(adb.streams).toHaveLength(2);
+    await closeA?.();
+    expect(adb.streams.map((s) => s.killed)).toEqual([true, false]);
+    await closeB?.();
+    expect(adb.streams.map((s) => s.killed)).toEqual([true, true]);
+  });
+
+  it('survives adb devices hanging until it times out', async () => {
+    const adb = new FakeAdb();
+    vi.spyOn(adb, 'exec').mockRejectedValue(new Error('Command failed: adb devices (timed out)'));
+    const { open, log } = setup(adb);
+    expect(await open()).toBeUndefined();
+    expect(log).toHaveBeenCalledOnce();
   });
 });

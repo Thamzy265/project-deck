@@ -1,5 +1,7 @@
+import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   AdbMissingError,
   isPackageName,
@@ -124,5 +126,155 @@ describe('nodeAdb', () => {
     });
     expect(await exited).toBeUndefined();
     expect(chunks.join('')).toBe('ready\n');
+  });
+});
+
+describe('parseDevices edge cases', () => {
+  it('never returns a serial that adb would read as an option', () => {
+    const out = 'List of devices attached\n-s\tdevice\n--help\tdevice\n-\tdevice\nok-1\tdevice\n';
+    expect(parseDevices(out)).toEqual(['ok-1']);
+  });
+
+  it('skips every state other than device', () => {
+    const out = [
+      'List of devices attached',
+      'emulator-5554\tunauthorized',
+      'emulator-5556\toffline',
+      'R58M123ABC\trecovery',
+      'R58M123ABD\tsideload',
+      'R58M123ABE\tbootloader',
+      'R58M123ABF\tno permissions (missing udev rules); see [http://developer.android.com/tools/device.html]',
+      '192.168.1.5:5555\tdevice',
+      '',
+    ].join('\n');
+    expect(parseDevices(out)).toEqual(['192.168.1.5:5555']);
+  });
+
+  it('rejects a serial carrying a newline or shell metacharacters', () => {
+    expect(parseDevices('List of devices attached\nemu\rlator\tdevice\n')).toEqual([]);
+    expect(parseDevices('List of devices attached\n$(reboot)\tdevice\n`id`\tdevice\n')).toEqual([]);
+  });
+});
+
+describe('resolveAdbPath edge cases', () => {
+  it('keeps an SDK path with spaces as one path', () => {
+    const sdk = '/Users/me/Android SDK';
+    const want = join(sdk, 'platform-tools', 'adb');
+    expect(resolveAdbPath({ ANDROID_HOME: sdk }, 'darwin', '/h', (p) => p === want)).toBe(want);
+  });
+
+  it('skips an SDK without adb and tries the next one', () => {
+    const want = join('/sdk2', 'platform-tools', 'adb');
+    expect(
+      resolveAdbPath(
+        { ANDROID_HOME: '/sdk1', ANDROID_SDK_ROOT: '/sdk2' },
+        'darwin',
+        '/h',
+        (p) => p === want,
+      ),
+    ).toBe(want);
+  });
+
+  it('uses ~/Android/Sdk on Linux and ignores empty variables', () => {
+    const want = join('/home/me', 'Android', 'Sdk', 'platform-tools', 'adb');
+    expect(
+      resolveAdbPath(
+        { ANDROID_HOME: '', ANDROID_SDK_ROOT: '' },
+        'linux',
+        '/home/me',
+        (p) => p === want,
+      ),
+    ).toBe(want);
+  });
+});
+
+describe('nodeAdb edge cases', () => {
+  const node = nodeAdb(process.execPath);
+
+  it('gives up on a command that hangs', async () => {
+    const slow = nodeAdb(process.execPath, { timeoutMs: 200 });
+    const started = Date.now();
+    await expect(slow.exec(['-e', 'setInterval(() => {}, 1000)'])).rejects.toThrow();
+    expect(Date.now() - started).toBeLessThan(4000);
+  });
+
+  it('rejects output over 1 MB instead of buffering it all', async () => {
+    await expect(
+      node.exec(['-e', 'process.stdout.write("x".repeat(2 * 1024 * 1024))']),
+    ).rejects.toThrow();
+  });
+
+  it('decodes a UTF-8 character split across two writes', async () => {
+    const chunks: string[] = [];
+    const exit = await new Promise<Error | undefined>((resolve) => {
+      node.stream(
+        [
+          '-e',
+          // "é" is 0xC3 0xA9; send the bytes in separate writes with a pause between.
+          'process.stdout.write(Buffer.from([0x63, 0x61, 0x66, 0xc3])); setTimeout(() => process.stdout.write(Buffer.from([0xa9, 0x0a])), 50)',
+        ],
+        { onData: (t) => chunks.push(t), onExit: resolve },
+      );
+    });
+    expect(exit).toBeUndefined();
+    expect(chunks.join('')).toBe('café\n');
+    expect(chunks.join('')).not.toContain('�');
+  });
+
+  it('reports a non-zero exit of a stream that ends on its own', async () => {
+    const exit = await new Promise<Error | undefined>((resolve) => {
+      node.stream(['-e', 'process.exit(1)'], { onData: () => undefined, onExit: resolve });
+    });
+    expect(exit?.message).toMatch(/code 1/);
+  });
+
+  it('calls onExit once and ignores kill after the process is gone', async () => {
+    const onExit = vi.fn();
+    let stream: { kill(): void } | undefined;
+    await new Promise<void>((resolve) => {
+      stream = node.stream(['-e', ''], {
+        onData: () => undefined,
+        onExit: (err) => {
+          onExit(err);
+          resolve();
+        },
+      });
+    });
+    stream?.kill();
+    stream?.kill();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(onExit).toHaveBeenCalledOnce();
+    expect(onExit).toHaveBeenCalledWith(undefined);
+  });
+
+  it('can be killed before it prints anything, and the process is gone', async () => {
+    const pidFile = join(tmpdir(), `deck-adb-kill-${process.pid}-${Date.now()}`);
+    let stream: { kill(): void } | undefined;
+    const exited = new Promise<Error | undefined>((resolve) => {
+      stream = node.stream(
+        [
+          '-e',
+          `require("fs").writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); setInterval(() => {}, 1000)`,
+        ],
+        { onData: () => undefined, onExit: resolve },
+      );
+    });
+    await vi.waitFor(() => expect(existsSync(pidFile)).toBe(true));
+    const childPid = Number(readFileSync(pidFile, 'utf8'));
+    rmSync(pidFile);
+    stream?.kill();
+    expect(await exited).toBeUndefined();
+    expect(() => process.kill(childPid, 0)).toThrow();
+  });
+
+  it.skipIf(process.platform === 'win32')('runs adb from a path with spaces', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'deck adb '));
+    try {
+      const fake = join(dir, 'adb');
+      symlinkSync(process.execPath, fake);
+      expect(await nodeAdb(fake).exec(['-e', 'process.stdout.write("ok")'])).toBe('ok');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

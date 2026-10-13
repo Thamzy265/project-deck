@@ -178,3 +178,121 @@ describe('timestampFor', () => {
     expect(timestampFor(3, 1, 9, 0, 0, 0, NOW)).toBe(new Date(2026, 2, 1, 9).getTime());
   });
 });
+
+describe('ThreadtimeParser edge cases', () => {
+  const at = (rest: string, time = '14:02:31.004', ids = ' 4242  4242'): string =>
+    `10-13 ${time} ${ids} ${rest}`;
+
+  it('reads tags with spaces, colons or nothing at all', () => {
+    const entries = parse(
+      [
+        at('I Some Tag: spaced'),
+        at('I chromium:render: colon in tag', '14:02:31.005'),
+        at('W         : empty tag', '14:02:31.006'),
+        at('I VeryLongTagWithoutPadding: tight', '14:02:31.007'),
+        '',
+      ].join('\n'),
+    );
+    expect(entries.map((e) => [e.tag, e.message])).toEqual([
+      ['Some Tag', 'spaced'],
+      ['chromium:render', 'colon in tag'],
+      ['', 'empty tag'],
+      ['VeryLongTagWithoutPadding', 'tight'],
+    ]);
+  });
+
+  it('keeps leading spaces in the message after the separator', () => {
+    const [entry] = parse(at('I a:    indented\n'));
+    expect(entry?.message).toBe('   indented');
+  });
+
+  it('reads seven-digit pids and tids (64-bit pid_max)', () => {
+    const [entry] = parse(at('I a: big', '14:02:31.004', '1234567 4194303') + '\n');
+    expect(entry).toMatchObject({ tag: 'a', message: 'big' });
+  });
+
+  it('maps F to fatal and ignores every logcat buffer separator', () => {
+    const entries = parse(
+      [
+        '--------- beginning of crash',
+        at('F libc    : Fatal signal 11 (SIGSEGV)'),
+        '--------- beginning of events',
+        '--------- switch to main',
+        at('F libc    : second', '14:02:31.010'),
+        '',
+      ].join('\n'),
+    );
+    expect(entries.map((e) => [e.level, e.message])).toEqual([
+      ['fatal', 'Fatal signal 11 (SIGSEGV)'],
+      ['fatal', 'second'],
+    ]);
+  });
+
+  it('keeps a 200-line native backtrace as separate entries when each line has its own timestamp', () => {
+    const lines: string[] = [];
+    for (let i = 0; i < 200; i++) {
+      const ms = String(i % 1000).padStart(3, '0');
+      const s = String(10 + Math.floor(i / 1000)).padStart(2, '0');
+      lines.push(
+        at(`F DEBUG   :       #${i} pc 000${i} /system/lib64/libc.so`, `14:02:${s}.${ms}`),
+      );
+    }
+    const entries = parse(lines.join('\n') + '\n');
+    expect(entries).toHaveLength(200);
+    expect(entries.every((e) => e.level === 'fatal' && e.stack === undefined)).toBe(true);
+  });
+
+  it('keeps a 200-line dump from one log call in one entry with the dropped marker', () => {
+    const lines = [at('F DEBUG   : *** *** *** *** *** ***')];
+    for (let i = 0; i < 200; i++) lines.push(at(`F DEBUG   :       #${i} pc 0000 libc.so`));
+    const [entry, ...others] = parse(lines.join('\n') + '\n');
+    expect(others).toEqual([]);
+    const all = entry?.message.split('\n') ?? [];
+    // The cap counts the continuation lines; the first line comes on top.
+    expect(all).toHaveLength(MAX_LINES_PER_ENTRY + 1);
+    expect(all.at(-1)).toBe('… lines dropped');
+  });
+
+  it('does not merge lines that alternate between two threads', () => {
+    const entries = parse(
+      [
+        at('E a: A1', '14:02:31.004', ' 4242  4242'),
+        at('E a: B1', '14:02:31.004', ' 4242  4243'),
+        at('E a: A2', '14:02:31.004', ' 4242  4242'),
+        '',
+      ].join('\n'),
+    );
+    expect(entries.map((e) => e.message)).toEqual(['A1', 'B1', 'A2']);
+  });
+
+  it('caps a very long complete line and keeps parsing after it', () => {
+    const entries = parse(
+      at('I a: ' + 'x'.repeat(200_000)) + '\n' + at('I b: after', '14:02:31.005') + '\n',
+    );
+    expect(entries.map((e) => e.tag)).toEqual(['a', 'b']);
+    expect(entries[0]?.message.length).toBeLessThanOrEqual(64 * 1024);
+  });
+
+  it('accepts a leap-day line in a leap year', () => {
+    const [entry] = parse(
+      '02-29 12:00:00.000  4242  4242 I a: leap\n',
+      new Date(2028, 2, 1, 9, 0, 0),
+    );
+    expect(entry?.ts).toBe(new Date(2028, 1, 29, 12).getTime());
+  });
+});
+
+describe('timestampFor edge cases', () => {
+  // A 29 February line can only come from a leap year; Date silently rolls it over to 1 March.
+  it.fails('BUG: does not turn 29 February into 1 March in a non-leap year', () => {
+    const now = new Date(2027, 2, 5, 12);
+    expect(new Date(timestampFor(2, 29, 12, 0, 0, 0, now)).getDate()).toBe(29);
+  });
+
+  it('keeps millisecond order across midnight on 31 December', () => {
+    const now = new Date(2027, 0, 1, 0, 0, 5);
+    const before = timestampFor(12, 31, 23, 59, 59, 999, now);
+    const after = timestampFor(1, 1, 0, 0, 0, 1, now);
+    expect(after - before).toBe(2);
+  });
+});
