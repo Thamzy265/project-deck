@@ -85,11 +85,11 @@ function checkServer(entry) {
     child.on('error', (err) => finish(() => reject(err)));
     child.stdin.on('error', () => {}); // An early exit is reported through 'exit' instead.
     child.stderr.on('data', (chunk) => (stderr += String(chunk)));
-    child.on('exit', (code) =>
-      finish(() =>
-        reject(new Error(`exited with code ${code}: ${stderr.trim().split('\n')[0] ?? ''}`)),
-      ),
-    );
+    child.on('exit', (code, signal) => {
+      const firstLine = stderr.trim().split('\n')[0] ?? '';
+      const how = code === null ? `signal ${signal}` : `code ${code}`;
+      finish(() => reject(new Error(`exited with ${how}${firstLine ? `: ${firstLine}` : ''}`)));
+    });
 
     // stdio transport: one JSON-RPC message per line.
     createInterface({ input: child.stdout }).on('line', (line) => {
