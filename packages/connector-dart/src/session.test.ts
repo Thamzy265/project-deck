@@ -42,6 +42,31 @@ describe('DartAppSession', () => {
     expect(streams.sort()).toEqual(['Isolate', 'Logging', 'Service', 'Stderr', 'Stdout']);
   });
 
+  it('records the process id and the Android platform from getVM', async () => {
+    const { session } = await attach();
+    expect(session.app).toEqual({
+      ...app,
+      pid: 4242,
+      device: { id: 'unknown', name: 'Android device', platform: 'android' },
+    });
+  });
+
+  it('records only the process id when the app is not on Android', async () => {
+    server = await FakeRpcServer.start('/AbC=/ws');
+    asFlutterVmService(server);
+    server.handle('getVM', () => ({ ...vmResponse(), operatingSystem: 'macos', pid: 77 }));
+    session = await DartAppSession.attach(server.uri, app, { serviceWaitMs: 100 });
+    expect(session.app).toEqual({ ...app, pid: 77 });
+  });
+
+  it('ignores a process id that is not a positive integer', async () => {
+    server = await FakeRpcServer.start('/AbC=/ws');
+    asFlutterVmService(server);
+    server.handle('getVM', () => ({ ...vmResponse(), operatingSystem: 'linux', pid: -1 }));
+    session = await DartAppSession.attach(server.uri, app, { serviceWaitMs: 100 });
+    expect(session.app).toEqual(app);
+  });
+
   it('hot reloads through the Flutter tool service with the main isolate', async () => {
     const { server, session } = await attach();
     const reloaded = vi.fn();
