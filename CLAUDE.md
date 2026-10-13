@@ -90,23 +90,85 @@ The plan has five milestones (M1 core + daemon + attach, M2 dashboard, M3 Drift 
 4. When an item is done, tick it in `docs/PLAN.md`. Record any change to the plan or a resolved open decision there too, so the plan stays the source of truth.
 5. Open decisions listed in the plan are the user's call; raise them, don't decide them silently.
 
-## Team roles
+## Team setup
 
-The user is the **project manager**. Claude acts as the **senior developer** and runs the work through role subagents, each with a project skill in `.claude/skills/`:
+The user is the **project manager (PM)**. The team is the [`my-tech-team`](https://github.com/Thamzy265/my-tech-team) plugin, v0.1.0, enabled in `.claude/settings.json`. Its roles are `/my-tech-team:lead`, `/my-tech-team:developer`, `/my-tech-team:tester`, `/my-tech-team:reviewer`, `/my-tech-team:qa` and `/my-tech-team:marketer`. Claude acts as the lead and runs the flow: it briefs each role, enforces the gates, merges and reports to the PM. Claude Code loads the repo settings only after the folder is trusted, and headless `claude -p` runs ignore them.
 
-| Role                    | Skill            | Responsibility                                                                                   | Never                                                  |
-| ----------------------- | ---------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------ |
-| Senior developer (lead) | `deck-lead`      | Picks the next plan item, briefs each role, enforces the gates, merges, reports to the PM        | Decides open decisions or outward-facing actions alone |
-| Developer               | `deck-developer` | Implements one scoped item test-first on its own branch, fixes findings                          | Reviews or merges its own work, pushes                 |
-| Tester                  | `deck-tester`    | Tries to break the branch, adds edge-case and regression tests that are seen to fail first       | Changes production code                                |
-| Reviewer                | `deck-reviewer`  | Runs the code-review and security-review gate, verifies fixes, approves or blocks                | Fixes code itself, reviews its own change              |
-| QA                      | `deck-qa`        | Checks milestone acceptance criteria against the real product and records evidence in `docs/qa/` | Ticks a plan box without evidence                      |
+Project rules here override the plugin's generic defaults where they differ. For example, PR descriptions use the sections `Changes`, `Reason`, `Verification` and `Limitations` from "Git workflow".
 
-Flow for each plan item: lead → developer → tester → reviewer (loop with developer until approved) → QA (when the item has runnable acceptance criteria) → lead merges, ticks the plan and sends the PM an update in the format in `deck-lead`. The lead keeps a dated log of hand-offs, open findings and blockers in [docs/status.md](docs/status.md).
+**Settings the plugin reads**
 
-Every role reports its blockers (what, who can unblock it, what it needs, impact) in each hand-off, or as soon as it gets stuck. Each PM update lists blockers for all five roles, with "none" where there are none.
+- Plan: `docs/PLAN.md`, with a "Later" section.
+- Status log: `docs/status.md`.
+- QA evidence and PM check steps: `docs/qa/<milestone>.md`.
+- Design notes: `docs/design/`. ADRs: `docs/adr/`. UI specs: `docs/ui/`. Slides: `docs/slides/`. Marketing: `docs/marketing/`.
+- Check command: `pnpm check`.
+- Run command: `pnpm build`, then `node packages/daemon/dist/main.js` (fake mode: add `--fake`).
+- Project phase: `MVP` (until the M5 release).
+- Privacy regions: UK + EU. App logs and Drift databases may hold the personal data of the app's end users. Treat them as personal data, and never log or return them beyond what the feature needs.
 
-After every finished task the PM gets **"How you can check it"** steps: numbered actions with copy-paste commands, the expected result for each, and a clean-up step. The developer drafts them, and QA runs them exactly as written before they reach the PM. They're kept in `docs/qa/<milestone>.md`.
+**"How you can check it"**
+
+After every finished task the PM gets numbered steps with copy-paste commands, the expected result for each, and a clean-up step. The developer drafts them, and QA runs them exactly as written before they reach the PM. QA keeps them in `docs/qa/<milestone>.md` under "PM check".
+
+**Project rules by role**
+
+Lead:
+
+- "Done" means ticked in `docs/PLAN.md` on `main`. Work on a branch is in progress.
+- Merge through a PR. Ask the PM for merge approval when the reviewer approves, not before.
+- After a merge, tick the box in `docs/PLAN.md` and update "Current status" in this file.
+- Each PM update lists blockers for every role, with "none" where there are none.
+
+Developer:
+
+- Validate every MCP input and HTTP body with the shared zod schemas in `core/src/api.ts`.
+- Contact loopback addresses only, and never stop the user's app.
+- Every implementation ships a fake.
+- Give every socket and emitter an `'error'` listener.
+- Packages depend on `core`, not on each other's internals.
+- Before using DTD, the VM service, the Dart MCP server, the Claude Code plugin format or Linear, check their current docs or source. Write down anything that differs from the plan.
+- Read the relevant section of `docs/PLAN.md` and any notes in `docs/notes/` first.
+- Run `pnpm build` before `pnpm check` (packages import each other through `dist`).
+
+Tester:
+
+- Probe these areas:
+  - failure paths: peer disconnects mid-call, timeouts, malformed JSON, missing files;
+  - concurrency: attach while stopping, events arriving during a backfill, overlapping scans;
+  - security rules: wrong `Host` or `Origin`, missing token, non-loopback addresses, `javascript:` URLs;
+  - protocol edges: empty `params`, unknown event kinds, truncated `@Instance` strings;
+  - platform: Windows paths and permissions, file modes skipped on win32.
+- Tests are colocated as `*.test.ts` and use fakes or recorded fixtures. No real device, Flutter SDK or network.
+- Prefer real fixture shapes from the protocol spec or recorded sessions, and note the source in the fixture.
+- No `any` and no non-null `!` in tests.
+- Commit tests as `test(<scope>): <summary>` on the same branch.
+
+Reviewer:
+
+- Run the code-review skill at `high` effort and the security-review skill on the branch diff against `main`.
+- security-review diffs against `origin/HEAD`. If that ref is missing, create it with `git update-ref refs/remotes/origin/HEAD main` and delete it afterwards with `git update-ref -d refs/remotes/origin/HEAD`.
+- Always check:
+  - Host, Origin and token checks on every new route or socket;
+  - loopback-only connections;
+  - no secret or auth code in ids, logs, responses or URLs;
+  - `'error'` listeners on sockets;
+  - unhandled promise rejections from timers;
+  - atomic commits with Conventional Commit messages;
+  - the lockfile matches each commit.
+
+QA:
+
+- Run the real flow: `pnpm build`, start the daemon with `node packages/daemon/dist/main.js`, and call it with `curl` and the token from `.flutterdeck/runtime.json`. `node scripts/dtd-apps.mjs` shows which apps the DTDs can see.
+- Record the date, the OS and the Dart and Flutter versions with each result.
+- Mask tokens, auth codes and VM service URIs in all evidence. They grant access.
+- Steps that need the PM's machine (start the app from Android Studio or VS Code, set a breakpoint, look at a device) go to the lead as a short numbered request. Never pretend they ran.
+- Always run the "breakpoint still hits" check. It is the reason the product attaches instead of launching.
+- When a real app session runs, record the JSON-RPC traffic as fixtures for the developer, with auth codes and personal data removed.
+
+Marketer:
+
+- Not active until M5. Then draft `docs/marketing/voice.md` first.
 
 ## Review gate
 
