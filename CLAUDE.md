@@ -16,7 +16,7 @@ TypeScript (strict) pnpm monorepo, Node 22.12+, plus one Dart package.
 | Path                                      | Purpose                                                                                                       | Status |
 | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------- | ------ |
 | `packages/core`                           | Interfaces, zod schemas, registry, event bus, `RingBufferLogSource`; fakes under `@project-deck/core/testing` | M1     |
-| `packages/daemon`                         | DTD client, app sessions, HTTP + WS API on 127.0.0.1:9100, serves dashboard, notifications                    | M1     |
+| `packages/daemon`                         | DTD client, app sessions, HTTP + WS API on 127.0.0.1:9147 (or next free), serves dashboard, notifications     | M1     |
 | `packages/connector-dart`                 | `AppConnector` over DTD + VM service                                                                          | M1     |
 | `packages/logs-android`                   | `adb logcat` by PID                                                                                           | M1     |
 | `packages/mcp`                            | stdio MCP server, thin client of the daemon                                                                   | M2     |

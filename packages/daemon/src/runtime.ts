@@ -8,7 +8,8 @@ export const STATE_DIR = '.flutterdeck';
 export const RUNTIME_FILE = 'runtime.json';
 
 export const RuntimeInfoSchema = z.object({
-  pid: z.number().int(),
+  // pid 0 and negative pids name process groups, which always look alive.
+  pid: z.number().int().positive(),
   port: z.number().int(),
   token: z.string().min(32),
   startedAt: z.number(),

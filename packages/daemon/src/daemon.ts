@@ -1,15 +1,19 @@
 import { createServer } from 'node:http';
-import type { AddressInfo } from 'node:net';
 import type { Registry } from '@project-deck/core';
 import { EventBus } from '@project-deck/core';
 import { getRequestListener } from '@hono/node-server';
 import { createApi } from './api.js';
 import { AppManager } from './app-manager.js';
-import { readRuntime, removeRuntime, writeRuntime } from './runtime.js';
+import { listenWithFallback } from './listen.js';
+import { findRunningDaemon } from './running.js';
+import { removeRuntime, writeRuntime } from './runtime.js';
 import { generateToken } from './security.js';
+import type { StartupLockOptions } from './startup-lock.js';
+import { StartupLockBusyError, acquireStartupLock } from './startup-lock.js';
 import { attachWebSocket } from './ws.js';
 
-export const DEFAULT_PORT = 9100;
+/** Not 9100: Dart DevTools, which Android Studio starts, listens there. */
+export const DEFAULT_PORT = 9147;
 export const VERSION = '0.0.0';
 /** The daemon never listens anywhere else. */
 const HOST = '127.0.0.1';
@@ -18,9 +22,13 @@ export interface DaemonOptions {
   /** Project root; `.flutterdeck/runtime.json` is written here. */
   projectDir: string;
   registry: Registry;
-  /** 0 picks a free port (tests). */
+  /** Preferred port; the next free one is used if it is busy. 0 picks any free port. */
   port?: number;
+  /** Ports tried from `port` upwards before falling back to an OS-assigned one. */
+  portAttempts?: number;
   logCapacity?: number;
+  /** Timings for the per-project startup lock; defaults suit real use. */
+  startupLock?: StartupLockOptions;
   log?: (message: string, err?: unknown) => void;
 }
 
@@ -42,7 +50,30 @@ export class DaemonAlreadyRunningError extends Error {
 }
 
 export async function startDaemon(opts: DaemonOptions): Promise<Daemon> {
-  const log = opts.log ?? ((message, err) => console.error(message, err ?? ''));
+  // Held from the "is one running?" check until runtime.json is written, so two daemons
+  // started together for the same project can't both pass the check.
+  let release: () => Promise<void>;
+  try {
+    release = await acquireStartupLock(opts.projectDir, opts.startupLock);
+  } catch (err) {
+    if (!(err instanceof StartupLockBusyError)) throw err;
+    const running = await findRunningDaemon(opts.projectDir);
+    throw running === undefined ? err : new DaemonAlreadyRunningError(running);
+  }
+  try {
+    return await startLocked(opts);
+  } finally {
+    await release();
+  }
+}
+
+async function startLocked(opts: DaemonOptions): Promise<Daemon> {
+  const log =
+    opts.log ??
+    ((message, err) => (err === undefined ? console.error(message) : console.error(message, err)));
+  const running = await findRunningDaemon(opts.projectDir);
+  if (running !== undefined) throw new DaemonAlreadyRunningError(running);
+
   const token = generateToken();
   const bus = new EventBus((err, event) => log(`Listener for ${event} threw`, err));
   const manager = new AppManager(opts.registry, bus, {
@@ -50,7 +81,8 @@ export async function startDaemon(opts: DaemonOptions): Promise<Daemon> {
     onConnectorError: (id, err) => log(`Connector '${id}' failed to start`, err),
   });
 
-  let port = opts.port ?? DEFAULT_PORT;
+  const requestedPort = opts.port ?? DEFAULT_PORT;
+  let port = requestedPort;
   let resolveClosed: () => void = () => undefined;
   const closed = new Promise<void>((resolve) => (resolveClosed = resolve));
   let stopping: Promise<void> | undefined;
@@ -74,22 +106,14 @@ export async function startDaemon(opts: DaemonOptions): Promise<Daemon> {
   });
 
   try {
-    await new Promise<void>((resolve, reject) => {
-      server.once('error', reject);
-      server.listen(port, HOST, () => {
-        server.off('error', reject);
-        resolve();
-      });
-    });
+    port = await listenWithFallback(server, HOST, requestedPort, opts.portAttempts);
   } catch (err) {
     ws.close();
-    const existing = await readRuntime(opts.projectDir);
-    if ((err as NodeJS.ErrnoException).code === 'EADDRINUSE' && existing?.port === port) {
-      throw new DaemonAlreadyRunningError(port);
-    }
     throw err;
   }
-  port = (server.address() as AddressInfo).port;
+  if (requestedPort !== 0 && port !== requestedPort) {
+    log(`Port ${requestedPort} is in use; using ${port}`);
+  }
   try {
     await writeRuntime(opts.projectDir, { pid: process.pid, port, token, startedAt: Date.now() });
   } catch (err) {

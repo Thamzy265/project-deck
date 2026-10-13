@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 /**
  * Development entrypoint until the CLI exists (M2):
- *   node packages/daemon/dist/main.js [--port 9100] [--project <dir>]
+ *   node packages/daemon/dist/main.js [--port 9147] [--project <dir>]
  *     [--dtd-uri <ws://…>]... [--vm-service-uri <ws://…|http://…>]... [--fake]
+ * If the port is busy it uses the next free one; clients read it from runtime.json.
  * By default it discovers running Dart/Flutter apps through every local DTD.
  * Addresses can also come from DECK_DTD_URIS and DECK_VM_SERVICE_URIS (comma-separated).
  * They carry auth codes, and env vars keep them out of `ps`, unlike the flags.
@@ -14,6 +15,7 @@ import { DartConnector } from '@project-deck/connector-dart';
 import { Registry } from '@project-deck/core';
 import { FakeAppConnector, fakeApp } from '@project-deck/core/testing';
 import { DEFAULT_PORT, startDaemon } from './daemon.js';
+import { formatStartupError } from './startup-error.js';
 import { connectorUris } from './uri-options.js';
 
 const { values } = parseArgs({
@@ -26,9 +28,10 @@ const { values } = parseArgs({
   },
 });
 
-const port = Number(values.port);
+// Digits only: Number() would read '' as 0 and accept '0x10' or ' 9147 '.
+const port = /^\d{1,5}$/.test(values.port) ? Number(values.port) : Number.NaN;
 if (!Number.isInteger(port) || port < 0 || port > 65535) {
-  console.error(`Invalid --port: ${values.port}`);
+  console.error(`Invalid --port: '${values.port}' (expected a number from 0 to 65535)`);
   process.exit(2);
 }
 
@@ -57,7 +60,12 @@ if (values.fake) {
   );
 }
 
-const daemon = await startDaemon({ projectDir: resolve(values.project), registry, port });
+const daemon = await startDaemon({ projectDir: resolve(values.project), registry, port }).catch(
+  (err: unknown) => {
+    console.error(formatStartupError(err));
+    process.exit(1);
+  },
+);
 console.log(`project-deck daemon listening on ${daemon.url}`);
 console.log(`Token in ${resolve(values.project, '.flutterdeck/runtime.json')}`);
 

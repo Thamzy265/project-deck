@@ -36,6 +36,13 @@ describe('runtime file', () => {
     expect(await readRuntime(dir)).toBeUndefined();
   });
 
+  it.each([0, -1, 1.5])('treats a file with pid %s as absent', async (pid) => {
+    // kill(0, 0) and kill(-1, 0) succeed, so such a pid would always look alive.
+    await mkdir(join(dir, STATE_DIR));
+    await writeFile(runtimePath(dir), JSON.stringify({ ...info, pid }));
+    expect(await readRuntime(dir)).toBeUndefined();
+  });
+
   it('treats a malformed file as absent', async () => {
     await mkdir(join(dir, STATE_DIR));
     await writeFile(runtimePath(dir), 'not json');
