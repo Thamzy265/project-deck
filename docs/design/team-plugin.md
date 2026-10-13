@@ -17,7 +17,7 @@ The team-role skills began here as `.claude/skills/deck-*` (PR #1). They are now
 1. `.claude/settings.json` declares the marketplace (GitHub `Thamzy265/my-tech-team`, pinned to `ref: v0.1.0`) in `extraKnownMarketplaces`, and enables `my-tech-team@my-tech-team` in `enabledPlugins`.
 2. Delete `.claude/skills/deck-*`.
 3. CLAUDE.md: replace "Team roles" with "Team setup" (paths, commands, phase, privacy regions and per-role project rules).
-4. `docs/PLAN.md` gains an empty "Later" section. `docs/status.md` gains the 2026-10-12 entry that never reached `main`, plus a switch-over entry.
+4. `docs/PLAN.md` gains an empty "Later" section. `docs/status.md` gains a switch-over entry. The 2026-10-12 entry is already on `main`.
 
 Options considered: pin to a tag (chosen; upgrades are a one-line PR the PM approves) or follow `main`.
 
