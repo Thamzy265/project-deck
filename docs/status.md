@@ -1,6 +1,44 @@
 # Team status log
 
-Kept by the senior developer (`deck-lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
+Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
+
+## 2026-10-13 — Team switch-over moved to plugin v0.2.0 (`chore/team-plugin`)
+
+- **PM decisions (2026-10-13):**
+  - pause the switch-over, build my-tech-team v0.2.0 first, then switch straight to v0.2.0;
+  - v0.2.0 is released (automated testing with screenshot and video evidence, host-safety rules, guard hook).
+- **Developer:**
+  - rebased onto `main` (PRs #7–#9) with no conflicts;
+  - pinned `ref: v0.2.0`;
+  - added the Team setup keys: screenshots path, `qa-artifacts/`, end-to-end tools (Playwright for the dashboard; the Android scripts for app flows), "Approved tools: none yet";
+  - added `qa-artifacts/` to `.gitignore`;
+  - corrected the trust-boundary line (the plugin now has one ask-only guard hook).
+- **Tester:** n/a — no code changed.
+- **Open:**
+  - reviewer re-check;
+  - QA re-run for v0.2.0 (the earlier QA record covers v0.1.0);
+  - PM check steps and merge approval.
+- **Blockers by role:** Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead none.
+
+## 2026-10-13 — Team switched to the my-tech-team plugin (`chore/team-plugin`)
+
+- **PM decisions (2026-10-13):**
+  - pin the plugin to v0.1.0;
+  - run the switch-over in parallel with the open work;
+  - delete the old `docs/team-roles` branch after merge.
+- **Lead:** design note `docs/design/team-plugin.md` and deck `docs/slides/team-plugin.html`. Size: large, because it adds a new outside integration.
+- **Developer:** handed off 5 commits:
+  - settings pinned to v0.1.0;
+  - CLAUDE.md "Team setup" with every FlutterDeck rule from the old skills;
+  - PLAN "Later" section;
+  - status log intro;
+  - old `deck-*` skills removed.
+    The 2026-10-12 entry was already on `main`, so there was nothing to copy.
+- **Tester:** n/a — no code changed.
+- **Reviewer:** first pass blocked on R1 (Medium): the project-rules override sentence could relax the plugin's risk rule. Fixed, along with R2 and N1. Re-review: approve with notes. N2 (commit scope) was skipped as cleanup.
+- **QA:** 5/7 pass. The `ref: v0.1.0` pin is confirmed by the published settings schema. The install from the tag gives version 0.1.0 with 6 skills. The headless sentence failed first, was fixed, and passed on re-run. Not observed: loading from project settings in a trusted folder, which needs the PM's interactive check. Evidence: `docs/qa/team-plugin.md`.
+- **Open:** PM check steps (`docs/qa/team-plugin.md#pm-check`), then PM approval of the merge route.
+- **Blockers by role:** Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead none.
 
 ## 2026-10-12 — M1 at risk (connector approved; port clash and CI found)
 

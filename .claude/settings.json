@@ -1,0 +1,10 @@
+{
+  "extraKnownMarketplaces": {
+    "my-tech-team": {
+      "source": { "source": "github", "repo": "Thamzy265/my-tech-team", "ref": "v0.2.0" }
+    }
+  },
+  "enabledPlugins": {
+    "my-tech-team@my-tech-team": true
+  }
+}

@@ -436,3 +436,9 @@ The remaining risks are known and each has a mitigation; the open decisions don'
 | Jetpack Compose | Find the app with adb; reload means rebuild and reinstall (no true hot reload outside Android Studio) | Reuse `logs-android` | Room via the snapshot backend, or a small debug library like `flutterdeck_drift` |
 | Web (Vite, Next.js) | Attach to the running dev server; HMR is automatic | Dev server output + browser console | SQLite file, Postgres via connection string |
 | Jira, GitHub Issues | — | — | New `TaskProvider` implementations |
+
+## Later
+
+One line per deferred item, in the format `- <what> — <why> — trigger: <measurable condition> — noted <date> by <role>`.
+
+(none yet)
