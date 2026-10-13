@@ -9,3 +9,4 @@ coverage/
 .flutterdeck/*.tmp
 .flutterdeck/*.stale
 .claude/worktrees/
+qa-artifacts/
