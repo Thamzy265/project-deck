@@ -203,4 +203,4 @@ Follows [GitHub flow](https://docs.github.com/en/get-started/using-github/github
 
 ## Current status
 
-- **M1 in progress.** Done: scaffold, `core`, daemon (HTTP + WS API, token, localhost checks; dev entrypoint `node packages/daemon/dist/main.js --fake`). Next: `connector-dart` (read [docs/notes/dtd.md](docs/notes/dtd.md) first), `logs-android`, `.mcp.json` example.
+- **M1 in progress.** Done: scaffold, `core`, daemon (HTTP + WS API, token, localhost checks, default port 9147 with fallback), `connector-dart`, `logs-android`, `.mcp.json` example. Next: the M1 acceptance check (a breakpoint in the IDE still hits while the daemon is attached).

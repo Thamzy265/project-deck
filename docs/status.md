@@ -8,6 +8,23 @@ Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry re
 - **Change:** `.claude/settings.json` `ref: v0.2.1`, and the version in CLAUDE.md "Team setup". No project rule changed.
 - **Blockers by role:** Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead none.
 
+## 2026-10-13 — M1 close-out (`docs/m1-close-out`)
+
+- Changed:
+  - PR #8 (`.mcp.json` example) and PR #9 (`logs-android`) are merged to `main`. CI passes on all 6 jobs.
+  - Plan boxes ticked for both items. QA results added to [qa/M1.md](qa/M1.md).
+  - PR #10 closed: the my-tech-team plugin replaces the `deck-*` skills.
+- Gates:
+  - PR #9: developer pass · tester pass (8 bugs, fixed) · reviewer approve with notes (all notes fixed) · QA pass (9/9 emulator, 10/10 iOS) · PM merge approved.
+  - PR #8: developer pass · tester n/a — no product code, config and a manual check script only · reviewer approve with notes (all notes fixed) · QA pass (check script) · PM merge approved.
+  - This close-out: docs only, so tester, reviewer and QA are n/a.
+- Open findings: none. Follow-ups:
+  - use the recorded real JSON-RPC fixtures in the tests (F6);
+  - make the daemon port test reliable under parallel runs;
+  - the emulator teardown leaves a stale DTD discovery file.
+- Decisions: PM (2026-10-13): "yes tick it, open the PR and close #10". This means: tick the `.mcp.json` item now (the FlutterDeck entry comes in M2), open the close-out PR, and close PR #10.
+- Blockers: Developer none · Tester none · Reviewer none · QA the breakpoint check needs the PM's IDE · Marketer none · Lead none.
+
 ## 2026-10-13 — Team switch-over moved to plugin v0.2.0 (`chore/team-plugin`)
 
 - **PM decisions (2026-10-13):**
