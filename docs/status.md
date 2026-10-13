@@ -2,6 +2,24 @@
 
 Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
 
+## 2026-10-13 — Team switched to the my-tech-team plugin (`chore/team-plugin`)
+
+- **PM decisions (2026-10-13):**
+  - pin the plugin to v0.1.0;
+  - run the switch-over in parallel with the open work;
+  - delete the old `docs/team-roles` branch after merge.
+- **Lead:** design note `docs/design/team-plugin.md` and deck `docs/slides/team-plugin.html`. Size: large, because it adds a new outside integration.
+- **Developer:** handed off 5 commits:
+  - settings pinned to v0.1.0;
+  - CLAUDE.md "Team setup" with every FlutterDeck rule from the old skills;
+  - PLAN "Later" section;
+  - status log intro;
+  - old `deck-*` skills removed.
+    The 2026-10-12 entry was already on `main`, so there was nothing to copy.
+- **Tester:** n/a — no code changed.
+- **Open:** reviewer (rule-by-rule check), QA (load check and version pin), PM merge approval.
+- **Blockers by role:** Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead none.
+
 ## 2026-10-12 — M1 at risk (connector approved; port clash and CI found)
 
 - **Connector (`feat/connector-dart`, PR #3):** approved with notes after the full team flow:
