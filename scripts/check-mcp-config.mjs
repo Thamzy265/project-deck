@@ -10,6 +10,8 @@ import { createInterface } from 'node:readline';
 const TIMEOUT_MS = 30_000;
 const PROTOCOL_VERSION = '2025-06-18';
 
+const isObject = (value) => typeof value === 'object' && value !== null && !Array.isArray(value);
+
 function checkServer(entry) {
   return new Promise((resolve, reject) => {
     const child = spawn(entry.command, entry.args ?? [], {
@@ -42,18 +44,29 @@ function checkServer(entry) {
 
     // stdio transport: one JSON-RPC message per line.
     createInterface({ input: child.stdout }).on('line', (line) => {
+      try {
+        onLine(line);
+      } catch (err) {
+        // A throw here would be uncaught and leave the server running.
+        finish(() => reject(err));
+      }
+    });
+    const onLine = (line) => {
       let msg;
       try {
         msg = JSON.parse(line);
       } catch {
         return; // Not a protocol message.
       }
+      if (!isObject(msg)) return; // e.g. `null` or a bare number: not a JSON-RPC message.
       const waiter = pending.get(msg.id);
       if (msg.method !== undefined || !waiter) return; // Ignore server requests and notifications.
       pending.delete(msg.id);
-      if (msg.error) waiter.reject(new Error(msg.error.message));
+      if (msg.error !== undefined)
+        waiter.reject(new Error(String(msg.error?.message ?? msg.error)));
+      else if (!isObject(msg.result)) waiter.reject(new Error('response has no result object'));
       else waiter.resolve(msg.result);
-    });
+    };
 
     const send = (msg) => child.stdin.write(JSON.stringify({ jsonrpc: '2.0', ...msg }) + '\n');
     let nextId = 1;
@@ -72,6 +85,7 @@ function checkServer(entry) {
       });
       send({ method: 'notifications/initialized' });
       const { tools } = await request('tools/list', {});
+      if (!Array.isArray(tools)) throw new Error('tools/list returned no tools array');
       return { init, tools };
     })().then(
       (result) => finish(() => resolve(result)),
