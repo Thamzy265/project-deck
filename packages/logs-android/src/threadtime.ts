@@ -1,6 +1,9 @@
 import type { LogEntry, LogLevel } from '@project-deck/core';
 
-/** One entry never holds more lines than this; a runaway dump can't exhaust memory. */
+/**
+ * Most lines kept after an entry's first line, including the "… lines dropped" marker,
+ * so an entry has at most this plus one lines. A runaway dump can't exhaust memory.
+ */
 export const MAX_LINES_PER_ENTRY = 200;
 /** Longest line kept; the rest of it is dropped. */
 export const MAX_LINE_LENGTH = 64 * 1024;
