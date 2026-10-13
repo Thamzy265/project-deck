@@ -2,6 +2,24 @@
 
 Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
 
+## 2026-10-13 — Team switch-over moved to plugin v0.2.0 (`chore/team-plugin`)
+
+- **PM decisions (2026-10-13):**
+  - pause the switch-over, build my-tech-team v0.2.0 first, then switch straight to v0.2.0;
+  - v0.2.0 is released (automated testing with screenshot and video evidence, host-safety rules, guard hook).
+- **Developer:**
+  - rebased onto `main` (PRs #7–#9) with no conflicts;
+  - pinned `ref: v0.2.0`;
+  - added the Team setup keys: screenshots path, `qa-artifacts/`, end-to-end tools (Playwright for the dashboard; the Android scripts for app flows), "Approved tools: none yet";
+  - added `qa-artifacts/` to `.gitignore`;
+  - corrected the trust-boundary line (the plugin now has one ask-only guard hook).
+- **Tester:** n/a — no code changed.
+- **Open:**
+  - reviewer re-check;
+  - QA re-run for v0.2.0 (the earlier QA record covers v0.1.0);
+  - PM check steps and merge approval.
+- **Blockers by role:** Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead none.
+
 ## 2026-10-13 — Team switched to the my-tech-team plugin (`chore/team-plugin`)
 
 - **PM decisions (2026-10-13):**
