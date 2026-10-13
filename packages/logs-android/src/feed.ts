@@ -51,6 +51,8 @@ function exitDetail(err: Error | undefined): string {
 /**
  * Android native logs for the attached app: `adb logcat --pid` on the device that
  * runs it. Only reads logs; never touches the app or the device.
+ * Known limitation: native crash tombstones are logged by debuggerd (tag DEBUG) under
+ * another pid, so `--pid` doesn't capture them.
  */
 export class AndroidLogFeed implements LogFeedFactory {
   readonly id = 'android-logcat';
