@@ -92,7 +92,7 @@ The plan has five milestones (M1 core + daemon + attach, M2 dashboard, M3 Drift 
 
 ## Team setup
 
-The user is the **project manager (PM)**. The team is the [`my-tech-team`](https://github.com/Thamzy265/my-tech-team) plugin, v0.1.0, enabled in `.claude/settings.json`. Its roles are `/my-tech-team:lead`, `/my-tech-team:developer`, `/my-tech-team:tester`, `/my-tech-team:reviewer`, `/my-tech-team:qa` and `/my-tech-team:marketer`. Claude acts as the lead and runs the flow: it briefs each role, enforces the gates, merges and reports to the PM. Claude Code reads these settings only after the folder is trusted. In an untrusted folder, including a headless `claude -p` run there, it ignores them without a message. In `-p` runs the plugin installs in the background, so it can be missing on the first turn.
+The user is the **project manager (PM)**. The team is the [`my-tech-team`](https://github.com/Thamzy265/my-tech-team) plugin, v0.2.0, enabled in `.claude/settings.json`. Its roles are `/my-tech-team:lead`, `/my-tech-team:developer`, `/my-tech-team:tester`, `/my-tech-team:reviewer`, `/my-tech-team:qa` and `/my-tech-team:marketer`. Claude acts as the lead and runs the flow: it briefs each role, enforces the gates, merges and reports to the PM. Claude Code reads these settings only after the folder is trusted. In an untrusted folder, including a headless `claude -p` run there, it ignores them without a message. In `-p` runs the plugin installs in the background, so it can be missing on the first turn. On Claude Code the plugin's guard hook asks the PM before risky Bash commands (for example `git reset --hard`, force-push, `sudo` or installs). It never replaces the roles' own Host safety rule of asking first.
 
 Project rules set paths, commands and formats, and add rules. They never relax a plugin gate, the never-deferred list, or the rule that only the PM accepts a known risk: a confirmed finding that is not fixed needs the PM's dated decision in docs/status.md. For example, PR descriptions use the sections `Changes`, `Reason`, `Verification` and `Limitations` from "Git workflow".
 
@@ -101,9 +101,12 @@ Project rules set paths, commands and formats, and add rules. They never relax a
 - Plan: `docs/PLAN.md`, with a "Later" section.
 - Status log: `docs/status.md`.
 - QA evidence and PM check steps: `docs/qa/<milestone>.md`.
+- Screenshots: `docs/qa/<milestone>/screens/`. Videos and traces: `qa-artifacts/` (git-ignored).
 - Design notes: `docs/design/`. ADRs: `docs/adr/`. UI specs: `docs/ui/`. Slides: `docs/slides/`. Marketing: `docs/marketing/`.
 - Check command: `pnpm check`.
 - Run command: `pnpm build`, then `node packages/daemon/dist/main.js` (fake mode: add `--fake`).
+- End-to-end tools: Playwright for the dashboard (M2, web). For app flows, the existing scripted checks: `scripts/qa/android-sample-app.sh up|down` and `node scripts/qa/check-android-logs.mjs`. Maestro only if a later item needs it.
+- Approved tools: none yet.
 - Project phase: `MVP` (until the M5 release).
 - Privacy regions: UK + EU. App logs and Drift databases may hold the personal data of the app's end users. Treat them as personal data, and never log or return them beyond what the feature needs.
 
@@ -160,9 +163,10 @@ Reviewer:
 QA:
 
 - Run the real flow: `pnpm build`, start the daemon with `node packages/daemon/dist/main.js`, and call it with `curl` and the token from `.flutterdeck/runtime.json`. `node scripts/dtd-apps.mjs` shows which apps the DTDs can see.
+- For flows that need a running Android app, automate first: `scripts/qa/android-sample-app.sh up` boots a headless emulator (or reuses a booted one), creates a throwaway Flutter app in a scratch folder and runs it until DTD sees it. Then `node scripts/qa/check-android-logs.mjs` starts its own daemon on a free port, attaches, checks the native and app logs, and prints a PASS/FAIL table. Always finish with `scripts/qa/android-sample-app.sh down`, which stops only what `up` started. Paste the table (it masks the token and URIs) into the evidence. If the Android SDK, an API 24+ AVD or Flutter is missing, don't install it: mark the line `NOT RUN — <tool> not installed` and ask the lead.
 - Record the date, the OS and the Dart and Flutter versions with each result.
 - Mask tokens, auth codes and VM service URIs in all evidence. They grant access.
-- Steps that need the PM's machine (start the app from Android Studio or VS Code, set a breakpoint, look at a device) go to the lead as a short numbered request. Never pretend they ran.
+- Steps the scripts can't cover and that need the PM's machine (start the app from Android Studio or VS Code, set a breakpoint, look at a physical device) go to the lead as a short numbered request. Never pretend they ran.
 - Always run the "breakpoint still hits" check. It is the reason the product attaches instead of launching.
 - When a real app session runs, record the JSON-RPC traffic as fixtures for the developer, with auth codes and personal data removed.
 
