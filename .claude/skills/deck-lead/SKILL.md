@@ -37,20 +37,13 @@ Independent items (e.g. two packages) may run in parallel branches. Steps for th
 
 ## "How you can check it" (after every finished task)
 
-Whenever something is reported as done, give the PM numbered steps to check it themselves:
+The PM verifies at a high level; the team does the checking. Whenever something is reported as done, give the PM:
 
-- **Before you start:** what must already be running or installed (e.g. "a Flutter app running from Android Studio").
-- **One action per step.** Each command goes in its own fenced `bash` block (no `$` prompt, no output inside the block), with paths the PM can copy as-is.
-- **Expected result** after each step, in plain words, plus how to tell it failed ("if you see `401`, the token wasn't loaded; redo step 2").
-- **Clean-up step** at the end (stop the daemon, delete temp folders).
-- About how long it takes.
+- **The result:** QA's pass/fail summary table from the automated check (see `deck-qa`), with the date and environment.
+- **One command to repeat it**, in its own fenced `bash` block, plus how long it takes and what it needs (e.g. "boots an emulator; about 5 minutes the first time").
+- **Only what needs a human**, as short numbered steps (one command per block, expected result, clean-up), for things that can't be automated, such as checking a breakpoint in the IDE. QA runs these first wherever it can.
 
-Rules:
-
-- QA (or you) must have **run the exact steps** first and seen the expected results. Never hand over untested steps.
-- Steps check behaviour the PM cares about (an app appears, reload works, logs show up), not internals.
-- If a step needs something the PM doesn't have yet, say so up front instead of letting it fail halfway.
-- Keep them in `docs/qa/<milestone>.md` under "PM check" so they can be rerun later.
+Never hand over untested steps or long manual step lists that a script could run.
 
 ## Escalate to the PM (don't decide alone)
 
@@ -74,7 +67,7 @@ Health: **on track** means nothing is blocked and no open findings are older tha
 
 **How you can check it**
 
-1. <step, with commands in their own `bash` blocks> → expect <result>
+<QA summary table> — rerun with one command; manual steps only for what can't be automated
 
 **In progress**
 

@@ -21,9 +21,17 @@ Tests prove the code matches our understanding. QA proves it works for a real Fl
 4. Steps that need the project manager's machine (start the app from Android Studio or VS Code, set a breakpoint, look at a device) go to the lead as a short, numbered request. Never pretend they ran.
 5. A failure becomes a bug for the developer, with steps to reproduce.
 
-## PM check steps
+## Automated checks (default)
 
-After every finished task, turn the developer's "How to verify" draft into the PM's "How you can check it" steps, in the format described in `deck-lead`. Run them yourself, exactly as written, on a clean shell, and confirm each expected result. Save them under "PM check" in `docs/qa/<milestone>.md`. If a step only works with knowledge the PM won't have, rewrite it.
+The PM checks results at a high level; QA does the work. For every finished task with behaviour that can run for real:
+
+1. **Write a check script** in `scripts/qa/check-<feature>.mjs`. It sets up what it needs (temp project dir, daemon on a free port), exercises the real product, prints a `CHECK / RESULT / DETAIL` table, ends with "All N checks passed." or the failures, exits non-zero on any failure, masks tokens and auth codes, and cleans up after itself.
+2. **Script the environment** when the check needs one, e.g. `scripts/qa/android-sample-app.sh up|down` boots an emulator and runs a throwaway sample Flutter app. Use a scratch folder and a sample app; never the PM's own projects, IDE, adb server or running apps. Tear down only what you started.
+3. **Run it yourself** end to end, then commit the scripts as `test(qa): ...` on the feature branch.
+4. **Report** the summary table exactly as printed, plus **one command** the PM can run to repeat it (`up && check && down`).
+5. Record the result (date, environment, summary) in `docs/qa/<milestone>.md`.
+
+Hand the PM numbered manual steps only for what can't be automated (e.g. "set a breakpoint in Android Studio and confirm it hits"), in the format described in `deck-lead`, after running them yourself where possible.
 
 ## Also capture
 
@@ -40,7 +48,7 @@ Milestone: <M#> — <n>/<n> criteria pass
 Fail: <criterion> — <observed vs expected> — repro: <steps>
 Needs PM: <numbered steps the PM must do>
 Evidence: docs/qa/<milestone>.md
-PM check steps: <verified yes/no> — docs/qa/<milestone>.md#pm-check
+Check script: <scripts/qa/...> — <N/N pass> — rerun: `<one command>`
 Blockers: <none | what — who can unblock — what I need — impact>
 ```
 

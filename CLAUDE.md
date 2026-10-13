@@ -106,7 +106,13 @@ Flow for each plan item: lead → developer → tester → reviewer (loop with d
 
 Every role reports its blockers (what, who can unblock it, what it needs, impact) in each hand-off, or as soon as it gets stuck. Each PM update lists blockers for all five roles, with "none" where there are none.
 
-After every finished task the PM gets **"How you can check it"** steps: numbered actions with copy-paste commands, the expected result for each, and a clean-up step. The developer drafts them, and QA runs them exactly as written before they reach the PM. They're kept in `docs/qa/<milestone>.md`.
+After every finished task the PM gets **"How you can check it"**:
+
+- QA's **automated check result** (a pass/fail table from `scripts/qa/check-<feature>.mjs`, run end to end by QA, including emulators or sample apps it sets up and tears down itself);
+- **one command** to repeat it;
+- manual steps only for what needs a human (e.g. an IDE breakpoint).
+
+Results are recorded in `docs/qa/<milestone>.md`.
 
 ## Review gate
 
