@@ -373,8 +373,8 @@ Five milestones, each ending in something usable. Claude should not start the ne
 - [x] `core` interfaces, zod schemas, registry, fake implementations
 - [x] Daemon with HTTP + WS API, token auth, localhost-only checks
 - [x] `connector-dart`: DTD connection, app discovery, VM service attach, reload and restart, VM log streams (12 Oct 2026: PR #3; real-app check in [qa/M1.md](qa/M1.md))
-- [ ] `logs-android` logcat by PID
-- [ ] `.mcp.json` example that runs the official Dart MCP server alongside FlutterDeck
+- [x] `logs-android` logcat by PID (13 Oct 2026: PR #9; emulator check in [qa/M1.md](qa/M1.md))
+- [x] `.mcp.json` example that runs the official Dart MCP server alongside FlutterDeck (13 Oct 2026: PR #8. The file has only the Dart server now. The FlutterDeck entry comes in M2 with the FlutterDeck MCP server. PM decision, 13 Oct 2026.)
 - [ ] Accept: start a sample app from VS Code or Android Studio with a breakpoint set; the daemon lists it, a `curl` reload works, logs stream, and the breakpoint still hits
 
 ### M2 — Dashboard in Claude Desktop
