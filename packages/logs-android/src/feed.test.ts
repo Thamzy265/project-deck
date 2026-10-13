@@ -315,19 +315,63 @@ describe('AndroidLogFeed edge cases', () => {
     expect(entries).toHaveLength(seen);
   });
 
-  it.fails(
-    'BUG: does not stream logs of a system process that happens to have the pid',
-    async () => {
+  it('does not stream logs of a system process that happens to have the pid', async () => {
+    const adb = new FakeAdb({
+      devices: TWO_DEVICES,
+      // The app runs on a device we can't see (unauthorized, another adb server);
+      // the emulator's process at that pid is a system daemon, not the app.
+      processes: { 'emulator-5554': { [FIXTURE_PID]: 'system_server' } },
+    });
+    expect(await setup(adb).open({ ...androidApp, name: 'Shop' })).toBeUndefined();
+    expect(adb.streams).toEqual([]);
+  });
+
+  it.each(['system_server', 'zygote64', 'kworker/0:1', '[kthreadd]'])(
+    'rejects the only device when the process at the pid is %s',
+    async (name) => {
       const adb = new FakeAdb({
-        devices: TWO_DEVICES,
-        // The app runs on a device we can't see (unauthorized, another adb server);
-        // the emulator's process at that pid is a system daemon, not the app.
-        processes: { 'emulator-5554': { [FIXTURE_PID]: 'system_server' } },
+        devices: 'List of devices attached\nemulator-5554\tdevice\n',
+        processes: { 'emulator-5554': { [FIXTURE_PID]: name } },
       });
-      expect(await setup(adb).open({ ...androidApp, name: 'Shop' })).toBeUndefined();
+      expect(await setup(adb).open()).toBeUndefined();
       expect(adb.streams).toEqual([]);
     },
   );
+
+  it('reads the NAME column of old toolbox ps output below API 26', async () => {
+    const adb = new FakeAdb({
+      devices: TWO_DEVICES,
+      sdk: { 'emulator-5554': '23', R58M123ABC: '25' },
+      processes: {
+        'emulator-5554': { [FIXTURE_PID]: 'system_server' },
+        R58M123ABC: { [FIXTURE_PID]: FIXTURE_PACKAGE },
+      },
+    });
+    const close = await setup(adb).open();
+    expect(adb.calls).toContainEqual(['-s', 'R58M123ABC', 'shell', 'ps', String(FIXTURE_PID)]);
+    expect(adb.streams[0]?.args).toEqual([
+      '-s',
+      'R58M123ABC',
+      'logcat',
+      '-v',
+      'threadtime',
+      '-v',
+      'epoch',
+      `--pid=${FIXTURE_PID}`,
+    ]);
+    await close?.();
+  });
+
+  it('uses the only device when old ps lists no row for the pid', async () => {
+    const adb = new FakeAdb({
+      devices: 'List of devices attached\nemulator-5554\tdevice\n',
+      sdk: { 'emulator-5554': '23' },
+      processes: {},
+    });
+    const close = await setup(adb).open();
+    expect(adb.streams[0]?.args.slice(0, 2)).toEqual(['-s', 'emulator-5554']);
+    await close?.();
+  });
 
   it('logs and adds a warning entry when logcat ends on its own without an error', async () => {
     const adb = new FakeAdb();

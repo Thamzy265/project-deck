@@ -70,6 +70,28 @@ export function parseDevices(output: string): string[] {
 }
 
 /**
+ * The process name in `ps` output for `pid`, or '' when there is none. Toybox
+ * (`ps -o NAME= -p <pid>`, API 26+) prints just the name; old toolbox (`ps <pid>`)
+ * prints a header and rows with NAME as the last column.
+ */
+export function parsePsName(output: string, pid: number): string {
+  const lines = output
+    .split('\n')
+    .map((l) => l.replace(/\r+$/, '').trim())
+    .filter((l) => l !== '');
+  const [first, ...rows] = lines;
+  if (first === undefined) return '';
+  const columns = first.split(/\s+/);
+  const pidColumn = columns.indexOf('PID');
+  if (pidColumn === -1 || columns.at(-1) !== 'NAME') return first;
+  for (const row of rows) {
+    const cells = row.split(/\s+/);
+    if (cells[pidColumn] === String(pid)) return cells.at(-1) ?? '';
+  }
+  return '';
+}
+
+/**
  * Where adb lives. Android Studio installs it in the SDK without adding it to the
  * PATH, so look in the SDK first and fall back to `adb` on the PATH.
  */

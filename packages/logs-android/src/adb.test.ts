@@ -9,6 +9,7 @@ import {
   isSerial,
   nodeAdb,
   parseDevices,
+  parsePsName,
   resolveAdbPath,
 } from './adb.js';
 import { ADB_DEVICES_FIXTURE } from './testing/fixtures.js';
@@ -276,5 +277,26 @@ describe('nodeAdb edge cases', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('parsePsName', () => {
+  it('reads toybox `ps -o NAME=` output', () => {
+    expect(parsePsName('com.example.shop\r\n', 4242)).toBe('com.example.shop');
+    expect(parsePsName('', 4242)).toBe('');
+  });
+
+  it('reads the NAME column of the row for the pid in toolbox output', () => {
+    const out = [
+      'USER      PID   PPID  VSIZE  RSS   WCHAN              PC  NAME',
+      'u0_a85    4241  1234  1003924 98712 SyS_epoll_ 00000000 S com.other.app',
+      'u0_a86    4242  1234  1003924 98712 SyS_epoll_ 00000000 S com.example.shop',
+      '',
+    ].join('\r\n');
+    expect(parsePsName(out, 4242)).toBe('com.example.shop');
+  });
+
+  it('gives no name when toolbox prints only its header', () => {
+    expect(parsePsName('USER PID PPID VSIZE RSS WCHAN PC NAME\n', 4242)).toBe('');
   });
 });

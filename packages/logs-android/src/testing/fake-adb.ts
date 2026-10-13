@@ -75,6 +75,19 @@ export class FakeAdb implements AdbRunner {
         ? Promise.reject(new Error('adb exited with code 1'))
         : Promise.resolve(`${sdk ?? '35'}\n`);
     }
+    if (
+      args.length === 5 &&
+      args[0] === '-s' &&
+      args[2] === 'shell' &&
+      args[3] === 'ps' &&
+      /^\d+$/.test(args[4] ?? '')
+    ) {
+      // Old toolbox ps: a header, then a row per matching process with NAME last.
+      const name = this.opts.processes[args[1] ?? '']?.[Number(args[4])];
+      const header = 'USER      PID   PPID  VSIZE  RSS   WCHAN              PC  NAME\n';
+      const row = `u0_a86    ${args[4] ?? ''}  1234  1003924 98712 SyS_epoll_ 00000000 S ${name ?? ''}\n`;
+      return Promise.resolve(name === undefined ? header : header + row);
+    }
     const [s, serial, shell, ps, o, fmt, p, pid] = args;
     if (
       args.length === 8 &&
