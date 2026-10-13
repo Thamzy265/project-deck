@@ -1,7 +1,7 @@
 import { execFile, spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { statSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { join, posix, win32 } from 'node:path';
 
 /** adb itself is not installed or not where we looked. */
 export class AdbMissingError extends Error {
@@ -91,28 +91,41 @@ export function parsePsName(output: string, pid: number): string {
   return '';
 }
 
+function isFile(path: string): boolean {
+  try {
+    return statSync(path).isFile();
+  } catch {
+    return false;
+  }
+}
+
 /**
- * Where adb lives. Android Studio installs it in the SDK without adding it to the
- * PATH, so look in the SDK first and fall back to `adb` on the PATH.
+ * Absolute path of adb, or undefined when it isn't installed. Android Studio installs it
+ * in the SDK without adding it to the PATH, so look in the SDK first, then walk the PATH
+ * ourselves. Only absolute PATH entries count: a bare `adb` could otherwise run a file
+ * from the current directory (Windows searches it first).
  */
 export function resolveAdbPath(
   env: NodeJS.ProcessEnv = process.env,
   platform: NodeJS.Platform = process.platform,
   home: string = homedir(),
-  exists: (path: string) => boolean = existsSync,
-): string {
-  const exe = platform === 'win32' ? 'adb.exe' : 'adb';
+  exists: (path: string) => boolean = isFile,
+): string | undefined {
+  const win = platform === 'win32';
+  const exe = win ? 'adb.exe' : 'adb';
   const sdks = [env.ANDROID_HOME, env.ANDROID_SDK_ROOT];
   if (platform === 'darwin') sdks.push(join(home, 'Library', 'Android', 'sdk'));
-  else if (platform === 'win32') {
+  else if (win) {
     if (env.LOCALAPPDATA !== undefined) sdks.push(join(env.LOCALAPPDATA, 'Android', 'Sdk'));
   } else sdks.push(join(home, 'Android', 'Sdk'));
-  for (const sdk of sdks) {
-    if (sdk === undefined || sdk === '') continue;
-    const candidate = join(sdk, 'platform-tools', exe);
-    if (exists(candidate)) return candidate;
+  const candidates = sdks
+    .filter((sdk) => sdk !== undefined && sdk !== '')
+    .map((sdk) => join(sdk ?? '', 'platform-tools', exe));
+  const pathVar = env.PATH ?? env.Path ?? '';
+  for (const dir of pathVar.split(win ? ';' : ':')) {
+    if (win ? win32.isAbsolute(dir) : posix.isAbsolute(dir)) candidates.push(join(dir, exe));
   }
-  return 'adb';
+  return candidates.find((candidate) => exists(candidate));
 }
 
 export interface NodeAdbOptions {
@@ -127,8 +140,15 @@ function isNotFound(err: unknown): boolean {
   return err instanceof Error && 'code' in err && err.code === 'ENOENT';
 }
 
-/** Runs the real adb binary at `path` with execFile/spawn and never a shell. */
-export function nodeAdb(path: string = resolveAdbPath(), opts: NodeAdbOptions = {}): AdbRunner {
+/**
+ * Runs the real adb binary at `path` with execFile/spawn, never a shell, from the home
+ * directory. `null` means adb wasn't found: every call then fails with AdbMissingError.
+ */
+export function nodeAdb(
+  path: string | null = resolveAdbPath() ?? null,
+  opts: NodeAdbOptions = {},
+): AdbRunner {
+  if (path === null) return missingAdb();
   return {
     exec(args) {
       return new Promise((resolve, reject) => {
@@ -138,6 +158,7 @@ export function nodeAdb(path: string = resolveAdbPath(), opts: NodeAdbOptions = 
           {
             shell: false,
             windowsHide: true,
+            cwd: homedir(),
             encoding: 'utf8',
             timeout: opts.timeoutMs ?? DEFAULT_TIMEOUT_MS,
             maxBuffer: MAX_EXEC_OUTPUT,
@@ -164,6 +185,7 @@ export function nodeAdb(path: string = resolveAdbPath(), opts: NodeAdbOptions = 
       const child = spawn(path, args, {
         shell: false,
         windowsHide: true,
+        cwd: homedir(),
         stdio: ['ignore', 'pipe', 'ignore'],
       });
       child.on('error', (err) => finish(isNotFound(err) ? new AdbMissingError(path) : err));
@@ -181,6 +203,17 @@ export function nodeAdb(path: string = resolveAdbPath(), opts: NodeAdbOptions = 
           child.kill();
         },
       };
+    },
+  };
+}
+
+function missingAdb(): AdbRunner {
+  return {
+    exec: () => Promise.reject(new AdbMissingError('adb')),
+    stream(_args, handlers) {
+      // Asynchronous like a failed spawn, so callers can finish setting up first.
+      setImmediate(() => handlers.onExit(new AdbMissingError('adb')));
+      return { kill: () => undefined };
     },
   };
 }

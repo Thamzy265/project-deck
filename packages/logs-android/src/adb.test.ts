@@ -1,5 +1,5 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -65,7 +65,32 @@ describe('resolveAdbPath', () => {
   it("falls back to Android Studio's default SDK, then to adb on the PATH", () => {
     const studio = join('/h', 'Library', 'Android', 'sdk', 'platform-tools', 'adb');
     expect(resolveAdbPath({}, 'darwin', '/h', (p) => p === studio)).toBe(studio);
-    expect(resolveAdbPath({}, 'darwin', '/h', none)).toBe('adb');
+    const onPath = join('/opt/homebrew/bin', 'adb');
+    expect(
+      resolveAdbPath({ PATH: '/usr/bin:/opt/homebrew/bin' }, 'darwin', '/h', (p) => p === onPath),
+    ).toBe(onPath);
+    expect(resolveAdbPath({ PATH: '/usr/bin' }, 'darwin', '/h', none)).toBeUndefined();
+  });
+
+  it('never resolves adb from the current directory or a relative PATH entry', () => {
+    // Every candidate "exists", so only the PATH filtering decides.
+    expect(
+      resolveAdbPath({ PATH: '.::bin:./tools' }, 'linux', '/h', (p) => !p.includes('Sdk')),
+    ).toBeUndefined();
+    expect(
+      resolveAdbPath({ PATH: '.:bin:/opt/bin' }, 'linux', '/h', (p) => !p.includes('Sdk')),
+    ).toBe(join('/opt/bin', 'adb'));
+  });
+
+  it('walks a Windows PATH (either spelling) for adb.exe, skipping . and relative entries', () => {
+    const notSdk = (p: string): boolean => !p.includes('Sdk');
+    expect(
+      resolveAdbPath({ PATH: '.;tools;C:\\platform-tools' }, 'win32', 'C:\\Users\\me', notSdk),
+    ).toBe(join('C:\\platform-tools', 'adb.exe'));
+    expect(resolveAdbPath({ Path: '.;C:\\platform-tools' }, 'win32', 'C:\\Users\\me', notSdk)).toBe(
+      join('C:\\platform-tools', 'adb.exe'),
+    );
+    expect(resolveAdbPath({ PATH: '.;tools' }, 'win32', 'C:\\Users\\me', notSdk)).toBeUndefined();
   });
 
   it('uses adb.exe under LOCALAPPDATA on Windows', () => {
@@ -277,6 +302,22 @@ describe('nodeAdb edge cases', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('nodeAdb safety', () => {
+  it('runs adb in the home directory, not the current one', async () => {
+    const cwd = await nodeAdb(process.execPath).exec(['-e', 'process.stdout.write(process.cwd())']);
+    expect(cwd).toBe(realpathSync(homedir()));
+  });
+
+  it('reports adb as missing without running anything when it was not found', async () => {
+    const none = nodeAdb(null);
+    await expect(none.exec(['devices'])).rejects.toBeInstanceOf(AdbMissingError);
+    const exit = await new Promise<Error | undefined>((resolve) => {
+      none.stream(['logcat'], { onData: () => undefined, onExit: resolve });
+    });
+    expect(exit).toBeInstanceOf(AdbMissingError);
   });
 });
 
