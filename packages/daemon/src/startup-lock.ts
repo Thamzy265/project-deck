@@ -27,6 +27,8 @@ export interface StartupLockOptions {
   waitMs?: number;
   /** A lock older than this is left over from a crash, even if its pid is alive. */
   staleMs?: number;
+  /** Mode for the lock's folder if it has to be created (it never changes an existing one). */
+  dirMode?: number;
   /** Test seams for interleavings and platform errors that timing can't produce. */
   hooks?: StartupLockHooks;
 }
@@ -103,7 +105,10 @@ export async function acquireFileLock(
   const create = opts.hooks?.create ?? createExclusive;
   const waitMs = opts.waitMs ?? staleMs + 1000;
   const path = join(dir, fileName);
-  await mkdir(dir, { recursive: true });
+  await mkdir(dir, {
+    recursive: true,
+    ...(opts.dirMode === undefined ? {} : { mode: opts.dirMode }),
+  });
   const deadline = Date.now() + waitMs;
   for (;;) {
     // The nonce tells apart two holders in one process created in the same millisecond,

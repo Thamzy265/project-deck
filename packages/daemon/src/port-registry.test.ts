@@ -82,6 +82,14 @@ describe('projectIdentity', () => {
 });
 
 describe('allocatePort', () => {
+  it.skipIf(process.platform === 'win32')(
+    'creates ~/.flutterdeck readable by the user only, also when the lock comes first',
+    async () => {
+      await allocatePort(projectA, { homeDir, isFree: allFree });
+      expect((await stat(join(homeDir, '.flutterdeck'))).mode & 0o777).toBe(0o700);
+    },
+  );
+
   it('takes over a registry lock left behind by a crashed process', async () => {
     await mkdir(join(homeDir, '.flutterdeck'), { recursive: true });
     const lock = join(homeDir, '.flutterdeck', 'ports.json.lock');

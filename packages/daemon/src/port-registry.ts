@@ -47,7 +47,8 @@ async function withRegistryLock<T>(homeDir: string, fn: () => Promise<T>): Promi
   const release = await acquireFileLock(
     join(homeDir, REGISTRY_DIR),
     LOCK_FILE,
-    { staleMs: LOCK_STALE_MS, retryMs: 20 },
+    // The lock may be the first thing in ~/.flutterdeck: create the folder private.
+    { staleMs: LOCK_STALE_MS, retryMs: 20, dirMode: 0o700 },
     () =>
       new PortRegistryError(
         `${registryPath(homeDir)} is locked by another FlutterDeck; try again.`,
