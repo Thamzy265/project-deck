@@ -2,6 +2,12 @@
 
 Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
 
+## 2026-10-14 — M2 batch 2 (`feat/dashboard`) — merged
+
+- Changed: PR #22 merged (CI 8/8 incl. the e2e job).
+- Decisions: PM, 2026-10-14, standing approval: "for the future you can delete any temporary branches you create". Deleted: `fix-format-tmp`, `worktree-agent-a4d427d7a267765e6`, `worktree-agent-a6c0f43418b929b85`, `worktree-agent-a6db11ab8d29d6906`, `worktree-agent-aab59232cd25923ae` (all commits already on other branches).
+- Blockers: Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead none.
+
 ## 2026-10-14 — M2 batch 2 (`feat/dashboard`) — ready to merge
 
 - Changed: `packages/dashboard` (header, Logs, Activity, all UI spec states, light/dark, 420/320 px, search in a Web Worker with a 200 ms budget), daemon serves the built assets behind auth, `discovering`, `logs.cleared`, log `seq` numbers, DTD app names parsed, styled Login needed page with a per-page CSP hash, Playwright E2E and a CI e2e job, all CI actions pinned to SHAs.
