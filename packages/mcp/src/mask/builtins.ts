@@ -7,8 +7,11 @@
 
 interface Pattern {
   re: RegExp;
-  /** `groups` are the capture groups, in order; undefined when a group didn't take part. */
-  replace: (match: string, groups: (string | undefined)[]) => string;
+  /**
+   * `groups` are the capture groups, in order (undefined when a group didn't take part);
+   * `before` and `after` are the text around the match.
+   */
+  replace: (match: string, groups: (string | undefined)[], before: string, after: string) => string;
 }
 
 const EMAIL = '[email masked]';
@@ -37,6 +40,17 @@ function isSecretLike(candidate: string): boolean {
   return (
     /[A-Z]/.test(candidate) && /[a-z]/.test(candidate) && (candidate.match(/\d/g)?.length ?? 0) >= 3
   );
+}
+
+/**
+ * A file or package path, not base64 that happens to hold a '/': it follows package:,
+ * dart: or file:, ends in a file extension, or has a plain lower-case folder name.
+ */
+function isPathLike(candidate: string, before: string, after: string): boolean {
+  if (!candidate.includes('/')) return false;
+  if (/(?:package|dart|file):$/.test(before)) return true;
+  if (/^\.[a-z]{1,5}\b/.test(after)) return true;
+  return candidate.split('/').some((segment) => /^[a-z_]{2,}$/.test(segment));
 }
 
 const LOOPBACK = /^(?:127\.0\.0\.1|localhost|\[::1\])(?::\d+)?$/i;
@@ -102,7 +116,8 @@ const PATTERNS: Pattern[] = [
   {
     // %40 is a URL-encoded @, as HTTP loggers print query strings.
     re: /[A-Za-z0-9._%+-]{1,64}(?:@|%40)(?:[A-Za-z0-9-]{1,63}\.){1,8}[A-Za-z]{2,24}\b/g,
-    replace: marker(EMAIL),
+    // name@2x.png is a Flutter asset variant, not an address.
+    replace: (match) => (/(?:@|%40)\d+(?:\.\d+)?x\./.test(match) ? match : EMAIL),
   },
   {
     // The value after a secret-sounding key, in key=value, key: value and "key":"value"
@@ -117,7 +132,8 @@ const PATTERNS: Pattern[] = [
   },
   {
     re: /[A-Za-z0-9+/_-]{32,}={0,2}/g,
-    replace: (match) => (isSecretLike(match) ? SECRET : match),
+    replace: (match, _groups, before, after) =>
+      isSecretLike(match) && !isPathLike(match, before, after) ? SECRET : match,
   },
   {
     re: /(?<![\w+.])\+?(?:\(\d{1,4}\)|\d)[\d ().-]{6,20}\d(?![\w.])/g,
@@ -130,9 +146,16 @@ export function maskBuiltIn(text: string): string {
   let out = text;
   for (const { re, replace } of PATTERNS) {
     // Without named groups the replacer gets (match, ...groups, offset, whole).
-    out = out.replace(re, (match: string, ...args: unknown[]) =>
-      replace(match, args.slice(0, -2) as (string | undefined)[]),
-    );
+    out = out.replace(re, (match: string, ...args: unknown[]) => {
+      const offset = args.at(-2) as number;
+      const whole = args.at(-1) as string;
+      return replace(
+        match,
+        args.slice(0, -2) as (string | undefined)[],
+        whole.slice(Math.max(0, offset - 16), offset),
+        whole.slice(offset + match.length, offset + match.length + 16),
+      );
+    });
   }
   return out;
 }

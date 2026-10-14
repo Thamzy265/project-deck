@@ -138,7 +138,7 @@ describe('built-in masking leaves normal Flutter log text alone', () => {
     );
   });
 
-  it.fails('BUG-MCP-T8: leaves a resolution-variant asset path (logo@2x.png) alone', () => {
+  it('BUG-MCP-T8: leaves a resolution-variant asset path (logo@2x.png) alone', () => {
     // Flutter asset variants are named name@2x.png; "Unable to load asset" errors print them.
     const text = 'Unable to load asset: assets/images/logo@2x.png';
     expect(maskBuiltIn(text)).toBe(text);

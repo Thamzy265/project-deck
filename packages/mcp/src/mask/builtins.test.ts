@@ -20,6 +20,7 @@ describe('built-in masking', () => {
       'token=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U',
       'token=[token masked]',
     ],
+    ['base64 secret with slashes', 'k k3Y/9aB+zXq7W2mP0rT5uV8sL1nH4jF6', 'k [secret masked]'],
     ['long hex', 'key 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b', 'key [secret masked]'],
     [
       'long base64',
@@ -40,6 +41,10 @@ describe('built-in masking', () => {
     ['version', 'Flutter 3.35.4 • channel stable'],
     ['Dart path', 'package:shop_app/src/features/checkout/CheckoutScreen.dart:42:7'],
     ['short hex', 'isolate 0x7f3a9c'],
+    ['2x asset', 'Unable to load asset: assets/images/logo@2x.png'],
+    ['1.5x asset', 'asset icons/star@1.5x.webp missing'],
+    ['path with versioned folders', 'lib/src/features/auth/LoginScreen2V3Widget9.dart'],
+    ['package path with digits', 'package:My2App/Src3/Widget4Screen5ViewModel6.dart:10:5'],
     ['run of one hex letter', `x ${'a'.repeat(64)}`],
     ['plain words', 'Reloaded 3 of 1210 libraries in 412ms'],
   ])('leaves a %s alone', (_name, input) => {
