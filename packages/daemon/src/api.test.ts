@@ -1,8 +1,9 @@
 import type { DeckEvents, LogEntry } from '@project-deck/core';
-import { EventBus, Registry } from '@project-deck/core';
+import { ActivityListSchema, EventBus, Registry } from '@project-deck/core';
 import { FakeAppConnector, fakeApp } from '@project-deck/core/testing';
 import { describe, expect, it, vi } from 'vitest';
 import { createApi } from './api.js';
+import { ActivityFeed } from './activity.js';
 import { AppManager } from './app-manager.js';
 
 const PORT = 9100;
@@ -13,6 +14,8 @@ async function setup() {
   const connector = new FakeAppConnector('fake', [fakeApp()]);
   registry.connectors.register(connector);
   const bus = new EventBus<DeckEvents>();
+  const activity = new ActivityFeed(bus);
+  activity.start();
   const manager = new AppManager(registry, bus);
   await manager.start();
   await vi.waitFor(() => expect(manager.attachedApp()).toBeDefined());
@@ -20,6 +23,7 @@ async function setup() {
   const api = createApi({
     manager,
     bus,
+    activity,
     token: TOKEN,
     sessionSecret: 'session-secret-0123456789abcdef0123456789abcdef',
     port: () => PORT,
@@ -184,5 +188,49 @@ describe('security headers', () => {
     }
     const denied = await request('/api/status', { headers: { 'x-deck-token': 'wrong' } });
     expect(denied.headers.get('cache-control')).toBe('no-store');
+  });
+});
+
+describe('GET /api/activity', () => {
+  it('lists what happened, oldest first', async () => {
+    const { request } = await setup();
+    await request('/api/reload', { method: 'POST' });
+    await request('/api/events', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ type: 'claude.done', sessionId: 's1' }),
+    });
+    const res = await request('/api/activity');
+    expect(res.status).toBe(200);
+    const body = ActivityListSchema.parse(await res.json());
+    expect(body.entries.map((e) => e.kind)).toEqual([
+      'app.attached',
+      'app.reloaded',
+      'claude.done',
+    ]);
+  });
+
+  it('needs the token', async () => {
+    const { request } = await setup();
+    expect((await request('/api/activity', { headers: { 'x-deck-token': 'wrong' } })).status).toBe(
+      401,
+    );
+  });
+
+  it("never keeps a Stop hook's last assistant message", async () => {
+    const { request } = await setup();
+    const res = await request('/api/events', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        type: 'claude.done',
+        last_assistant_message: 'The plan is secret',
+        transcript_path: '/home/me/t.jsonl',
+      }),
+    });
+    expect(res.status).toBe(200);
+    const text = await (await request('/api/activity')).text();
+    expect(text).not.toContain('secret');
+    expect(text).not.toContain('jsonl');
   });
 });

@@ -2,6 +2,7 @@ import type { EventBus, LogQuery } from '@project-deck/core';
 import { DEFAULT_LOG_LIMIT, GetLogsInput, HookEventInput } from '@project-deck/core';
 import { Hono } from 'hono';
 import type { z } from 'zod';
+import type { ActivityFeed } from './activity.js';
 import type { AppManager } from './app-manager.js';
 import { UnknownAppError } from './app-manager.js';
 import {
@@ -15,6 +16,7 @@ import {
 export interface ApiContext {
   manager: AppManager;
   bus: EventBus;
+  activity: Pick<ActivityFeed, 'list'>;
   token: string;
   /** Random per daemon start; the dashboard cookie holds it. Never the token. */
   sessionSecret: string;
@@ -150,6 +152,8 @@ export function createApi(ctx: ApiContext): Hono {
     const truncated = entries.length > limit;
     return c.json({ entries: truncated ? entries.slice(1) : entries, truncated });
   });
+
+  api.get('/api/activity', (c) => c.json({ entries: ctx.activity.list() }));
 
   api.delete('/api/logs', (c) => {
     ctx.manager.logs()?.clear();

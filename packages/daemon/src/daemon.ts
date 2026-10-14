@@ -3,6 +3,7 @@ import { createServer } from 'node:http';
 import type { Registry } from '@project-deck/core';
 import { EventBus } from '@project-deck/core';
 import { getRequestListener } from '@hono/node-server';
+import { ActivityFeed } from './activity.js';
 import { createApi } from './api.js';
 import { AppManager } from './app-manager.js';
 import { readConfig } from './config.js';
@@ -96,6 +97,8 @@ async function startLocked(opts: DaemonOptions): Promise<Daemon> {
   const token = generateToken();
   const sessionSecret = generateToken();
   const bus = new EventBus((err, event) => log(`Listener for ${event} threw`, err));
+  const activity = new ActivityFeed(bus);
+  const stopActivity = activity.start();
   const manager = new AppManager(opts.registry, bus, {
     ...(opts.logCapacity === undefined ? {} : { logCapacity: opts.logCapacity }),
     onConnectorError: (id, err) => log(`Connector '${id}' failed to start`, err),
@@ -110,6 +113,7 @@ async function startLocked(opts: DaemonOptions): Promise<Daemon> {
   const api = createApi({
     manager,
     bus,
+    activity,
     token,
     sessionSecret,
     port: () => port,
@@ -161,6 +165,7 @@ async function startLocked(opts: DaemonOptions): Promise<Daemon> {
         server.closeAllConnections();
       });
       await manager.stop();
+      stopActivity();
       await removeRuntime(opts.projectDir, token);
       resolveClosed();
     })();

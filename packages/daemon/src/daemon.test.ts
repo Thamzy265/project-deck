@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Registry } from '@project-deck/core';
 import { FakeAppConnector, fakeApp } from '@project-deck/core/testing';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
 import type { Daemon } from './daemon.js';
 import { DEFAULT_PORT, DaemonAlreadyRunningError, startDaemon } from './daemon.js';
@@ -99,6 +99,25 @@ describe('startDaemon', () => {
       body: JSON.stringify({ type: 'claude.done' }),
     });
     expect(await next).toEqual({ type: 'claude.done', payload: {} });
+    ws.close();
+  });
+
+  it('pushes new Activity entries over WebSocket', async () => {
+    const d = await start();
+    const ws = openWs(d, d.token);
+    await nextMessage(ws);
+    const messages: { type: string; payload: unknown }[] = [];
+    ws.on('message', (data) => {
+      messages.push(JSON.parse((data as Buffer).toString('utf8')) as (typeof messages)[number]);
+    });
+    await fetch(`${d.url}/api/events`, {
+      method: 'POST',
+      headers: { 'x-deck-token': d.token, 'content-type': 'application/json' },
+      body: JSON.stringify({ type: 'claude.waiting', message: 'Allow edit?' }),
+    });
+    await vi.waitFor(() => expect(messages.map((m) => m.type)).toContain('activity'));
+    const activity = messages.find((m) => m.type === 'activity');
+    expect(activity?.payload).toMatchObject({ kind: 'claude.waiting', message: 'Allow edit?' });
     ws.close();
   });
 
