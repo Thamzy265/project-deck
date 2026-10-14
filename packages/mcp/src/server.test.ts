@@ -125,6 +125,29 @@ describe('tool list', () => {
 });
 
 describe('deck_status', () => {
+  it('stays within 20 kB and says when it was cut', async () => {
+    const f = await fake();
+    const big = (c: string) => c.repeat(10_000);
+    const app = fakeApp({ name: big('n'), device: { id: 'd', name: big('d') } });
+    f.status = {
+      ...f.status,
+      projectName: big('p'),
+      dashboardUrl: big('u'),
+      version: big('v'),
+      apps: [app],
+      attached: app,
+    };
+    const out = await call(await connect(), 'deck_status');
+    expect(Buffer.byteLength(out.text)).toBeLessThanOrEqual(MAX_OUTPUT_BYTES);
+    expect(out.json.truncated).toBe(true);
+    expect(out.json.appsCount).toBe(1);
+  });
+
+  it('says it was not cut when it fits', async () => {
+    await fake();
+    expect((await call(await connect(), 'deck_status')).json.truncated).toBe(false);
+  });
+
   it('reports the attached app, apps, dashboard, version and masking', async () => {
     const f = await fake();
     const app = fakeApp({ name: 'shop for jane@example.com' });

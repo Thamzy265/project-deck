@@ -13,7 +13,7 @@ import type { JsonValue, MaskSettings } from './mask/masker.js';
 import type { Masker } from './mask/masker.js';
 import { MASKING_OFF } from './mask/masker.js';
 import { MaskerCache } from './mask/masker-cache.js';
-import { MAX_OUTPUT_ENTRIES, fitLogs } from './output.js';
+import { MAX_OUTPUT_ENTRIES, fitLogs, fitStatus } from './output.js';
 import type { LoadedSettings } from './settings.js';
 import { readMaskSettings } from './settings.js';
 import { DECK_STATUS_DESCRIPTION, GET_LOGS_DESCRIPTION } from './tool-text.js';
@@ -64,7 +64,9 @@ export function createDeckServer(opts: DeckServerOptions): DeckServer {
         body = { daemon: 'unavailable', problem: errorText(err), warnings: settings.warnings };
       }
       const masked = await withMasker(settings.mask, (m) => m.mask(body));
-      return json({ ...masked.value, masking: maskingLine(settings.mask, masked.notes) });
+      return json(
+        fitStatus({ ...masked.value, masking: maskingLine(settings.mask, masked.notes) }),
+      );
     },
   );
 

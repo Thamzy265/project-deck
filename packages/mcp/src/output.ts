@@ -50,3 +50,27 @@ export function fitLogs(frame: LogsFrame, entries: LogEntry[], moreMatched: bool
 function hint(shown: number): string {
   return `Showing the newest ${shown} matching lines; older ones were left out. Narrow with since, minLevel, tag, text or regex to see others.`;
 }
+
+/**
+ * deck_status within the same 20 kB: if it doesn't fit, every long string is cut
+ * shorter and shorter until it does, and `truncated` says so.
+ */
+export function fitStatus(value: Record<string, unknown>): Record<string, unknown> {
+  const fits = (v: unknown) => Buffer.byteLength(JSON.stringify(v)) <= MAX_OUTPUT_BYTES;
+  const whole = { ...value, truncated: false };
+  if (fits(whole)) return whole;
+  for (const max of [2048, 1024, 512, 256, 128, 64, 32]) {
+    const cut = { ...(shorten(value, max) as Record<string, unknown>), truncated: true };
+    if (fits(cut)) return cut;
+  }
+  return { truncated: true, problem: 'FlutterDeck status was too large to show.' };
+}
+
+function shorten(value: unknown, max: number): unknown {
+  if (typeof value === 'string') return value.length > max ? `${value.slice(0, max)}…` : value;
+  if (Array.isArray(value)) return value.map((v) => shorten(v, max));
+  if (typeof value === 'object' && value !== null) {
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, shorten(v, max)]));
+  }
+  return value;
+}
