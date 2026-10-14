@@ -1,5 +1,5 @@
 import type { DeckEvents, LogEntry } from '@project-deck/core';
-import { ActivityListSchema, EventBus, Registry } from '@project-deck/core';
+import { ActivityListSchema, EventBus, Registry, StatusResponse } from '@project-deck/core';
 import { FakeAppConnector, fakeApp } from '@project-deck/core/testing';
 import { describe, expect, it, vi } from 'vitest';
 import { createApi } from './api.js';
@@ -31,6 +31,7 @@ async function setup() {
     port: () => PORT,
     version: '0.0.0',
     projectId: '0123456789ab',
+    projectName: 'shop_app',
     shutdown,
   });
 
@@ -82,9 +83,11 @@ describe('API routes', () => {
     const body = await (await request('/api/status')).json();
     expect(body).toMatchObject({
       dashboardUrl: 'http://127.0.0.1:9100/',
+      projectName: 'shop_app',
       apps: [fakeApp()],
       attached: fakeApp(),
     });
+    expect(StatusResponse.safeParse(body).success).toBe(true);
   });
 
   it('reloads, restarts and detaches', async () => {

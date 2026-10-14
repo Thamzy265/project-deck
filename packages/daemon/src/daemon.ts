@@ -1,5 +1,6 @@
 import type { Server } from 'node:http';
 import { createServer } from 'node:http';
+import { basename } from 'node:path';
 import type { Registry } from '@project-deck/core';
 import { EventBus } from '@project-deck/core';
 import { getRequestListener } from '@hono/node-server';
@@ -130,6 +131,7 @@ async function startLocked(opts: DaemonOptions): Promise<Daemon> {
     port: () => port,
     version: VERSION,
     projectId,
+    projectName: basename(opts.projectDir),
     shutdown: () => void stop(),
   });
   const listener = getRequestListener(api.fetch);

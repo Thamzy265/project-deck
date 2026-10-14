@@ -1,4 +1,4 @@
-import type { EventBus, LogQuery, LoginWindowResult } from '@project-deck/core';
+import type { EventBus, LogQuery, LoginWindowResult, Status } from '@project-deck/core';
 import { DEFAULT_LOG_LIMIT, GetLogsInput, HookEventInput } from '@project-deck/core';
 import { Hono } from 'hono';
 import type { z } from 'zod';
@@ -32,6 +32,8 @@ export interface ApiContext {
   /** Lets clients tell this project's daemon from another project's on the same port. */
   /** Omitted from /api/health when unknown. */
   projectId: string | undefined;
+  /** The project folder's name, shown in the dashboard header. */
+  projectName: string;
   /** Stops the daemon after the response is sent. */
   shutdown: () => void;
 }
@@ -154,9 +156,10 @@ export function createApi(ctx: ApiContext): Hono {
   });
 
   api.get('/api/status', (c) =>
-    c.json({
+    c.json<Status>({
       version: ctx.version,
       dashboardUrl: `http://127.0.0.1:${ctx.port()}/`,
+      projectName: ctx.projectName,
       apps: ctx.manager.apps(),
       attached: ctx.manager.attachedApp() ?? null,
     }),
