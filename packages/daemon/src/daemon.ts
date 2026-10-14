@@ -94,6 +94,7 @@ async function startLocked(opts: DaemonOptions): Promise<Daemon> {
   const projectId = await projectIdentity(opts.projectDir, registryOpts);
 
   const token = generateToken();
+  const sessionSecret = generateToken();
   const bus = new EventBus((err, event) => log(`Listener for ${event} threw`, err));
   const manager = new AppManager(opts.registry, bus, {
     ...(opts.logCapacity === undefined ? {} : { logCapacity: opts.logCapacity }),
@@ -110,6 +111,7 @@ async function startLocked(opts: DaemonOptions): Promise<Daemon> {
     manager,
     bus,
     token,
+    sessionSecret,
     port: () => port,
     version: VERSION,
     projectId,
@@ -121,6 +123,7 @@ async function startLocked(opts: DaemonOptions): Promise<Daemon> {
     server,
     bus,
     token,
+    sessionSecret,
     port: () => port,
     hello: () => ({ apps: manager.apps(), attached: manager.attachedApp() ?? null }),
   });

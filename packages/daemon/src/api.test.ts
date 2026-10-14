@@ -21,6 +21,7 @@ async function setup() {
     manager,
     bus,
     token: TOKEN,
+    sessionSecret: 'session-secret-0123456789abcdef0123456789abcdef',
     port: () => PORT,
     version: '0.0.0',
     projectId: '0123456789ab',

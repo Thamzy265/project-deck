@@ -4,12 +4,20 @@ import { Hono } from 'hono';
 import type { z } from 'zod';
 import type { AppManager } from './app-manager.js';
 import { UnknownAppError } from './app-manager.js';
-import { isAllowedHost, isAllowedOrigin, tokenFromHeaders, tokensEqual } from './security.js';
+import {
+  authenticate,
+  isAllowedHost,
+  isAllowedOrigin,
+  isTopLevelNavigation,
+  sessionCookie,
+} from './security.js';
 
 export interface ApiContext {
   manager: AppManager;
   bus: EventBus;
   token: string;
+  /** Random per daemon start; the dashboard cookie holds it. Never the token. */
+  sessionSecret: string;
   /** Read lazily: the port is only known once the server is listening. */
   port: () => number;
   version: string;
@@ -52,6 +60,10 @@ function logQueryFromSearch(params: Record<string, string>): LogQuery {
   return parse(GetLogsInput, raw);
 }
 
+const PLACEHOLDER_PAGE =
+  '<!doctype html><html lang="en"><meta charset="utf-8"><title>FlutterDeck</title>' +
+  '<p>FlutterDeck is running.</p></html>';
+
 const SECURITY_HEADERS: Record<string, string> = {
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'no-referrer',
@@ -88,13 +100,18 @@ export function createApi(ctx: ApiContext): Hono {
     c.json({ ok: true, name: 'project-deck', version: ctx.version, projectId: ctx.projectId }),
   );
 
+  // The dashboard's login: a tab opened on / gets the session cookie. Placeholder page
+  // until the dashboard app is served here.
+  api.get('/', (c) => {
+    if (isTopLevelNavigation((n) => c.req.header(n))) {
+      c.header('Set-Cookie', sessionCookie(ctx.port(), ctx.sessionSecret));
+    }
+    return c.html(PLACEHOLDER_PAGE);
+  });
+
   api.use('/api/*', async (c, next) => {
-    if (
-      !tokensEqual(
-        tokenFromHeaders((n) => c.req.header(n)),
-        ctx.token,
-      )
-    ) {
+    const creds = { token: ctx.token, sessionSecret: ctx.sessionSecret, port: ctx.port() };
+    if (authenticate((n) => c.req.header(n), creds) === undefined) {
       return c.json({ error: 'Missing or invalid token' }, 401);
     }
     await next();

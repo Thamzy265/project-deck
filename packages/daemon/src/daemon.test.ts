@@ -47,8 +47,10 @@ function rawGet(port: number, path: string, headers: Record<string, string>): Pr
 }
 
 function openWs(d: Daemon, token?: string, origin?: string) {
-  const url = `ws://127.0.0.1:${d.port}/ws${token === undefined ? '' : `?token=${token}`}`;
-  return new WebSocket(url, origin === undefined ? {} : { origin });
+  return new WebSocket(`ws://127.0.0.1:${d.port}/ws`, {
+    ...(token === undefined ? {} : { headers: { 'x-deck-token': token } }),
+    ...(origin === undefined ? {} : { origin }),
+  });
 }
 
 function nextMessage(ws: WebSocket): Promise<{ type: string; payload: unknown }> {
