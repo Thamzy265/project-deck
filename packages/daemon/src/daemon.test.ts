@@ -217,17 +217,23 @@ describe('port selection', () => {
     await Promise.all(servers.splice(0).map((s) => new Promise((r) => s.close(r))));
   });
 
+  /**
+   * Occupies `count` consecutive ports and checks the one after them is free. They are
+   * picked below every OS's ephemeral range (macOS and Windows from 49152, Linux from
+   * 32768), so tests that listen on port 0 in parallel can't take the free one first.
+   */
   async function occupy(count: number): Promise<number> {
     for (;;) {
-      const base = await freePort();
-      if (base + count > 65535) continue;
+      const base = 20_000 + Math.floor(Math.random() * 10_000);
       const taken: Server[] = [];
-      for (let i = 0; i < count; i++) {
+      for (let i = 0; i <= count; i++) {
         const srv = await tryListen(base + i);
         if (srv === undefined) break;
         taken.push(srv);
       }
-      if (taken.length === count) {
+      const next = taken.length === count + 1 ? taken.pop() : undefined;
+      if (next !== undefined) {
+        await new Promise((r) => next.close(r));
         servers.push(...taken);
         return base;
       }
