@@ -14,6 +14,7 @@ import { LoginWindow } from './login-window.js';
 import { identifyPortHolder } from './port-busy.js';
 import { claimConfigPort, projectIdentity } from './port-registry.js';
 import { findRunningDaemon } from './running.js';
+import { RegexFilter } from './regex-filter.js';
 import { removeRuntime, writeRuntime } from './runtime.js';
 import { generateToken } from './security.js';
 import type { StartupLockOptions } from './startup-lock.js';
@@ -132,7 +133,9 @@ async function startLocked(opts: DaemonOptions): Promise<Daemon> {
   const closed = new Promise<void>((resolve) => (resolveClosed = resolve));
   let stopping: Promise<void> | undefined;
 
+  const regexFilter = new RegexFilter();
   const api = createApi({
+    regexFilter,
     manager,
     bus,
     activity,
@@ -201,6 +204,7 @@ async function startLocked(opts: DaemonOptions): Promise<Daemon> {
         server.closeAllConnections();
       });
       await manager.stop();
+      await regexFilter.close();
       stopActivity();
       await removeRuntime(opts.projectDir, token);
       resolveClosed();

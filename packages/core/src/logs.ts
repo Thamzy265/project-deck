@@ -74,6 +74,12 @@ export interface LogSource {
   clear(): void;
 }
 
+/** The text a `regex` filter is tested against: message and stack, first 4 kB only. */
+export function regexHaystack(e: LogEntry): string {
+  const haystack = e.stack === undefined ? e.message : `${e.message}\n${e.stack}`;
+  return haystack.slice(0, MAX_REGEX_HAYSTACK);
+}
+
 /** Builds a predicate for a validated query. Shared by every LogSource so filtering is identical. */
 export function logMatcher(q: LogQuery): (e: LogEntry) => boolean {
   const text = q.text?.toLowerCase();
@@ -84,7 +90,7 @@ export function logMatcher(q: LogQuery): (e: LogEntry) => boolean {
     if (q.tag !== undefined && e.tag !== q.tag) return false;
     const haystack = e.stack === undefined ? e.message : `${e.message}\n${e.stack}`;
     if (text !== undefined && !haystack.toLowerCase().includes(text)) return false;
-    if (re !== undefined && !re.test(haystack.slice(0, MAX_REGEX_HAYSTACK))) return false;
+    if (re !== undefined && !re.test(regexHaystack(e))) return false;
     return true;
   };
 }
