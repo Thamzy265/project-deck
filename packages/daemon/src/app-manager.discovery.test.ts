@@ -1,8 +1,8 @@
 import type { DeckEvents } from '@project-deck/core';
 import { EventBus, Registry } from '@project-deck/core';
 import { FakeAppConnector, fakeApp } from '@project-deck/core/testing';
-import { describe, expect, it } from 'vitest';
-import { AppManager } from './app-manager.js';
+import { describe, expect, it, vi } from 'vitest';
+import { AppManager, DISCOVERY_BOUND_MS } from './app-manager.js';
 
 /** A connector whose start() waits until the test lets it finish. */
 class SlowConnector extends FakeAppConnector {
@@ -46,6 +46,26 @@ describe('AppManager discovery state', () => {
     await manager.start();
     expect(manager.discovering()).toBe(false);
     expect(seen).toEqual([false]);
+  });
+
+  it('stops discovering after the bound even if a connector never finishes (review C6)', async () => {
+    vi.useFakeTimers();
+    try {
+      const slow = new SlowConnector('slow', []);
+      const { manager, seen } = setup(slow);
+      void manager.start();
+      await vi.advanceTimersByTimeAsync(DISCOVERY_BOUND_MS - 1);
+      expect(manager.discovering()).toBe(true);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(manager.discovering()).toBe(false);
+      expect(seen).toEqual([false]);
+      // The connector finishing later doesn't announce it again.
+      slow.finish();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(seen).toEqual([false]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('is done at once with no connectors', async () => {

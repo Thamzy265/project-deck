@@ -10,6 +10,9 @@ import type {
 } from '@project-deck/core';
 import { MAX_LOG_LIMIT, RingBufferLogSource, isAtLeast } from '@project-deck/core';
 
+/** Discovery counts as done after this long even if a connector is still starting. */
+export const DISCOVERY_BOUND_MS = 10_000;
+
 /** An exit within this long after an error log line counts as a crash. */
 export const CRASH_WINDOW_MS = 5000;
 
@@ -60,7 +63,22 @@ export class AppManager {
   ) {}
 
   async start(): Promise<void> {
-    await Promise.all(this.registry.connectors.list().map((c) => this.startConnector(c)));
+    // A connector that hangs (say, a DTD that never answers) mustn't keep the dashboard
+    // on "Finding apps…": discovery counts as done after the bound, whichever comes first.
+    let timer: NodeJS.Timeout | undefined;
+    const bound = new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, DISCOVERY_BOUND_MS);
+      timer.unref();
+    });
+    const all = Promise.all(this.registry.connectors.list().map((c) => this.startConnector(c)));
+    await Promise.race([all, bound]);
+    clearTimeout(timer);
+    this.endDiscovery();
+    await all;
+  }
+
+  private endDiscovery(): void {
+    if (!this.discoveringNow) return;
     this.discoveringNow = false;
     if (!this.stopped) this.bus.emit('apps.discovering', { discovering: false });
   }
