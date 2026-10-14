@@ -230,4 +230,21 @@ describe('credentials after a known header or key', () => {
   ])('always masks the value after Authorization: Basic (%j)', (input, expected) => {
     expect(maskBuiltIn(input)).toBe(expected);
   });
+
+  it.each([
+    ['{"password":"my secret pass"}', '{"password":"[secret masked]"}'],
+    ["password='hunter 2' ok", "password='[secret masked]' ok"],
+    ['{"token": "a,b;c}d"}', '{"token": "[secret masked]"}'],
+    ['password=[abc123]', 'password=[secret masked]'],
+    ['secret: [masked-ish] x', 'secret: [secret masked] x'],
+  ])('masks a whole quoted or bracketed value (%j)', (input, expected) => {
+    expect(maskBuiltIn(input)).toBe(expected);
+  });
+
+  it.each(['"token": "[token masked]"', 'password=[email masked]', 'secret=[secret masked]'])(
+    'leaves a value it masked already (%j)',
+    (input) => {
+      expect(maskBuiltIn(input)).toBe(input);
+    },
+  );
 });
