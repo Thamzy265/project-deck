@@ -25,6 +25,7 @@ TypeScript (strict) pnpm monorepo, Node 22.12+, plus one Dart package.
 | `packages/db-drift`, `packages/db-sqlite` | `DbInspector` backends (live / `sql.js` snapshot)                                                             | M3     |
 | `packages/tasks-linear`                   | `TaskProvider` for Linear GraphQL                                                                             | M4     |
 | `dart/flutterdeck_drift`                  | Debug-only in-app helper exposing Drift via VM service extensions                                             | M3     |
+| `examples/sample_app`                     | Sample Flutter app for PM checks (breakpoint, reload, logs); Drift in M3, demo in M5                          | M1     |
 | `plugin/`                                 | Claude Code plugin: `.mcp.json`, commands, hooks                                                              | M2–M5  |
 
 Packages are created when their milestone starts, not before.
