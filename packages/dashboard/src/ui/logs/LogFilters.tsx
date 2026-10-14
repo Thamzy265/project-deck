@@ -15,18 +15,32 @@ function isLevel(value: string): value is LogLevel | 'all' {
   return LEVELS.some((l) => l.value === value);
 }
 
+function searchError(search: string, tooSlow: boolean): string | undefined {
+  const compiled = compileSearch(search);
+  if (!compiled.ok) {
+    return compiled.reason === 'unsafe'
+      ? 'That pattern could freeze the page. Try a simpler one.'
+      : "That pattern isn't valid";
+  }
+  return tooSlow ? 'That search took too long and was stopped.' : undefined;
+}
+
 export function LogFilterBar({
   filters,
   onChange,
   menuOpen,
   onToggleMenu,
+  tooSlow = false,
 }: {
   filters: Filters;
   onChange: (f: Filters) => void;
   menuOpen: boolean;
   onToggleMenu: () => void;
+  /** The last search pass ran past its time budget and was stopped. */
+  tooSlow?: boolean;
 }) {
-  const invalid = !compileSearch(filters.search).ok;
+  const error = searchError(filters.search, tooSlow);
+  const invalid = error !== undefined;
   return (
     <div className="flex flex-wrap items-start gap-2 p-2">
       <div className="flex min-w-0 basis-full flex-col pane:flex-1 pane:basis-0">
@@ -46,7 +60,7 @@ export function LogFilterBar({
         />
         {invalid && (
           <p id="log-search-error" className="text-sm text-error">
-            That pattern isn't valid
+            {error}
           </p>
         )}
       </div>

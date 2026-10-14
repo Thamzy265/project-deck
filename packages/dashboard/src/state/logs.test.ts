@@ -60,7 +60,13 @@ describe('compileSearch', () => {
   });
 
   it('reports an invalid pattern', () => {
-    expect(compileSearch('(unclosed')).toEqual({ ok: false });
+    expect(compileSearch('(unclosed')).toEqual({ ok: false, reason: 'invalid' });
+  });
+
+  it('refuses nested quantifiers, which could freeze the page (BUG-M2-T1)', () => {
+    expect(compileSearch('(a+)+$')).toEqual({ ok: false, reason: 'unsafe' });
+    expect(compileSearch('(x*){2,}')).toEqual({ ok: false, reason: 'unsafe' });
+    expect(compileSearch('(tap)+ \\d+')).toMatchObject({ ok: true });
   });
 });
 

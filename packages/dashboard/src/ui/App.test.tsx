@@ -238,6 +238,19 @@ describe('logs', () => {
     expect(screen.getByText('Boom')).toBeInTheDocument();
   });
 
+  it('refuses a pattern that could freeze the page (BUG-M2-T1)', async () => {
+    const t = renderDashboard(daemon());
+    await t.connect();
+    await screen.findByText('Tap 1');
+    const search = screen.getByRole('searchbox', { name: 'Search logs' });
+    await userEvent.type(search, '(a+)+$');
+    expect(search).toHaveAttribute('aria-invalid', 'true');
+    expect(search).toHaveAccessibleDescription(
+      'That pattern could freeze the page. Try a simpler one.',
+    );
+    expect(screen.getByText('Boom')).toBeInTheDocument();
+  });
+
   it('offers to clear filters when nothing matches', async () => {
     const t = renderDashboard(daemon());
     await t.connect();

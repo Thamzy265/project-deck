@@ -23,10 +23,9 @@ function timed<T>(fn: () => T): { value: T; ms: number } {
 const KEYSTROKE_BUDGET_MS = 100;
 
 describe('log search: user-typed patterns', () => {
-  // BUG-M2-T1: the search runs the user's pattern on the page's only thread. A pattern
-  // with nested quantifiers backtracks exponentially, so a short line freezes the tab
-  // (23 characters ≈ 0.5 s, 40 characters ≈ hours). The 4 kB haystack cap doesn't help.
-  it.fails('BUG-M2-T1: (a+)+$ on a short non-matching line returns within one keystroke', () => {
+  // BUG-M2-T1 (fixed): a pattern with nested quantifiers backtracks exponentially, so a
+  // short line used to freeze the tab. Such patterns are now refused before they run.
+  it('BUG-M2-T1: (a+)+$ on a short non-matching line returns within one keystroke', () => {
     const entries = [keyed(`${'a'.repeat(23)}!`)];
     const { ms } = timed(() => filterLogs(entries, { ...NO_FILTERS, search: '(a+)+$' }, undefined));
     expect(ms).toBeLessThan(KEYSTROKE_BUDGET_MS);

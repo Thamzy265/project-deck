@@ -1,5 +1,10 @@
 import type { LogEntry, LogLevel } from '@project-deck/core';
-import { MAX_LOG_REGEX_LENGTH, MAX_REGEX_HAYSTACK, isAtLeast } from '@project-deck/core';
+import {
+  MAX_LOG_REGEX_LENGTH,
+  MAX_REGEX_HAYSTACK,
+  hasNestedQuantifier,
+  isAtLeast,
+} from '@project-deck/core';
 
 /** A log entry with a key that is stable for this page, for React and the virtual list. */
 export type KeyedLog = LogEntry & { key: number };
@@ -68,15 +73,27 @@ export function mergeBackfill(list: LogList, fetched: LogEntry[], cap: number): 
   return { entries: sorted.length > cap ? sorted.slice(-cap) : sorted, nextKey: appended.nextKey };
 }
 
-export type CompiledSearch = { ok: true; regex: RegExp | undefined } | { ok: false };
+export type CompiledSearch =
+  | { ok: true; regex: RegExp | undefined }
+  /** `unsafe`: nested quantifiers, which can backtrack long enough to freeze the page. */
+  | { ok: false; reason: 'invalid' | 'unsafe' };
 
 export function compileSearch(search: string): CompiledSearch {
   if (search === '') return { ok: true, regex: undefined };
+  let regex: RegExp;
   try {
-    return { ok: true, regex: new RegExp(search, 'i') };
+    regex = new RegExp(search, 'i');
   } catch {
-    return { ok: false };
+    return { ok: false, reason: 'invalid' };
   }
+  if (hasNestedQuantifier(search)) return { ok: false, reason: 'unsafe' };
+  return { ok: true, regex };
+}
+
+/** The text a search runs on: message and stack, only the first 4 kB. */
+export function searchText(e: LogEntry): string {
+  const text = e.stack === undefined ? e.message : `${e.message}\n${e.stack}`;
+  return text.slice(0, MAX_REGEX_HAYSTACK);
 }
 
 export function filtersActive(f: LogFilters): boolean {
@@ -101,9 +118,7 @@ export function filterLogs(
     if (f.tag !== '' && e.tag !== f.tag) return false;
     if (f.sinceReload && reloadAt !== undefined && e.ts < reloadAt) return false;
     if (regex !== undefined) {
-      // Only the start of long entries, to bound catastrophic backtracking.
-      const text = e.stack === undefined ? e.message : `${e.message}\n${e.stack}`;
-      if (!regex.test(text.slice(0, MAX_REGEX_HAYSTACK))) return false;
+      if (!regex.test(searchText(e))) return false;
     }
     return true;
   });
