@@ -267,8 +267,13 @@ test('long unbroken log lines wrap at 320 px', async ({ page }) => {
   push({
     message: Array.from({ length: 8 }, (_, i) => `#${i} frame at lib/main.dart:${i}`).join('\n'),
   });
-  await expect(page.getByRole('button', { name: /^Show more: / })).toBeVisible();
+  // Both collapse: the 9-line entry, and the single line that wraps past 4 rows (QA B2-3).
+  const more = page.getByRole('button', { name: /^Show more: / });
+  await expect(more).toHaveCount(2);
   await expectNoSidewaysScroll(page);
   await expectAccessible(page);
   await screenshot(page, 'long-lines-320');
+  await more.first().click();
+  await expect(more).toHaveCount(1);
+  await expect(page.getByText(`token=${'x'.repeat(400)}`)).toBeVisible();
 });

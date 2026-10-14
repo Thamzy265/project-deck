@@ -1,5 +1,6 @@
 import type { CSSProperties, KeyboardEvent, Ref } from 'react';
-import { memo } from 'react';
+import type { RefObject } from 'react';
+import { memo, useLayoutEffect, useRef, useState } from 'react';
 import type { KeyedLog } from '../../state/logs.js';
 import { LEVEL_LETTER, LEVEL_NAME, clock } from '../format.js';
 import { linkButton } from '../styles.js';
@@ -29,6 +30,25 @@ function copy(text: string): void {
   }
 }
 
+/** True while the clamped text is taller than its box; re-checked when the row resizes. */
+function useOverflow(ref: RefObject<HTMLElement | null>, clamped: boolean, text: string): boolean {
+  const [overflows, setOverflows] = useState(false);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el === null || !clamped) {
+      setOverflows(false);
+      return;
+    }
+    const check = () => setOverflows(el.scrollHeight > el.clientHeight + 1);
+    check();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(check);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [ref, clamped, text]);
+  return overflows;
+}
+
 export const LogRow = memo(function LogRow({
   entry,
   expanded,
@@ -48,8 +68,12 @@ export const LogRow = memo(function LogRow({
 }) {
   const text = fullText(entry);
   const lines = text.split('\n');
-  const long = lines.length > COLLAPSE_LINES;
-  const shown = long && !expanded ? lines.slice(0, COLLAPSE_LINES).join('\n') : text;
+  const manyLines = lines.length > COLLAPSE_LINES;
+  const shown = manyLines && !expanded ? lines.slice(0, COLLAPSE_LINES).join('\n') : text;
+  // A single line can also wrap past four rows on screen; CSS clamps it, and this tells.
+  const textRef = useRef<HTMLSpanElement>(null);
+  const overflows = useOverflow(textRef, !expanded, shown);
+  const long = manyLines || overflows;
   const time = clock(entry.ts, 'medium');
   const summary = `${time} ${entry.message.slice(0, 40)}`;
 
@@ -85,11 +109,15 @@ export const LogRow = memo(function LogRow({
           {entry.tag}
         </span>
       )}
-      <span className="min-w-0 flex-1 basis-full whitespace-pre-wrap wrap-anywhere pane:basis-0">
-        {shown}
+      <span className="min-w-0 flex-1 basis-full pane:basis-0">
+        <span
+          ref={textRef}
+          className={`whitespace-pre-wrap wrap-anywhere ${expanded ? 'block' : 'line-clamp-4'}`}
+        >
+          {shown}
+        </span>
         {long && !expanded && (
           <>
-            {' '}
             <button
               type="button"
               className={linkButton}
