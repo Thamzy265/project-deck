@@ -93,7 +93,9 @@ export function authenticate(
   get: HeaderGetter,
   creds: Credentials,
 ): 'token' | 'cookie' | undefined {
-  if (tokensEqual(tokenFromHeaders(get), creds.token)) return 'token';
+  const token = tokenFromHeaders(get);
+  // A wrong token is never ignored, even when a valid cookie comes with it.
+  if (token !== undefined) return tokensEqual(token, creds.token) ? 'token' : undefined;
   const values = cookieValues(get('cookie'), sessionCookieName(creds.port));
   if (!values.some((value) => tokensEqual(value, creds.sessionSecret))) return undefined;
   const site = get('sec-fetch-site');

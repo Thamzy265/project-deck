@@ -258,6 +258,18 @@ describe('WebSocket login', () => {
     expect(await connect(d, '/ws', headers)).toBe(101);
   });
 
+  it('refuses the cookie when a wrong token header comes with it', async () => {
+    const d = await start();
+    const cookie = await login(d);
+    const headers = {
+      cookie,
+      origin: `http://127.0.0.1:${d.port}`,
+      'sec-fetch-site': 'same-origin',
+      'x-deck-token': 'wrong',
+    };
+    expect(await connect(d, '/ws', headers)).toBe(401);
+  });
+
   it('accepts the token header', async () => {
     const d = await start();
     expect(await connect(d, '/ws', { 'x-deck-token': d.token })).toBe(101);

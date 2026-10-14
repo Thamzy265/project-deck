@@ -191,15 +191,17 @@ describe('cookie header edge cases', () => {
     expect((await send(d, '/api/status', sameOrigin(d, `  ${cookie}  ;`))).status).toBe(200);
   });
 
-  // Regression lock: the dashboard never sends a token, so a stray wrong one from some
-  // other client mustn't matter; a valid cookie still decides alone.
-  it('still accepts a valid cookie when a wrong token header comes with it', async () => {
+  // Lead decision (14 Oct 2026): a wrong credential is never ignored, even when a valid
+  // cookie comes with it.
+  it('refuses a valid cookie when a wrong token header comes with it', async () => {
     const d = await start();
     const cookie = await login(d);
     const withWrongToken = { ...sameOrigin(d, cookie), 'x-deck-token': 'wrong' };
-    expect((await send(d, '/api/status', withWrongToken)).status).toBe(200);
+    expect((await send(d, '/api/status', withWrongToken)).status).toBe(401);
     const withWrongBearer = { ...sameOrigin(d, cookie), authorization: 'Bearer wrong' };
-    expect((await send(d, '/api/status', withWrongBearer)).status).toBe(200);
+    expect((await send(d, '/api/status', withWrongBearer)).status).toBe(401);
+    const withRightToken = { ...sameOrigin(d, cookie), 'x-deck-token': d.token };
+    expect((await send(d, '/api/status', withRightToken)).status).toBe(200);
   });
 
   it('never accepts the session secret as a token header', async () => {
