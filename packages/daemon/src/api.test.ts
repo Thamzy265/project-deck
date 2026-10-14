@@ -151,3 +151,37 @@ describe('API routes', () => {
     await vi.waitFor(() => expect(shutdown).toHaveBeenCalled());
   });
 });
+
+describe('security headers', () => {
+  const expectHeaders = (res: Response) => {
+    expect(res.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(res.headers.get('referrer-policy')).toBe('no-referrer');
+    expect(res.headers.get('content-security-policy')).toBe(
+      "default-src 'self'; connect-src 'self'; frame-ancestors 'none'",
+    );
+    expect(res.headers.get('x-frame-options')).toBe('DENY');
+  };
+
+  it('are on every response, including errors', async () => {
+    const { request } = await setup();
+    const responses = [
+      await request('/api/health'),
+      await request('/api/status'),
+      await request('/api/status', { headers: { 'x-deck-token': 'wrong' } }),
+      await request('/api/status', { headers: { host: 'evil.example:9100' } }),
+      await request('/api/nope'),
+      await request('/api/events', { method: 'POST', body: 'not json' }),
+    ];
+    expect(responses.map((r) => r.status)).toEqual([200, 200, 401, 403, 404, 400]);
+    for (const res of responses) expectHeaders(res);
+  });
+
+  it('forbid caching of API JSON', async () => {
+    const { request } = await setup();
+    for (const path of ['/api/health', '/api/status', '/api/logs']) {
+      expect((await request(path)).headers.get('cache-control')).toBe('no-store');
+    }
+    const denied = await request('/api/status', { headers: { 'x-deck-token': 'wrong' } });
+    expect(denied.headers.get('cache-control')).toBe('no-store');
+  });
+});

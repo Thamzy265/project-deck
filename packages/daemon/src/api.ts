@@ -52,8 +52,27 @@ function logQueryFromSearch(params: Record<string, string>): LogQuery {
   return parse(GetLogsInput, raw);
 }
 
+const SECURITY_HEADERS: Record<string, string> = {
+  'X-Content-Type-Options': 'nosniff',
+  'Referrer-Policy': 'no-referrer',
+  'Content-Security-Policy': "default-src 'self'; connect-src 'self'; frame-ancestors 'none'",
+  'X-Frame-Options': 'DENY',
+};
+
+function setSecurityHeaders(headers: Headers, path: string): void {
+  for (const [name, value] of Object.entries(SECURITY_HEADERS)) headers.set(name, value);
+  // API answers hold logs and app state; a page that sets the login cookie mustn't be cached.
+  if (path === '/' || path.startsWith('/api/')) headers.set('Cache-Control', 'no-store');
+}
+
 export function createApi(ctx: ApiContext): Hono {
   const api = new Hono();
+
+  // First, so error responses from later checks get the headers too.
+  api.use('*', async (c, next) => {
+    await next();
+    setSecurityHeaders(c.res.headers, c.req.path);
+  });
 
   api.use('*', async (c, next) => {
     const port = ctx.port();
