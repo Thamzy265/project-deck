@@ -10,11 +10,15 @@ import { createServer } from 'node:net';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { z } from 'zod';
+import { acquireFileLock } from './startup-lock.js';
 
 export const REGISTRY_DIR = '.flutterdeck';
 export const REGISTRY_FILE = 'ports.json';
 /** Where `init` starts looking. Not 9100: Dart DevTools listens there. */
 export const FIRST_PORT = 9147;
+const LOCK_FILE = 'ports.json.lock';
+/** Updates take milliseconds; a lock this old was left by a crash. */
+const LOCK_STALE_MS = 5000;
 
 const RegistrySchema = z.object({
   version: z.literal(1),
@@ -34,6 +38,27 @@ export interface AllocateOptions extends PortRegistryOptions {
 }
 
 export class PortRegistryError extends Error {}
+
+/**
+ * Runs a read-modify-write of the registry under a cross-process lock, so two projects
+ * that run `init` (or start a daemon) at the same moment can't both take one port.
+ */
+async function withRegistryLock<T>(homeDir: string, fn: () => Promise<T>): Promise<T> {
+  const release = await acquireFileLock(
+    join(homeDir, REGISTRY_DIR),
+    LOCK_FILE,
+    { staleMs: LOCK_STALE_MS, retryMs: 20 },
+    () =>
+      new PortRegistryError(
+        `${registryPath(homeDir)} is locked by another FlutterDeck; try again.`,
+      ),
+  );
+  try {
+    return await fn();
+  } finally {
+    await release();
+  }
+}
 
 /** The port in a committed config belongs to another project on this machine. */
 export class PortClaimedError extends Error {
@@ -66,6 +91,14 @@ export async function allocatePort(
   opts: AllocateOptions = {},
 ): Promise<number> {
   const homeDir = home(opts);
+  return withRegistryLock(homeDir, () => allocateLocked(projectDir, homeDir, opts));
+}
+
+async function allocateLocked(
+  projectDir: string,
+  homeDir: string,
+  opts: AllocateOptions,
+): Promise<number> {
   const isFree = opts.isFree ?? canListen;
   const registry = await load(homeDir);
   const key = await projectKey(projectDir);
@@ -91,6 +124,10 @@ export async function claimConfigPort(
   opts: PortRegistryOptions = {},
 ): Promise<void> {
   const homeDir = home(opts);
+  await withRegistryLock(homeDir, () => claimLocked(projectDir, port, homeDir));
+}
+
+async function claimLocked(projectDir: string, port: number, homeDir: string): Promise<void> {
   const registry = await load(homeDir);
   const key = await projectKey(projectDir);
   for (const [other, otherPort] of Object.entries(registry.projects)) {

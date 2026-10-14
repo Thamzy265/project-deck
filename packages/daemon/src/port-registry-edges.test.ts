@@ -282,21 +282,17 @@ describe('port registry: allocation edges', () => {
     expect(await allocatePort(dir, { homeDir, isFree: allFree })).toBe(ports[0]);
   });
 
-  // BUG-T3: known and deferred by the developer in PLAN "Later" (file lock around
-  // ports.json). Two `init`s for different projects at the same moment both get 9147.
-  it.fails(
-    'never gives two projects the same port when they allocate at once (BUG-T3)',
-    async () => {
-      await projectIdentity(await project('seed'), { homeDir });
-      const a = await project('a');
-      const b = await project('b');
-      const [portA, portB] = await Promise.all([
-        allocatePort(a, { homeDir, isFree: allFree }),
-        allocatePort(b, { homeDir, isFree: allFree }),
-      ]);
-      expect(portA).not.toBe(portB);
-    },
-  );
+  // BUG-T3: two `init`s for different projects at the same moment both got 9147.
+  it('never gives two projects the same port when they allocate at once (BUG-T3)', async () => {
+    await projectIdentity(await project('seed'), { homeDir });
+    const a = await project('a');
+    const b = await project('b');
+    const [portA, portB] = await Promise.all([
+      allocatePort(a, { homeDir, isFree: allFree }),
+      allocatePort(b, { homeDir, isFree: allFree }),
+    ]);
+    expect(portA).not.toBe(portB);
+  });
 
   it('lets the owner re-claim its port after another project registered the next one', async () => {
     const a = await project('a');

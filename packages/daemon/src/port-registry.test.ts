@@ -83,6 +83,15 @@ describe('projectIdentity', () => {
 });
 
 describe('allocatePort', () => {
+  it('takes over a registry lock left behind by a crashed process', async () => {
+    await mkdir(join(homeDir, '.flutterdeck'), { recursive: true });
+    const lock = join(homeDir, '.flutterdeck', 'ports.json.lock');
+    // pid 2^22 + 1 is above every default pid limit, so it is never alive.
+    await writeFile(lock, JSON.stringify({ pid: 4_194_305, createdAt: Date.now() }));
+    expect(await allocatePort(projectA, { homeDir, isFree: allFree })).toBe(9147);
+    await expect(stat(lock)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
   it('gives the first project 9147 and the next one the next free unregistered port', async () => {
     expect(await allocatePort(projectA, { homeDir, isFree: allFree })).toBe(9147);
     const busy = new Set([9148]);
