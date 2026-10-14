@@ -3,7 +3,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import {
+  StdioClientTransport,
+  getDefaultEnvironment,
+} from '@modelcontextprotocol/sdk/client/stdio.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { FakeDaemon } from './testing/fake-daemon.js';
 
@@ -11,11 +14,17 @@ import { FakeDaemon } from './testing/fake-daemon.js';
 const MAIN = fileURLToPath(new URL('../dist/main.js', import.meta.url));
 
 let projectDir: string;
+/**
+ * Its own empty home: the other test files share the scratch HOME and may create a port
+ * registry there, which would give main.js a project id the fake daemon doesn't know.
+ */
+let home: string;
 let daemon: FakeDaemon;
 let client: Client | undefined;
 
 beforeEach(async () => {
   projectDir = await mkdtemp(join(tmpdir(), 'deck-mcp-main-'));
+  home = await mkdtemp(join(tmpdir(), 'deck-mcp-main-home-'));
   daemon = await FakeDaemon.start(projectDir);
 });
 
@@ -24,6 +33,7 @@ afterEach(async () => {
   client = undefined;
   await daemon.stop();
   await rm(projectDir, { recursive: true, force: true });
+  await rm(home, { recursive: true, force: true });
 });
 
 async function waitFor(check: () => boolean): Promise<void> {
@@ -44,6 +54,7 @@ describe('main.js over stdio', () => {
       command: process.execPath,
       args: [MAIN, '--project', projectDir],
       stderr: 'pipe',
+      env: { ...getDefaultEnvironment(), HOME: home, USERPROFILE: home },
     });
     client = new Client({ name: 'test', version: '0.0.0' });
     await client.connect(transport);
