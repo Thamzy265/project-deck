@@ -1,0 +1,210 @@
+{
+  "_source": "Recorded by QA on 2026-10-14. Raw `streamNotify` params from the `Isolate` stream of a debugger-style VM service client (the RpcClient of scripts/qa/check-m1-acceptance.mjs) connected to the app through DDS. Every reload and restart was made by the official Dart MCP server (`dart mcp-server`, \"dart and flutter tooling\" 0.1.4) through its `dtd` connect, `hot_reload` and `hot_restart` tools, with the batch-1 daemon (feat/dashboard-auth, live mode) attached at the same time. Script: qa-artifacts/M2/record-isolate-reload.mjs (git-ignored). Evidence: docs/qa/M2.md.",
+  "environment": "macOS 27.0.1, Node 22.12.0, Flutter 3.44.6 (stable), Dart 3.12.2, Pixel 9 Pro emulator API 36, throwaway app qa_sample_app from scripts/qa/android-sample-app.sh, flutter run started by the script",
+  "masking": "No VM service or DTD URIs, auth codes or tokens are in these events. Isolate and isolate group ids are the real ones from the run.",
+  "findings": [
+    "A successful reload posts one IsolateReload {status: \"success\"} with isolateGroup and no isolate field.",
+    "A reload that fails to COMPILE (syntax error) posts NO IsolateReload event: flutter_tools stops before it asks the VM to reload. The Dart MCP tool returns an error.",
+    "A reload the VM REJECTS (enum redefined as a class; flutter_tools prints \"Hot reload was rejected: Enum class cannot be redefined to be a non-enum class\") still posts IsolateReload with status \"success\" and no reloadFailureReason. The Dart MCP tool returns an error. No other event on the Isolate, Debug, Extension, Service, VM or Timeline streams tells it apart from a success (checked in a separate run).",
+    "A reload with no changed libraries posts no IsolateReload event.",
+    "A hot restart posts NO IsolateReload. It posts IsolateExit for the old isolate, IsolateStart and IsolateRunnable for a new isolate in a NEW isolate group (plus many ServiceExtensionAdded, left out here). Later reloads report the new group id."
+  ],
+  "cases": {
+    "reloadSuccess": {
+      "trigger": "Edit the print string in lib/main.dart, then Dart MCP hot_reload",
+      "mcpResult": "Hot reload succeeded.",
+      "isolateStream": [
+        {
+          "streamId": "Isolate",
+          "event": {
+            "type": "Event",
+            "kind": "IsolateReload",
+            "isolateGroup": {
+              "type": "@IsolateGroup",
+              "id": "isolateGroups/6767947138351398",
+              "name": "main.dart",
+              "number": "6767947138351398",
+              "isSystemIsolateGroup": false
+            },
+            "timestamp": 1791995378170,
+            "status": "success"
+          }
+        }
+      ]
+    },
+    "reloadCompileError": {
+      "trigger": "Syntax error in lib/main.dart (`'…' +;`), then Dart MCP hot_reload",
+      "mcpResult": "isError: true, \"Hot reload failed: s1.reloadSources: (-32000) Unable to reload sources: (-32603) …\"",
+      "isolateStream": []
+    },
+    "reloadAfterFix": {
+      "trigger": "Restore the edited (valid) source, then Dart MCP hot_reload",
+      "mcpResult": "Hot reload succeeded.",
+      "isolateStream": [
+        {
+          "streamId": "Isolate",
+          "event": {
+            "type": "Event",
+            "kind": "IsolateReload",
+            "isolateGroup": {
+              "type": "@IsolateGroup",
+              "id": "isolateGroups/6767947138351398",
+              "name": "main.dart",
+              "number": "6767947138351398",
+              "isSystemIsolateGroup": false
+            },
+            "timestamp": 1791995384620,
+            "status": "success"
+          }
+        }
+      ]
+    },
+    "reloadNoChange": {
+      "trigger": "Dart MCP hot_reload with no file changed",
+      "mcpResult": "Hot reload succeeded.",
+      "isolateStream": []
+    },
+    "reloadAddEnum": {
+      "trigger": "Add `enum QaKind { a, b }`, then Dart MCP hot_reload",
+      "mcpResult": "Hot reload succeeded.",
+      "isolateStream": [
+        {
+          "streamId": "Isolate",
+          "event": {
+            "type": "Event",
+            "kind": "IsolateReload",
+            "isolateGroup": {
+              "type": "@IsolateGroup",
+              "id": "isolateGroups/6767947138351398",
+              "name": "main.dart",
+              "number": "6767947138351398",
+              "isSystemIsolateGroup": false
+            },
+            "timestamp": 1791995391181,
+            "status": "success"
+          }
+        }
+      ]
+    },
+    "reloadRejectedByVm": {
+      "trigger": "Change `enum QaKind { a, b }` to `class QaKind {}`, then Dart MCP hot_reload",
+      "mcpResult": "isError: true, \"Hot reload failed: s1.reloadSources: (-32000) Unable to reload sources: (-32603) …\"; flutter run printed \"Hot reload was rejected: Enum class cannot be redefined to be a non-enum class\"",
+      "isolateStream": [
+        {
+          "streamId": "Isolate",
+          "event": {
+            "type": "Event",
+            "kind": "IsolateReload",
+            "isolateGroup": {
+              "type": "@IsolateGroup",
+              "id": "isolateGroups/6767947138351398",
+              "name": "main.dart",
+              "number": "6767947138351398",
+              "isSystemIsolateGroup": false
+            },
+            "timestamp": 1791995394446,
+            "status": "success"
+          }
+        }
+      ]
+    },
+    "hotRestart": {
+      "trigger": "Dart MCP hot_restart",
+      "mcpResult": "Hot restart succeeded.",
+      "serviceExtensionAddedEventsLeftOut": 74,
+      "isolateStream": [
+        {
+          "streamId": "Isolate",
+          "event": {
+            "type": "Event",
+            "kind": "IsolateExit",
+            "isolateGroup": {
+              "type": "@IsolateGroup",
+              "id": "isolateGroups/6767947138351398",
+              "name": "main.dart",
+              "number": "6767947138351398",
+              "isSystemIsolateGroup": false
+            },
+            "isolate": {
+              "type": "@Isolate",
+              "id": "isolates/8250619321730395",
+              "name": "main",
+              "number": "8250619321730395",
+              "isSystemIsolate": false,
+              "isolateGroupId": "isolateGroups/6767947138351398"
+            },
+            "timestamp": 1791995403476
+          }
+        },
+        {
+          "streamId": "Isolate",
+          "event": {
+            "type": "Event",
+            "kind": "IsolateStart",
+            "isolateGroup": {
+              "type": "@IsolateGroup",
+              "id": "isolateGroups/4231576654569566",
+              "name": "main.dart",
+              "number": "4231576654569566",
+              "isSystemIsolateGroup": false
+            },
+            "isolate": {
+              "type": "@Isolate",
+              "id": "isolates/4820636724564003",
+              "name": "main",
+              "number": "4820636724564003",
+              "isSystemIsolate": false,
+              "isolateGroupId": "isolateGroups/4231576654569566"
+            },
+            "timestamp": 1791995403501
+          }
+        },
+        {
+          "streamId": "Isolate",
+          "event": {
+            "type": "Event",
+            "kind": "IsolateRunnable",
+            "isolateGroup": {
+              "type": "@IsolateGroup",
+              "id": "isolateGroups/4231576654569566",
+              "name": "main.dart",
+              "number": "4231576654569566",
+              "isSystemIsolateGroup": false
+            },
+            "isolate": {
+              "type": "@Isolate",
+              "id": "isolates/4820636724564003",
+              "name": "main",
+              "number": "4820636724564003",
+              "isSystemIsolate": false,
+              "isolateGroupId": "isolateGroups/4231576654569566"
+            },
+            "timestamp": 1791995403676
+          }
+        }
+      ]
+    },
+    "reloadAfterRestart": {
+      "trigger": "Restore the original source, then Dart MCP hot_reload (after the hot restart)",
+      "mcpResult": "Hot reload succeeded.",
+      "isolateStream": [
+        {
+          "streamId": "Isolate",
+          "event": {
+            "type": "Event",
+            "kind": "IsolateReload",
+            "isolateGroup": {
+              "type": "@IsolateGroup",
+              "id": "isolateGroups/4231576654569566",
+              "name": "main.dart",
+              "number": "4231576654569566",
+              "isSystemIsolateGroup": false
+            },
+            "timestamp": 1791995410169,
+            "status": "success"
+          }
+        }
+      ]
+    }
+  }
+}
