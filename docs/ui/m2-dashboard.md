@@ -83,7 +83,7 @@ flowchart LR
 - Live regions: reload result `role="status"` (polite); new log lines are NOT announced (too noisy); "Reload failed" and "App stopped" announced politely once.
 - Form labels and errors: search box labelled "Search logs"; invalid pattern error linked with `aria-describedby`.
 - Targets: at least 24×24 CSS px everywhere, 32 px for header buttons.
-- Motion: spinners and the new-row flash respect `prefers-reduced-motion`.
+- Motion: spinners respect `prefers-reduced-motion`. (The new-row flash belongs to the M3 Database tab, not to Logs.)
 - Contrast: 4.5:1 text, 3:1 UI, checked from token values in both themes by a script in the dashboard tests.
 
 ## Copy
