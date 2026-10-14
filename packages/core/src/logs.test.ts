@@ -85,6 +85,18 @@ describe('RingBufferLogSource', () => {
   });
 });
 
+describe('regex filter on message and stack', () => {
+  it('matches either one on its own, so ^ and $ mean the start and end of each', async () => {
+    const logs = new RingBufferLogSource(10);
+    logs.push({ ts: 1, level: 'error', source: 'app', message: 'Bad state', stack: '#0 main' });
+    logs.push({ ts: 2, level: 'error', source: 'app', message: '#0 inside the message' });
+    const ts = async (regex: string) => (await logs.query({ regex })).map((e) => e.ts);
+    expect(await ts('^#0')).toEqual([1, 2]);
+    expect(await ts('state$')).toEqual([1]);
+    expect(await ts('state\\n#0')).toEqual([]);
+  });
+});
+
 describe('LogQuerySchema', () => {
   it('rejects an invalid regex and an oversized limit', () => {
     expect(LogQuerySchema.safeParse({ regex: '(' }).success).toBe(false);

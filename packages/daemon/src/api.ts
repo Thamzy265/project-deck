@@ -6,7 +6,12 @@ import type {
   LoginWindowResult,
   Status,
 } from '@project-deck/core';
-import { DEFAULT_LOG_LIMIT, GetLogsInput, HookEventInput, regexHaystack } from '@project-deck/core';
+import {
+  DEFAULT_LOG_LIMIT,
+  GetLogsInput,
+  HookEventInput,
+  regexHaystacks,
+} from '@project-deck/core';
 import type { Context, MiddlewareHandler } from 'hono';
 import { Hono } from 'hono';
 import type { z } from 'zod';
@@ -222,13 +227,22 @@ export function createApi(ctx: ApiContext): Hono<DeckEnv> {
     } else {
       // The other filters here, the regex in a worker with a time budget.
       const candidates = await logs.query({ ...q, limit: Number.MAX_SAFE_INTEGER });
-      const result = await regexFilter.match(regex, candidates.map(regexHaystack));
+      // Message and stack are tested separately; owner[i] is the entry text i belongs to.
+      const owner: number[] = [];
+      const texts = candidates.flatMap((e, i) =>
+        regexHaystacks(e).map((t) => {
+          owner.push(i);
+          return t;
+        }),
+      );
+      const result = await regexFilter.match(regex, texts);
       if (!result.ok) {
         return result.reason === 'slow'
           ? c.json({ error: REGEX_TOO_SLOW }, 400)
           : c.json({ error: REGEX_FAILED }, 503);
       }
-      entries = candidates.filter((_, i) => result.matches[i] === true).slice(-(limit + 1));
+      const hit = new Set(owner.filter((_, t) => result.matches[t] === true));
+      entries = candidates.filter((_, i) => hit.has(i)).slice(-(limit + 1));
     }
     const truncated = entries.length > limit;
     return c.json({ entries: truncated ? entries.slice(1) : entries, truncated });

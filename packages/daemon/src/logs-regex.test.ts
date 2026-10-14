@@ -21,7 +21,7 @@ afterEach(async () => {
   await rm(projectDir, { recursive: true, force: true });
 });
 
-async function start(messages: string[]): Promise<Daemon> {
+async function start(messages: (string | { message: string; stack: string })[]): Promise<Daemon> {
   const connector = new FakeAppConnector('fake', [fakeApp()]);
   const registry = new Registry();
   registry.connectors.register(connector);
@@ -29,7 +29,14 @@ async function start(messages: string[]): Promise<Daemon> {
   const d = daemon;
   await vi.waitFor(() => expect(d.manager.attachedApp()).toBeDefined());
   const logs = connector.sessions.get('app-1')?.logs();
-  messages.forEach((message, i) => logs?.push({ ts: i, level: 'info', source: 'app', message }));
+  messages.forEach((m, i) =>
+    logs?.push({
+      ts: i,
+      level: 'info',
+      source: 'app',
+      ...(typeof m === 'string' ? { message: m } : m),
+    }),
+  );
   return d;
 }
 
@@ -45,6 +52,15 @@ describe('GET /api/logs with a regex', () => {
     const body = (await res.json()) as { entries: { message: string }[]; truncated: boolean };
     expect(body.entries.map((e) => e.message)).toEqual(['boom 2', 'boom 3']);
     expect(body.truncated).toBe(true);
+  });
+
+  it('tests the message and the stack separately', async () => {
+    const d = await start([{ message: 'Bad state', stack: '#0 main' }, 'other']);
+    for (const regex of ['^Bad state$', '^#0 main$']) {
+      const res = await logs(d, `regex=${encodeURIComponent(regex)}`);
+      const body = (await res.json()) as { entries: { message: string }[] };
+      expect(body.entries.map((e) => e.message)).toEqual(['Bad state']);
+    }
   });
 
   it('applies the other filters too', async () => {
