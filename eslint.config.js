@@ -9,6 +9,7 @@ export default tseslint.config(
       '**/node_modules/**',
       'examples/**',
       '.claude/worktrees/**',
+      'qa-artifacts/**',
     ],
   },
   {
