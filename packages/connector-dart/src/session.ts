@@ -76,6 +76,10 @@ const StreamNotifySchema = z.object({
       method: z.string().optional(),
       bytes: z.string().optional(),
       logRecord: z.unknown().optional(),
+      // IsolateReload: no `isolate`, only the group (service_event.cc).
+      isolateGroup: z.object({ id: z.string() }).loose().optional().catch(undefined),
+      status: z.string().optional().catch(undefined),
+      reloadFailureReason: z.string().optional().catch(undefined),
     })
     .loose(),
 });
@@ -85,7 +89,12 @@ const VmSchema = z.object({
   pid: z.number().optional().catch(undefined),
   operatingSystem: z.string().optional().catch(undefined),
   isolates: z.array(
-    z.object({ id: z.string(), name: z.string(), isSystemIsolate: z.boolean().optional() }),
+    z.object({
+      id: z.string(),
+      name: z.string(),
+      isSystemIsolate: z.boolean().optional(),
+      isolateGroupId: z.string().optional().catch(undefined),
+    }),
   ),
 });
 
@@ -93,9 +102,18 @@ export interface DartAppSessionOptions extends JsonRpcClientOptions {
   /** How long reload waits for the Flutter tool's service to be announced. */
   serviceWaitMs?: number;
   logCapacity?: number;
+  /**
+   * How long after our own reload or restart answers an IsolateReload still counts as
+   * ours. The VM posts it during the reload, so it normally arrives before the answer;
+   * the event and the answer take different routes, so allow a little more.
+   */
+  ownReloadGraceMs?: number;
 }
 
 const DEFAULT_SERVICE_WAIT_MS = 2000;
+const DEFAULT_OWN_RELOAD_GRACE_MS = 1000;
+/** The VM's failure reason can hold a long compiler report; the Activity feed needs the start. */
+const MAX_FAILURE_REASON = 2000;
 /** DDS replays up to 10,000 recent log events when we subscribe. */
 const DEFAULT_SESSION_LOG_CAPACITY = 10_000;
 
@@ -110,6 +128,11 @@ export class DartAppSession implements AppSession {
   private readonly services = new Map<string, string>();
   private readonly serviceWaiters = new Set<() => void>();
   private isolateId: string | undefined;
+  /** The main isolate's group: IsolateReload events name a group, not an isolate. */
+  private isolateGroupId: string | undefined;
+  /** Our own reloads and restarts in flight, and when the last one answered. */
+  private ownReloads = 0;
+  private ownReloadAnsweredAt = Number.NEGATIVE_INFINITY;
   private refreshing: Promise<void> | undefined;
   /** A follow-up refresh, requested while one was running. */
   private refreshQueued: Promise<void> | undefined;
@@ -228,6 +251,7 @@ export class DartAppSession implements AppSession {
     const label = kind === 'hot-reload' ? 'Hot reload' : 'Hot restart';
     const started = performance.now();
     let result: ReloadResult;
+    this.ownReloads++;
     try {
       await run(method);
       result = { ok: true, kind, durationMs: Math.round(performance.now() - started) };
@@ -253,9 +277,44 @@ export class DartAppSession implements AppSession {
         };
       }
       result = reloadFailure(kind, err);
+    } finally {
+      this.ownReloads--;
+      this.ownReloadAnsweredAt = performance.now();
     }
     this.events.emit('reloaded', result);
     return result;
+  }
+
+  /**
+   * A reload we didn't start: Claude through the Dart MCP server, or the IDE. Our own
+   * ones are reported by invoke() with their duration, so their event is dropped here.
+   */
+  private onIsolateReload(event: z.infer<typeof StreamNotifySchema>['event']): void {
+    const group = event.isolateGroup?.id;
+    if (group !== undefined && this.isolateGroupId !== undefined && group !== this.isolateGroupId) {
+      return;
+    }
+    const grace = this.opts.ownReloadGraceMs ?? DEFAULT_OWN_RELOAD_GRACE_MS;
+    if (this.ownReloads > 0 || performance.now() - this.ownReloadAnsweredAt <= grace) {
+      // One event per reload: a second one in the window is someone else's.
+      this.ownReloadAnsweredAt = Number.NEGATIVE_INFINITY;
+      return;
+    }
+    if (event.status === 'success') {
+      this.events.emit('reloaded', { ok: true, kind: 'hot-reload', source: 'external' });
+    } else if (event.status === 'failure') {
+      const reason = event.reloadFailureReason ?? 'no reason given';
+      const message = `Hot reload failed: ${reason}`;
+      this.events.emit('reloaded', {
+        ok: false,
+        reason: 'compile-error',
+        message:
+          message.length > MAX_FAILURE_REASON
+            ? `${message.slice(0, MAX_FAILURE_REASON - 1)}…`
+            : message,
+        source: 'external',
+      });
+    }
   }
 
   private serviceMethod(service: string): Promise<string | undefined> {
@@ -309,7 +368,9 @@ export class DartAppSession implements AppSession {
         const vm = VmSchema.parse(await this.rpc.call('getVM', {}));
         this.recordProcess(vm);
         const isolates = vm.isolates.filter((i) => i.isSystemIsolate !== true);
-        this.isolateId = (isolates.find((i) => i.name === 'main') ?? isolates[0])?.id;
+        const main = isolates.find((i) => i.name === 'main') ?? isolates[0];
+        this.isolateId = main?.id;
+        this.isolateGroupId = main?.isolateGroupId;
       } catch (err) {
         if (!(err instanceof ConnectionClosedError)) throw err;
       } finally {
@@ -349,7 +410,8 @@ export class DartAppSession implements AppSession {
         }
         return;
       case 'Isolate':
-        if (['IsolateStart', 'IsolateRunnable', 'IsolateExit'].includes(event.kind)) {
+        if (event.kind === 'IsolateReload') this.onIsolateReload(event);
+        else if (['IsolateStart', 'IsolateRunnable', 'IsolateExit'].includes(event.kind)) {
           void this.refreshIsolate().catch(() => undefined);
         }
         return;

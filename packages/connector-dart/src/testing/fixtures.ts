@@ -121,6 +121,35 @@ export const isolateEvent = (
   event: { type: 'Event', kind, timestamp: 1, isolate: { type: '@Isolate', id, name: 'main' } },
 });
 
+/**
+ * SPEC-BUILT, not recorded: an `IsolateReload` event on the `Isolate` stream, shaped from
+ * the VM service spec (service.md, Event: `status`, `reloadFailureReason`, no `isolate`
+ * for this kind) and the VM source (service_event.cc prints `isolateGroup`, `status`
+ * "success" or "failure" and, on failure, `reloadFailureReason`; isolate_reload.cc posts
+ * it per isolate group, skipping system groups), checked 14 Oct 2026. QA replaces it with
+ * one recorded from a Dart MCP server `hot_reload`.
+ */
+export const isolateReloadEvent = (
+  opts: { failureReason?: string; isolateGroupId?: string } = {},
+) => ({
+  streamId: 'Isolate',
+  event: {
+    type: 'Event',
+    kind: 'IsolateReload',
+    timestamp: 3,
+    isolateGroup: {
+      type: '@IsolateGroup',
+      id: opts.isolateGroupId ?? 'isolateGroups/1',
+      name: 'main',
+      number: '1',
+      isSystemIsolateGroup: false,
+    },
+    ...(opts.failureReason === undefined
+      ? { status: 'success' }
+      : { status: 'failure', reloadFailureReason: opts.failureReason }),
+  },
+});
+
 export const success = { type: 'Success' };
 
 /**
@@ -140,6 +169,8 @@ export function asFlutterVmService(
     .handle('s0.reloadSources', (params) => {
       if (typeof params?.isolateId !== 'string' || params.isolateId === '')
         throw new RpcFault(-32602, "Invalid 'isolateId'");
+      // The VM posts IsolateReload during the reload, before the Flutter tool answers.
+      server.notify(isolateReloadEvent());
       return success;
     })
     .handle('s0.hotRestart', () => {

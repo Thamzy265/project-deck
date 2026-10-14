@@ -5,6 +5,7 @@ import { FakeRpcServer, RpcFault } from './testing/fake-rpc-server.js';
 import {
   asFlutterVmService,
   isolateEvent,
+  isolateReloadEvent,
   loggingEvent,
   vmResponse,
   writeEvent,
@@ -209,5 +210,94 @@ describe('DartAppSession', () => {
     await session.detach();
     await vi.waitFor(() => expect(server.clientCount).toBe(0));
     expect(server.calls.length).toBe(before);
+  });
+});
+
+describe('DartAppSession: reloads made by others', () => {
+  async function attachWithGrace(graceMs: number) {
+    server = await FakeRpcServer.start('/AbC=/ws');
+    asFlutterVmService(server);
+    session = await DartAppSession.attach(server.uri, app, {
+      serviceWaitMs: 100,
+      ownReloadGraceMs: graceMs,
+    });
+    const reloaded = vi.fn();
+    session.on('reloaded', reloaded);
+    return { server, session, reloaded };
+  }
+
+  it('reports a successful IsolateReload it did not start as an external hot reload', async () => {
+    const { server, reloaded } = await attachWithGrace(0);
+    server.notify(isolateReloadEvent());
+    await vi.waitFor(() => expect(reloaded).toHaveBeenCalledOnce());
+    expect(reloaded).toHaveBeenCalledWith({ ok: true, kind: 'hot-reload', source: 'external' });
+  });
+
+  it('reports a failed one with the VM failure reason', async () => {
+    const { server, reloaded } = await attachWithGrace(0);
+    server.notify(isolateReloadEvent({ failureReason: "lib/main.dart:3:7: Error: Expected ';'" }));
+    await vi.waitFor(() => expect(reloaded).toHaveBeenCalledOnce());
+    expect(reloaded).toHaveBeenCalledWith({
+      ok: false,
+      reason: 'compile-error',
+      message: "Hot reload failed: lib/main.dart:3:7: Error: Expected ';'",
+      source: 'external',
+    });
+  });
+
+  it('cuts a very long failure reason', async () => {
+    const { server, reloaded } = await attachWithGrace(0);
+    server.notify(isolateReloadEvent({ failureReason: 'x'.repeat(10_000) }));
+    await vi.waitFor(() => expect(reloaded).toHaveBeenCalledOnce());
+    const result = reloaded.mock.calls[0]?.[0] as { message: string };
+    expect(result.message.length).toBeLessThanOrEqual(2000);
+    expect(result.message.endsWith('…')).toBe(true);
+  });
+
+  it('does not report its own reload twice', async () => {
+    const { session, reloaded } = await attachWithGrace(1000);
+    const result = await session.reload();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(reloaded).toHaveBeenCalledOnce();
+    expect(reloaded).toHaveBeenCalledWith(result);
+    expect(result).not.toHaveProperty('source');
+  });
+
+  it('ignores the event of its own reload when it arrives just after the answer', async () => {
+    const { server, session, reloaded } = await attachWithGrace(1000);
+    server.handle('s0.reloadSources', () => {
+      setTimeout(() => server.notify(isolateReloadEvent()), 20);
+      return { type: 'Success' };
+    });
+    await session.reload();
+    await new Promise((r) => setTimeout(r, 80));
+    expect(reloaded).toHaveBeenCalledOnce();
+  });
+
+  it('reports a later reload by someone else after its own one', async () => {
+    const { server, session, reloaded } = await attachWithGrace(30);
+    await session.reload();
+    await new Promise((r) => setTimeout(r, 60));
+    server.notify(isolateReloadEvent());
+    await vi.waitFor(() => expect(reloaded).toHaveBeenCalledTimes(2));
+    expect(reloaded).toHaveBeenLastCalledWith({ ok: true, kind: 'hot-reload', source: 'external' });
+  });
+
+  it('ignores reloads of another isolate group, such as a spawned background isolate', async () => {
+    const { server, reloaded } = await attachWithGrace(0);
+    server.notify(isolateReloadEvent({ isolateGroupId: 'isolateGroups/77' }));
+    server.notify(isolateReloadEvent());
+    await vi.waitFor(() => expect(reloaded).toHaveBeenCalledOnce());
+    await new Promise((r) => setTimeout(r, 30));
+    expect(reloaded).toHaveBeenCalledOnce();
+  });
+
+  it('ignores an IsolateReload with an unknown status', async () => {
+    const { server, reloaded } = await attachWithGrace(0);
+    const odd = isolateReloadEvent();
+    server.notify({ ...odd, event: { ...odd.event, status: 'maybe' } });
+    server.notify(isolateReloadEvent());
+    await vi.waitFor(() => expect(reloaded).toHaveBeenCalledOnce());
+    expect(reloaded).toHaveBeenCalledWith({ ok: true, kind: 'hot-reload', source: 'external' });
   });
 });
