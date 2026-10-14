@@ -73,7 +73,7 @@ CI (`.github/workflows/ci.yml`) runs the same steps on Linux, macOS and Windows.
 **Security (non-negotiable)**
 
 - Daemon binds to `127.0.0.1` only and rejects requests whose `Host` or `Origin` isn't localhost.
-- Every request needs the session token from `.flutterdeck/runtime.json` (0600, gitignored).
+- Every request needs the session token from `.flutterdeck/runtime.json` (0600, gitignored). The dashboard's cookie is handed out only during a login window opened with that token (ADR 0003).
 - Database access is read-only by default: `db_query` allows only `SELECT`, `PRAGMA table_info` and `EXPLAIN`, checked by parsing, not regex. Writes need `db.allowWrites: true` and a confirm in the UI.
 - `flutterdeck_drift` does nothing when `kReleaseMode` is true.
 - The daemon only runs its own fixed commands (`flutter`, `adb`, `dart`, and for OS notifications only `osascript`, `notify-send` or `powershell.exe` with a fixed script) with arguments validated against strict patterns. No arbitrary shell. (Notifier commands: PM decision, 14 Oct 2026.)
