@@ -2,6 +2,21 @@
 
 Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
 
+## 2026-10-14 — Sample app (`feat/sample-app`) — waiting for PM merge approval
+
+- Changed: new `examples/sample_app`, a Flutter app with a "Hit breakpoint" button (marked line `lib/main.dart:15`), a hot reload marker, and logs from print, `developer.log` and Android logcat (tag `FlutterDeckSample`). The README has the daemon steps. `examples/` is ignored by Prettier and ESLint. PLAN.md and CLAUDE.md mention the app.
+- Gates:
+  - developer pass (24 Flutter tests, analyze clean, debug APK builds, `pnpm check` 384);
+  - tester pass (20 tests, B1 and B2 fixed);
+  - reviewer approve with notes (R2, R3, R4, R6 fixed; R5 a follow-up; R1 waiting for a PM decision);
+  - QA pass, 13/13 on the Pixel 9 Pro emulator ([qa/M1.md](qa/M1.md), screens `docs/qa/M1/screens/sample-*.png`, video `qa-artifacts/M1/sample-app.mp4`);
+  - PM merge waiting.
+- Open findings:
+  - R1 (Low): CI doesn't run the Flutter tests. It needs a PM decision: a Flutter CI job, or a local-only exception.
+  - R5 (cleanup): point `scripts/qa/android-sample-app.sh` at this app.
+- Decisions: none yet.
+- Blockers: Developer none · Tester none · Reviewer none · QA the real Android Studio breakpoint needs the PM · Marketer none · Lead merge approval and the R1 decision.
+
 ## 2026-10-13 — Team plugin pin moved to v0.2.1
 
 - **PM decision (2026-10-13):** move the pin from v0.2.0 to v0.2.1. v0.2.1 adds stronger guard checks and has the lead brief the marketer only after the PM's recorded release approval.
