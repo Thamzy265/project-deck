@@ -125,13 +125,23 @@ class RpcClient {
     this.listeners = new Set();
     this.traffic = traffic;
     this.closed = false;
+    // A lasting listener, so a socket error after open() is never unhandled. 'close' follows it
+    // and fails the pending calls.
+    this.ws.addEventListener('error', () => {});
     this.ws.addEventListener('close', () => {
       this.closed = true;
       for (const { fail } of this.pending.values()) fail(new Error('socket closed'));
       this.pending.clear();
     });
     this.ws.addEventListener('message', (msg) => {
-      const body = JSON.parse(String(msg.data));
+      let body;
+      try {
+        body = JSON.parse(String(msg.data));
+      } catch {
+        this.traffic?.push({ dir: 'in', t: Date.now(), malformed: true });
+        return;
+      }
+      if (body === null || typeof body !== 'object') return;
       this.traffic?.push({ dir: 'in', t: Date.now(), body });
       if (body.id !== undefined && this.pending.has(body.id)) {
         const { ok, fail } = this.pending.get(body.id);
@@ -262,8 +272,10 @@ try {
     daemon = spawn(process.execPath, [DAEMON, '--project', project, '--port', String(port)], {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
+    daemon.on('error', (err) => daemonOutput.push(`spawn error: ${err.message}\n`));
     daemonExited = new Promise((ok) => daemon.once('exit', (code, signal) => ok({ code, signal })));
     for (const stream of [daemon.stdout, daemon.stderr]) {
+      stream.on('error', () => {});
       stream.setEncoding('utf8');
       stream.on('data', (chunk) => daemonOutput.push(chunk));
     }
