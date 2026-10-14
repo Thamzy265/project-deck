@@ -2,6 +2,12 @@
 
 Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
 
+## 2026-10-13 — Team plugin pin moved to v0.2.1
+
+- **PM decision (2026-10-13):** move the pin from v0.2.0 to v0.2.1. v0.2.1 adds stronger guard checks and has the lead brief the marketer only after the PM's recorded release approval.
+- **Change:** `.claude/settings.json` `ref: v0.2.1`, and the version in CLAUDE.md "Team setup". No project rule changed.
+- **Blockers by role:** Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead none.
+
 ## 2026-10-13 — M1 close-out (`docs/m1-close-out`)
 
 - Changed:
