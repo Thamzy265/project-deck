@@ -452,7 +452,10 @@
                   <td>App and Android log lines</td>
                   <td>Show the developer what happens; let Claude debug</td>
                   <td>Memory only; gone on Clear or daemon stop</td>
-                  <td>Sent to Claude only when Claude asks; masked by default (recommended)</td>
+                  <td>
+                    Sent to Claude only when Claude asks; best-effort masking by default
+                    (recommended)
+                  </td>
                 </tr>
                 <tr>
                   <td>Claude "waiting" message</td>
@@ -542,7 +545,9 @@
                 <tr>
                   <td>Masking hides a value the developer needed</td>
                   <td>Claude misreads a log</td>
-                  <td>Masked values say so; one config switch turns masking off</td>
+                  <td>
+                    Masked values say so, e.g. [email masked]; one config switch turns masking off
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -616,7 +621,10 @@
             <div class="card warn">
               <h3>4. Logs sent to Claude</h3>
               <p>Options: A mask personal data by default; or B no masking unless configured</p>
-              <p><b>Recommendation:</b> A, because private by default; one switch turns it off</p>
+              <p>
+                <b>Recommendation:</b> A, because common patterns are masked by default (best
+                effort, not a guarantee); one switch turns it off
+              </p>
             </div>
           </div>
           <p class="small">

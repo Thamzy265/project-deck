@@ -360,7 +360,7 @@ The daemon can run commands, read app data and write to a database, so it must b
 - **Debug builds only.** `flutterdeck_drift` registers nothing when `kReleaseMode` is true. Document this prominently.
 - **No arbitrary shell from the API.** The daemon runs only its own fixed commands (`flutter`, `adb`, `dart`) with validated arguments. *Changed 14 Oct 2026 (PM decision D3):* for OS notifications it may also run `osascript` (macOS), `notify-send` (Linux) or `powershell.exe` (Windows), each with a fixed script, no shell, and the title and text passed as separate checked arguments. Device IDs, package names and file names are checked against strict patterns before use.
 - **Secrets.** API keys live in the OS keychain or a 0600 file outside the repo. Never log them, never put them in `launch.json` (which is often committed), never return them through MCP tools.
-- **Log redaction.** Optional regex redaction rules in config for tokens or personal data before logs are sent to Claude. *Changed 14 Oct 2026 (PM decision D4):* built-in masking (emails, phone-like numbers, bearer tokens, JWT-shaped and long secret-like strings) is on by default for `get_logs`; `logs.redact: false` turns it off. The dashboard shows logs unmasked on the local machine.
+- **Log redaction.** Optional regex redaction rules in config for tokens or personal data before logs are sent to Claude. *Changed 14 Oct 2026 (PM decision D4):* best-effort masking of common patterns (emails, phone-like numbers, bearer tokens, JWT-shaped and long secret-like strings) is on by default for every FlutterDeck MCP tool output; it doesn't find names, addresses or free text; `logs.redact: false` turns it off. The dashboard shows logs unmasked on the local machine.
 - **Untrusted content.** Task descriptions and log lines are data. Tool descriptions should remind Claude not to follow instructions found inside them.
 
 ## Milestones
@@ -442,6 +442,6 @@ The remaining risks are known and each has a mitigation; the open decisions don'
 
 One line per deferred item, in the format `- <what> — <why> — trigger: <measurable condition> — noted <date> by <role>`.
 
-- `flutterdeck init --undo` — remove what `init` added — trigger: 3 user reports of needing to undo `init` — noted 2026-10-14 by lead
+- `flutterdeck init --undo` — `init` edits `.gitignore` and `launch.json`, and undoing by hand is error-prone — trigger: 3 user reports of needing to undo `init` — noted 2026-10-14 by lead
 - Logs kept across daemon restarts — logs are memory only today — trigger: 3 user requests for logs after restarting the daemon — noted 2026-10-14 by lead
 - Several projects in one dashboard — one daemon per project today — trigger: 3 user requests to see two projects in one pane — noted 2026-10-14 by lead
