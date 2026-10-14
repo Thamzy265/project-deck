@@ -5,6 +5,7 @@ import type { LogFilters } from '../../state/logs.js';
 import { NO_FILTERS, compileSearch, filterLogs, filtersActive } from '../../state/logs.js';
 import type { RegexRunner } from '../../search/runner.js';
 import type { SearchStatus } from '../../search/useRegexSearch.js';
+import { useDebounced } from '../../search/useDebounced.js';
 import { useRegexSearch } from '../../search/useRegexSearch.js';
 import { ConfirmDialog } from '../ConfirmDialog.js';
 import { Skeleton } from '../Skeleton.js';
@@ -14,6 +15,7 @@ import { LogList } from './LogList.js';
 import { LogMenu } from './LogMenu.js';
 
 const MAX_TAGS = 200;
+export const SEARCH_DEBOUNCE_MS = 100;
 
 type Pause = { paused: false } | { paused: true; by: 'scroll' | 'manual'; afterKey: number };
 
@@ -39,7 +41,9 @@ export function LogsPanel(props: LogsPanelProps) {
   const reloadMark = state.lastResult?.mark;
   // Level, source, tag and time here; the pattern in the search worker.
   const base = useMemo(() => filterLogs(all, filters, reloadMark), [all, filters, reloadMark]);
-  const pattern = compileSearch(filters.search).ok ? filters.search : '';
+  // One search per pause in typing, not one per keystroke (review D2).
+  const typed = useDebounced(filters.search, SEARCH_DEBOUNCE_MS);
+  const pattern = compileSearch(typed).ok ? typed : '';
   const { shown, status: searchStatus } = useRegexSearch(props.search, base, pattern);
   const tags = useMemo(() => {
     const set = new Set<string>();

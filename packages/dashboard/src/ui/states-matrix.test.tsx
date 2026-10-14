@@ -270,7 +270,7 @@ describe('Log filters', () => {
     const t = await ready(fakeDaemon({ logs: [log(1, 'Tap 1'), log(2, 'Boom', 'error')] }));
     await goOffline(t);
     await t.user.type(screen.getByRole('searchbox', { name: 'Search logs' }), 'boom');
-    expect(screen.getByText('Showing 1 of 2')).toBeInTheDocument();
+    expect(await screen.findByText('Showing 1 of 2')).toBeInTheDocument();
   });
 
   it('Error: the error clears once the pattern is valid again', async () => {

@@ -139,3 +139,19 @@ describe('search box with a stopped search (BUG-M2-T1)', () => {
     expect(screen.queryByText('secret line')).not.toBeInTheDocument();
   });
 });
+
+describe('typing in the search box (review D2)', () => {
+  it('runs one search for a burst of keystrokes', async () => {
+    const run = vi.fn<RegexRunner['run']>(() => Promise.resolve({ ok: true, keys: [] }));
+    const t = renderDashboard(
+      fakeDaemon({ logs: [{ ts: 1, level: 'info', source: 'app', message: 'Tap 1' }] }),
+      new MemoryStorage(),
+      { run, dispose: () => undefined },
+    );
+    await t.connect();
+    await screen.findByText('Tap 1');
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Search logs' }), 'tap 12');
+    await act(() => new Promise((r) => setTimeout(r, 250)));
+    expect(run.mock.calls.map(([pattern]) => pattern)).toEqual(['tap 12']);
+  });
+});

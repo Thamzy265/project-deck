@@ -223,7 +223,7 @@ describe('logs', () => {
     expect(screen.getByText('Showing 1 of 3')).toBeInTheDocument();
     await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Level' }), 'all');
     await userEvent.type(screen.getByRole('searchbox', { name: 'Search logs' }), 'tap \\d');
-    expect(screen.getByText('Showing 2 of 3')).toBeInTheDocument();
+    expect(await screen.findByText('Showing 2 of 3')).toBeInTheDocument();
   });
 
   it('explains an invalid pattern and leaves the list unchanged', async () => {
@@ -256,9 +256,11 @@ describe('logs', () => {
     await t.connect();
     await screen.findByText('Tap 1');
     await userEvent.type(screen.getByRole('searchbox', { name: 'Search logs' }), 'nothing');
-    expect(screen.getByText('No logs yet. Use your app, or clear filters')).toBeInTheDocument();
+    expect(
+      await screen.findByText('No logs yet. Use your app, or clear filters'),
+    ).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
-    expect(screen.getByText('Tap 1')).toBeInTheDocument();
+    expect(await screen.findByText('Tap 1')).toBeInTheDocument();
   });
 
   it('keeps lines that arrive between the clear event and the HTTP answer (review C1)', async () => {
