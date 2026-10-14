@@ -286,6 +286,98 @@ const hits = [];
 let hitWaiter;
 let autoResume = true;
 
+// Runs once, from the finally below or from a SIGINT/SIGTERM handler, so an interrupted run also
+// stops the daemon, unpauses the app, restores the source and stops the screen recording.
+let cleanupDone;
+function cleanup() {
+  cleanupDone ??= (async () => {
+    if (daemon !== undefined && daemon.exitCode === null && daemon.signalCode === null)
+      daemon.kill('SIGKILL');
+    if (debuggerClient !== undefined && !debuggerClient.closed) {
+      hitWaiter = undefined;
+      autoResume = false;
+      if (breakpointId !== undefined)
+        await debuggerClient.call('removeBreakpoint', { isolateId, breakpointId }).catch(() => {});
+      // Never leave the app paused.
+      await debuggerClient.call('resume', { isolateId }).catch(() => {});
+    }
+    if (originalSource !== undefined) await writeFile(MAIN_DART, originalSource).catch(() => {});
+    // Reload the restored source too, so the app doesn't keep running the edited code into the next run.
+    const reloadMethod = services.get('reloadSources');
+    if (
+      edited &&
+      reloadMethod !== undefined &&
+      debuggerClient !== undefined &&
+      !debuggerClient.closed
+    )
+      await debuggerClient.call(reloadMethod, { isolateId }, 30_000).catch(() => {});
+    debuggerClient?.close();
+    if (recorder !== undefined) {
+      // screenrecord finishes the file on SIGINT. Signal only this run's screenrecord, matched by its
+      // unique file path; `screenrecor[d]` keeps the pattern from matching the shell running pkill.
+      await adb([
+        '-s',
+        serial,
+        'shell',
+        'pkill',
+        '-INT',
+        '-f',
+        `'screenrecor[d] .*${devicePath}'`,
+      ]).catch(() => {});
+      await sleep(2000);
+      await adb(['-s', serial, 'pull', devicePath, join(EVIDENCE, `${RUN}-acceptance.mp4`)]).catch(
+        () => {},
+      );
+      await adb(['-s', serial, 'shell', 'rm', '-f', devicePath]).catch(() => {});
+    }
+    await writeFile(
+      join(EVIDENCE, `${RUN}-debugger-jsonrpc.json`),
+      mask(JSON.stringify(traffic.slice(0, 400), null, 2)),
+    ).catch(() => {});
+    await rm(project, { recursive: true, force: true }).catch(() => {});
+  })();
+  return cleanupDone;
+}
+
+// Printed once, by whichever of the normal end or a signal handler gets there first.
+let reported;
+function report() {
+  if (reported !== undefined) return reported;
+  // Informational, not a check: how many PauseBreakpoint events the debugger saw in total.
+  results.push({ name: 'breakpoint hits seen', pass: null, detail: String(hits.length) });
+  const width = Math.max(...results.map((r) => r.name.length));
+  console.log(`${'CHECK'.padEnd(width)}  RESULT  DETAIL`);
+  for (const r of results) {
+    const label = r.pass === null ? 'INFO  ' : r.pass ? 'PASS  ' : 'FAIL  ';
+    console.log(`${r.name.padEnd(width)}  ${label}  ${mask(r.detail)}`);
+  }
+  const checks = results.filter((r) => r.pass !== null);
+  const failed = checks.filter((r) => !r.pass).length;
+  console.log(
+    failed === 0
+      ? `All ${checks.length} checks passed.`
+      : `${failed} of ${checks.length} checks failed.`,
+  );
+  console.log(`Evidence: ${shots.length} screenshot(s) in ${join(EVIDENCE, 'screens')}`);
+  if (failed > 0 && daemonOutput.length > 0) {
+    console.log('\nDaemon output:\n' + mask(daemonOutput.join('')).trim());
+  }
+  reported = failed === 0 ? 0 : 1;
+  return reported;
+}
+
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  process.once(signal, () => {
+    record('check ran to the end', false, `stopped by ${signal}`);
+    void cleanup()
+      .catch(() => {})
+      .finally(() => {
+        report();
+        process.exit(signal === 'SIGINT' ? 130 : 143);
+      });
+  });
+}
+
 try {
   await mkdir(join(EVIDENCE, 'screens'), { recursive: true });
   const device = await findSerial();
@@ -579,69 +671,7 @@ try {
   const message = err instanceof Error ? err.message : String(err);
   if (message !== 'control run done') record('check ran to the end', false, message);
 } finally {
-  if (daemon !== undefined && daemon.exitCode === null && daemon.signalCode === null)
-    daemon.kill('SIGKILL');
-  if (debuggerClient !== undefined && !debuggerClient.closed) {
-    hitWaiter = undefined;
-    autoResume = false;
-    if (breakpointId !== undefined)
-      await debuggerClient.call('removeBreakpoint', { isolateId, breakpointId }).catch(() => {});
-    // Never leave the app paused.
-    await debuggerClient.call('resume', { isolateId }).catch(() => {});
-  }
-  if (originalSource !== undefined) await writeFile(MAIN_DART, originalSource).catch(() => {});
-  // Reload the restored source too, so the app doesn't keep running the edited code into the next run.
-  const reloadMethod = services.get('reloadSources');
-  if (
-    edited &&
-    reloadMethod !== undefined &&
-    debuggerClient !== undefined &&
-    !debuggerClient.closed
-  )
-    await debuggerClient.call(reloadMethod, { isolateId }, 30_000).catch(() => {});
-  debuggerClient?.close();
-  if (recorder !== undefined) {
-    // screenrecord finishes the file on SIGINT. Signal only this run's screenrecord, matched by its
-    // unique file path; `screenrecor[d]` keeps the pattern from matching the shell running pkill.
-    await adb([
-      '-s',
-      serial,
-      'shell',
-      'pkill',
-      '-INT',
-      '-f',
-      `'screenrecor[d] .*${devicePath}'`,
-    ]).catch(() => {});
-    await sleep(2000);
-    await adb(['-s', serial, 'pull', devicePath, join(EVIDENCE, `${RUN}-acceptance.mp4`)]).catch(
-      () => {},
-    );
-    await adb(['-s', serial, 'shell', 'rm', '-f', devicePath]).catch(() => {});
-  }
-  await writeFile(
-    join(EVIDENCE, `${RUN}-debugger-jsonrpc.json`),
-    mask(JSON.stringify(traffic.slice(0, 400), null, 2)),
-  ).catch(() => {});
-  await rm(project, { recursive: true, force: true });
+  await cleanup();
 }
 
-// Informational, not a check: how many PauseBreakpoint events the debugger saw in total.
-results.push({ name: 'breakpoint hits seen', pass: null, detail: String(hits.length) });
-const width = Math.max(...results.map((r) => r.name.length));
-console.log(`${'CHECK'.padEnd(width)}  RESULT  DETAIL`);
-for (const r of results) {
-  const label = r.pass === null ? 'INFO  ' : r.pass ? 'PASS  ' : 'FAIL  ';
-  console.log(`${r.name.padEnd(width)}  ${label}  ${mask(r.detail)}`);
-}
-const checks = results.filter((r) => r.pass !== null);
-const failed = checks.filter((r) => !r.pass).length;
-console.log(
-  failed === 0
-    ? `All ${checks.length} checks passed.`
-    : `${failed} of ${checks.length} checks failed.`,
-);
-console.log(`Evidence: ${shots.length} screenshot(s) in ${join(EVIDENCE, 'screens')}`);
-if (failed > 0 && daemonOutput.length > 0) {
-  console.log('\nDaemon output:\n' + mask(daemonOutput.join('')).trim());
-}
-process.exit(failed === 0 ? 0 : 1);
+process.exit(report());
