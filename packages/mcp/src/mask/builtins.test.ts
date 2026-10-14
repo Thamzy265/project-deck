@@ -192,4 +192,32 @@ describe('built-in masking', () => {
     for (const line of lines) maskBuiltIn(line);
     expect(performance.now() - start).toBeLessThan(200);
   });
+
+  it.each([
+    'eyJa-',
+    'eyJa.',
+    'a',
+    'a%40',
+    'a@',
+    'http://a:',
+    'ws://a/',
+    'password ',
+    'password=',
+    '"token":"',
+    '0',
+    '+1-',
+    '1 ',
+    ['AK', 'IA'].join(''),
+    ['gh', 'p_'].join(''),
+    ['xo', 'xb-'].join(''),
+    'Basic ',
+    'Bearer ',
+    'aB3/',
+    'f0',
+  ])('runs every built-in in linear time on 64 kB of %j', (unit) => {
+    const text = unit.repeat(Math.ceil(65_536 / unit.length)).slice(0, 65_536);
+    const start = performance.now();
+    maskBuiltIn(text);
+    expect(performance.now() - start).toBeLessThan(100);
+  });
 });

@@ -102,7 +102,9 @@ const PATTERNS: Pattern[] = [
   },
   {
     // JSON header and payload both start with eyJ; padding kept, signature optional (alg none).
-    re: /\beyJ[A-Za-z0-9_-]{2,}={0,2}\.eyJ[A-Za-z0-9_-]{2,}={0,2}\.(?:[A-Za-z0-9_-]+={0,2})?/g,
+    // Not inside a longer token: \b alone let every "eyJ" in "eyJa-eyJa-…" start a scan
+    // to the end of the text, which is quadratic.
+    re: /(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]{2,}={0,2}\.eyJ[A-Za-z0-9_-]{2,}={0,2}\.(?:[A-Za-z0-9_-]+={0,2})?/g,
     replace: marker(TOKEN),
   },
   ...[
