@@ -30,8 +30,8 @@ export function App({ prefs }: { prefs: StorageSource }) {
   };
   const showLogs = () => {
     setTab('logs');
-    // Focus once the panel is visible again.
-    requestAnimationFrame(() => listRef.current?.focus());
+    // Focus once the panel is visible again; with no lines to show, the Logs tab itself.
+    requestAnimationFrame(() => (listRef.current ?? document.getElementById('tab-logs'))?.focus());
   };
 
   const c = state.connection.kind;
