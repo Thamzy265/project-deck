@@ -4,6 +4,7 @@
  */
 import { createHash } from 'node:crypto';
 import { readFile, realpath } from 'node:fs/promises';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { z } from 'zod';
@@ -41,6 +42,40 @@ export async function projectKey(projectDir: string): Promise<string> {
   return process.platform === 'win32' ? path.toLowerCase() : path;
 }
 
+export type RegistryRead =
+  | { state: 'ok'; registry: PortRegistry }
+  | { state: 'missing' }
+  | { state: 'damaged' }
+  | { state: 'unreadable'; code: string };
+
+/**
+ * Reads the registry. A file that is empty or not valid yet may be one another process
+ * is still writing (older versions wrote it in place), so it is read again for a moment
+ * before it counts as damaged.
+ */
+export async function readRegistry(homeDir: string, waitMs = 200): Promise<RegistryRead> {
+  const deadline = Date.now() + waitMs;
+  for (;;) {
+    let text: string;
+    try {
+      text = await readFile(registryPath(homeDir), 'utf8');
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code ?? 'unknown';
+      return code === 'ENOENT' ? { state: 'missing' } : { state: 'unreadable', code };
+    }
+    let raw: unknown;
+    try {
+      raw = JSON.parse(text);
+    } catch {
+      raw = undefined;
+    }
+    const parsed = RegistrySchema.safeParse(raw);
+    if (parsed.success) return { state: 'ok', registry: parsed.data };
+    if (Date.now() >= deadline) return { state: 'damaged' };
+    await sleep(20);
+  }
+}
+
 /**
  * This project's id as its daemon shows it on /api/health, or undefined when the
  * registry doesn't exist or can't be read. Never creates or changes the registry.
@@ -49,13 +84,7 @@ export async function readProjectIdentity(
   projectDir: string,
   opts: { homeDir?: string } = {},
 ): Promise<string | undefined> {
-  let raw: unknown;
-  try {
-    raw = JSON.parse(await readFile(registryPath(opts.homeDir ?? homedir()), 'utf8'));
-  } catch {
-    return undefined;
-  }
-  const parsed = RegistrySchema.safeParse(raw);
-  if (!parsed.success) return undefined;
-  return projectIdFor(parsed.data.salt, await projectKey(projectDir));
+  const read = await readRegistry(opts.homeDir ?? homedir());
+  if (read.state !== 'ok') return undefined;
+  return projectIdFor(read.registry.salt, await projectKey(projectDir));
 }

@@ -5,16 +5,16 @@
  * project on this machine already uses.
  */
 import { randomBytes } from 'node:crypto';
-import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { link, mkdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { PortRegistry } from '@project-deck/core/node';
 import {
   REGISTRY_DIR,
-  RegistrySchema,
   projectIdFor,
   projectKey,
+  readRegistry,
   registryPath,
 } from '@project-deck/core/node';
 import { acquireFileLock } from './startup-lock.js';
@@ -169,30 +169,16 @@ function home(opts: PortRegistryOptions): string {
 
 async function load(homeDir: string): Promise<PortRegistry> {
   const path = registryPath(homeDir);
-  let text: string;
-  try {
-    text = await readFile(path, 'utf8');
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
-      throw new PortRegistryError(
-        `${path} can't be read (${String((err as NodeJS.ErrnoException).code)})`,
-      );
-    }
-    return create(homeDir);
+  const read = await readRegistry(homeDir);
+  if (read.state === 'ok') return read.registry;
+  if (read.state === 'missing') return create(homeDir);
+  if (read.state === 'unreadable') {
+    throw new PortRegistryError(`${path} can't be read (${read.code})`);
   }
-  let parsed;
-  try {
-    parsed = RegistrySchema.safeParse(JSON.parse(text));
-  } catch {
-    parsed = undefined;
-  }
-  if (parsed?.success !== true) {
-    // Replacing it would change every project id and forget every port, so leave it be.
-    throw new PortRegistryError(
-      `${path} is damaged. Fix or delete it, then run \`flutterdeck init\`.`,
-    );
-  }
-  return parsed.data;
+  // Replacing it would change every project id and forget every port, so leave it be.
+  throw new PortRegistryError(
+    `${path} is damaged. Fix or delete it, then run \`flutterdeck init\`.`,
+  );
 }
 
 /**
@@ -206,12 +192,18 @@ async function create(homeDir: string): Promise<PortRegistry> {
     projects: {},
   };
   await mkdir(join(homeDir, REGISTRY_DIR), { recursive: true, mode: 0o700 });
+  // Written whole to a temp file, then linked into place: link fails if the file
+  // exists, like an exclusive create, and readers never see it half written.
+  const tmp = `${registryPath(homeDir)}.${randomBytes(6).toString('hex')}.tmp`;
   try {
-    await writeFile(registryPath(homeDir), serialise(registry), { mode: 0o600, flag: 'wx' });
+    await writeFile(tmp, serialise(registry), { mode: 0o600, flag: 'wx' });
+    await link(tmp, registryPath(homeDir));
     return registry;
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'EEXIST') return load(homeDir);
+    if ((err as NodeJS.ErrnoException).code === 'EEXIST') return await load(homeDir);
     throw err;
+  } finally {
+    await rm(tmp, { force: true });
   }
 }
 
