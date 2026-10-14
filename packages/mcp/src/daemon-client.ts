@@ -57,7 +57,7 @@ export class DaemonClient {
   private readonly timeoutMs: number;
   private readonly readyTimeoutMs: number;
   private readonly pollMs: number;
-  private ownId: Promise<string | undefined> | undefined;
+  private ownId: string | undefined;
   private starting: Promise<boolean> | undefined;
 
   constructor(private readonly opts: DaemonClientOptions) {
@@ -122,6 +122,12 @@ export class DaemonClient {
       return undefined;
     }
     const ours = await this.ownProjectId();
+    if (ours !== undefined && health.projectId === undefined) {
+      // Can't tell it is ours, so it doesn't get the token.
+      throw new DaemonError(
+        `The program on port ${info.port} didn't say which project it serves, so FlutterDeck didn't send it the token. Run \`flutterdeck stop\` and try again.`,
+      );
+    }
     if (ours !== undefined && health.projectId !== undefined && health.projectId !== ours) {
       throw new DaemonError(
         `Another project's FlutterDeck (project ${health.projectId}) is on port ${info.port}, not this project's (project ${ours}). Stop it, or give this project another port in .flutterdeck/config.json.`,
@@ -136,9 +142,12 @@ export class DaemonClient {
     return { port: info.port, token: info.token, warnings };
   }
 
-  private ownProjectId(): Promise<string | undefined> {
-    this.ownId ??= this.opts.projectId?.() ?? readProjectIdentity(this.opts.projectDir);
-    return this.ownId;
+  /** Cached once known; read again while unknown (the registry may appear later). */
+  private async ownProjectId(): Promise<string | undefined> {
+    if (this.ownId !== undefined) return this.ownId;
+    const id = await (this.opts.projectId?.() ?? readProjectIdentity(this.opts.projectDir));
+    if (id !== undefined) this.ownId = id;
+    return id;
   }
 
   /** Starts the daemon once for any number of waiting calls; true once it answers. */

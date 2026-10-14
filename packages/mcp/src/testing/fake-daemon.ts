@@ -24,6 +24,9 @@ export interface FakeAnswer {
 /** Returns an answer, or `'hang'` to never answer (for timeout tests). */
 export type FakeRoute = (req: FakeRequest) => FakeAnswer | 'hang';
 
+/** The project id the fake daemon reports; tests give their clients the same one. */
+export const FAKE_PROJECT_ID = 'aaaaaaaaaaaa';
+
 export const FAKE_STATUS: Status = {
   version: '0.0.0',
   dashboardUrl: 'http://127.0.0.1:9147/',
@@ -36,7 +39,7 @@ export const FAKE_STATUS: Status = {
 export class FakeDaemon {
   readonly requests: FakeRequest[] = [];
   readonly routes = new Map<string, FakeRoute>();
-  health: Health = { ok: true, name: 'project-deck', version: '0.0.0' };
+  health: Health = { ok: true, name: 'project-deck', version: '0.0.0', projectId: FAKE_PROJECT_ID };
   status: Status = FAKE_STATUS;
   logs: LogsResult = { entries: [], truncated: false };
 

@@ -69,7 +69,15 @@ async function raw(handler: Handler, health = true): Promise<RawDaemon> {
     seen.push({ path: req.url ?? '', token: typeof token === 'string' ? token : undefined });
     if (health && req.url === '/api/health') {
       res.writeHead(200, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({ ok: true, name: 'project-deck', version: '0.0.0' }));
+      // The same project id the clients below know, so the token may go to it.
+      res.end(
+        JSON.stringify({
+          ok: true,
+          name: 'project-deck',
+          version: '0.0.0',
+          projectId: 'aaaaaaaaaaaa',
+        }),
+      );
       return;
     }
     handler(req, res);

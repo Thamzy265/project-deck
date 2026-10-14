@@ -94,6 +94,35 @@ describe('DaemonClient', () => {
     expect(spawned).toBe(0);
   });
 
+  it("sends no token to a daemon that doesn't say its project when ours is known", async () => {
+    const f = await fake();
+    f.health = { ok: true, name: 'project-deck', version: '0.0.0' };
+    let spawned = 0;
+    const c = client({
+      spawnDaemon: () => {
+        spawned++;
+      },
+    });
+    const err = await rejection(c.status());
+    expect(err.message).toBe(
+      `The program on port ${f.port} didn't say which project it serves, so FlutterDeck didn't send it the token. Run \`flutterdeck stop\` and try again.`,
+    );
+    expect(f.requests.every((r) => r.headers['x-deck-token'] === undefined)).toBe(true);
+    expect(spawned).toBe(0);
+  });
+
+  it("reads this project's id again after it couldn't be read", async () => {
+    const f = await fake();
+    let calls = 0;
+    const c = client({
+      projectId: () => Promise.resolve(++calls === 1 ? undefined : 'aaaaaaaaaaaa'),
+    });
+    f.health = { ...f.health, projectId: 'bbbbbbbbbbbb' };
+    // Unknown the first time: no check. Known the second time: the mismatch is found.
+    expect((await c.status()).value.projectName).toBe('shop_app');
+    expect((await rejection(c.status())).message).toContain("Another project's FlutterDeck");
+  });
+
   it('skips the project check when either id is unknown', async () => {
     const f = await fake();
     f.health = { ...f.health, projectId: 'bbbbbbbbbbbb' };
