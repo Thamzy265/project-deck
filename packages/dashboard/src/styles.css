@@ -1,0 +1,79 @@
+@import 'tailwindcss';
+@import './tokens.css';
+
+/* Only the semantic tokens exist as Tailwind values: no stray palette colours or sizes. */
+@theme inline {
+  --color-*: initial;
+  --color-bg: var(--deck-bg);
+  --color-surface: var(--deck-surface);
+  --color-text: var(--deck-text);
+  --color-muted: var(--deck-text-muted);
+  --color-border: var(--deck-border);
+  --color-accent: var(--deck-accent);
+  --color-focus: var(--deck-focus);
+  --color-ok: var(--deck-status-ok);
+  --color-error: var(--deck-status-error);
+  --color-warn: var(--deck-status-warn);
+  --color-level-verbose: var(--deck-level-verbose);
+  --color-level-debug: var(--deck-level-debug);
+  --color-level-info: var(--deck-level-info);
+  --color-level-warning: var(--deck-level-warning);
+  --color-level-error: var(--deck-level-error);
+  --color-transparent: transparent;
+
+  --spacing: 0.25rem;
+  --spacing-1: var(--deck-space-1);
+  --spacing-2: var(--deck-space-2);
+  --spacing-3: var(--deck-space-3);
+  --spacing-4: var(--deck-space-4);
+  --spacing-6: var(--deck-space-6);
+
+  --radius-*: initial;
+  --radius-sm: var(--deck-radius-sm);
+  --radius-md: var(--deck-radius-md);
+
+  --font-*: initial;
+  --font-sans: var(--deck-font-sans);
+  --font-mono: var(--deck-font-mono);
+
+  --text-*: initial;
+  --text-sm: var(--deck-font-size-sm);
+  --text-md: var(--deck-font-size-md);
+  --text-lg: var(--deck-font-size-lg);
+
+  --breakpoint-*: initial;
+  /* From the UI spec: 420 px pane target, 768 px one-row header, 1200 px max width. */
+  --breakpoint-pane: 25rem;
+  --breakpoint-md: 48rem;
+  --breakpoint-wide: 75rem;
+}
+
+@layer base {
+  html {
+    color-scheme: light dark;
+    /* Keeps the focused row clear of the sticky header (WCAG 2.4.11). */
+    scroll-padding-top: var(--deck-header-height, 0px);
+  }
+
+  body {
+    margin: 0;
+    background: var(--deck-bg);
+    color: var(--deck-text);
+    font-family: var(--deck-font-sans);
+    font-size: var(--deck-font-size-md);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--deck-focus);
+    outline-offset: 2px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
