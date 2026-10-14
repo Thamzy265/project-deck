@@ -140,14 +140,14 @@ These make the chosen options safe. They don't change the PM's choices.
 - A request authenticated by the cookie must also have `Sec-Fetch-Site: same-origin` (or no fetch metadata) and, when present, the exact Origin. This blocks pages on other 127.0.0.1 ports, which browsers treat as the same site.
 - The cookie is set only on `GET /` as a top-level navigation (`Sec-Fetch-Site: none` or `same-origin`, `Sec-Fetch-Mode: navigate`, or no fetch metadata).
 - No `GET` route has a side effect.
-- Session expiry: the secret changes when the daemon restarts. On a 401 from the API or WebSocket, the dashboard reloads the page once (guarded by a flag in `sessionStorage`) to get a new cookie. If that also fails, it shows "Login refused".
+- Session expiry: the secret changes when the daemon restarts. Browsers don't show the status of a refused WebSocket handshake, so when the WebSocket fails the dashboard calls `GET /api/status`. A 401 there means the cookie is old: the dashboard reloads the page once (guarded by a flag in `sessionStorage`) to get a new cookie; if that also fails, it shows "Login refused". A connection error means the daemon is down: the normal retry banner. The flag is cleared after the first successful authenticated response, so the next restart in the same tab also recovers. Tests: a daemon restart while the dashboard is open, twice in one tab.
 - Headers on every response: `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Cache-Control: no-store` on API JSON, `Content-Security-Policy: default-src 'self'; connect-src 'self'; frame-ancestors 'none'`, `X-Frame-Options: DENY`.
 - Tests: two daemons on two ports with both dashboards open; a page on another 127.0.0.1 port; a daemon restart while the dashboard is open; a cookie from the wrong port.
 
 **D2 — fixed port per project**
 
-- `init` picks the port from a per-user registry `~/.flutterdeck/ports.json` (project path → port; 0600), so two projects never get the same port, even when neither daemon is running. 9147 for the first project, then the next free unregistered port.
-- `/api/health` (no auth) returns a project id: the first 12 hex characters of SHA-256 of the project path (it can't be reversed to the path). The dashboard and the MCP server compare it with their own project and show "Another project's FlutterDeck is on this port" if it differs.
+- `init` picks the port from a per-user registry `~/.flutterdeck/ports.json` (project path → port, plus a random per-user salt; 0600), so two projects never get the same port, even when neither daemon is running. 9147 for the first project, then the next free unregistered port. The daemon also checks the registry when it starts: if the port in a committed `config.json` belongs to another project on this machine, it says so and tells the user to run `flutterdeck init` to pick a new port.
+- `/api/health` (no auth) returns a project id: the first 12 hex characters of SHA-256 of the per-user salt plus the project path, so the id doesn't reveal the path or the user name. The MCP server and `flutterdeck start` compare it with their own project and report "Another project's FlutterDeck is on this port" if it differs. The dashboard can't make this check (it is served by whichever daemon holds the port), so its header always shows the project folder name.
 - If the port is busy at start, the daemon calls `GET /api/health` on it. It reports "Another FlutterDeck (project <id>) uses port <port>" or "Another program uses port <port>", with how to change the port. It never runs a process lookup command.
 - Start: the MCP server starts the daemon **as soon as it starts** (non-blocking), so the dashboard is up when the pane opens. It also starts it on a tool call if the daemon has gone, then retries once. Spawn: fixed `node <cli> start` command, `detached: true`, `windowsHide: true`, `stdio: 'ignore'`, `unref()`, an `'error'` listener. The startup lock (M1) stops a second daemon.
 - The daemon keeps running after Claude exits; `flutterdeck stop` stops it. If `/api/health` reports an older version than the MCP server, the MCP server says so in `deck_status` and in the tool error, and suggests `flutterdeck stop`.
@@ -157,7 +157,7 @@ These make the chosen options safe. They don't change the PM's choices.
 - Absolute paths, `shell: false`, an `'error'` listener, 5 s timeout:
   - macOS: `/usr/bin/osascript -e <fixed script>`, title and text passed as arguments after the script and read with `on run argv`.
   - Linux: `notify-send` found once in `/usr/bin` or `/usr/local/bin` only (never the project folder), `--` before the title and text, and `<`, `>`, `&` escaped (some notification servers render markup). Missing binary: skip quietly, note once in stderr.
-  - Windows: `%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -NonInteractive -EncodedCommand <fixed script>`. Title and text go **only in environment variables** (`DECK_NOTIFY_TITLE`, `DECK_NOTIFY_TEXT`), never in arguments, because arguments after `-Command` become script text.
+  - Windows: `%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -NonInteractive -EncodedCommand <fixed script>`. Title and text go **only in environment variables** (`DECK_NOTIFY_TITLE`, `DECK_NOTIFY_TEXT`), never in arguments, because arguments after `-Command` become script text. The fixed script builds the toast from the `ToastText02` template and adds the text only as XML text nodes (`CreateTextNode($env:DECK_NOTIFY_TEXT)`), never by putting it into an XML string, so the text can't add buttons or actions. Test payload: `</text></binding></visual><actions><action activationType="protocol" arguments="https://x"/></actions>` must show as literal text.
 - Text: control characters removed, title ≤ 64 characters, text ≤ 200.
 - Rate limit: at most one notification per kind per 30 s; extra events are counted in the next one ("Reload failed (3 times)").
 - "App crashed" means the app's VM service went away without a detach or stop from FlutterDeck **and** an error-level log line arrived in the 5 s before. Any other exit is "App stopped", shown in Activity only, with no OS notification.
@@ -169,12 +169,12 @@ These make the chosen options safe. They don't change the PM's choices.
 - Masked values are replaced by a marker that says so, for example `[email masked]`, `[token masked]`.
 - It is **best-effort pattern matching** of common patterns (emails, phone-like numbers, bearer tokens, JWT-shaped and long secret-like strings). It does not find names, addresses, IDs or free text. We say exactly this in the tool descriptions, the README and the dashboard settings, and never call it "private" or "safe".
 - Claude can still see unmasked text through the Dart MCP server's `get_runtime_errors`. FlutterDeck can't change that; the README says so.
-- User regex rules from config: at most 20 rules, each ≤ 200 characters, nested quantifiers rejected, each line cut to 4 kB before matching.
+- User regex rules from config: at most 20 rules, each ≤ 200 characters, nested quantifiers rejected, each line cut to 4 kB before matching, and a time budget of 200 ms per tool call for all user rules; when it runs out, the remaining user rules are skipped and the output says "Some masking rules were skipped (too slow)". The built-in patterns always run.
 - If `logs.redact` is `false` (for example in a config committed to the repo), the daemon, `init` and `deck_status` say "Masking for Claude is off".
 
 **Dashboard**
 
-- WebSocket heartbeat: the server pings every 15 s and closes a socket with no pong in 10 s; the client reconnects if nothing arrives for 30 s.
+- WebSocket heartbeat: the server sends a WebSocket ping every 15 s and closes a socket with no pong in 10 s (finds dead clients). It also sends a `{"type":"heartbeat"}` message every 15 s, because browser code can't see pings. The client resets its timer on any message and reconnects if nothing arrives for 30 s. Test with fake timers and no log traffic: no reconnect.
 - Single-key shortcuts `r` / `R` can be switched off in the dashboard (kept per browser in `localStorage`), as WCAG 2.2 SC 2.1.4 requires.
 
 **Seeing reloads from Claude or the IDE**
@@ -183,7 +183,7 @@ These make the chosen options safe. They don't change the PM's choices.
 
 ## Failure plan
 
-- Dashboard ↔ daemon WebSocket: heartbeat (15 s ping, 10 s pong timeout; client reconnects after 30 s of silence); reconnect with backoff (0.5 s, 1 s, 2 s, max 5 s, jitter); banner "Lost connection to FlutterDeck — retrying"; on reconnect, re-read state and the last 500 log lines (the `hello` message plus `GET /api/logs`), de-duplicated by id/timestamp.
+- Dashboard ↔ daemon WebSocket: heartbeat (15 s ping and heartbeat message, 10 s pong timeout; client reconnects after 30 s with no message); reconnect with backoff (0.5 s, 1 s, 2 s, max 5 s, jitter); banner "Lost connection to FlutterDeck — retrying"; on reconnect, re-read state and the last 500 log lines (the `hello` message plus `GET /api/logs`), de-duplicated by id/timestamp.
 - Dashboard HTTP calls: 10 s timeout; reload/restart buttons disabled while a call runs; error shows the reason and keeps the last good state.
 - MCP server → daemon: 5 s timeout per call (reload not involved); if the daemon isn't running, start it (fixed command, detached) and retry once after it reports ready (max 10 s); otherwise return a clear tool error "FlutterDeck daemon isn't running: run `flutterdeck start`".
 - Hooks → daemon: 2 s timeout, never block Claude, exit 0 on any failure, no output.
@@ -211,7 +211,7 @@ These make the chosen options safe. They don't change the PM's choices.
   - As a cloned repo I commit a `.flutterdeck/config.json` or `.claude/launch.json` that turns masking off, adds a slow regex, or points the pane at another port — mitigation: masking-off notice, regex limits, project id check on `/api/health`.
   - As a cloned repo I put a `powershell.exe` or `notify-send` in the project folder so the daemon runs it — mitigation: absolute binary paths only.
   - As a crashing app I flood the notification centre — mitigation: one notification per kind per 30 s.
-  - As a local program I listen on the configured port while the daemon is down, so the pane loads my page — accepted: same-user local programs are outside the threat model (as in M1); the project id check shows a warning when the program imitates the API.
+  - As a local program I listen on the configured port while the daemon is down, so the pane loads my page — accepted: same-user local programs are outside the threat model (as in M1); the dashboard header shows the project name, so a page for the wrong project is visible.
   - As a local user I read `runtime.json` — accepted, same as M1 (0600, same user only).
 - The reviewer checks against this list.
 
