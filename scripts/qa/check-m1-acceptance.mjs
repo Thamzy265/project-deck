@@ -230,7 +230,8 @@ const shots = [];
 const traffic = [];
 const daemonOutput = [];
 const project = await mkdtemp(join(tmpdir(), 'deck-qa-m1-'));
-const devicePath = `/sdcard/project-deck-qa-${RUN}.mp4`;
+// Unique per run, so the clean-up can stop and delete only this run's recording.
+const devicePath = `/sdcard/project-deck-qa-${RUN}-${process.pid}-${Date.now()}.mp4`;
 let daemon;
 let daemonExited;
 let debuggerClient;
@@ -526,8 +527,17 @@ try {
   }
   if (originalSource !== undefined) await writeFile(MAIN_DART, originalSource).catch(() => {});
   if (recorder !== undefined) {
-    // screenrecord finishes the file on SIGINT; kill it on the device, then pull and delete it.
-    await adb(['-s', serial, 'shell', 'pkill', '-INT', 'screenrecord']).catch(() => {});
+    // screenrecord finishes the file on SIGINT. Signal only this run's screenrecord, matched by its
+    // unique file path; `screenrecor[d]` keeps the pattern from matching the shell running pkill.
+    await adb([
+      '-s',
+      serial,
+      'shell',
+      'pkill',
+      '-INT',
+      '-f',
+      `'screenrecor[d] .*${devicePath}'`,
+    ]).catch(() => {});
     await sleep(2000);
     await adb(['-s', serial, 'pull', devicePath, join(EVIDENCE, `${RUN}-acceptance.mp4`)]).catch(
       () => {},
