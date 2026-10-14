@@ -5,7 +5,7 @@
  * project on this machine already uses.
  */
 import { createHash, randomBytes } from 'node:crypto';
-import { mkdir, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -60,18 +60,6 @@ async function withRegistryLock<T>(homeDir: string, fn: () => Promise<T>): Promi
   }
 }
 
-/** The port in a committed config belongs to another project on this machine. */
-export class PortClaimedError extends Error {
-  constructor(
-    readonly port: number,
-    readonly ownerId: string,
-  ) {
-    super(
-      `Port ${port} in .flutterdeck/config.json belongs to another project on this machine (project ${ownerId}). Run \`flutterdeck init\` in this project to pick a new port.`,
-    );
-  }
-}
-
 export function registryPath(homeDir: string): string {
   return join(homeDir, REGISTRY_DIR, REGISTRY_FILE);
 }
@@ -102,8 +90,12 @@ async function allocateLocked(
   const isFree = opts.isFree ?? canListen;
   const registry = await load(homeDir);
   const key = await projectKey(projectDir);
+  const pruned = await pruneGone(registry, key);
   const existing = registry.projects[key];
-  if (existing !== undefined) return existing;
+  if (existing !== undefined) {
+    if (pruned) await save(homeDir, registry);
+    return existing;
+  }
   const taken = new Set(Object.values(registry.projects));
   for (let port = FIRST_PORT; port <= 65535; port++) {
     if (taken.has(port) || !(await isFree(port))) continue;
@@ -115,31 +107,64 @@ async function allocateLocked(
 }
 
 /**
- * Checked at daemon start for a config port. Throws PortClaimedError if another project
- * holds it; otherwise records it for this project, so `init` won't hand it out elsewhere.
+ * Checked at daemon start for a config port. Returns the id of another existing project
+ * registered to the same port (a second clone or worktree with the same committed
+ * config), whose registration is left alone; the caller warns and starts anyway, and
+ * the port-busy check decides if both run at once. Otherwise records the port for this
+ * project, so `init` won't hand it out elsewhere, and returns undefined.
  */
 export async function claimConfigPort(
   projectDir: string,
   port: number,
   opts: PortRegistryOptions = {},
-): Promise<void> {
+): Promise<string | undefined> {
   const homeDir = home(opts);
-  await withRegistryLock(homeDir, () => claimLocked(projectDir, port, homeDir));
+  return withRegistryLock(homeDir, () => claimLocked(projectDir, port, homeDir));
 }
 
-async function claimLocked(projectDir: string, port: number, homeDir: string): Promise<void> {
+async function claimLocked(
+  projectDir: string,
+  port: number,
+  homeDir: string,
+): Promise<string | undefined> {
   const registry = await load(homeDir);
   const key = await projectKey(projectDir);
+  const pruned = await pruneGone(registry, key);
   for (const [other, otherPort] of Object.entries(registry.projects)) {
     if (other !== key && otherPort === port) {
-      throw new PortClaimedError(port, idFor(registry.salt, other));
+      if (pruned) await save(homeDir, registry);
+      return idFor(registry.salt, other);
     }
   }
   // The config is the source of truth for this project's port, also after a manual edit.
-  if (registry.projects[key] !== port) {
+  if (registry.projects[key] !== port || pruned) {
     registry.projects[key] = port;
     await save(homeDir, registry);
   }
+  return undefined;
+}
+
+/**
+ * Drops entries whose project folder no longer exists (moved, renamed or deleted), so
+ * their ports become free again. Other errors, such as no permission, keep the entry.
+ * Returns whether anything was dropped.
+ */
+async function pruneGone(registry: PortRegistry, keep: string): Promise<boolean> {
+  let pruned = false;
+  for (const path of Object.keys(registry.projects)) {
+    if (path === keep) continue;
+    try {
+      await stat(path);
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === 'ENOENT' || code === 'ENOTDIR') {
+        // eslint-disable-next-line @typescript-eslint/no-dynamic-delete -- a record keyed by path
+        delete registry.projects[path];
+        pruned = true;
+      }
+    }
+  }
+  return pruned;
 }
 
 function home(opts: PortRegistryOptions): string {

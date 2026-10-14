@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ConfigError } from './config.js';
 import type { Daemon } from './daemon.js';
 import { PortBusyError, startDaemon } from './daemon.js';
-import { PortClaimedError, projectIdentity } from './port-registry.js';
+import { projectIdentity } from './port-registry.js';
 import { readRuntime } from './runtime.js';
 
 let homeDir: string;
@@ -33,13 +33,15 @@ async function writeConfig(dir: string, port: number): Promise<void> {
   await writeFile(join(dir, '.flutterdeck', 'config.json'), JSON.stringify({ version: 1, port }));
 }
 
-async function start(opts: { dir?: string; port?: number } = {}): Promise<Daemon> {
+async function start(
+  opts: { dir?: string; port?: number; messages?: string[] } = {},
+): Promise<Daemon> {
   const d = await startDaemon({
     projectDir: opts.dir ?? projectDir,
     registry: new Registry(),
     homeDir,
     ...(opts.port === undefined ? {} : { port: opts.port }),
-    log: () => undefined,
+    log: (message) => opts.messages?.push(message),
   });
   cleanups.push(() => d.stop());
   return d;
@@ -107,13 +109,32 @@ describe('fixed port from .flutterdeck/config.json', () => {
     );
   });
 
-  it('refuses a committed port that another project registered, before listening', async () => {
+  it('starts on a free port another checkout also registered, and warns', async () => {
     const port = await freePort();
     await writeConfig(otherDir, port);
     const other = await start({ dir: otherDir });
     await other.stop();
     await writeConfig(projectDir, port);
-    await expect(start()).rejects.toBeInstanceOf(PortClaimedError);
+    const messages: string[] = [];
+    const d = await start({ messages });
+    expect(d.port).toBe(port);
+    const otherId = await projectIdentity(otherDir, { homeDir });
+    expect(messages).toContain(
+      `Port ${port} is also registered to another project (project ${otherId}); if both run at once one will fail. Run \`flutterdeck init\` to pick a new port.`,
+    );
+  });
+
+  it('says another FlutterDeck holds the port when the other checkout is running', async () => {
+    const port = await freePort();
+    await writeConfig(otherDir, port);
+    await start({ dir: otherDir });
+    await writeConfig(projectDir, port);
+    const err = await start().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(PortBusyError);
+    const otherId = await projectIdentity(otherDir, { homeDir });
+    expect((err as Error).message).toMatch(
+      new RegExp(`^Another FlutterDeck \\(project ${otherId}\\) uses port ${port}\\b`),
+    );
     expect(await readRuntime(projectDir)).toBeUndefined();
   });
 

@@ -15,7 +15,6 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   FIRST_PORT,
-  PortClaimedError,
   PortRegistryError,
   allocatePort,
   claimConfigPort,
@@ -194,8 +193,9 @@ describe('port registry: project paths', () => {
     const b = await project('app-2');
     expect(await projectIdentity(a, { homeDir })).not.toBe(await projectIdentity(b, { homeDir }));
     const portA = await allocatePort(a, { homeDir, isFree: allFree });
-    const err = await failure(claimConfigPort(b, portA, { homeDir }));
-    expect(err).toBeInstanceOf(PortClaimedError);
+    expect(await claimConfigPort(b, portA, { homeDir })).toBe(
+      await projectIdentity(a, { homeDir }),
+    );
   });
 
   it('gives a project folder that does not exist yet a stable id', async () => {
@@ -227,14 +227,10 @@ describe('port registry: project paths', () => {
     const dir = await project('secret-client-name');
     const id = await projectIdentity(dir, { homeDir });
     expect(id).toMatch(/^[0-9a-f]{12}$/);
-    const other = await failure(
-      (async () => {
-        await allocatePort(await project('owner'), { homeDir, isFree: allFree });
-        await claimConfigPort(dir, FIRST_PORT, { homeDir });
-      })(),
-    );
-    expect(other.message).not.toContain('owner');
-    expect(other.message).not.toContain(base);
+    await allocatePort(await project('owner'), { homeDir, isFree: allFree });
+    const other = await claimConfigPort(dir, FIRST_PORT, { homeDir });
+    expect(other).toMatch(/^[0-9a-f]{12}$/);
+    expect(other).not.toContain('owner');
   });
 });
 
@@ -308,7 +304,6 @@ describe('port registry: allocation edges', () => {
     await claimConfigPort(a, 9300, { homeDir });
     await claimConfigPort(a, 9301, { homeDir });
     await expect(claimConfigPort(b, 9300, { homeDir })).resolves.toBeUndefined();
-    const err = await failure(claimConfigPort(b, 9301, { homeDir }));
-    expect(err).toBeInstanceOf(PortClaimedError);
+    expect(await claimConfigPort(b, 9301, { homeDir })).toBe(await projectIdentity(a, { homeDir }));
   });
 });

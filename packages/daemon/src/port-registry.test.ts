@@ -3,7 +3,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
-  PortClaimedError,
   PortRegistryError,
   allocatePort,
   claimConfigPort,
@@ -133,14 +132,26 @@ describe('claimConfigPort', () => {
     expect(await allocatePort(projectA, { homeDir, isFree: allFree })).toBe(9201);
   });
 
-  it('refuses a port that belongs to another project and says to run init', async () => {
+  it('names another existing project on the same port and leaves its registration alone', async () => {
     const port = await allocatePort(projectA, { homeDir, isFree: allFree });
-    const err = await claimConfigPort(projectB, port, { homeDir }).catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(PortClaimedError);
-    const message = (err as Error).message;
-    expect(message).toContain(`Port ${port}`);
-    expect(message).toContain(await projectIdentity(projectA, { homeDir }));
-    expect(message).toContain('flutterdeck init');
-    expect(message).not.toContain(projectA);
+    expect(await claimConfigPort(projectB, port, { homeDir })).toBe(
+      await projectIdentity(projectA, { homeDir }),
+    );
+    expect(Object.values((await registryFile()).projects)).toEqual([port]);
+    expect(await allocatePort(projectA, { homeDir, isFree: allFree })).toBe(port);
+  });
+
+  it('forgets projects whose folder is gone, so their port is free again', async () => {
+    const port = await allocatePort(projectA, { homeDir, isFree: allFree });
+    await rm(projectA, { recursive: true, force: true });
+    expect(await claimConfigPort(projectB, port, { homeDir })).toBeUndefined();
+    expect(Object.values((await registryFile()).projects)).toEqual([port]);
+  });
+
+  it('prunes gone projects when allocating too', async () => {
+    await allocatePort(projectA, { homeDir, isFree: allFree });
+    await rm(projectA, { recursive: true, force: true });
+    expect(await allocatePort(projectB, { homeDir, isFree: allFree })).toBe(9147);
+    expect(Object.keys((await registryFile()).projects)).toHaveLength(1);
   });
 });

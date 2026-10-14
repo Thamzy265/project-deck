@@ -91,7 +91,10 @@ async function startLocked(opts: DaemonOptions): Promise<Daemon> {
 
   const config = await readConfig(opts.projectDir);
   const registryOpts = opts.homeDir === undefined ? {} : { homeDir: opts.homeDir };
-  if (config.port !== undefined) await claimConfigPort(opts.projectDir, config.port, registryOpts);
+  const sharedWith =
+    config.port === undefined
+      ? undefined
+      : await claimConfigPort(opts.projectDir, config.port, registryOpts);
   const projectId = await projectIdentity(opts.projectDir, registryOpts);
 
   const token = generateToken();
@@ -144,6 +147,11 @@ async function startLocked(opts: DaemonOptions): Promise<Daemon> {
   }
   if (requestedPort !== 0 && port !== requestedPort) {
     log(`Port ${requestedPort} is in use; using ${port}`);
+  }
+  if (sharedWith !== undefined) {
+    log(
+      `Port ${port} is also registered to another project (project ${sharedWith}); if both run at once one will fail. Run \`flutterdeck init\` to pick a new port.`,
+    );
   }
   try {
     await writeRuntime(opts.projectDir, { pid: process.pid, port, token, startedAt: Date.now() });
