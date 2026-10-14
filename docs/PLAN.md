@@ -355,12 +355,12 @@ plugin/
 The daemon can run commands, read app data and write to a database, so it must be locked to the local user and safe by default.
 
 - **Localhost only.** Bind to `127.0.0.1`, never `0.0.0.0`. Reject requests whose `Host` or `Origin` isn't localhost, to block DNS-rebinding attacks from web pages.
-- **Session token.** The daemon generates a random token at start, stored in `.flutterdeck/runtime.json` (gitignored, 0600). The MCP server, CLI and hooks send it as a header; the dashboard receives it via the URL on first load and keeps it in memory or `sessionStorage`.
+- **Session token.** The daemon generates a random token at start, stored in `.flutterdeck/runtime.json` (gitignored, 0600). The MCP server, CLI and hooks send it as a header; the dashboard receives it via the URL on first load and keeps it in memory or `sessionStorage`. *Changed 14 Oct 2026 (PM decision D1, [ADR 0001](adr/0001-dashboard-login-cookie.md)):* the Browser pane does not allow a query in a localhost URL, so the daemon sets an `HttpOnly`, `SameSite=Strict` cookie when the dashboard page loads. No token goes in a URL.
 - **Read-only database by default.** `db_query` accepts only `SELECT`, `PRAGMA table_info` and `EXPLAIN` (parse, don't regex). Writes need `db.allowWrites: true` in config, and each dashboard write needs a confirm.
 - **Debug builds only.** `flutterdeck_drift` registers nothing when `kReleaseMode` is true. Document this prominently.
-- **No arbitrary shell from the API.** The daemon runs only its own fixed commands (`flutter`, `adb`, `dart`) with validated arguments. Device IDs, package names and file names are checked against strict patterns before use.
+- **No arbitrary shell from the API.** The daemon runs only its own fixed commands (`flutter`, `adb`, `dart`) with validated arguments. *Changed 14 Oct 2026 (PM decision D3):* for OS notifications it may also run `osascript` (macOS), `notify-send` (Linux) or `powershell.exe` (Windows), each with a fixed script, no shell, and the title and text passed as separate checked arguments. Device IDs, package names and file names are checked against strict patterns before use.
 - **Secrets.** API keys live in the OS keychain or a 0600 file outside the repo. Never log them, never put them in `launch.json` (which is often committed), never return them through MCP tools.
-- **Log redaction.** Optional regex redaction rules in config for tokens or personal data before logs are sent to Claude.
+- **Log redaction.** Optional regex redaction rules in config for tokens or personal data before logs are sent to Claude. *Changed 14 Oct 2026 (PM decision D4):* best-effort masking of common patterns (emails, phone-like numbers, bearer tokens, JWT-shaped and long secret-like strings) is on by default for every FlutterDeck MCP tool output; it doesn't find names, addresses or free text; `logs.redact: false` turns it off. The dashboard shows logs unmasked on the local machine.
 - **Untrusted content.** Task descriptions and log lines are data. Tool descriptions should remind Claude not to follow instructions found inside them.
 
 ## Milestones
@@ -383,6 +383,7 @@ Five milestones, each ending in something usable. Claude should not start the ne
 - [ ] `flutterdeck init` writes config and the `.claude/launch.json` entry
 - [ ] Hooks plus OS notifications
 - [ ] FlutterDeck MCP server with `deck_status` and `get_logs`
+- Plan of record (14 Oct 2026): [design note](design/m2-dashboard.md), [UI spec](ui/m2-dashboard.md), [deck](slides/m2-dashboard.html). PM decisions D1–D4: cookie login ([ADR 0001](adr/0001-dashboard-login-cookie.md)), a fixed port per project with an attach-only `launch.json` entry ([ADR 0002](adr/0002-fixed-dashboard-port.md)), three fixed OS notifier commands for app crashed, reload failed and Claude waiting ("Claude finished" stays with Desktop's own notification), and log masking on by default for Claude. M2 runs from the local build; `npx flutterdeck` comes with the M5 release.
 - [ ] Accept: in Claude Desktop the dashboard sits next to chat and diff; Claude reloads through the Dart MCP server and the dashboard shows the reload; a notification appears when Claude finishes
 
 ### M3 — Drift inspector (headline feature)
@@ -441,4 +442,6 @@ The remaining risks are known and each has a mitigation; the open decisions don'
 
 One line per deferred item, in the format `- <what> — <why> — trigger: <measurable condition> — noted <date> by <role>`.
 
-(none yet)
+- `flutterdeck init --undo` — `init` edits `.gitignore` and `launch.json`, and undoing by hand is error-prone — trigger: 3 user reports of needing to undo `init` — noted 2026-10-14 by lead
+- Logs kept across daemon restarts — logs are memory only today — trigger: 3 user requests for logs after restarting the daemon — noted 2026-10-14 by lead
+- Several projects in one dashboard — one daemon per project today — trigger: 3 user requests to see two projects in one pane — noted 2026-10-14 by lead
