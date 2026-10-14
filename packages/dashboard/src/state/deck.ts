@@ -1,5 +1,5 @@
 import type { ActivityEntry, LogEntry, ReloadResult, RunningApp, Status } from '@project-deck/core';
-import { DEFAULT_LOG_CAPACITY } from '@project-deck/core';
+import { ACTIVITY_CAPACITY, DEFAULT_LOG_CAPACITY } from '@project-deck/core';
 import type { ConnectionState } from '../api/connection.js';
 import type { LogList } from './logs.js';
 import { appendLogs, mergeBackfill } from './logs.js';
@@ -50,7 +50,7 @@ export interface DeckState {
    * bring older lines back.
    */
   logsClearedAt: number | undefined;
-  activity: { items: ActivityItem[]; load: Loadable };
+  activity: { items: ActivityItem[]; load: Loadable; nextLocal: number };
   running: { kind: ActionKind; startedAt: number } | null;
   lastResult: LastResult | null;
   /** Apps whose reload answered `unsupported`; the buttons are hidden for them. */
@@ -69,7 +69,7 @@ export const initialState: DeckState = {
   attach: { status: 'idle' },
   logs: { entries: [], nextKey: 0, load: { status: 'loading' } },
   logsClearedAt: undefined,
-  activity: { items: [], load: { status: 'loading' } },
+  activity: { items: [], load: { status: 'loading' }, nextLocal: 0 },
   running: null,
   lastResult: null,
   unsupported: [],
@@ -104,6 +104,15 @@ export type DeckAction =
   | { type: 'activity-local'; text: LocalActivity['text']; at: number };
 
 const LOG_CAP = DEFAULT_LOG_CAPACITY;
+
+/**
+ * Oldest first and at most as many as the daemon keeps (500), so the list stays sorted
+ * here once instead of on every render.
+ */
+function timeline(items: ActivityItem[]): ActivityItem[] {
+  const sorted = items.sort((a, b) => a.ts - b.ts);
+  return sorted.length > ACTIVITY_CAPACITY ? sorted.slice(-ACTIVITY_CAPACITY) : sorted;
+}
 
 function withAttached(state: DeckState, attached: RunningApp | null): DeckState {
   if (attached === null) return { ...state, attached };
@@ -240,7 +249,11 @@ export function deckReducer(state: DeckState, action: DeckAction): DeckState {
       const kept = state.activity.items.filter((i) => i.kind === 'local' || !ids.has(i.id));
       return {
         ...state,
-        activity: { items: [...kept, ...action.entries], load: { status: 'ready' } },
+        activity: {
+          ...state.activity,
+          items: timeline([...kept, ...action.entries]),
+          load: { status: 'ready' },
+        },
       };
     }
     case 'activity-failed':
@@ -255,17 +268,24 @@ export function deckReducer(state: DeckState, action: DeckAction): DeckState {
       if (exists) return state;
       return {
         ...state,
-        activity: { ...state.activity, items: [...state.activity.items, action.entry] },
+        activity: { ...state.activity, items: timeline([...state.activity.items, action.entry]) },
       };
     }
     case 'activity-local': {
       const item: LocalActivity = {
         kind: 'local',
-        id: `local-${action.at}-${state.activity.items.length}`,
+        id: `local-${String(state.activity.nextLocal)}`,
         ts: action.at,
         text: action.text,
       };
-      return { ...state, activity: { ...state.activity, items: [...state.activity.items, item] } };
+      return {
+        ...state,
+        activity: {
+          ...state.activity,
+          items: timeline([...state.activity.items, item]),
+          nextLocal: state.activity.nextLocal + 1,
+        },
+      };
     }
   }
 }

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { ActivityItem } from '../state/deck.js';
 import { useDeck } from '../state/DeckProvider.js';
 import { Skeleton } from './Skeleton.js';
@@ -66,6 +66,8 @@ function Row({ item }: { item: ActivityItem }) {
 export function ActivityPanel() {
   const { state, actions } = useDeck();
   const { items, load } = state.activity;
+  // Kept sorted, oldest first, by the reducer; only reversed here.
+  const newestFirst = useMemo(() => [...items].reverse(), [items]);
   if (load.status === 'loading' && items.length === 0) return <Skeleton label="Loading activity" />;
   if (load.status === 'error' && items.length === 0) {
     return (
@@ -80,7 +82,6 @@ export function ActivityPanel() {
   if (items.length === 0) {
     return <p className="p-2">Nothing yet. Reloads, crashes and Claude's progress appear here</p>;
   }
-  const newestFirst = [...items].sort((a, b) => b.ts - a.ts);
   return (
     <ul aria-label="Activity" className="min-h-0 flex-1 overflow-y-auto">
       {newestFirst.map((item) => (

@@ -107,6 +107,18 @@ describe('deckReducer', () => {
     expect(s.attach).toEqual({ status: 'idle' });
   });
 
+  it('keeps at most 500 Activity entries, the newest, in time order (review C7)', () => {
+    const adds: DeckAction[] = Array.from({ length: 600 }, (_, i) => ({
+      type: 'activity-add',
+      entry: { id: i, ts: 1000 + i, kind: 'claude.done' },
+    }));
+    const s = run(...adds, { type: 'activity-local', text: 'Reconnected', at: 1050 });
+    expect(s.activity.items).toHaveLength(500);
+    const times = s.activity.items.map((i) => i.ts);
+    expect(times).toEqual([...times].sort((a, b) => a - b));
+    expect(times.at(-1)).toBe(1599);
+  });
+
   it('merges activity by id and adds local entries', () => {
     const a: ActivityEntry = { id: 1, ts: 1, kind: 'claude.done' };
     const b: ActivityEntry = { id: 2, ts: 2, kind: 'claude.waiting', message: 'Allow?' };
@@ -117,9 +129,9 @@ describe('deckReducer', () => {
       { type: 'activity-loaded', entries: [a, b] },
     );
     expect(s.activity.items.map((i) => (i.kind === 'local' ? i.text : i.id))).toEqual([
-      'Reconnected',
       1,
       2,
+      'Reconnected',
     ]);
     expect(s.activity.load).toEqual({ status: 'ready' });
   });
