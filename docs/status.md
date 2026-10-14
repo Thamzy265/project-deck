@@ -15,6 +15,18 @@ Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry re
 - Next: Flutter CI job, the M1 acceptance PR (`test/m1-acceptance`), and the PM's breakpoint check in Android Studio.
 - **Blockers by role:** Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead: the M1 Accept box needs the PM's breakpoint check in Android Studio before M2 starts.
 
+## 2026-10-14 — M1 acceptance (breakpoint check) — QA report (`test/m1-acceptance`)
+
+- Changed:
+  - QA added `scripts/qa/check-m1-acceptance.mjs`. It runs a sample app on the emulator, with a VM service client as the IDE debugger.
+  - Result: 20 of 21 checks pass. The daemon lists the app, attaches, reloads and streams logs. The debugger stays connected. The breakpoint hits before and after attach, and after the daemon stops.
+  - **Fail:** after a hot reload the breakpoint does not pause again. A control run with no daemon fails the same way, so this is upstream behaviour (Flutter tool or Dart VM), not FlutterDeck.
+  - Evidence: [qa/M1.md](qa/M1.md#breakpoint-check-2026-10-14), `docs/qa/M1/screens/`; video `qa-artifacts/M1/m1-acceptance.mp4`.
+- Gates: developer n/a — no product code · tester n/a — no product code · reviewer n/a — QA scripts and docs only · QA fail on one sub-check (upstream) · PM merge waiting.
+- Open findings: none in FlutterDeck. Minor: `GET /api/apps` has no `device` before attach.
+- Decisions: waiting for the PM. Does the M1 criterion "the breakpoint still hits" include "after a hot reload"? The PM's Android Studio result (PM check step 11) informs the decision.
+- Blockers: Developer none · Tester none · Reviewer none · QA PM check steps need the PM's Android Studio · Marketer none · Lead PM decision on the criterion.
+
 ## 2026-10-14 — Sample app (`feat/sample-app`) — waiting for PM merge approval
 
 - Changed: new `examples/sample_app`, a Flutter app with a "Hit breakpoint" button (marked line `lib/main.dart:15`), a hot reload marker, and logs from print, `developer.log` and Android logcat (tag `FlutterDeckSample`). The README has the daemon steps. `examples/` is ignored by Prettier and ESLint. PLAN.md and CLAUDE.md mention the app.
