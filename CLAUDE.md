@@ -204,4 +204,5 @@ Follows [GitHub flow](https://docs.github.com/en/get-started/using-github/github
 
 ## Current status
 
-- **M1 in progress.** Done: scaffold, `core`, daemon (HTTP + WS API, token, localhost checks, default port 9147 with fallback), `connector-dart`, `logs-android`, `.mcp.json` example, sample app (`examples/sample_app`). Next: a Flutter CI job for the sample app, the M1 acceptance PR, and the PM's breakpoint check in Android Studio (`docs/qa/M1.md`).
+- **M1 done** (14 Oct 2026): scaffold, `core`, daemon, `connector-dart`, `logs-android`, `.mcp.json` example, sample app, acceptance check.
+- **M2 in progress.** Plan of record: `docs/design/m2-dashboard.md`, `docs/ui/m2-dashboard.md`, ADRs 0001–0002. Next: batch 1 `feat/dashboard-auth`.

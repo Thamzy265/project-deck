@@ -2,6 +2,23 @@
 
 Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
 
+## 2026-10-14 — M1 closed
+
+- Changed: merged PR #16 (CI runs the sample app's Flutter checks), PR #17 (M2 plan, decisions and ADRs) and PR #18 (M1 acceptance check). M1 Accept ticked in PLAN.md.
+- Gates:
+  - #16: developer pass · tester n/a — CI config only · reviewer approve with notes (C1–C3, D1–D3 fixed) · QA: first CI run green · merged by the lead under the PM's standing approval.
+  - #17: lead design · reviewer: 3 rounds, block → approve with notes (all findings fixed, N1 fixed in the design text) · QA n/a — docs only · merged by the lead.
+  - #18: developer pass · tester n/a — QA tooling, no product code · reviewer block (F1–F4) → approve with notes · QA rerun on the emulator 14 Oct 2026 PASS except the known upstream case · PM Android Studio check PASS · merged by the lead.
+- Open findings (Low, follow-ups):
+  - check-m1-acceptance.mjs R1/R2: a `stopping` flag so an interrupt can't race the source edit or add a duplicate row.
+  - `android-sample-app.sh up` keeps stdout open, so `up | tail` hangs until `down`; point it at `examples/sample_app` (R5 from the sample app review).
+  - `--control` has no "app runs the original code" row.
+  - `GET /api/apps` has no `device` before attach.
+  - Use the recorded JSON-RPC fixtures in the connector tests (F6); the daemon port test is unreliable under parallel runs; the emulator teardown leaves a stale DTD file.
+  - F14 (shared QA script helpers) and F15 (old `qa` commit scope): cleanup, left by the lead.
+- Decisions: none new.
+- Blockers: Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead none.
+
 ## 2026-10-14 — M2 plan — approved by PM
 
 - Changed: M2 plan of record: [design note](design/m2-dashboard.md), [UI spec](ui/m2-dashboard.md), [deck](slides/m2-dashboard.html), [ADR 0001](adr/0001-dashboard-login-cookie.md), [ADR 0002](adr/0002-fixed-dashboard-port.md). Size: large (new UI, browser trust boundary, MCP server, hooks, new notifier commands, logs with personal data sent to Claude). Claude Code formats checked on code.claude.com and npm on 14 Oct 2026.
