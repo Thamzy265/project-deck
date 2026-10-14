@@ -44,11 +44,8 @@ describe('get_logs regex on the daemon thread', () => {
     expect(await runQuery('timeout|refused', 'connection refused')).toBe('answered');
   });
 
-  it.fails(
-    'BUG-MCP-T2: refuses or bounds a catastrophic pattern instead of hanging the daemon',
-    async () => {
-      // 40 characters is enough: (a+)+$ backtracks 2^40 times on a line with no match.
-      expect(await runQuery('(a+)+$', `${'a'.repeat(40)}!`)).not.toBe('hung');
-    },
-  );
+  it('BUG-MCP-T2: refuses or bounds a catastrophic pattern instead of hanging the daemon', async () => {
+    // 40 characters is enough: (a+)+$ backtracks 2^40 times on a line with no match.
+    expect(await runQuery('(a+)+$', `${'a'.repeat(40)}!`)).not.toBe('hung');
+  });
 });

@@ -92,4 +92,15 @@ describe('LogQuerySchema', () => {
     expect(LogQuerySchema.safeParse({ regex: 'a+', limit: 10 }).success).toBe(true);
     expect(LogQuerySchema.safeParse({ regex: 'a'.repeat(201) }).success).toBe(false);
   });
+
+  it.each(['(a+)+$', '(\\w+\\s?)*x', '(.*a){2,}'])(
+    'refuses the nested quantifier %s, which can hang the daemon',
+    (regex) => {
+      const result = LogQuerySchema.safeParse({ regex });
+      expect(result.success).toBe(false);
+      expect(result.error?.issues[0]?.message).toBe(
+        'Nested quantifiers such as (a+)+ can hang; use a simpler pattern or text',
+      );
+    },
+  );
 });

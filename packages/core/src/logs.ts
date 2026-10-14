@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { hasNestedQuantifier } from './config.js';
 
 export const LOG_LEVELS = ['verbose', 'debug', 'info', 'warn', 'error', 'fatal'] as const;
 export const LogLevelSchema = z.enum(LOG_LEVELS);
@@ -46,6 +47,10 @@ export const LogQuerySchema = z.object({
     .string()
     .max(MAX_LOG_REGEX_LENGTH)
     .refine(isValidRegex, { message: 'Invalid regular expression' })
+    // Claude writes these, and a log line can suggest one; the daemon also bounds the time.
+    .refine((source) => !hasNestedQuantifier(source), {
+      message: 'Nested quantifiers such as (a+)+ can hang; use a simpler pattern or text',
+    })
     .optional(),
   tag: z.string().optional(),
   /** Most recent N matches. */
