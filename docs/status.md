@@ -2,6 +2,14 @@
 
 Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
 
+## 2026-10-14 — M2 batch 1 (`feat/dashboard-auth`) — merged
+
+- Changed: PR #20 merged. Config file, per-user port registry with lock, fixed port per project, cookie login with a 2-minute login window (ADR 0003), security headers, WS heartbeat, activity feed with crash detection, external reloads and hot restarts from VM events (recorded fixture).
+- Gates: developer pass · tester pass (276 tests, T1–T5 fixed) · reviewer block (S1, C1, D1) → approve with notes · QA 39/39 real flow + 3/3 external reload/restart on the emulator ([qa/M2.md](qa/M2.md)) · CI 7/7 · merged by the lead under the PM's standing approval.
+- Open findings: C4 (Low, accepted by the lead and documented: an external reload within 1 s after an own no-change reload is not shown). Known limitation: failed external reloads (compile error: no event; VM rejection: "success") until the batch 5 hook.
+- Decisions: PM approved installing Playwright Chromium (`pnpm exec playwright install chromium`); PM approved deleting the local branches `reorder-tmp` and `reorder-tmp2` (done).
+- Blockers: Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead none.
+
 ## 2026-10-14 — M2 batch 1 (`feat/dashboard-auth`) — PM decision on S1
 
 - Changed: reviewer finding S1 (Medium): another OS user on the same machine could load `/` and get the dashboard cookie. Design fix in [ADR 0003](adr/0003-dashboard-login-window.md).
