@@ -98,6 +98,15 @@ describe('deckReducer', () => {
     expect(failed.attach).toEqual({ status: 'error', appId: app.id, error: 'gone' });
   });
 
+  it('drops an old attach error once an app is attached (review C5)', () => {
+    const s = run(
+      { type: 'attach-start', appId: 'app-2' },
+      { type: 'attach-failed', appId: 'app-2', error: 'gone' },
+      { type: 'attached', app },
+    );
+    expect(s.attach).toEqual({ status: 'idle' });
+  });
+
   it('merges activity by id and adds local entries', () => {
     const a: ActivityEntry = { id: 1, ts: 1, kind: 'claude.done' };
     const b: ActivityEntry = { id: 2, ts: 2, kind: 'claude.waiting', message: 'Allow?' };

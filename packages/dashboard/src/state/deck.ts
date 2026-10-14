@@ -107,8 +107,8 @@ const LOG_CAP = DEFAULT_LOG_CAPACITY;
 
 function withAttached(state: DeckState, attached: RunningApp | null): DeckState {
   if (attached === null) return { ...state, attached };
-  const attach = state.attach.status === 'running' ? { status: 'idle' as const } : state.attach;
-  return { ...state, attached, lastApp: attached, stoppedApp: null, attach };
+  // An app is attached now, so an earlier "Couldn't attach" no longer applies.
+  return { ...state, attached, lastApp: attached, stoppedApp: null, attach: { status: 'idle' } };
 }
 
 function resultFrom(result: ReloadResult, kind: ActionKind, startedAt: number): LastResult {
