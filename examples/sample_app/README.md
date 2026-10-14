@@ -33,4 +33,58 @@ In a second terminal at the repo root:
 node scripts/dtd-apps.mjs
 ```
 
-It lists the running sample app. Attach and reload through the daemon's API (see the repo [README](../../README.md) for the token and port), edit `reloadMarker`, and check that the breakpoint still hits after each reload.
+It lists the running sample app.
+
+Then run these commands in the second terminal, at the repo root.
+
+1. Load the session token and port:
+
+   ```bash
+   TOKEN=$(node -p "require('./.flutterdeck/runtime.json').token")
+   PORT=$(node -p "require('./.flutterdeck/runtime.json').port")
+   ```
+
+   Expected: no output.
+
+2. List the apps the daemon can see:
+
+   ```bash
+   curl -s -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:$PORT/api/apps" | node -e "for (const a of JSON.parse(require('fs').readFileSync(0, 'utf8'))) console.log(a.id, a.device.platform, a.name)"
+   ```
+
+   Expected: one line per app, with its id, `android` and its name.
+
+3. Keep the id of the first Android app:
+
+   ```bash
+   APP_ID=$(curl -s -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:$PORT/api/apps" | node -e "const a = JSON.parse(require('fs').readFileSync(0, 'utf8')).find((x) => x.device.platform === 'android'); console.log(a ? a.id : '')")
+   echo "$APP_ID"
+   ```
+
+   Expected: the same id as in step 2. If it is empty, the daemon sees no Android app yet.
+
+4. Attach to it:
+
+   ```bash
+   curl -s -X POST -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:$PORT/api/apps/$APP_ID/attach"
+   ```
+
+   Expected: the app as JSON, with the same `id`.
+
+5. Edit `reloadMarker` in `lib/main.dart`, save, then reload through the daemon:
+
+   ```bash
+   curl -s -X POST -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:$PORT/api/reload"
+   ```
+
+   Expected: `{"ok":true,"kind":"hot-reload",...}`, and the new text on screen.
+
+6. Tap **Hit breakpoint**. Android Studio stops on the marked line. Resume, then read the latest logs:
+
+   ```bash
+   curl -s -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:$PORT/api/logs?limit=10"
+   ```
+
+   Expected: `{"entries":[...],"truncated":...}` with the `Tap N` lines from the taps.
+
+The full acceptance steps are in the [M1 PM check](../../docs/qa/M1.md#pm-check).
