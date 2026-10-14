@@ -21,6 +21,7 @@ Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry re
   - QA added `scripts/qa/check-m1-acceptance.mjs`. It runs a sample app on the emulator, with a VM service client as the IDE debugger.
   - Result: 20 of 21 checks pass. The daemon lists the app, attaches, reloads and streams logs. The debugger stays connected. The breakpoint hits before and after attach, and after the daemon stops.
   - **Fail:** after a hot reload the breakpoint does not pause again. A control run with no daemon fails the same way, so this is upstream behaviour (Flutter tool or Dart VM), not FlutterDeck.
+    PM decision, 14 Oct 2026 (PLAN.md M1 Accept line): an upstream Flutter limitation, not part of the check.
   - Evidence: [qa/M1.md](qa/M1.md#breakpoint-check-2026-10-14), `docs/qa/M1/screens/`; video `qa-artifacts/M1/m1-acceptance.mp4`.
 - Gates: developer n/a — no product code · tester n/a — no product code · reviewer n/a — QA scripts and docs only · QA fail on one sub-check (upstream) · PM merge waiting.
 - Open findings: none in FlutterDeck. Minor: `GET /api/apps` has no `device` before attach.
