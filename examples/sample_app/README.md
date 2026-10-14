@@ -71,20 +71,32 @@ Then run these commands in the second terminal, at the repo root.
 
    Expected: the app as JSON, with the same `id` and now a `device` with `"platform":"android"`.
 
-5. Edit `reloadMarker` in `lib/main.dart`, save, then reload through the daemon:
+5. Change `reloadMarker` from the terminal, so Android Studio does not hot reload on save:
+
+   ```bash
+   perl -pi -e "s/hot reload: v1'/hot reload: v2'/" examples/sample_app/lib/main.dart
+   ```
+
+   Expected: the screen still shows `v1`. Then reload through the daemon:
 
    ```bash
    curl -s -X POST -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:$PORT/api/reload"
    ```
 
-   Expected: `{"ok":true,"kind":"hot-reload",...}`, and the new text on screen.
+   Expected: `{"ok":true,"kind":"hot-reload",...}`, and the screen now shows `v2`.
 
-6. Tap **Hit breakpoint**. Android Studio stops on the marked line. Resume, then read the latest logs:
+6. Tap **Hit breakpoint**. Android Studio stops on the marked line. Resume, then read the tap logs:
 
    ```bash
-   curl -s -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:$PORT/api/logs?limit=10"
+   curl -s -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:$PORT/api/logs?limit=10&text=Tap"
    ```
 
-   Expected: `{"entries":[...],"truncated":...}` with the `Tap N` lines from the taps.
+   Expected: `{"entries":[...],"truncated":...}` with three lines per tap: the `print` line, the `flutterdeck.sample` line and the `FlutterDeckSample` logcat line.
+
+7. Clean up. Stop the daemon with Ctrl+C in its terminal, then undo the edit:
+
+   ```bash
+   git checkout -- examples/sample_app/lib/main.dart
+   ```
 
 The full acceptance steps are in the [M1 PM check](../../docs/qa/M1.md#pm-check).
