@@ -9,7 +9,7 @@
 import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { VERSION } from '@project-deck/daemon';
+import { DECK_VERSION } from '@project-deck/core';
 import { DaemonClient } from './daemon-client.js';
 import { createDeckServer } from './server.js';
 import { spawnDaemon } from './spawn.js';
@@ -22,7 +22,7 @@ const log = (message: string) => process.stderr.write(`flutterdeck mcp: ${messag
 
 const daemon = new DaemonClient({
   projectDir,
-  version: VERSION,
+  version: DECK_VERSION,
   spawnDaemon: (dir) =>
     spawnDaemon(dir, { onError: (err) => log(`Couldn't start the daemon: ${err.message}`) }),
 });

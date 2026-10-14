@@ -7,7 +7,7 @@ import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { Health, LogsResult, Status } from '@project-deck/core';
-import { writeRuntime } from '@project-deck/daemon';
+import { writeRuntime } from '@project-deck/core/node';
 
 export interface FakeRequest {
   method: string;

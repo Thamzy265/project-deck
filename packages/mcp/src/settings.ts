@@ -2,7 +2,7 @@
  * Masking settings from `.flutterdeck/config.json`, read on every call so a change
  * (masking switched back on, say) counts at once, without restarting Claude.
  */
-import { ConfigError, readConfig } from '@project-deck/daemon';
+import { ConfigError, readConfig } from '@project-deck/core/node';
 import type { MaskSettings } from './mask/masker.js';
 
 export interface LoadedSettings {

@@ -5,7 +5,6 @@
  */
 import { spawn as nodeSpawn } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { dirname, join } from 'node:path';
 
 interface Child {
   on(event: 'error', listener: (err: Error) => void): unknown;
@@ -23,10 +22,12 @@ export interface SpawnOptions {
   onError?: (err: Error) => void;
 }
 
-/** `packages/daemon/dist/main.js`, found next to the daemon package's own entry. */
+/**
+ * `packages/daemon/dist/main.js`, through the daemon package's `./main` export. Only the
+ * path is resolved: no daemon code is loaded into this process.
+ */
 export function daemonMainPath(): string {
-  const entry = createRequire(import.meta.url).resolve('@project-deck/daemon');
-  return join(dirname(entry), 'main.js');
+  return createRequire(import.meta.url).resolve('@project-deck/daemon/main');
 }
 
 /** Starts the daemon for `projectDir` and returns at once; it outlives this process. */

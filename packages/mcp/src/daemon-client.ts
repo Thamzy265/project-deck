@@ -10,8 +10,9 @@ import {
   LoginWindowResponse,
   LogsResponse,
   StatusResponse,
+  TOKEN_HEADER,
 } from '@project-deck/core';
-import { TOKEN_HEADER, projectIdentity, readRuntime } from '@project-deck/daemon';
+import { readProjectIdentity, readRuntime } from '@project-deck/core/node';
 import { setTimeout as sleep } from 'node:timers/promises';
 import type { z } from 'zod';
 
@@ -136,8 +137,7 @@ export class DaemonClient {
   }
 
   private ownProjectId(): Promise<string | undefined> {
-    this.ownId ??=
-      this.opts.projectId?.() ?? projectIdentity(this.opts.projectDir).catch(() => undefined);
+    this.ownId ??= this.opts.projectId?.() ?? readProjectIdentity(this.opts.projectDir);
     return this.ownId;
   }
 

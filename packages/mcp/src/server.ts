@@ -6,8 +6,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import type { LogQuery, Status } from '@project-deck/core';
-import { DEFAULT_LOG_LIMIT, GetLogsInput } from '@project-deck/core';
-import { VERSION } from '@project-deck/daemon';
+import { DECK_VERSION, DEFAULT_LOG_LIMIT, GetLogsInput } from '@project-deck/core';
 import type { DaemonClient } from './daemon-client.js';
 import { DaemonError } from './daemon-client.js';
 import type { JsonValue, MaskSettings } from './mask/masker.js';
@@ -39,7 +38,7 @@ export interface DeckServer {
 export function createDeckServer(opts: DeckServerOptions): DeckServer {
   const readSettings = opts.readSettings ?? readMaskSettings;
   const maskers = new MaskerCache();
-  const server = new McpServer({ name: 'flutterdeck', version: VERSION });
+  const server = new McpServer({ name: 'flutterdeck', version: DECK_VERSION });
   const annotations = { readOnlyHint: true, openWorldHint: false };
   /** Holds the masker for the whole call, so a config change can't close it underneath. */
   const withMasker = async <T>(settings: MaskSettings, use: (m: Masker) => Promise<T>) => {
