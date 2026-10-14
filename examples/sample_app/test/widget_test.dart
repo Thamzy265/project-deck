@@ -1,30 +1,68 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
+import 'dart:io';
 
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:flutterdeck_sample/main.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  TestWidgetsFlutterBinding.ensureInitialized();
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+  final nativeLogs = <Object?>[];
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
+  setUp(() {
+    taps.value = 0;
+    nativeLogs.clear();
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(sampleChannel, (call) async {
+          nativeLogs.add(call.arguments);
+          return null;
+        });
+  });
+
+  tearDown(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(sampleChannel, null);
+  });
+
+  testWidgets('shows the reload marker', (tester) async {
+    await tester.pumpWidget(const SampleApp());
+
+    expect(find.text(reloadMarker), findsOneWidget);
+  });
+
+  testWidgets('tapping the button runs the breakpoint line', (tester) async {
+    await tester.pumpWidget(const SampleApp());
+    expect(find.text('Taps: 0'), findsOneWidget);
+
+    await tester.tap(find.text('Hit breakpoint'));
     await tester.pump();
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    expect(taps.value, 1);
+    expect(find.text('Taps: 1'), findsOneWidget);
+    expect(nativeLogs, ['Tap 1']);
+
+    await tester.tap(find.text('Hit breakpoint'));
+    await tester.pump();
+
+    expect(taps.value, 2);
+    expect(find.text('Taps: 2'), findsOneWidget);
+  });
+
+  test('a missing native channel does not throw', () async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(sampleChannel, null);
+
+    await expectLater(onHitBreakpoint(), completes);
+    expect(taps.value, 1);
+  });
+
+  test('the breakpoint marker sits on the counter line', () {
+    final marked = File('lib/main.dart')
+        .readAsLinesSync()
+        .where((line) => line.contains('// FLUTTERDECK: put the breakpoint'))
+        .toList();
+
+    expect(marked, hasLength(1));
+    expect(marked.single, contains('taps.value += 1;'));
   });
 }
