@@ -133,24 +133,24 @@ export function filtersActive(f: LogFilters): boolean {
   );
 }
 
-/** `reload` marks where the last reload started; without one "since reload" shows all. */
+/**
+ * Level, source, tag and "since last reload". The search pattern is not applied here: it
+ * runs in the search worker (see search/useRegexSearch.ts).
+ */
 export function filterLogs(
   entries: KeyedLog[],
   f: LogFilters,
   reload: LogMark | undefined,
 ): KeyedLog[] {
-  if (!filtersActive(f)) return entries;
-  const search = compileSearch(f.search);
-  // An invalid pattern leaves the list as it was (UI spec, "Log filters": error).
-  const regex = search.ok ? search.regex : undefined;
+  const since = f.sinceReload ? reload : undefined;
+  if (f.minLevel === 'all' && f.source === 'all' && f.tag === '' && since === undefined) {
+    return entries;
+  }
   return entries.filter((e) => {
     if (f.minLevel !== 'all' && !isAtLeast(e.level, f.minLevel)) return false;
     if (f.source !== 'all' && e.source !== f.source) return false;
     if (f.tag !== '' && e.tag !== f.tag) return false;
-    if (f.sinceReload && reload !== undefined && !isAfter(e, reload)) return false;
-    if (regex !== undefined) {
-      if (!regex.test(searchText(e))) return false;
-    }
+    if (since !== undefined && !isAfter(e, since)) return false;
     return true;
   });
 }

@@ -9,7 +9,9 @@ import {
   filtersActive,
   isAfter,
   mergeBackfill,
+  searchText,
 } from './logs.js';
+import { runSearch } from '../search/run-search.js';
 
 const e = (ts: number, message: string, extra: Partial<LogEntry> = {}): LogEntry => ({
   ts,
@@ -132,13 +134,15 @@ describe('filterLogs', () => {
     expect(only({ tag: 'flutter' })).toEqual(['Tap 1', 'Tap 2']);
   });
 
-  it('searches message and stack', () => {
-    expect(only({ search: 'main\\.dart' })).toEqual(['Tap 2']);
-    expect(only({ search: 'tap' })).toEqual(['Tap 1', 'Tap 2']);
+  it('leaves the pattern to the search worker (review D3)', () => {
+    expect(only({ search: 'main\\.dart' })).toEqual(['Tap 1', 'Boom', 'Tap 2']);
+    expect(only({ search: '(' })).toEqual(['Tap 1', 'Boom', 'Tap 2']);
   });
 
-  it('leaves the list unchanged while the pattern is invalid', () => {
-    expect(only({ search: '(' })).toEqual(['Tap 1', 'Boom', 'Tap 2']);
+  it('gives the worker message and stack as the search text', () => {
+    const items = list.map((x): [number, string] => [x.key, searchText(x)]);
+    expect(runSearch({ id: 0, pattern: 'main\\.dart', items })).toEqual({ id: 0, keys: [2] });
+    expect(runSearch({ id: 0, pattern: 'tap', items })).toEqual({ id: 0, keys: [0, 2] });
   });
 
   it('shows only lines since the last reload when asked', () => {
