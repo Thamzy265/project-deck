@@ -28,9 +28,10 @@ export type LogEntry = z.infer<typeof LogEntrySchema>;
 
 export const DEFAULT_LOG_LIMIT = 200;
 /**
- * Regex filters run on the daemon's only thread, so keep patterns short and
- * only test them against the start of each entry. This bounds, but cannot fully
- * prevent, catastrophic backtracking (no native RE2 allowed).
+ * Limits on regex filters, kept as defence in depth: the daemon runs them in a worker
+ * with a 200 ms budget (daemon/src/regex-filter.ts), and nested quantifiers are refused
+ * below. Patterns stay short and are tested against the first 4 kB of the message and
+ * of the stack. No native RE2 is allowed.
  */
 export const MAX_LOG_REGEX_LENGTH = 200;
 export const MAX_REGEX_HAYSTACK = 4096;
