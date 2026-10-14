@@ -95,6 +95,11 @@ const PATTERNS: Pattern[] = [
     replace: (match) => `${match.slice(0, 'bearer'.length)} ${TOKEN}`,
   },
   {
+    // After an Authorization header the value is always a credential, whatever it looks like.
+    re: /(\bauthorization"?\s*[:=]\s*"?basic\s+)[A-Za-z0-9+/]+={0,2}/gi,
+    replace: (_match, [header = '']) => `${header}${TOKEN}`,
+  },
+  {
     // base64("user:password"); "basic" in prose is followed by a plain word.
     re: /\bbasic\s+([A-Za-z0-9+/]{8,}={0,2})/gi,
     replace: (match, [value = '']) =>

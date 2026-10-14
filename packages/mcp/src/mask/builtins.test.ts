@@ -221,3 +221,13 @@ describe('built-in masking', () => {
     expect(performance.now() - start).toBeLessThan(100);
   });
 });
+
+describe('credentials after a known header or key', () => {
+  it.each([
+    ['Authorization: Basic dXNlcjpwYXNz', 'Authorization: Basic [token masked]'],
+    ['authorization:basic   abcdefgh', 'authorization:basic   [token masked]'],
+    ['"Authorization": "Basic Zm9vOmJhcg"', '"Authorization": "Basic [token masked]"'],
+  ])('always masks the value after Authorization: Basic (%j)', (input, expected) => {
+    expect(maskBuiltIn(input)).toBe(expected);
+  });
+});
