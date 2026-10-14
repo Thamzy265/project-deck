@@ -49,19 +49,19 @@ Then run these commands in the second terminal, at the repo root.
 2. List the apps the daemon can see:
 
    ```bash
-   curl -s -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:$PORT/api/apps" | node -e "for (const a of JSON.parse(require('fs').readFileSync(0, 'utf8'))) console.log(a.id, a.device.platform, a.name)"
+   curl -s -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:$PORT/api/apps" | node -e "for (const a of JSON.parse(require('fs').readFileSync(0, 'utf8'))) console.log(a.id, a.name)"
    ```
 
-   Expected: one line per app, with its id, `android` and its name.
+   Expected: one line per app, with its id and name. Before attach the daemon knows only the DTD name, for example `Kind: Flutter - Device: sdk gphone64 arm64 - Package: flutterdeck_sample`.
 
-3. Keep the id of the first Android app:
+3. Keep the id of the sample app. If it runs on more than one device, the Android emulator (`sdk gphone`) wins:
 
    ```bash
-   APP_ID=$(curl -s -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:$PORT/api/apps" | node -e "const a = JSON.parse(require('fs').readFileSync(0, 'utf8')).find((x) => x.device.platform === 'android'); console.log(a ? a.id : '')")
+   APP_ID=$(curl -s -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:$PORT/api/apps" | node -e "const m = JSON.parse(require('fs').readFileSync(0, 'utf8')).filter((x) => (x.name ?? '').includes('flutterdeck_sample')); const a = m.find((x) => /Device: sdk gphone/i.test(x.name)) ?? m[0]; console.log(a ? a.id : '')")
    echo "$APP_ID"
    ```
 
-   Expected: the same id as in step 2. If it is empty, the daemon sees no Android app yet.
+   Expected: the id of the step 2 line that contains `Package: flutterdeck_sample`. If it is empty, the daemon does not see the sample app yet.
 
 4. Attach to it:
 
@@ -69,7 +69,7 @@ Then run these commands in the second terminal, at the repo root.
    curl -s -X POST -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:$PORT/api/apps/$APP_ID/attach"
    ```
 
-   Expected: the app as JSON, with the same `id`.
+   Expected: the app as JSON, with the same `id` and now a `device` with `"platform":"android"`.
 
 5. Edit `reloadMarker` in `lib/main.dart`, save, then reload through the daemon:
 
