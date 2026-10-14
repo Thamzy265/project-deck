@@ -10,11 +10,13 @@ describe('dashboard response schemas', () => {
       version: '0.0.0',
       dashboardUrl: 'http://127.0.0.1:9147/',
       projectName: 'shop_app',
+      discovering: false,
       apps: [fakeApp()],
       attached: null,
     };
     expect(StatusResponse.parse(status)).toEqual(status);
     expect(StatusResponse.safeParse({ ...status, projectName: undefined }).success).toBe(false);
+    expect(StatusResponse.safeParse({ ...status, discovering: undefined }).success).toBe(false);
   });
 
   it('read a logs answer', () => {
@@ -24,7 +26,8 @@ describe('dashboard response schemas', () => {
 
   it('read every WebSocket message the dashboard uses', () => {
     const messages = [
-      { type: 'hello', payload: { apps: [fakeApp()], attached: fakeApp() } },
+      { type: 'hello', payload: { apps: [fakeApp()], attached: fakeApp(), discovering: true } },
+      { type: 'apps.discovering', payload: { discovering: false } },
       { type: 'heartbeat' },
       { type: 'apps.changed', payload: { connectorId: 'dart', apps: [] } },
       { type: 'app.attached', payload: { app: fakeApp() } },

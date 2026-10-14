@@ -93,6 +93,7 @@ describe('startDaemon', () => {
     const ws = openWs(d, d.token);
     const hello = await nextMessage(ws);
     expect(hello.type).toBe('hello');
+    expect(hello.payload).toHaveProperty('discovering');
     const next = nextMessage(ws);
     await fetch(`${d.url}/api/events`, {
       method: 'POST',

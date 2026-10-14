@@ -78,6 +78,8 @@ export const StatusResponse = z.object({
   dashboardUrl: z.string(),
   /** The project folder's name, so the dashboard shows which project it belongs to. */
   projectName: z.string(),
+  /** True until every connector has finished starting, so "no app" isn't final yet. */
+  discovering: z.boolean(),
   apps: z.array(RunningAppSchema),
   attached: RunningAppSchema.nullable(),
 });
@@ -103,9 +105,17 @@ export const ErrorResponse = z.object({ error: z.string() });
 export const WsMessageSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('hello'),
-    payload: z.object({ apps: z.array(RunningAppSchema), attached: RunningAppSchema.nullable() }),
+    payload: z.object({
+      apps: z.array(RunningAppSchema),
+      attached: RunningAppSchema.nullable(),
+      discovering: z.boolean(),
+    }),
   }),
   z.object({ type: z.literal('heartbeat') }),
+  z.object({
+    type: z.literal('apps.discovering'),
+    payload: z.object({ discovering: z.boolean() }),
+  }),
   z.object({
     type: z.literal('apps.changed'),
     payload: z.object({ connectorId: z.string(), apps: z.array(RunningAppSchema) }),

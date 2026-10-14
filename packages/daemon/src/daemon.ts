@@ -154,7 +154,11 @@ async function startLocked(opts: DaemonOptions): Promise<Daemon> {
     token,
     sessionSecret,
     port: () => port,
-    hello: () => ({ apps: manager.apps(), attached: manager.attachedApp() ?? null }),
+    hello: () => ({
+      apps: manager.apps(),
+      attached: manager.attachedApp() ?? null,
+      discovering: manager.discovering(),
+    }),
   });
 
   try {

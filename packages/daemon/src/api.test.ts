@@ -84,6 +84,7 @@ describe('API routes', () => {
     expect(body).toMatchObject({
       dashboardUrl: 'http://127.0.0.1:9100/',
       projectName: 'shop_app',
+      discovering: false,
       apps: [fakeApp()],
       attached: fakeApp(),
     });

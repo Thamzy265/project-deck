@@ -6,6 +6,8 @@ import type { Task } from './tasks.js';
 /** Everything the daemon broadcasts to the dashboard and activity feed. */
 export interface DeckEvents {
   'apps.changed': { connectorId: string; apps: RunningApp[] };
+  /** Discovery started or finished; while true, an empty app list isn't final. */
+  'apps.discovering': { discovering: boolean };
   'app.attached': { app: RunningApp };
   'app.detached': { appId: string };
   'app.reloaded': { appId: string; result: ReloadResult };

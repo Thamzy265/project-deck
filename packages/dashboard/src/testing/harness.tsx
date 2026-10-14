@@ -53,6 +53,7 @@ export function fakeDaemon(overrides: Partial<FakeDaemon> = {}): FakeDaemon {
       version: '0.1.0',
       dashboardUrl: 'http://127.0.0.1:9147/',
       projectName: 'shop_app',
+      discovering: false,
       apps: [fakeApp()],
       attached: fakeApp(),
     },

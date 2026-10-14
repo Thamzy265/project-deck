@@ -177,6 +177,7 @@ export function createApi(ctx: ApiContext): Hono {
       version: ctx.version,
       dashboardUrl: `http://127.0.0.1:${ctx.port()}/`,
       projectName: ctx.projectName,
+      discovering: ctx.manager.discovering(),
       apps: ctx.manager.apps(),
       attached: ctx.manager.attachedApp() ?? null,
     }),

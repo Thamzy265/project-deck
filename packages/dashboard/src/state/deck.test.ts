@@ -6,7 +6,13 @@ import { deckReducer, initialState } from './deck.js';
 
 const run = (...actions: DeckAction[]): DeckState => actions.reduce(deckReducer, initialState);
 const app = fakeApp();
-const status = { version: '0.1.0', dashboardUrl: 'x', projectName: 'shop_app', apps: [app] };
+const status = {
+  version: '0.1.0',
+  dashboardUrl: 'x',
+  projectName: 'shop_app',
+  discovering: false,
+  apps: [app],
+};
 
 describe('deckReducer', () => {
   it('reads the status answer', () => {

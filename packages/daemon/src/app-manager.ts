@@ -50,6 +50,8 @@ export class AppManager {
   private readonly unsubscribers: (() => void)[] = [];
   /** Set by stop(); connectors that finish starting afterwards are ignored. */
   private stopped = false;
+  /** Until start() is done, an empty app list may just mean "not scanned yet". */
+  private discoveringNow = true;
 
   constructor(
     private readonly registry: Registry,
@@ -59,6 +61,13 @@ export class AppManager {
 
   async start(): Promise<void> {
     await Promise.all(this.registry.connectors.list().map((c) => this.startConnector(c)));
+    this.discoveringNow = false;
+    if (!this.stopped) this.bus.emit('apps.discovering', { discovering: false });
+  }
+
+  /** True until every connector has finished starting (or failed to). */
+  discovering(): boolean {
+    return this.discoveringNow;
   }
 
   async stop(): Promise<void> {
