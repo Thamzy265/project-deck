@@ -3,7 +3,7 @@
  * order, the confirm dialog and the tabs.
  */
 import type { ReloadResult } from '@project-deck/core';
-import { act, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { app2, fakeDaemon, renderDashboard } from '../testing/harness.js';
@@ -27,6 +27,18 @@ async function openMenu(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe('r and R', () => {
+  it('restart only with Shift, so Caps Lock never restarts (review C8)', async () => {
+    const t = await ready();
+    screen.getByRole('tab', { name: 'Logs' }).focus();
+    // Caps Lock on: the key is "R" but Shift isn't held.
+    fireEvent.keyDown(window, { key: 'R', shiftKey: false });
+    // Shift with a layout that still reports "r".
+    fireEvent.keyDown(window, { key: 'r', shiftKey: true });
+    await act(() => Promise.resolve());
+    expect(t.client.restart).not.toHaveBeenCalled();
+    expect(t.client.reload).not.toHaveBeenCalled();
+  });
+
   it('do nothing while focus is in the level select', async () => {
     const t = await ready();
     screen.getByRole('combobox', { name: 'Level' }).focus();
@@ -120,7 +132,7 @@ describe('r and R', () => {
     await waitFor(() => expect(t.client.reload).toHaveBeenCalledTimes(1));
     await screen.findByText('Reloaded in 182 ms');
     screen.getByRole('list', { name: 'Log lines' }).focus();
-    await t.user.keyboard('R');
+    await t.user.keyboard('{Shift>}R{/Shift}');
     await waitFor(() => expect(t.client.restart).toHaveBeenCalledTimes(1));
   });
 

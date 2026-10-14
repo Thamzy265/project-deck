@@ -10,7 +10,7 @@ function isTextField(target: EventTarget | null): boolean {
 }
 
 /**
- * `r` reloads and `R` restarts, unless switched off (WCAG 2.2 SC 2.1.4), focus is in a
+ * `r` reloads and Shift+R restarts, unless switched off (WCAG 2.2 SC 2.1.4), focus is in a
  * text field, a modal is open, or a modifier other than Shift is held.
  */
 export function useShortcuts(enabled: boolean, run: (kind: ActionKind) => void): void {
@@ -21,8 +21,9 @@ export function useShortcuts(enabled: boolean, run: (kind: ActionKind) => void):
       if (event.ctrlKey || event.metaKey || event.altKey) return;
       if (isTextField(event.target)) return;
       if (document.querySelector('[aria-modal="true"]') !== null) return;
-      if (event.key === 'r') run('reload');
-      else if (event.key === 'R') run('restart');
+      // Shift decides, not the letter's case: with Caps Lock on, "R" must not restart.
+      if (event.key === 'r' && !event.shiftKey) run('reload');
+      else if (event.key === 'R' && event.shiftKey) run('restart');
       else return;
       event.preventDefault();
     };

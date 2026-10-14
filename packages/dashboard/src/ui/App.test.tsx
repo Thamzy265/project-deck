@@ -150,7 +150,7 @@ describe('reload and restart', () => {
     await screen.findByText('shop_app');
     await userEvent.keyboard('r');
     await waitFor(() => expect(t.client.reload).toHaveBeenCalledTimes(1));
-    await userEvent.keyboard('R');
+    await userEvent.keyboard('{Shift>}R{/Shift}');
     await waitFor(() => expect(t.client.restart).toHaveBeenCalledTimes(1));
     await userEvent.type(screen.getByRole('searchbox', { name: 'Search logs' }), 'rR');
     expect(t.client.reload).toHaveBeenCalledTimes(1);
