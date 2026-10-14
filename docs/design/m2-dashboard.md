@@ -182,6 +182,9 @@ These make the chosen options safe. They don't change the PM's choices.
 
 - The acceptance check needs the dashboard to show a reload that Claude made through the Dart MCP server. The developer must confirm which VM service event marks it (expected: an `IsolateReload` event on the `Isolate` stream) against the current VM service protocol, and record a fixture from a real `hot_reload` call by the Dart MCP server in batch 1.
 
+- QA recorded real traffic on 14 Oct 2026 (`packages/connector-dart/src/testing/fixtures/isolate-reload.recorded.json`, [qa/M2.md](../qa/M2.md)): a successful reload by someone else posts `IsolateReload` with `status: "success"`; a reload that fails to compile posts **no** event; a reload the VM rejects (for example an enum changed to a class) also posts `status: "success"`; a hot restart posts no `IsolateReload` but `IsolateExit`, `IsolateStart` and `IsolateRunnable` in a new isolate group.
+- Lead decision, 14 Oct 2026: the VM events are used for **successful** reloads and for hot restarts by others (Activity "Reloaded (from Claude or the IDE)", "Restarted (from Claude or the IDE)"). Failed reloads made **by Claude** come from a Claude Code `PostToolUse` hook on the Dart MCP server's `hot_reload` and `hot_restart` tools (batch 5), which knows whether the tool returned an error; a hook result within 3 s of a VM "success" for the same reload replaces it. Failed reloads started from the IDE are not shown; the README says so.
+
 ## Failure plan
 
 - Dashboard ↔ daemon WebSocket: heartbeat (15 s ping and heartbeat message, 10 s pong timeout; client reconnects after 30 s with no message); reconnect with backoff (0.5 s, 1 s, 2 s, max 5 s, jitter); banner "Lost connection to FlutterDeck — retrying"; on reconnect, re-read state and the last 500 log lines (the `hello` message plus `GET /api/logs`), de-duplicated by id/timestamp.
