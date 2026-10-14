@@ -153,10 +153,19 @@ class RpcClient {
       }
     });
   }
-  open() {
+  // A DTD or VM service that accepts the TCP connection but never answers must not hang the check.
+  open(timeoutMs = 5000) {
     return new Promise((ok, fail) => {
-      this.ws.addEventListener('open', ok, { once: true });
-      this.ws.addEventListener('error', () => fail(new Error('could not connect')), { once: true });
+      const timer = setTimeout(() => {
+        fail(new Error('connect timed out'));
+        this.ws.close();
+      }, timeoutMs);
+      this.ws.addEventListener('open', () => (clearTimeout(timer), ok()), { once: true });
+      this.ws.addEventListener(
+        'error',
+        () => (clearTimeout(timer), fail(new Error('could not connect'))),
+        { once: true },
+      );
     });
   }
   call(method, params, timeoutMs = 10_000) {
@@ -180,20 +189,48 @@ class RpcClient {
   }
 }
 
-// Ask every live DTD for its apps and return the sample app's VM service URI.
+function isAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return err.code === 'EPERM';
+  }
+}
+
+// The check only ever talks to this machine.
+function isLoopback(uri) {
+  try {
+    return ['127.0.0.1', 'localhost', '[::1]'].includes(new URL(uri).hostname);
+  } catch {
+    return false;
+  }
+}
+
+// Ask every live DTD for its apps and return the sample app's VM service URI. Skips DTD files whose
+// process is gone (stale), that don't parse, or that point off this machine.
 async function sampleAppVmUri() {
   const dir = join(dartDataHome(), 'dtd');
   for (const file of await readdir(dir).catch(() => [])) {
-    const info = JSON.parse(await readFile(join(dir, file), 'utf8').catch(() => '{}'));
-    if (typeof info.wsUri !== 'string') continue;
+    let info;
+    try {
+      info = JSON.parse(await readFile(join(dir, file), 'utf8'));
+    } catch {
+      continue;
+    }
+    if (typeof info?.wsUri !== 'string') continue;
     secrets.push(info.wsUri);
+    if (!Number.isInteger(info.pid) || !isAlive(info.pid) || !isLoopback(info.wsUri)) continue;
     const dtd = new RpcClient(info.wsUri);
     try {
-      await dtd.open();
+      await dtd.open(3000);
       // DTD rejects `params: {}` for methods without parameters.
       const { vmServices } = await dtd.call('ConnectedApp.getVmServices', undefined, 3000);
       const app = vmServices.find((s) => s.name?.includes(`Package: ${APP_NAME}`));
-      if (app !== undefined) return { uri: app.uri, name: app.name };
+      if (app !== undefined && typeof app.uri === 'string') {
+        secrets.push(app.uri);
+        if (isLoopback(app.uri)) return { uri: app.uri, name: app.name };
+      }
     } catch {
       // A stale or unreachable DTD; try the next one.
     } finally {
