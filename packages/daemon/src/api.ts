@@ -16,7 +16,7 @@ import type { AppManager } from './app-manager.js';
 import type { LoginWindow } from './login-window.js';
 import { DEFAULT_CSP, LOGIN_NEEDED_PAGE, LOGIN_PAGE_CSP } from './login-page.js';
 import { UnknownAppError } from './app-manager.js';
-import { REGEX_TOO_SLOW, RegexFilter } from './regex-filter.js';
+import { REGEX_FAILED, REGEX_TOO_SLOW, RegexFilter } from './regex-filter.js';
 import {
   authenticate,
   cookieValues,
@@ -222,9 +222,13 @@ export function createApi(ctx: ApiContext): Hono<DeckEnv> {
     } else {
       // The other filters here, the regex in a worker with a time budget.
       const candidates = await logs.query({ ...q, limit: Number.MAX_SAFE_INTEGER });
-      const matches = await regexFilter.match(regex, candidates.map(regexHaystack));
-      if (matches === undefined) return c.json({ error: REGEX_TOO_SLOW }, 400);
-      entries = candidates.filter((_, i) => matches[i] === true).slice(-(limit + 1));
+      const result = await regexFilter.match(regex, candidates.map(regexHaystack));
+      if (!result.ok) {
+        return result.reason === 'slow'
+          ? c.json({ error: REGEX_TOO_SLOW }, 400)
+          : c.json({ error: REGEX_FAILED }, 503);
+      }
+      entries = candidates.filter((_, i) => result.matches[i] === true).slice(-(limit + 1));
     }
     const truncated = entries.length > limit;
     return c.json({ entries: truncated ? entries.slice(1) : entries, truncated });
