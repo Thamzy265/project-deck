@@ -2,6 +2,19 @@
 
 Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
 
+## 2026-10-14 — Sample app merged; PM decisions
+
+- Merged: PR #14 (`examples/sample_app`). CI passes on Linux, macOS and Windows. Local: `pnpm check` 384 tests, `flutter analyze` clean, `flutter test` 24 tests.
+- PM decisions:
+  - R1: option A. CI runs the sample app's Flutter tests.
+  - M1 criterion: a breakpoint that does not pause after a hot reload is an upstream Flutter limitation, not part of the check.
+  - The lead merges PRs when the reviewer, CI and QA pass. Unfixed confirmed findings still need the PM.
+  - Live Drift: own `flutterdeck_drift` package.
+  - Name: the marketer prepares a shortlist; the PM chooses before M5.
+  - M3 checkpoint: the team drafts the demo, guide and post; the PM publishes and collects feedback; M4 continues in parallel.
+- Next: Flutter CI job, the M1 acceptance PR (`test/m1-acceptance`), and the PM's breakpoint check in Android Studio.
+- **Blockers by role:** Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead: the M1 Accept box needs the PM's breakpoint check in Android Studio before M2 starts.
+
 ## 2026-10-14 — Sample app (`feat/sample-app`) — waiting for PM merge approval
 
 - Changed: new `examples/sample_app`, a Flutter app with a "Hit breakpoint" button (marked line `lib/main.dart:15`), a hot reload marker, and logs from print, `developer.log` and Android logcat (tag `FlutterDeckSample`). The README has the daemon steps. `examples/` is ignored by Prettier and ESLint. PLAN.md and CLAUDE.md mention the app.

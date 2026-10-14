@@ -375,7 +375,7 @@ Five milestones, each ending in something usable. Claude should not start the ne
 - [x] `connector-dart`: DTD connection, app discovery, VM service attach, reload and restart, VM log streams (12 Oct 2026: PR #3; real-app check in [qa/M1.md](qa/M1.md))
 - [x] `logs-android` logcat by PID (13 Oct 2026: PR #9; emulator check in [qa/M1.md](qa/M1.md))
 - [x] `.mcp.json` example that runs the official Dart MCP server alongside FlutterDeck (13 Oct 2026: PR #8. The file has only the Dart server now. The FlutterDeck entry comes in M2 with the FlutterDeck MCP server. PM decision, 13 Oct 2026.)
-- [ ] Accept: start a sample app from VS Code or Android Studio with a breakpoint set; the daemon lists it, a `curl` reload works, logs stream, and the breakpoint still hits. The sample app is `examples/sample_app` (added 14 Oct 2026; reused for Drift in M3 and the demo in M5).
+- [ ] Accept: start a sample app from VS Code or Android Studio with a breakpoint set; the daemon lists it, a `curl` reload works, logs stream, and the breakpoint still hits. The sample app is `examples/sample_app` (added 14 Oct 2026; reused for Drift in M3 and the demo in M5). PM decision, 14 Oct 2026: the breakpoint must hit while the daemon is attached. A breakpoint that does not pause after a hot reload is an upstream Flutter limitation: it also happens without the daemon, so it is not part of this check. CI runs the sample app's Flutter tests.
 
 ### M2 — Dashboard in Claude Desktop
 
@@ -392,7 +392,7 @@ Five milestones, each ending in something usable. Claude should not start the ne
 - [ ] Database tab: tables, schema diagram, SQL editor with autocomplete, saved queries, live refresh, snapshot diff, export, guarded editing
 - [ ] MCP tools: `db_list`, `db_schema`, `db_query`, `db_execute`, `db_snapshot`, `db_diff`
 - [ ] Accept: adding an item in the sample app flashes the new row within 1 s; Claude answers “how many orders are pending?” and uses `db_diff` to confirm what a change saved
-- [ ] **Validation checkpoint:** publish a 60-second demo and an early install guide; gather feedback from Flutter developers before M4
+- [ ] **Validation checkpoint:** publish a 60-second demo and an early install guide; gather feedback from Flutter developers before M4. PM decision, 14 Oct 2026: the team drafts the demo, guide and post text; the PM publishes them and collects feedback; M4 work continues in parallel.
 
 ### M4 — Linear tasks
 
@@ -422,8 +422,8 @@ The remaining risks are known and each has a mitigation; the open decisions don'
 
 **Open decisions**
 
-- [ ] **Project name.** Check npm, pub.dev and GitHub availability (before M5). 9 Oct 2026: npm packages use the `@project-deck/*` scope; the product name, CLI binary and `.flutterdeck/` folder are still open.
-- [ ] **Live Drift mechanism.** Own `flutterdeck_drift` package vs. reusing the Drift DevTools extension's hooks (before M3).
+- [ ] **Project name.** Check npm, pub.dev and GitHub availability (before M5). 9 Oct 2026: npm packages use the `@project-deck/*` scope; the product name, CLI binary and `.flutterdeck/` folder are still open. 14 Oct 2026: the marketer prepares a shortlist of 3–5 names with availability; the PM chooses. Work continues as FlutterDeck until then.
+- [x] **Live Drift mechanism.** Own `flutterdeck_drift` package vs. reusing the Drift DevTools extension's hooks (before M3). Decided 14 Oct 2026: our own debug-only `flutterdeck_drift` package.
 - [x] **DTD URI discovery.** How much can be auto-detected vs. pasted by the user (during M1). Decided 11 Oct 2026 (research in [notes/dtd.md](notes/dtd.md)): scan Dart 3.12+ DTD pid files, fall back to `dart tooling-daemon --list --machine`, then a user-pasted DTD URI, then a user-pasted VM service URI.
 - [ ] **Also ship the inspector as a DevTools extension?** Would reach developers who don't use Claude (after M5).
 - [ ] **Device mirroring.** Embedded scrcpy view vs. a docked window (after M5).
