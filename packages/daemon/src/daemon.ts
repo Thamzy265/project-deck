@@ -1,10 +1,12 @@
 import type { Server } from 'node:http';
 import { createServer } from 'node:http';
+import { basename } from 'node:path';
 import type { Registry } from '@project-deck/core';
 import { EventBus } from '@project-deck/core';
 import { getRequestListener } from '@hono/node-server';
 import { ActivityFeed } from './activity.js';
 import { createApi } from './api.js';
+import { defaultDashboardDir, loadDashboardAssets } from './dashboard-assets.js';
 import { AppManager } from './app-manager.js';
 import { readConfig } from './config.js';
 import { listen, listenWithFallback } from './listen.js';
@@ -42,6 +44,11 @@ export interface DaemonOptions {
   logCapacity?: number;
   /** Timings for the per-project startup lock; defaults suit real use. */
   startupLock?: StartupLockOptions;
+  /**
+   * The built dashboard (index.html and assets/). Defaults to the `@project-deck/dashboard`
+   * package; without a build the daemon serves a plain placeholder page.
+   */
+  dashboardDir?: string;
   /** Clock for the login window; tests pass a fake one. */
   now?: () => number;
   log?: (message: string, err?: unknown) => void;
@@ -103,6 +110,11 @@ async function startLocked(opts: DaemonOptions): Promise<Daemon> {
       : await claimConfigPort(opts.projectDir, config.port, registryOpts);
   const projectId = await optionalProjectId(opts.projectDir, registryOpts, log);
 
+  const dashboardDir = opts.dashboardDir ?? defaultDashboardDir();
+  const dashboard =
+    dashboardDir === undefined ? undefined : await loadDashboardAssets(dashboardDir);
+  if (dashboard === undefined) log('Dashboard not built; serving a placeholder page at /');
+
   const token = generateToken();
   const sessionSecret = generateToken();
   const loginWindow = new LoginWindow(opts.now);
@@ -130,6 +142,8 @@ async function startLocked(opts: DaemonOptions): Promise<Daemon> {
     port: () => port,
     version: VERSION,
     projectId,
+    projectName: basename(opts.projectDir),
+    dashboard,
     shutdown: () => void stop(),
   });
   const listener = getRequestListener(api.fetch);
@@ -140,7 +154,11 @@ async function startLocked(opts: DaemonOptions): Promise<Daemon> {
     token,
     sessionSecret,
     port: () => port,
-    hello: () => ({ apps: manager.apps(), attached: manager.attachedApp() ?? null }),
+    hello: () => ({
+      apps: manager.apps(),
+      attached: manager.attachedApp() ?? null,
+      discovering: manager.discovering(),
+    }),
   });
 
   try {

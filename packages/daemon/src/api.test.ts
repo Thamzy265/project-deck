@@ -1,5 +1,5 @@
 import type { DeckEvents, LogEntry } from '@project-deck/core';
-import { ActivityListSchema, EventBus, Registry } from '@project-deck/core';
+import { ActivityListSchema, EventBus, Registry, StatusResponse } from '@project-deck/core';
 import { FakeAppConnector, fakeApp } from '@project-deck/core/testing';
 import { describe, expect, it, vi } from 'vitest';
 import { createApi } from './api.js';
@@ -31,6 +31,7 @@ async function setup() {
     port: () => PORT,
     version: '0.0.0',
     projectId: '0123456789ab',
+    projectName: 'shop_app',
     shutdown,
   });
 
@@ -82,9 +83,12 @@ describe('API routes', () => {
     const body = await (await request('/api/status')).json();
     expect(body).toMatchObject({
       dashboardUrl: 'http://127.0.0.1:9100/',
+      projectName: 'shop_app',
+      discovering: false,
       apps: [fakeApp()],
       attached: fakeApp(),
     });
+    expect(StatusResponse.safeParse(body).success).toBe(true);
   });
 
   it('reloads, restarts and detaches', async () => {
@@ -131,6 +135,18 @@ describe('API routes', () => {
 
     await request('/api/logs', { method: 'DELETE' });
     expect((await logsAt('/api/logs')).entries).toEqual([]);
+  });
+
+  it('tells every client when the logs were cleared (BUG-M2-T2)', async () => {
+    const { request, bus } = await setup();
+    const cleared = vi.fn();
+    bus.on('logs.cleared', cleared);
+    const before = Date.now();
+    expect((await request('/api/logs', { method: 'DELETE' })).status).toBe(200);
+    expect(cleared).toHaveBeenCalledTimes(1);
+    const at = (cleared.mock.calls[0]?.[0] as { at: number }).at;
+    expect(at).toBeGreaterThanOrEqual(before);
+    expect(at).toBeLessThanOrEqual(Date.now());
   });
 
   it('turns hook events into bus events', async () => {

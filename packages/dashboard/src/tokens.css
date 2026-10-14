@@ -1,0 +1,54 @@
+/*
+ * Semantic tokens from the UI spec (docs/ui/m2-dashboard.md, "Tokens used").
+ * Colours are plain hex so src/theme/contrast.test.ts can check them.
+ */
+:root {
+  --deck-bg: #ffffff;
+  --deck-surface: #f3f4f6;
+  --deck-text: #16181d;
+  --deck-text-muted: #545b67;
+  --deck-border: #767e8c;
+  --deck-accent: #1d5bbf;
+  --deck-focus: #1d5bbf;
+  --deck-status-ok: #17713a;
+  --deck-status-error: #b9232b;
+  --deck-status-warn: #855400;
+  --deck-level-verbose: #5b626e;
+  --deck-level-debug: #3a5a96;
+  --deck-level-info: #1b6b4c;
+  --deck-level-warning: #855400;
+  --deck-level-error: #b9232b;
+
+  --deck-space-1: 0.25rem;
+  --deck-space-2: 0.5rem;
+  --deck-space-3: 0.75rem;
+  --deck-space-4: 1rem;
+  --deck-space-6: 1.5rem;
+  --deck-radius-sm: 0.25rem;
+  --deck-radius-md: 0.5rem;
+  --deck-font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --deck-font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --deck-font-size-sm: 0.8125rem;
+  --deck-font-size-md: 0.875rem;
+  --deck-font-size-lg: 1rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --deck-bg: #121418;
+    --deck-surface: #1d2027;
+    --deck-text: #e6e8ec;
+    --deck-text-muted: #a2a9b6;
+    --deck-border: #788091;
+    --deck-accent: #7eaeff;
+    --deck-focus: #7eaeff;
+    --deck-status-ok: #55c783;
+    --deck-status-error: #ff8080;
+    --deck-status-warn: #e2b24e;
+    --deck-level-verbose: #9ca3af;
+    --deck-level-debug: #93b6ff;
+    --deck-level-info: #6fd0a2;
+    --deck-level-warning: #e2b24e;
+    --deck-level-error: #ff8080;
+  }
+}

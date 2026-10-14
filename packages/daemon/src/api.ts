@@ -1,10 +1,13 @@
-import type { EventBus, LogQuery, LoginWindowResult } from '@project-deck/core';
+import type { EventBus, LogQuery, LoginWindowResult, Status } from '@project-deck/core';
 import { DEFAULT_LOG_LIMIT, GetLogsInput, HookEventInput } from '@project-deck/core';
+import type { Context, MiddlewareHandler } from 'hono';
 import { Hono } from 'hono';
 import type { z } from 'zod';
 import type { ActivityFeed } from './activity.js';
+import type { DashboardAsset, DashboardAssets } from './dashboard-assets.js';
 import type { AppManager } from './app-manager.js';
 import type { LoginWindow } from './login-window.js';
+import { DEFAULT_CSP, LOGIN_NEEDED_PAGE, LOGIN_PAGE_CSP } from './login-page.js';
 import { UnknownAppError } from './app-manager.js';
 import {
   authenticate,
@@ -32,6 +35,10 @@ export interface ApiContext {
   /** Lets clients tell this project's daemon from another project's on the same port. */
   /** Omitted from /api/health when unknown. */
   projectId: string | undefined;
+  /** The project folder's name, shown in the dashboard header. */
+  projectName: string;
+  /** The built dashboard; a placeholder page is served without it. */
+  dashboard?: DashboardAssets | undefined;
   /** Stops the daemon after the response is sent. */
   shutdown: () => void;
 }
@@ -73,31 +80,33 @@ const PLACEHOLDER_PAGE =
   '<!doctype html><html lang="en"><meta charset="utf-8"><title>FlutterDeck</title>' +
   '<p>FlutterDeck is running.</p></html>';
 
-const LOGIN_NEEDED_PAGE =
-  '<!doctype html><html lang="en"><meta charset="utf-8"><title>FlutterDeck</title>' +
-  '<p>Login needed. Run <code>flutterdeck open</code> in your project (or start a Claude ' +
-  'session with the plugin), then reload this page.</p></html>';
-
 const SECURITY_HEADERS: Record<string, string> = {
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'no-referrer',
-  'Content-Security-Policy': "default-src 'self'; connect-src 'self'; frame-ancestors 'none'",
   'X-Frame-Options': 'DENY',
 };
 
-function setSecurityHeaders(headers: Headers, path: string): void {
+function asset(c: Context, file: DashboardAsset): Response {
+  return c.body(file.body, 200, { 'Content-Type': file.type });
+}
+
+function setSecurityHeaders(headers: Headers, path: string, csp: string): void {
   for (const [name, value] of Object.entries(SECURITY_HEADERS)) headers.set(name, value);
+  headers.set('Content-Security-Policy', csp);
   // API answers hold logs and app state; a page that sets the login cookie mustn't be cached.
   if (path === '/' || path.startsWith('/api/')) headers.set('Cache-Control', 'no-store');
 }
 
-export function createApi(ctx: ApiContext): Hono {
-  const api = new Hono();
+/** `csp` lets one route (the Login needed page) name its own policy. */
+type DeckEnv = { Variables: { csp: string | undefined } };
+
+export function createApi(ctx: ApiContext): Hono<DeckEnv> {
+  const api = new Hono<DeckEnv>();
 
   // First, so error responses from later checks get the headers too.
   api.use('*', async (c, next) => {
     await next();
-    setSecurityHeaders(c.res.headers, c.req.path);
+    setSecurityHeaders(c.res.headers, c.req.path, c.get('csp') ?? DEFAULT_CSP);
   });
 
   api.use('*', async (c, next) => {
@@ -119,27 +128,39 @@ export function createApi(ctx: ApiContext): Hono {
     }),
   );
 
-  // The dashboard's login: a tab opened on / gets the session cookie. Placeholder page
-  // until the dashboard app is served here.
+  const page = ctx.dashboard?.get('/');
+  const dashboardPage = (c: Context) =>
+    page === undefined ? c.html(PLACEHOLDER_PAGE) : asset(c, page);
+
+  // The dashboard's login: a tab opened on / gets the session cookie (ADR 0001, 0003).
   api.get('/', (c) => {
     const header = (n: string) => c.req.header(n);
     const cookie = cookieValues(header('cookie'), sessionCookieName(ctx.port()));
-    if (cookie.some((value) => tokensEqual(value, ctx.sessionSecret))) {
-      return c.html(PLACEHOLDER_PAGE);
+    if (cookie.some((value) => tokensEqual(value, ctx.sessionSecret))) return dashboardPage(c);
+    if (!ctx.loginWindow.isOpen()) {
+      c.set('csp', LOGIN_PAGE_CSP);
+      return c.html(LOGIN_NEEDED_PAGE);
     }
-    if (!ctx.loginWindow.isOpen()) return c.html(LOGIN_NEEDED_PAGE);
     if (isTopLevelNavigation(header)) {
       c.header('Set-Cookie', sessionCookie(ctx.port(), ctx.sessionSecret));
     }
-    return c.html(PLACEHOLDER_PAGE);
+    return dashboardPage(c);
   });
 
-  api.use('/api/*', async (c, next) => {
+  const requireAuth: MiddlewareHandler = async (c, next) => {
     const creds = { token: ctx.token, sessionSecret: ctx.sessionSecret, port: ctx.port() };
     if (authenticate((n) => c.req.header(n), creds) === undefined) {
       return c.json({ error: 'Missing or invalid token' }, 401);
     }
     await next();
+  };
+  api.use('/api/*', requireAuth);
+  api.use('/assets/*', requireAuth);
+
+  // Only the exact files the build produced: no SPA fallback, no file system lookups.
+  api.get('/assets/*', (c) => {
+    const file = ctx.dashboard?.get(c.req.path);
+    return file === undefined ? c.json({ error: 'Not found' }, 404) : asset(c, file);
   });
 
   // Only the runtime.json token may open the window: a cookie holder (possibly another
@@ -154,9 +175,11 @@ export function createApi(ctx: ApiContext): Hono {
   });
 
   api.get('/api/status', (c) =>
-    c.json({
+    c.json<Status>({
       version: ctx.version,
       dashboardUrl: `http://127.0.0.1:${ctx.port()}/`,
+      projectName: ctx.projectName,
+      discovering: ctx.manager.discovering(),
       apps: ctx.manager.apps(),
       attached: ctx.manager.attachedApp() ?? null,
     }),
@@ -191,6 +214,8 @@ export function createApi(ctx: ApiContext): Hono {
 
   api.delete('/api/logs', (c) => {
     ctx.manager.logs()?.clear();
+    // Other open tabs must drop the lines too: the Clear button is the delete path.
+    ctx.bus.emit('logs.cleared', { at: Date.now() });
     return c.json({ ok: true });
   });
 

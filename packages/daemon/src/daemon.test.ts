@@ -4,7 +4,7 @@ import { spawn } from 'node:child_process';
 import type { Server } from 'node:net';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { Registry } from '@project-deck/core';
 import { FakeAppConnector, fakeApp } from '@project-deck/core/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -83,6 +83,7 @@ describe('startDaemon', () => {
     const d = await start();
     const res = await fetch(`${d.url}/api/status`, { headers: { 'x-deck-token': d.token } });
     expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ projectName: basename(projectDir) });
     expect((await fetch(`${d.url}/api/status`)).status).toBe(401);
     expect(await rawGet(d.port, '/api/health', { host: `attacker.example:${d.port}` })).toBe(403);
   });
@@ -92,6 +93,7 @@ describe('startDaemon', () => {
     const ws = openWs(d, d.token);
     const hello = await nextMessage(ws);
     expect(hello.type).toBe('hello');
+    expect(hello.payload).toHaveProperty('discovering');
     const next = nextMessage(ws);
     await fetch(`${d.url}/api/events`, {
       method: 'POST',

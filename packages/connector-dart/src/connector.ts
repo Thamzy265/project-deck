@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { AppConnector, RunningApp } from '@project-deck/core';
+import { parseAppName } from './app-name.js';
 import type { DtdInfo } from './discovery.js';
 import { dartDataHome, listViaDartCli, readPidFiles, toVmServiceWsUri } from './discovery.js';
 import type { DtdVmService } from './dtd-client.js';
@@ -258,11 +259,13 @@ export class DartConnector implements AppConnector {
         // The same app can be registered in both the IDE's DTD and its own; prefer the IDE's view.
         if (existing !== undefined && (existing.app.startedBy === 'ide' || startedBy !== 'ide'))
           continue;
+        const { name, device } = parseAppName(service.name ?? undefined);
         next.set(key, {
           vmServiceUri,
           app: {
             id: appIdFor(key),
-            name: service.name ?? 'Dart app',
+            name,
+            ...(device === undefined ? {} : { device }),
             framework: 'flutter',
             startedBy,
           },

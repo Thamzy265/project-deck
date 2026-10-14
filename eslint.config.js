@@ -29,7 +29,11 @@ export default tseslint.config(
   {
     languageOptions: {
       parserOptions: {
-        projectService: { allowDefaultProject: ['*.js', '*.ts', 'packages/*/*.ts'] },
+        projectService: {
+          allowDefaultProject: ['*.js', '*.ts', 'packages/*/*.ts'],
+          // Each package's vitest.config.ts, plus the dashboard's Vite and Playwright configs.
+          maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 16,
+        },
         tsconfigRootDir: import.meta.dirname,
       },
     },

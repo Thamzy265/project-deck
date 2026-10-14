@@ -32,7 +32,7 @@ describe('AppManager', () => {
   it('auto-attaches when exactly one app is running', async () => {
     const { manager, events } = await setup();
     expect(manager.attachedApp()?.id).toBe('app-1');
-    expect(events.map(([t]) => t)).toEqual(['apps.changed', 'app.attached']);
+    expect(events.map(([t]) => t)).toEqual(['apps.changed', 'apps.discovering', 'app.attached']);
   });
 
   it('does not auto-attach when several apps are running', async () => {

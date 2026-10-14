@@ -10,6 +10,9 @@ import type {
 } from '@project-deck/core';
 import { MAX_LOG_LIMIT, RingBufferLogSource, isAtLeast } from '@project-deck/core';
 
+/** Discovery counts as done after this long even if a connector is still starting. */
+export const DISCOVERY_BOUND_MS = 10_000;
+
 /** An exit within this long after an error log line counts as a crash. */
 export const CRASH_WINDOW_MS = 5000;
 
@@ -50,6 +53,10 @@ export class AppManager {
   private readonly unsubscribers: (() => void)[] = [];
   /** Set by stop(); connectors that finish starting afterwards are ignored. */
   private stopped = false;
+  /** Numbers every log line taken in (LogEntry.seq), across attaches. */
+  private nextSeq = 0;
+  /** Until start() is done, an empty app list may just mean "not scanned yet". */
+  private discoveringNow = true;
 
   constructor(
     private readonly registry: Registry,
@@ -58,7 +65,29 @@ export class AppManager {
   ) {}
 
   async start(): Promise<void> {
-    await Promise.all(this.registry.connectors.list().map((c) => this.startConnector(c)));
+    // A connector that hangs (say, a DTD that never answers) mustn't keep the dashboard
+    // on "Finding apps…": discovery counts as done after the bound, whichever comes first.
+    let timer: NodeJS.Timeout | undefined;
+    const bound = new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, DISCOVERY_BOUND_MS);
+      timer.unref();
+    });
+    const all = Promise.all(this.registry.connectors.list().map((c) => this.startConnector(c)));
+    await Promise.race([all, bound]);
+    clearTimeout(timer);
+    this.endDiscovery();
+    await all;
+  }
+
+  private endDiscovery(): void {
+    if (!this.discoveringNow) return;
+    this.discoveringNow = false;
+    if (!this.stopped) this.bus.emit('apps.discovering', { discovering: false });
+  }
+
+  /** True until every connector has finished starting (or failed to). */
+  discovering(): boolean {
+    return this.discoveringNow;
   }
 
   async stop(): Promise<void> {
@@ -157,10 +186,11 @@ export class AppManager {
     const attached: Attached = { app, session, logs, lastErrorAt: undefined, cleanup: [] };
     this.attached = attached;
 
-    const push = (entry: LogEntry): void => {
-      if (isAtLeast(entry.level, 'error') && entry.ts >= attachedAt) {
+    const push = (raw: LogEntry): void => {
+      if (isAtLeast(raw.level, 'error') && raw.ts >= attachedAt) {
         attached.lastErrorAt = this.now();
       }
+      const entry = this.stamp(raw);
       logs.push(entry);
       this.bus.emit('app.log', { appId: app.id, entry });
     };
@@ -184,7 +214,7 @@ export class AppManager {
       }),
     );
     const backfill = await session.logs().query({ limit: MAX_LOG_LIMIT });
-    for (const entry of backfill) logs.push(entry);
+    for (const entry of backfill) logs.push(this.stamp(entry));
     const seen = new Set(backfill);
     const live = pending;
     pending = undefined;
@@ -234,6 +264,10 @@ export class AppManager {
         await fn();
       }),
     );
+  }
+
+  private stamp(entry: LogEntry): LogEntry {
+    return { ...entry, seq: this.nextSeq++ };
   }
 
   private now(): number {

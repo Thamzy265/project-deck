@@ -66,6 +66,23 @@ describe('DartConnector', () => {
     expect(d.calls.find((x) => x.method === 'ConnectedApp.getVmServices')?.hadParams).toBe(false);
   });
 
+  it("lists the Flutter tool's app name as package and device (QA B2-1)", async () => {
+    const vm = await vmService();
+    const name = 'Kind: Flutter - Device: sdk gphone64 arm64 - Package: qa_sample_app';
+    const d = await dtd([{ uri: vm.uri, name }]);
+    const c = make([{ wsUri: d.uri, source: 'pid-file' }]);
+    await c.start();
+    expect(await c.listApps()).toEqual([
+      {
+        id: appIdFor(vm.uri),
+        name: 'qa_sample_app',
+        device: { id: 'unknown', name: 'sdk gphone64 arm64' },
+        framework: 'flutter',
+        startedBy: 'unknown',
+      },
+    ]);
+  });
+
   it('tracks apps starting and stopping, and drops them when the DTD goes away', async () => {
     const d = await dtd([]);
     const c = make([{ wsUri: d.uri, source: 'pid-file' }]);

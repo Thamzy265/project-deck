@@ -2,6 +2,14 @@
 
 Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
 
+## 2026-10-14 — M2 batch 2 (`feat/dashboard`) — ready to merge
+
+- Changed: `packages/dashboard` (header, Logs, Activity, all UI spec states, light/dark, 420/320 px, search in a Web Worker with a 200 ms budget), daemon serves the built assets behind auth, `discovering`, `logs.cleared`, log `seq` numbers, DTD app names parsed, styled Login needed page with a per-page CSP hash, Playwright E2E and a CI e2e job, all CI actions pinned to SHAs.
+- Gates: developer pass · tester pass (122 tests, M2-T1/T2 fixed) · reviewer approve with notes → re-review approve (C1–C8, D2, D3, S1 fixed; D1 deferred with a Later line) · QA 38/38, rerun 38/38 incl. the live app ([qa/M2.md](qa/M2.md)).
+- Open findings: B2-4 (test tooling): two Playwright runs in one worktree share `qa-artifacts/m2-dashboard/test-results` and flake — use a folder per run.
+- Lead decisions: "Finding apps…" via a daemon `discovering` flag; no new-row flash for logs; app label "package · device" without "how started" when unknown; 4-row clamp means screen rows; copy "Search isn't working. Reload the page." and "Searching logs".
+- Blockers: Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead: PM answer on deleting team-made temporary local branches (`fix-format-tmp`).
+
 ## 2026-10-14 — M2 batch 1 (`feat/dashboard-auth`) — merged
 
 - Changed: PR #20 merged. Config file, per-user port registry with lock, fixed port per project, cookie login with a 2-minute login window (ADR 0003), security headers, WS heartbeat, activity feed with crash detection, external reloads and hot restarts from VM events (recorded fixture).

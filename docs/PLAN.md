@@ -445,3 +445,4 @@ One line per deferred item, in the format `- <what> — <why> — trigger: <meas
 - `flutterdeck init --undo` — `init` edits `.gitignore` and `launch.json`, and undoing by hand is error-prone — trigger: 3 user reports of needing to undo `init` — noted 2026-10-14 by lead
 - Logs kept across daemon restarts — logs are memory only today — trigger: 3 user requests for logs after restarting the daemon — noted 2026-10-14 by lead
 - Several projects in one dashboard — one daemon per project today — trigger: 3 user requests to see two projects in one pane — noted 2026-10-14 by lead
+- Move the dashboard's runtime libraries (react, react-dom, @tanstack/react-virtual, zod) to devDependencies so the daemon install doesn't pull them — the daemon only needs the bundled dist — trigger: first npm pack of @project-deck/daemon or the CLI for M5, or daemon install size > 20 MB — noted 2026-10-14 by reviewer

@@ -1,6 +1,7 @@
 import { performance } from 'node:perf_hooks';
 import { StringDecoder } from 'node:string_decoder';
 import type {
+  DeviceInfo,
   AppSession,
   AppSessionEvents,
   DbInspector,
@@ -441,7 +442,11 @@ export class DartAppSession implements AppSession {
     const { pid, operatingSystem } = vm;
     if (pid === undefined || !Number.isSafeInteger(pid) || pid <= 0) return;
     const next: RunningApp = { ...this.currentApp, pid };
-    if (operatingSystem === 'android' && next.device === undefined) {
+    const platform = platformOf(operatingSystem);
+    if (next.device !== undefined && next.device.platform === undefined && platform !== undefined) {
+      // Named from the tool's app name before attach; the VM knows the platform.
+      next.device = { ...next.device, platform };
+    } else if (operatingSystem === 'android' && next.device === undefined) {
       next.device = { id: 'unknown', name: 'Android device', platform: 'android' };
     }
     this.currentApp = next;
@@ -505,4 +510,12 @@ class NoIsolateError extends Error {
   constructor() {
     super('The app has no running isolate');
   }
+}
+
+/** The VM's operatingSystem as a device platform; undefined when it doesn't say. */
+function platformOf(os: string | undefined): DeviceInfo['platform'] {
+  if (os === 'android') return 'android';
+  if (os === 'ios') return 'ios';
+  if (os === 'macos' || os === 'linux' || os === 'windows') return 'desktop';
+  return undefined;
 }
