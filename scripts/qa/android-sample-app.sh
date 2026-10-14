@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Boots an Android emulator, runs a throwaway Flutter app on it, and tears both down again.
-# Used by scripts/qa/check-android-logs.mjs to check Android native logs end to end.
+# Used by scripts/qa/check-android-logs.mjs (Android native logs) and
+# scripts/qa/check-m1-acceptance.mjs (attach next to a debugger) end to end.
 #
 # Usage: scripts/qa/android-sample-app.sh up|down
 #
@@ -51,23 +52,48 @@ write_app() {
   fi
   # Prints and dart:developer logs reach the daemon through the VM service; the native ticks
   # come from Kotlin so logcat has fresh lines for the app's pid that aren't tagged `flutter`.
+  # qaTick is top level so a hot reload swaps its body (check-m1-acceptance.mjs edits its print),
+  # and qaCheckpoint runs every 5 s so a debugger has a line to break on (the `qa-breakpoint` marker).
   cat >"$APP/lib/main.dart" <<'DART'
 import 'dart:async';
 import 'dart:developer' as developer;
 
 import 'package:flutter/material.dart';
 
+final qaLast = ValueNotifier<String>('waiting for the first tick');
+
 void main() {
   var n = 0;
   Timer.periodic(const Duration(seconds: 1), (_) {
     n++;
-    // ignore: avoid_print
-    print('qa-sample print tick $n');
-    developer.log('qa-sample developer.log tick $n', name: 'qa_sample');
+    qaTick(n);
   });
-  runApp(const MaterialApp(
-    home: Scaffold(body: Center(child: Text('project-deck QA sample'))),
+  runApp(MaterialApp(
+    home: Scaffold(
+      body: Center(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Text('project-deck QA sample'),
+          ValueListenableBuilder<String>(
+            valueListenable: qaLast,
+            builder: (_, text, _) => Text(text),
+          ),
+        ]),
+      ),
+    ),
   ));
+}
+
+void qaTick(int n) {
+  final text = 'qa-sample print tick $n';
+  qaLast.value = text;
+  // ignore: avoid_print
+  print(text);
+  developer.log('qa-sample developer.log tick $n', name: 'qa_sample');
+  if (n % 5 == 0) qaCheckpoint(n);
+}
+
+void qaCheckpoint(int n) {
+  developer.log('qa-sample checkpoint $n', name: 'qa_sample'); // qa-breakpoint
 }
 DART
   local kt
