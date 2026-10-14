@@ -1,3 +1,4 @@
+import type { ActivityEntry } from './activity.js';
 import type { ReloadResult, RunningApp } from './apps.js';
 import type { LogEntry } from './logs.js';
 import type { Task } from './tasks.js';
@@ -13,6 +14,8 @@ export interface DeckEvents {
   'task.current': { task: Task | null };
   'claude.done': { sessionId?: string };
   'claude.waiting': { sessionId?: string; message?: string };
+  /** A new Activity feed entry, already stored. */
+  activity: ActivityEntry;
 }
 
 type Listener<P> = (payload: P) => void;

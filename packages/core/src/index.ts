@@ -1,3 +1,4 @@
+export * from './activity.js';
 export * from './api.js';
 export * from './apps.js';
 export * from './config.js';

@@ -3,6 +3,7 @@
  * so both validate requests the same way.
  */
 import { z } from 'zod';
+import { MAX_WAITING_MESSAGE } from './activity.js';
 import { MAX_QUERY_LIMIT } from './db.js';
 import { LogQuerySchema } from './logs.js';
 import { TaskStatusTypeSchema } from './tasks.js';
@@ -57,7 +58,7 @@ export const HookEventInput = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('claude.waiting'),
     sessionId: z.string().optional(),
-    message: z.string().max(2000).optional(),
+    message: z.string().max(MAX_WAITING_MESSAGE).optional(),
   }),
 ]);
 export type HookEvent = z.infer<typeof HookEventInput>;
