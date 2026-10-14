@@ -27,7 +27,7 @@ export async function readConfig(projectDir: string): Promise<DeckConfig> {
   let raw: unknown;
   try {
     // Some Windows editors save UTF-8 with a byte order mark, which JSON.parse refuses.
-    raw = JSON.parse(text.startsWith('﻿') ? text.slice(1) : text);
+    raw = JSON.parse(text.startsWith('\uFEFF') ? text.slice(1) : text);
   } catch (err) {
     throw new ConfigError(`${shown} is not valid JSON: ${(err as Error).message}`);
   }
