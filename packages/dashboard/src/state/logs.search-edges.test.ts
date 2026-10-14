@@ -76,13 +76,19 @@ describe('log search: user-typed patterns', () => {
   it('an invalid pattern with other filters on still applies the other filters', () => {
     const info = keyed('a', 1);
     const error = keyed('b', 2, { level: 'error' });
-    const out = filterLogs([info, error], { ...NO_FILTERS, search: '(', minLevel: 'error' }, 0);
+    const out = filterLogs(
+      [info, error],
+      { ...NO_FILTERS, search: '(', minLevel: 'error' },
+      undefined,
+    );
     expect(out).toEqual([error]);
   });
 
   it('"since last reload" without any reload shows everything', () => {
     const entries = [keyed('old', 1, { ts: 1 }), keyed('new', 2, { ts: 9 })];
     expect(filterLogs(entries, { ...NO_FILTERS, sinceReload: true }, undefined)).toEqual(entries);
-    expect(filterLogs(entries, { ...NO_FILTERS, sinceReload: true }, 9)).toEqual([entries[1]]);
+    expect(
+      filterLogs(entries, { ...NO_FILTERS, sinceReload: true }, { seq: undefined, key: 2 }),
+    ).toEqual([entries[1]]);
   });
 });

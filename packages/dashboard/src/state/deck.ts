@@ -1,7 +1,7 @@
 import type { ActivityEntry, LogEntry, ReloadResult, RunningApp, Status } from '@project-deck/core';
 import { ACTIVITY_CAPACITY, DEFAULT_LOG_CAPACITY } from '@project-deck/core';
 import type { ConnectionState } from '../api/connection.js';
-import type { LogList } from './logs.js';
+import type { LogList, LogMark } from './logs.js';
 import { appendLogs, mergeBackfill } from './logs.js';
 
 export type ActionKind = 'reload' | 'restart';
@@ -14,8 +14,10 @@ export interface LastResult {
   external: boolean;
   durationMs?: number;
   message?: string;
-  /** When it started (ours) or was seen (others); "since last reload" counts from here. */
+  /** When it started (ours) or was seen (others), on the page's clock; for display. */
   startedAt: number;
+  /** Where "since last reload" and its error lines start, in daemon line order. */
+  mark: LogMark;
 }
 
 /** Entries the page adds itself; the daemon's entries come from its feed. */
@@ -52,12 +54,14 @@ export interface DeckState {
   clearGen: number;
   activity: { items: ActivityItem[]; load: Loadable; nextLocal: number };
   /** `matched`: the daemon's app.reloaded for it has already arrived. */
-  running: { kind: ActionKind; startedAt: number; matched: boolean } | null;
+  running: { kind: ActionKind; startedAt: number; mark: LogMark; matched: boolean } | null;
   /**
    * Our last finished action whose app.reloaded event hasn't arrived yet (the HTTP answer
    * came first). The event, when it comes, belongs to it, not to a new reload.
    */
-  lastOwn: { kind: ActionKind; startedAt: number; finishedAt: number } | null;
+  lastOwn: { kind: ActionKind; startedAt: number; mark: LogMark; finishedAt: number } | null;
+  /** The highest daemon line number seen; not reset by a clear. */
+  maxSeq: number | undefined;
   lastResult: LastResult | null;
   /** Apps whose reload answered `unsupported`; the buttons are hidden for them. */
   unsupported: string[];
@@ -78,6 +82,7 @@ export const initialState: DeckState = {
   activity: { items: [], load: { status: 'loading' }, nextLocal: 0 },
   running: null,
   lastOwn: null,
+  maxSeq: undefined,
   lastResult: null,
   unsupported: [],
   clearError: false,
@@ -130,7 +135,13 @@ function withAttached(state: DeckState, attached: RunningApp | null): DeckState 
   return { ...state, attached, lastApp: attached, stoppedApp: null, attach: { status: 'idle' } };
 }
 
-function resultFrom(result: ReloadResult, kind: ActionKind, startedAt: number): LastResult {
+interface Origin {
+  kind: ActionKind;
+  startedAt: number;
+  mark: LogMark;
+}
+
+function resultFrom(result: ReloadResult, { kind, startedAt, mark }: Origin): LastResult {
   if (result.ok) {
     return {
       ok: true,
@@ -138,6 +149,7 @@ function resultFrom(result: ReloadResult, kind: ActionKind, startedAt: number): 
       external: result.source === 'external',
       ...(result.durationMs === undefined ? {} : { durationMs: result.durationMs }),
       startedAt,
+      mark,
     };
   }
   return {
@@ -146,7 +158,23 @@ function resultFrom(result: ReloadResult, kind: ActionKind, startedAt: number): 
     external: result.source === 'external',
     message: result.message,
     startedAt,
+    mark,
   };
+}
+
+/** The next line the daemon or this page will add. */
+function markNow(state: DeckState): LogMark {
+  return {
+    seq: state.maxSeq === undefined ? undefined : state.maxSeq + 1,
+    key: state.logs.nextKey,
+  };
+}
+
+function withMaxSeq(state: DeckState, entries: LogEntry[]): number | undefined {
+  let max = state.maxSeq;
+  for (const e of entries)
+    if (e.seq !== undefined && (max === undefined || e.seq > max)) max = e.seq;
+  return max;
 }
 
 function markUnsupported(state: DeckState, result: ReloadResult): string[] {
@@ -167,7 +195,7 @@ function reloaded(state: DeckState, result: ReloadResult, at: number): DeckState
       return {
         ...state,
         running: { ...run, matched: true },
-        lastResult: resultFrom(result, run.kind, run.startedAt),
+        lastResult: resultFrom(result, run),
         unsupported,
       };
     }
@@ -176,12 +204,13 @@ function reloaded(state: DeckState, result: ReloadResult, at: number): DeckState
       return {
         ...state,
         lastOwn: null,
-        lastResult: resultFrom(result, own.kind, own.startedAt),
+        lastResult: resultFrom(result, own),
         unsupported,
       };
     }
   }
-  return { ...state, lastResult: resultFrom(result, 'reload', at), unsupported };
+  const origin = { kind: 'reload' as const, startedAt: at, mark: markNow(state) };
+  return { ...state, lastResult: resultFrom(result, origin), unsupported };
 }
 
 function emptyLogs(state: DeckState): DeckState {
@@ -229,7 +258,7 @@ export function deckReducer(state: DeckState, action: DeckAction): DeckState {
     case 'action-start':
       return {
         ...state,
-        running: { kind: action.kind, startedAt: action.at, matched: false },
+        running: { kind: action.kind, startedAt: action.at, mark: markNow(state), matched: false },
         lastOwn: null,
       };
     case 'action-done': {
@@ -239,17 +268,17 @@ export function deckReducer(state: DeckState, action: DeckAction): DeckState {
         ...state,
         running: null,
         lastOwn: run.matched ? null : { ...run, finishedAt: action.at },
-        lastResult: resultFrom(action.result, run.kind, run.startedAt),
+        lastResult: resultFrom(action.result, run),
         unsupported: markUnsupported(state, action.result),
       };
     }
     case 'action-failed': {
       if (state.running === null) return state;
-      const { kind, startedAt } = state.running;
+      const { kind, startedAt, mark } = state.running;
       return {
         ...state,
         running: null,
-        lastResult: { ok: false, kind, external: false, message: action.message, startedAt },
+        lastResult: { ok: false, kind, external: false, message: action.message, startedAt, mark },
       };
     }
     case 'attach-start':
@@ -264,7 +293,11 @@ export function deckReducer(state: DeckState, action: DeckAction): DeckState {
       const list = action.merge
         ? mergeBackfill(state.logs, entries, LOG_CAP)
         : appendLogs({ entries: [], nextKey: state.logs.nextKey }, entries, LOG_CAP);
-      return { ...state, logs: { ...list, load: { status: 'ready' } } };
+      return {
+        ...state,
+        logs: { ...list, load: { status: 'ready' } },
+        maxSeq: withMaxSeq(state, entries),
+      };
     }
     case 'logs-failed':
       return { ...state, logs: { ...state.logs, load: { status: 'error', error: action.error } } };
@@ -272,6 +305,7 @@ export function deckReducer(state: DeckState, action: DeckAction): DeckState {
       return {
         ...state,
         logs: { ...appendLogs(state.logs, action.entries, LOG_CAP), load: state.logs.load },
+        maxSeq: withMaxSeq(state, action.entries),
       };
     case 'logs-cleared':
       return deckReducer(emptyLogs(state), {

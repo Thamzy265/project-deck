@@ -30,7 +30,13 @@ describe('appLabel', () => {
 });
 
 describe('resultText', () => {
-  const base: LastResult = { ok: true, kind: 'reload', external: false, startedAt: 0 };
+  const base: LastResult = {
+    ok: true,
+    kind: 'reload',
+    external: false,
+    startedAt: 0,
+    mark: { seq: undefined, key: 0 },
+  };
   it('uses the spec copy', () => {
     expect(resultText({ ...base, durationMs: 182.4 })).toBe('Reloaded in 182 ms');
     expect(resultText({ ...base, kind: 'restart', durationMs: 900 })).toBe('Restarted in 900 ms');

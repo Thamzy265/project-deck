@@ -50,6 +50,7 @@ describe('deckReducer', () => {
       external: false,
       durationMs: 182,
       startedAt: 100,
+      mark: { seq: undefined, key: 0 },
     });
   });
 
@@ -59,7 +60,13 @@ describe('deckReducer', () => {
       result: { ok: true, kind: 'hot-restart', source: 'external' },
       at: 50,
     });
-    expect(s.lastResult).toEqual({ ok: true, kind: 'restart', external: true, startedAt: 50 });
+    expect(s.lastResult).toEqual({
+      ok: true,
+      kind: 'restart',
+      external: true,
+      startedAt: 50,
+      mark: { seq: undefined, key: 0 },
+    });
   });
 
   it('keeps the failure message and which action failed', () => {

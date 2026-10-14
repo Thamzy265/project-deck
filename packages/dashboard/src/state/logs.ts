@@ -51,6 +51,9 @@ function identity(e: LogEntry): string {
  * list already holds; identical lines that really repeated are kept.
  */
 export function mergeBackfill(list: LogList, fetched: LogEntry[], cap: number): LogList {
+  if (fetched.length > 0 && hasSeq(fetched) && hasSeq(list.entries)) {
+    return mergeBySeq(list, fetched, cap);
+  }
   const from = fetched[0]?.ts;
   if (from === undefined) return list;
   const have = new Map<string, number>();
@@ -71,6 +74,34 @@ export function mergeBackfill(list: LogList, fetched: LogEntry[], cap: number): 
   // Stable sort: equal times keep arrival order.
   const sorted = [...appended.entries].sort((a, b) => a.ts - b.ts);
   return { entries: sorted.length > cap ? sorted.slice(-cap) : sorted, nextKey: appended.nextKey };
+}
+
+function hasSeq(entries: LogEntry[]): entries is (LogEntry & { seq: number })[] {
+  return entries.every((e) => e.seq !== undefined);
+}
+
+/** With the daemon's numbers, matching and ordering are exact. */
+function mergeBySeq(list: LogList, fetched: (LogEntry & { seq: number })[], cap: number): LogList {
+  const have = new Set(list.entries.map((e) => e.seq));
+  const missing = fetched.filter((e) => !have.has(e.seq));
+  if (missing.length === 0) return list;
+  const appended = appendLogs(list, missing, Infinity);
+  const sorted = [...appended.entries].sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
+  return { entries: sorted.length > cap ? sorted.slice(-cap) : sorted, nextKey: appended.nextKey };
+}
+
+/**
+ * Where "since the last reload" starts: the daemon's next line number when the page saw
+ * the reload start, and the page's next arrival key for lines without one. Never a clock.
+ */
+export interface LogMark {
+  seq: number | undefined;
+  key: number;
+}
+
+export function isAfter(e: KeyedLog, mark: LogMark): boolean {
+  if (e.seq !== undefined && mark.seq !== undefined) return e.seq >= mark.seq;
+  return e.key >= mark.key;
 }
 
 export type CompiledSearch =
@@ -102,11 +133,11 @@ export function filtersActive(f: LogFilters): boolean {
   );
 }
 
-/** `reloadAt` is when the last reload started; without one "since reload" shows everything. */
+/** `reload` marks where the last reload started; without one "since reload" shows all. */
 export function filterLogs(
   entries: KeyedLog[],
   f: LogFilters,
-  reloadAt: number | undefined,
+  reload: LogMark | undefined,
 ): KeyedLog[] {
   if (!filtersActive(f)) return entries;
   const search = compileSearch(f.search);
@@ -116,7 +147,7 @@ export function filterLogs(
     if (f.minLevel !== 'all' && !isAtLeast(e.level, f.minLevel)) return false;
     if (f.source !== 'all' && e.source !== f.source) return false;
     if (f.tag !== '' && e.tag !== f.tag) return false;
-    if (f.sinceReload && reloadAt !== undefined && e.ts < reloadAt) return false;
+    if (f.sinceReload && reload !== undefined && !isAfter(e, reload)) return false;
     if (regex !== undefined) {
       if (!regex.test(searchText(e))) return false;
     }

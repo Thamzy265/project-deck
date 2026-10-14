@@ -1,12 +1,13 @@
 import type { LogEntry } from '@project-deck/core';
 import { describe, expect, it } from 'vitest';
-import type { LogFilters } from './logs.js';
+import type { LogFilters, LogMark } from './logs.js';
 import {
   NO_FILTERS,
   appendLogs,
   compileSearch,
   filterLogs,
   filtersActive,
+  isAfter,
   mergeBackfill,
 } from './logs.js';
 
@@ -52,6 +53,48 @@ describe('mergeBackfill', () => {
   });
 });
 
+describe('mergeBackfill with daemon sequence numbers (review C2)', () => {
+  it('matches lines by seq and orders by it, whatever their device times', () => {
+    const live = appendLogs(
+      { entries: [], nextKey: 0 },
+      [e(500, 'tick', { seq: 1 }), e(100, 'late', { seq: 4 })],
+      100,
+    );
+    const fetched = [
+      e(500, 'tick', { seq: 1 }),
+      e(500, 'tick', { seq: 2 }),
+      e(900, 'b', { seq: 3 }),
+      e(100, 'late', { seq: 4 }),
+    ];
+    const merged = mergeBackfill(live, fetched, 100);
+    expect(merged.entries.map((x) => [x.message, x.seq])).toEqual([
+      ['tick', 1],
+      ['tick', 2],
+      ['b', 3],
+      ['late', 4],
+    ]);
+  });
+});
+
+describe('isAfter (since last reload, review C2)', () => {
+  it('uses the daemon order, not the device clock', () => {
+    const [before, after] = appendLogs(
+      { entries: [], nextKey: 0 },
+      [e(9_999, 'before', { seq: 7 }), e(1, 'after', { seq: 8 })],
+      10,
+    ).entries;
+    if (before === undefined || after === undefined) throw new Error('no entries');
+    const mark = { seq: 8, key: 0 };
+    expect(isAfter(before, mark)).toBe(false);
+    expect(isAfter(after, mark)).toBe(true);
+  });
+
+  it('falls back to arrival order for lines without a seq', () => {
+    const list = appendLogs({ entries: [], nextKey: 0 }, [e(5, 'a'), e(1, 'b')], 10).entries;
+    expect(list.map((x) => isAfter(x, { seq: undefined, key: 1 }))).toEqual([false, true]);
+  });
+});
+
 describe('compileSearch', () => {
   it('treats the search as a case-insensitive pattern', () => {
     const r = compileSearch('tap \\d');
@@ -80,8 +123,8 @@ describe('filterLogs', () => {
     ],
     100,
   ).entries;
-  const only = (f: Partial<LogFilters>, reloadAt?: number) =>
-    filterLogs(list, { ...NO_FILTERS, ...f }, reloadAt).map((x) => x.message);
+  const only = (f: Partial<LogFilters>, mark?: LogMark) =>
+    filterLogs(list, { ...NO_FILTERS, ...f }, mark).map((x) => x.message);
 
   it('filters by minimum level, source and tag', () => {
     expect(only({ minLevel: 'info' })).toEqual(['Boom', 'Tap 2']);
@@ -99,7 +142,7 @@ describe('filterLogs', () => {
   });
 
   it('shows only lines since the last reload when asked', () => {
-    expect(only({ sinceReload: true }, 2)).toEqual(['Boom', 'Tap 2']);
+    expect(only({ sinceReload: true }, { seq: undefined, key: 1 })).toEqual(['Boom', 'Tap 2']);
     expect(only({ sinceReload: true }, undefined)).toEqual(['Tap 1', 'Boom', 'Tap 2']);
   });
 

@@ -168,17 +168,18 @@ describe('Result chip', () => {
     const t = await ready(
       fakeDaemon({ reloadResult: { ok: false, reason: 'compile-error', message: 'fallback' } }),
     );
-    // Error lines logged after the reload starts (timestamps a little in the future).
-    for (let i = 1; i <= 5; i++) {
-      await t.send({
-        type: 'app.log',
-        payload: {
-          appId: 'app-1',
-          entry: log(Date.now() + 60_000 + i, `err ${i}\nsecond line`, 'error'),
-        },
-      });
-    }
-    await act(() => new Promise((r) => setTimeout(r, 80)));
+    // Error lines logged while the reload runs. Their device times are in the past on
+    // purpose: only the daemon's order counts (review C2).
+    t.client.reload.mockImplementation(async () => {
+      for (let i = 1; i <= 5; i++) {
+        const entry = { ...log(1000 + i, `err ${i}\nsecond line`, 'error'), seq: 100 + i };
+        t.socket().onmessage?.({
+          data: JSON.stringify({ type: 'app.log', payload: { appId: 'app-1', entry } }),
+        });
+      }
+      await new Promise((r) => setTimeout(r, 80));
+      return { ok: false, reason: 'compile-error', message: 'fallback' };
+    });
     await t.user.click(screen.getByRole('button', { name: 'Reload' }));
     const chip = await screen.findByRole('button', { name: 'Last reload: failed, 3 errors' });
     expect(chip).toHaveAttribute('aria-expanded', 'true');

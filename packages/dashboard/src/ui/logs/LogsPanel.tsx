@@ -35,11 +35,11 @@ export function LogsPanel(props: LogsPanelProps) {
   const menuButton = useRef<HTMLDivElement>(null);
 
   const all = state.logs.entries;
-  const reloadAt = state.lastResult?.startedAt;
+  const reloadMark = state.lastResult?.mark;
   // Level, source, tag and time here; the pattern in the search worker.
   const base = useMemo(
-    () => filterLogs(all, { ...filters, search: '' }, reloadAt),
-    [all, filters, reloadAt],
+    () => filterLogs(all, { ...filters, search: '' }, reloadMark),
+    [all, filters, reloadMark],
   );
   const pattern = compileSearch(filters.search).ok ? filters.search : '';
   const { shown, tooSlow } = useRegexSearch(props.search, base, pattern);

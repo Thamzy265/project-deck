@@ -2,6 +2,7 @@ import { isAtLeast } from '@project-deck/core';
 import { useEffect, useState } from 'react';
 import type { DeckState, LastResult } from '../../state/deck.js';
 import { useDeck } from '../../state/DeckProvider.js';
+import { isAfter } from '../../state/logs.js';
 import { clock, resultText } from '../format.js';
 import { button, linkButton } from '../styles.js';
 
@@ -12,7 +13,7 @@ const MAX_ERROR_LINES = 3;
 /** The first error log lines since the reload started, or the failure message's lines. */
 export function errorLines(state: DeckState, result: LastResult): string[] {
   const fromLogs = state.logs.entries
-    .filter((e) => e.ts >= result.startedAt && isAtLeast(e.level, 'error'))
+    .filter((e) => isAfter(e, result.mark) && isAtLeast(e.level, 'error'))
     .slice(0, MAX_ERROR_LINES)
     .map((e) => e.message.split('\n')[0] ?? '');
   if (fromLogs.length > 0) return fromLogs;
