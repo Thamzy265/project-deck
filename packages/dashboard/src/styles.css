@@ -51,8 +51,6 @@
 @layer base {
   html {
     color-scheme: light dark;
-    /* Keeps the focused row clear of the sticky header (WCAG 2.4.11). */
-    scroll-padding-top: var(--deck-header-height, 0px);
   }
 
   body {
