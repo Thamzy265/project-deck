@@ -78,6 +78,17 @@ const StreamNotifySchema = z.object({
       logRecord: z.unknown().optional(),
       // IsolateReload: no `isolate`, only the group (service_event.cc).
       isolateGroup: z.object({ id: z.string() }).loose().optional().catch(undefined),
+      // IsolateStart / IsolateRunnable / IsolateExit carry the isolate and its group.
+      isolate: z
+        .object({
+          id: z.string(),
+          name: z.string().optional(),
+          isSystemIsolate: z.boolean().optional(),
+          isolateGroupId: z.string().optional(),
+        })
+        .loose()
+        .optional()
+        .catch(undefined),
       status: z.string().optional().catch(undefined),
       reloadFailureReason: z.string().optional().catch(undefined),
     })
@@ -297,6 +308,25 @@ export class DartAppSession implements AppSession {
   }
 
   /**
+   * A hot restart (ours or anyone's) replaces the main isolate with one in a NEW isolate
+   * group (seen in QA's recording). Take the new group from the event itself, so a reload
+   * right after the restart isn't dropped as another group's while getVM is still on its
+   * way; refreshIsolate() confirms it.
+   */
+  private followMainIsolate(event: z.infer<typeof StreamNotifySchema>['event']): void {
+    const isolate = event.isolate;
+    if (isolate === undefined || isolate.isSystemIsolate === true) return;
+    if (event.kind === 'IsolateExit') {
+      // Until the new one starts, accept reloads of any group rather than drop them.
+      if (isolate.id === this.isolateId) this.isolateGroupId = undefined;
+      return;
+    }
+    if (isolate.name !== 'main') return;
+    this.isolateId = isolate.id;
+    this.isolateGroupId = isolate.isolateGroupId ?? event.isolateGroup?.id;
+  }
+
+  /**
    * A reload we didn't start: Claude through the Dart MCP server, or the IDE. Our own
    * ones are reported by invoke() with their duration, so their event is dropped here.
    *
@@ -436,6 +466,7 @@ export class DartAppSession implements AppSession {
       case 'Isolate':
         if (event.kind === 'IsolateReload') this.onIsolateReload(event);
         else if (['IsolateStart', 'IsolateRunnable', 'IsolateExit'].includes(event.kind)) {
+          this.followMainIsolate(event);
           void this.refreshIsolate().catch(() => undefined);
         }
         return;
