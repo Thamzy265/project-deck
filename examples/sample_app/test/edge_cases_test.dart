@@ -280,11 +280,14 @@ void main() {
       final hits = Process.runSync('git', [
         'grep',
         '-nIE',
-        r'/Users/|/home/[a-z]|C:\\\\Users',
+        // One or two backslashes: raw paths and JSON-escaped paths.
+        r'/Users/|/home/[a-z]|C:\\{1,2}Users',
         '--',
         '.',
         ':!test/',
       ]);
+      // git grep exits 1 when nothing matches; anything else is a git error.
+      expect(hits.exitCode, anyOf(0, 1), reason: '${hits.stderr}');
       expect(hits.stdout, isEmpty);
     });
   });
