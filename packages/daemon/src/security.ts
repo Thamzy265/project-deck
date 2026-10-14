@@ -1,6 +1,7 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { TOKEN_HEADER } from '@project-deck/core';
 
-export const TOKEN_HEADER = 'x-deck-token';
+export { TOKEN_HEADER };
 
 export function generateToken(): string {
   return randomBytes(32).toString('base64url');

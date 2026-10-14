@@ -2,7 +2,7 @@ import type { Server } from 'node:http';
 import { createServer } from 'node:http';
 import { basename } from 'node:path';
 import type { Registry } from '@project-deck/core';
-import { EventBus } from '@project-deck/core';
+import { DECK_VERSION, EventBus } from '@project-deck/core';
 import { getRequestListener } from '@hono/node-server';
 import { ActivityFeed } from './activity.js';
 import { createApi } from './api.js';
@@ -25,7 +25,7 @@ export { PortBusyError } from './port-busy.js';
 
 /** Not 9100: Dart DevTools, which Android Studio starts, listens there. */
 export const DEFAULT_PORT = 9147;
-export const VERSION = '0.0.0';
+export const VERSION = DECK_VERSION;
 /** The daemon never listens anywhere else. */
 const HOST = '127.0.0.1';
 

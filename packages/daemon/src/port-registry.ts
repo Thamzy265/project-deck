@@ -4,28 +4,27 @@
  * while no daemon runs, and lets the daemon spot a committed config port that another
  * project on this machine already uses.
  */
-import { createHash, randomBytes } from 'node:crypto';
-import { mkdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { randomBytes } from 'node:crypto';
+import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { homedir } from 'node:os';
-import { join, resolve } from 'node:path';
-import { z } from 'zod';
+import { join } from 'node:path';
+import type { PortRegistry } from '@project-deck/core/node';
+import {
+  REGISTRY_DIR,
+  RegistrySchema,
+  projectIdFor,
+  projectKey,
+  registryPath,
+} from '@project-deck/core/node';
 import { acquireFileLock } from './startup-lock.js';
 
-export const REGISTRY_DIR = '.flutterdeck';
-export const REGISTRY_FILE = 'ports.json';
+export { REGISTRY_DIR, REGISTRY_FILE, registryPath } from '@project-deck/core/node';
 /** Where `init` starts looking. Not 9100: Dart DevTools listens there. */
 export const FIRST_PORT = 9147;
 const LOCK_FILE = 'ports.json.lock';
 /** Updates take milliseconds; a lock this old was left by a crash. */
 const LOCK_STALE_MS = 5000;
-
-const RegistrySchema = z.object({
-  version: z.literal(1),
-  salt: z.string().min(32),
-  projects: z.record(z.string(), z.number().int().min(1).max(65535)),
-});
-type PortRegistry = z.infer<typeof RegistrySchema>;
 
 export interface PortRegistryOptions {
   /** The user's home folder; tests pass a temporary one. */
@@ -61,17 +60,13 @@ async function withRegistryLock<T>(homeDir: string, fn: () => Promise<T>): Promi
   }
 }
 
-export function registryPath(homeDir: string): string {
-  return join(homeDir, REGISTRY_DIR, REGISTRY_FILE);
-}
-
 /** First 12 hex characters of SHA-256(salt + project path): stable, and reveals no path. */
 export async function projectIdentity(
   projectDir: string,
   opts: PortRegistryOptions = {},
 ): Promise<string> {
   const registry = await load(home(opts));
-  return idFor(registry.salt, await projectKey(projectDir));
+  return projectIdFor(registry.salt, await projectKey(projectDir));
 }
 
 /** The project's registered port, or the first free unregistered one from 9147, recorded. */
@@ -134,7 +129,7 @@ async function claimLocked(
   for (const [other, otherPort] of Object.entries(registry.projects)) {
     if (other !== key && otherPort === port) {
       if (pruned) await save(homeDir, registry);
-      return idFor(registry.salt, other);
+      return projectIdFor(registry.salt, other);
     }
   }
   // The config is the source of truth for this project's port, also after a manual edit.
@@ -170,24 +165,6 @@ async function pruneGone(registry: PortRegistry, keep: string): Promise<boolean>
 
 function home(opts: PortRegistryOptions): string {
   return opts.homeDir ?? homedir();
-}
-
-function idFor(salt: string, key: string): string {
-  return createHash('sha256')
-    .update(salt + key)
-    .digest('hex')
-    .slice(0, 12);
-}
-
-/** Symlinks resolved; case folded on Windows, whose paths are case-insensitive. */
-async function projectKey(projectDir: string): Promise<string> {
-  let path = resolve(projectDir);
-  try {
-    path = await realpath(path);
-  } catch {
-    // A folder that doesn't exist yet keeps its resolved path.
-  }
-  return process.platform === 'win32' ? path.toLowerCase() : path;
 }
 
 async function load(homeDir: string): Promise<PortRegistry> {
