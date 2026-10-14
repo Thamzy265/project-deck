@@ -54,7 +54,8 @@ Checked against dart-lang/sdk main: `runtime/vm/service/service.md` (header says
 - `status` is `"success"` or `"failure"`. On failure, `reloadFailureReason` holds the error text (for example a compile error). There is no `reloadError` field, and the spec's comment on `status` misnames the kind as "IsolateReloaded".
 - **This differs from the reload path we call ourselves:** through `reloadSources` we never get the compile error text (see above), but the `IsolateReload` event of a failed reload does carry it. The connector uses it only for reloads made by others for now.
 - A reload with no changed libraries posts no event (the VM returns early), so such a reload by someone else doesn't show in Activity.
-- Our own reloads also produce the event. The VM posts it during the reload, so it normally arrives before the Flutter tool answers us; the connector drops an `IsolateReload` that arrives while its own reload or restart runs or up to 1 s after.
+- Our own reloads also produce the event. The VM posts it during the reload, so it normally arrives before the Flutter tool answers us. The connector drops at most one `IsolateReload` per own hot reload, arriving while that reload runs or up to 1 s after its answer. A hot restart expects none.
+- **Known gap, accepted (review finding C4):** an own reload with no changed libraries, or one that fails to compile, posts no event, and the Flutter tool's answer (`{type: "Success"}`, or error -32603) doesn't say whether one is coming. So for 1 s after such a reload, a reload by someone else is taken for ours and doesn't show in Activity. A test pins this behaviour (`session.test.ts`). Revisit if a recorded session shows a better signal.
 - Unverified: whether a hot restart also posts `IsolateReload` (restart replaces the isolate, so it shouldn't). The test fixture is built from the spec, not recorded; QA records a real one from a Dart MCP `hot_reload`.
 
 ## Logs

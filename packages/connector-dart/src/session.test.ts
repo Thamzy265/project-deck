@@ -283,6 +283,23 @@ describe('DartAppSession: reloads made by others', () => {
     expect(reloaded).toHaveBeenLastCalledWith({ ok: true, kind: 'hot-reload', source: 'external' });
   });
 
+  // Known gap (C4, documented in docs/notes/dtd.md): an own reload that posts no event
+  // (no changed libraries, or a compile error) can't be told from one whose event is
+  // still on its way, so a reload by someone else within the grace period is lost.
+  it('takes a reload by someone else within the grace period after an own reload that posted no event for its own', async () => {
+    const { server, session, reloaded } = await attachWithGrace(100);
+    server.handle('s0.reloadSources', () => ({ type: 'Success' }));
+    await session.reload();
+    server.notify(isolateReloadEvent());
+    await new Promise((r) => setTimeout(r, 30));
+    expect(reloaded).toHaveBeenCalledOnce();
+    // After the grace period the next one is reported again.
+    await new Promise((r) => setTimeout(r, 120));
+    server.notify(isolateReloadEvent());
+    await vi.waitFor(() => expect(reloaded).toHaveBeenCalledTimes(2));
+    expect(reloaded).toHaveBeenLastCalledWith({ ok: true, kind: 'hot-reload', source: 'external' });
+  });
+
   it('ignores reloads of another isolate group, such as a spawned background isolate', async () => {
     const { server, reloaded } = await attachWithGrace(0);
     server.notify(isolateReloadEvent({ isolateGroupId: 'isolateGroups/77' }));

@@ -299,6 +299,12 @@ export class DartAppSession implements AppSession {
   /**
    * A reload we didn't start: Claude through the Dart MCP server, or the IDE. Our own
    * ones are reported by invoke() with their duration, so their event is dropped here.
+   *
+   * Known gap, accepted: an own reload with no changed libraries, or one that fails to
+   * compile, posts no IsolateReload, and the Flutter tool's answer (`{type: Success}` or
+   * error -32603) doesn't say whether one is coming. So the expectation stays open for
+   * the grace period (1 s), and a reload by someone else in that time is taken for ours
+   * and not reported. See docs/notes/dtd.md.
    */
   private onIsolateReload(event: z.infer<typeof StreamNotifySchema>['event']): void {
     const group = event.isolateGroup?.id;
