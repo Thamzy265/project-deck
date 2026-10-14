@@ -77,6 +77,79 @@ describe('built-in masking', () => {
   });
 
   it.each([
+    [
+      'AWS key id',
+      ['aws_key AK', 'IAIOSFODNN7EXAMPLE used'].join(''),
+      'aws_key [secret masked] used',
+    ],
+    ['AWS session key id', ['id AS', 'IAY34FZKBOKMUTVV7A'].join(''), 'id [secret masked]'],
+    [
+      'GitHub token',
+      ['gh gh', 's_16C7e42F292c6912E7710c838347Ae178B4a'].join(''),
+      'gh [secret masked]',
+    ],
+    [
+      'GitHub OAuth token',
+      ['gh gh', 'o_abcdefghijklmnopqrstuvwxyz0123456789'].join(''),
+      'gh [secret masked]',
+    ],
+    [
+      'GitHub fine-grained token',
+      ['pat gi', 'thub_pat_11ABCDEFG0123456789_abcdefghijklmnop end'].join(''),
+      'pat [secret masked] end',
+    ],
+    [
+      'Stripe key',
+      ['stripe sk', '_live_4eC39HqLyjWDarjtT1zdp7dc'].join(''),
+      'stripe [secret masked]',
+    ],
+    [
+      'Stripe restricted key',
+      ['stripe rk', '_live_abcdefghij1234'].join(''),
+      'stripe [secret masked]',
+    ],
+    [
+      'Google API key',
+      ['maps AI', 'zaSyD-9tSrke72PouQMnMX-a7eZSW0jkFMBW-'].join(''),
+      'maps [secret masked]',
+    ],
+    ['Slack token', ['slack xo', 'xp-1234-5678-abcdEFGH'].join(''), 'slack [secret masked]'],
+    ['padded JWT', 'jwt eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0=.c2lnbmF0dXJl=', 'jwt [token masked]'],
+    ['unsigned JWT', 'jwt eyJhbGciOiJub25lIn0.eyJzdWIiOiIxIn0. ok', 'jwt [token masked] ok'],
+    [
+      'Basic auth',
+      'Authorization: Basic dXNlcjpwYXNzd29yZA==',
+      'Authorization: Basic [token masked]',
+    ],
+    [
+      'password in a query',
+      'login?user=jo&password=hunter2&x=1',
+      'login?user=jo&password=[secret masked]&x=1',
+    ],
+    ['api key setting', 'api_key: abc123', 'api_key: [secret masked]'],
+    ['apiKey in JSON', '{"apiKey": "abc123", "n": 1}', '{"apiKey": "[secret masked]", "n": 1}'],
+    [
+      'tokens in JSON',
+      '{"access_token":"Zk3x","refresh_token":"Rr9"}',
+      '{"access_token":"[secret masked]","refresh_token":"[secret masked]"}',
+    ],
+    ['client secret', 'client_secret=s3cr3t', 'client_secret=[secret masked]'],
+    ['passwd', 'PASSWD = letmein', 'PASSWD = [secret masked]'],
+  ])('masks a %s', (_name, input, expected) => {
+    expect(maskBuiltIn(input)).toBe(expected);
+  });
+
+  it.each([
+    ['token word in prose', 'Refreshing the token now'],
+    ['tokens count', 'tokens: 5'],
+    ['secretary field', 'secretary=Jo'],
+    ['basic in prose', 'a basic example of Flutter'],
+    ['Bearer header stays readable', 'authorization: Bearer [token masked]'],
+  ])('leaves a %s alone', (_name, input) => {
+    expect(maskBuiltIn(input)).toBe(input);
+  });
+
+  it.each([
     ['dashboard URL', 'dashboard at http://127.0.0.1:9147/'],
     ['plain API URL', 'GET https://api.example.com/v1/users/42?page=2'],
     ['local route', 'http://localhost:8080/products/details'],
@@ -96,6 +169,14 @@ describe('built-in masking', () => {
       'http://a/'.repeat(455),
       `ws://h/${'A1='.repeat(1363)}`,
       'ws://a:'.repeat(585),
+      'password='.repeat(455),
+      '"token":"'.repeat(455),
+      ['AK', 'IA'].join('').repeat(1024),
+      ['gh', 'p_'].join('').repeat(1024),
+      ['xo', 'xb-'].join('').repeat(819),
+      'eyJa.'.repeat(819),
+      'Basic '.repeat(682),
+      '%40a.'.repeat(819),
     ];
     const start = performance.now();
     for (const line of lines) maskBuiltIn(line);

@@ -73,7 +73,7 @@ describe('the 4 kB cut', () => {
     expect(out).not.toContain('jane.doe');
   });
 
-  it.fails('BUG-MCP-T3: hides the payload of a JWT whose signature is cut off', async () => {
+  it('BUG-MCP-T3: hides the payload of a JWT whose signature is cut off', async () => {
     // {"sub":"1234567890"}: a user id, short enough to miss the long-secret rule.
     const payload = 'eyJzdWIiOiIxMjM0NTY3ODkwIn0';
     const jwt = `eyJhbGciOiJIUzI1NiJ9.${payload}.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c`;

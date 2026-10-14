@@ -77,7 +77,7 @@ describe('built-in masking catches', () => {
 });
 
 describe('built-in masking misses (repros)', () => {
-  it.fails('BUG-MCP-T4: masks an AWS access key id (the documented example)', () => {
+  it('BUG-MCP-T4: masks an AWS access key id (the documented example)', () => {
     // AWS's documented example key id.
     hides(
       ['aws_access_key_id = AK', 'IAIOSFODNN7EXAMPLE'].join(''),
@@ -90,23 +90,23 @@ describe('built-in masking misses (repros)', () => {
     hides('GET https://api.example.com/users?email=jane.doe%40example.com', 'jane.doe');
   });
 
-  it.fails('BUG-MCP-T6: masks a JWT whose parts keep their base64 padding', () => {
+  it('BUG-MCP-T6: masks a JWT whose parts keep their base64 padding', () => {
     // Short payloads (here {"sub":"1234567890"}) are under the 32-character secret rule.
     const payload = 'eyJzdWIiOiIxMjM0NTY3ODkwIn0=';
     hides(`token eyJhbGciOiJIUzI1NiJ9.${payload}.SflKxwRJSMeKKF2QT4fwpMeJf36POk6y=`, payload);
   });
 
-  it.fails('BUG-MCP-T6: masks an unsigned JWT (alg none, empty signature)', () => {
+  it('BUG-MCP-T6: masks an unsigned JWT (alg none, empty signature)', () => {
     const payload = 'eyJzdWIiOiIxMjM0NTY3ODkwIn0';
     hides(`token eyJhbGciOiJub25lIn0.${payload}.`, payload);
   });
 
-  it.fails('BUG-MCP-T7: masks an HTTP Basic auth header', () => {
+  it('BUG-MCP-T7: masks an HTTP Basic auth header', () => {
     // base64("user:password"): the password is one decode away.
     hides('Authorization: Basic dXNlcjpwYXNzd29yZA==', 'dXNlcjpwYXNzd29yZA');
   });
 
-  it.fails('BUG-MCP-T7: masks a short secret named by its key', () => {
+  it('BUG-MCP-T7: masks a short secret named by its key', () => {
     hides('{"access_token":"Zk3xQ9mP2vL8wR4t","password":"hunter2"}', 'Zk3xQ9mP2vL8wR4t');
   });
 });

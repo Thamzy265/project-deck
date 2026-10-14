@@ -81,12 +81,33 @@ const PATTERNS: Pattern[] = [
     replace: (match) => `${match.slice(0, 'bearer'.length)} ${TOKEN}`,
   },
   {
-    re: /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g,
+    // base64("user:password"); "basic" in prose is followed by a plain word.
+    re: /\bbasic\s+([A-Za-z0-9+/]{8,}={0,2})/gi,
+    replace: (match, [value = '']) =>
+      /[=+/\d]/.test(value) ? `${match.slice(0, 'basic'.length)} ${TOKEN}` : match,
+  },
+  {
+    // JSON header and payload both start with eyJ; padding kept, signature optional (alg none).
+    re: /\beyJ[A-Za-z0-9_-]{2,}={0,2}\.eyJ[A-Za-z0-9_-]{2,}={0,2}\.(?:[A-Za-z0-9_-]+={0,2})?/g,
     replace: marker(TOKEN),
   },
+  ...[
+    /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g, // AWS access key id
+    /\bgh[pousr]_[A-Za-z0-9]{36,255}\b/g, // GitHub token
+    /\bgithub_pat_[A-Za-z0-9_]{22,255}/g, // GitHub fine-grained token
+    /\b[sr]k_(?:live|test)_[A-Za-z0-9]{10,247}\b/g, // Stripe secret or restricted key
+    /\bAIza[0-9A-Za-z_-]{35}(?![0-9A-Za-z_-])/g, // Google API key
+    /\bxox[abprs]-[A-Za-z0-9-]{10,250}/g, // Slack token
+  ].map((re) => ({ re, replace: marker(SECRET) })),
   {
     re: /[A-Za-z0-9._%+-]{1,64}@(?:[A-Za-z0-9-]{1,63}\.){1,8}[A-Za-z]{2,24}\b/g,
     replace: marker(EMAIL),
+  },
+  {
+    // The value after a secret-sounding key, in key=value, key: value and "key":"value"
+    // forms. An auth scheme word and a value masked already are left as they are.
+    re: /(?<![A-Za-z0-9])(password|passwd|secret|token|api[_-]?key|access[_-]?token|refresh[_-]?token|client[_-]?secret|authorization)("?\s*[:=]\s*"?)(?!(?:bearer|basic)\s)(?!\[)[^\s"',;&}]{1,256}/gi,
+    replace: (_match, [key = '', separator = '']) => `${key}${separator}${SECRET}`,
   },
   {
     // Digits and letters both: a hash or key, not a run of 'a's or a long number.
