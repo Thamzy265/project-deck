@@ -59,6 +59,7 @@ node scripts/dtd-apps.mjs
 - **`packages/core`**: the shared interfaces (apps, logs, databases, tasks), validation schemas and test fakes.
 - **`packages/daemon`**: a local server that tracks running apps, buffers their logs, and serves an HTTP and WebSocket API.
 - **`packages/connector-dart`** (in review): finds running Flutter apps through the Dart Tooling Daemon and attaches over the VM service.
+- **`examples/sample_app`**: a one-screen Flutter app for trying FlutterDeck by hand, with a marked breakpoint line and logs on every tap. See its [README](examples/sample_app/README.md).
 - Still to come: dashboard, CLI, MCP server, Drift inspector and the Linear integration.
 
 ## Security
