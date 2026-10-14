@@ -171,30 +171,24 @@ describe('IsolateReload from others: timing', () => {
   // BUG-T1: the VM posts our own reload's event during the reload. The connector drops it
   // and resets the window, but then the reload's answer re-opens the window, so a reload
   // by Claude or the IDE in the next second is silently dropped from Activity.
-  it.fails(
-    'reports a reload by someone else right after its own reload whose event already came (BUG-T1)',
-    async () => {
-      const { server, session, results } = await attach({ graceMs: 1000 });
-      await session.reload();
-      server.notify(isolateReloadEvent());
-      await vi.waitFor(() => expect(results).toHaveLength(2), { timeout: 500 });
-      expect(results[1]).toEqual(EXTERNAL_OK);
-    },
-  );
+  it('reports a reload by someone else right after its own reload whose event already came (BUG-T1)', async () => {
+    const { server, session, results } = await attach({ graceMs: 1000 });
+    await session.reload();
+    server.notify(isolateReloadEvent());
+    await vi.waitFor(() => expect(results).toHaveLength(2), { timeout: 500 });
+    expect(results[1]).toEqual(EXTERNAL_OK);
+  });
 
   // BUG-T1 (same cause): a hot restart posts no IsolateReload, yet it opens the same
   // window, so the next reload by someone else within a second is dropped.
-  it.fails(
-    'reports a reload by someone else right after its own hot restart (BUG-T1)',
-    async () => {
-      const { server, session, results } = await attach({ graceMs: 1000 });
-      await session.restart();
-      await settle();
-      server.notify(isolateReloadEvent());
-      await vi.waitFor(() => expect(results).toHaveLength(2), { timeout: 500 });
-      expect(results[1]).toEqual(EXTERNAL_OK);
-    },
-  );
+  it('reports a reload by someone else right after its own hot restart (BUG-T1)', async () => {
+    const { server, session, results } = await attach({ graceMs: 1000 });
+    await session.restart();
+    await settle();
+    server.notify(isolateReloadEvent());
+    await vi.waitFor(() => expect(results).toHaveLength(2), { timeout: 500 });
+    expect(results[1]).toEqual(EXTERNAL_OK);
+  });
 
   // BUG-T2: JsonRpcClient.close() marks the client closed but still delivers messages
   // that arrive while the WebSocket is CLOSING, so a detached session keeps emitting.

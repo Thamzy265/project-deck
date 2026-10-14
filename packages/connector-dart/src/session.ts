@@ -130,9 +130,12 @@ export class DartAppSession implements AppSession {
   private isolateId: string | undefined;
   /** The main isolate's group: IsolateReload events name a group, not an isolate. */
   private isolateGroupId: string | undefined;
-  /** Our own reloads and restarts in flight, and when the last one answered. */
-  private ownReloads = 0;
-  private ownReloadAnsweredAt = Number.NEGATIVE_INFINITY;
+  /** Our own hot reloads in flight. Restarts post no IsolateReload, so they don't count. */
+  private ownReloadsRunning = 0;
+  /** IsolateReload events our own hot reloads will still cause: at most one each. */
+  private ownEventsExpected = 0;
+  /** After this time an expected event that never came is given up on. */
+  private ownEventsExpectedUntil = Number.POSITIVE_INFINITY;
   private refreshing: Promise<void> | undefined;
   /** A follow-up refresh, requested while one was running. */
   private refreshQueued: Promise<void> | undefined;
@@ -251,7 +254,11 @@ export class DartAppSession implements AppSession {
     const label = kind === 'hot-reload' ? 'Hot reload' : 'Hot restart';
     const started = performance.now();
     let result: ReloadResult;
-    this.ownReloads++;
+    const ownReload = kind === 'hot-reload';
+    if (ownReload) {
+      this.ownReloadsRunning++;
+      this.ownEventsExpected++;
+    }
     try {
       await run(method);
       result = { ok: true, kind, durationMs: Math.round(performance.now() - started) };
@@ -278,8 +285,12 @@ export class DartAppSession implements AppSession {
       }
       result = reloadFailure(kind, err);
     } finally {
-      this.ownReloads--;
-      this.ownReloadAnsweredAt = performance.now();
+      if (ownReload) {
+        this.ownReloadsRunning--;
+        // The event and the answer take different routes, so the event may still come.
+        this.ownEventsExpectedUntil =
+          performance.now() + (this.opts.ownReloadGraceMs ?? DEFAULT_OWN_RELOAD_GRACE_MS);
+      }
     }
     this.events.emit('reloaded', result);
     return result;
@@ -294,10 +305,17 @@ export class DartAppSession implements AppSession {
     if (group !== undefined && this.isolateGroupId !== undefined && group !== this.isolateGroupId) {
       return;
     }
-    const grace = this.opts.ownReloadGraceMs ?? DEFAULT_OWN_RELOAD_GRACE_MS;
-    if (this.ownReloads > 0 || performance.now() - this.ownReloadAnsweredAt <= grace) {
-      // One event per reload: a second one in the window is someone else's.
-      this.ownReloadAnsweredAt = Number.NEGATIVE_INFINITY;
+    if (
+      this.ownEventsExpected > 0 &&
+      this.ownReloadsRunning === 0 &&
+      performance.now() > this.ownEventsExpectedUntil
+    ) {
+      // Our reloads' events never came (e.g. the Flutter tool failed before the VM ran).
+      this.ownEventsExpected = 0;
+    }
+    if (this.ownEventsExpected > 0) {
+      // One event per own reload; any further one is someone else's.
+      this.ownEventsExpected--;
       return;
     }
     if (event.status === 'success') {
