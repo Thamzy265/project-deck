@@ -24,7 +24,8 @@ export interface ApiContext {
   port: () => number;
   version: string;
   /** Lets clients tell this project's daemon from another project's on the same port. */
-  projectId: string;
+  /** Omitted from /api/health when unknown. */
+  projectId: string | undefined;
   /** Stops the daemon after the response is sent. */
   shutdown: () => void;
 }
@@ -99,7 +100,12 @@ export function createApi(ctx: ApiContext): Hono {
 
   // Unauthenticated so the CLI can tell "not running" from "wrong token". Reveals nothing else.
   api.get('/api/health', (c) =>
-    c.json({ ok: true, name: 'project-deck', version: ctx.version, projectId: ctx.projectId }),
+    c.json({
+      ok: true,
+      name: 'project-deck',
+      version: ctx.version,
+      ...(ctx.projectId === undefined ? {} : { projectId: ctx.projectId }),
+    }),
   );
 
   // The dashboard's login: a tab opened on / gets the session cookie. Placeholder page

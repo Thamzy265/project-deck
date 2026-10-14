@@ -49,8 +49,11 @@ export interface Daemon {
   readonly url: string;
   readonly token: string;
   readonly version: string;
-  /** Salted hash of the project path, as shown on /api/health. */
-  readonly projectId: string;
+  /**
+   * Salted hash of the project path, as shown on /api/health. Undefined when the port
+   * registry can't be used and the project has no fixed port, which needs none.
+   */
+  readonly projectId: string | undefined;
   readonly bus: EventBus;
   readonly manager: AppManager;
   /** Resolves once the daemon has fully stopped. */
@@ -95,7 +98,7 @@ async function startLocked(opts: DaemonOptions): Promise<Daemon> {
     config.port === undefined
       ? undefined
       : await claimConfigPort(opts.projectDir, config.port, registryOpts);
-  const projectId = await projectIdentity(opts.projectDir, registryOpts);
+  const projectId = await optionalProjectId(opts.projectDir, registryOpts, log);
 
   const token = generateToken();
   const sessionSecret = generateToken();
@@ -191,6 +194,24 @@ async function startLocked(opts: DaemonOptions): Promise<Daemon> {
     closed,
     stop,
   };
+}
+
+/**
+ * Without a config port the id only helps clients spot another project's daemon, so a
+ * damaged registry or a read-only home folder mustn't stop the start. A config port
+ * already used the registry above, so there it has worked or the start has failed.
+ */
+async function optionalProjectId(
+  projectDir: string,
+  registryOpts: { homeDir?: string },
+  log: (message: string) => void,
+): Promise<string | undefined> {
+  try {
+    return await projectIdentity(projectDir, registryOpts);
+  } catch (err) {
+    log(`No project id: ${err instanceof Error ? err.message : String(err)}`);
+    return undefined;
+  }
 }
 
 /**

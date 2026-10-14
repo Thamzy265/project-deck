@@ -155,4 +155,24 @@ describe('fixed port from .flutterdeck/config.json', () => {
     const health = (await (await fetch(`${d.url}/api/health`)).json()) as { projectId: string };
     expect(health.projectId).toBe(await projectIdentity(projectDir, { homeDir }));
   });
+
+  it('starts without a project id when the registry is damaged and there is no config port', async () => {
+    await mkdir(join(homeDir, '.flutterdeck'), { recursive: true });
+    await writeFile(join(homeDir, '.flutterdeck', 'ports.json'), '{ damaged');
+    const messages: string[] = [];
+    const d = await start({ port: 0, messages });
+    expect(d.projectId).toBeUndefined();
+    const health = (await (await fetch(`${d.url}/api/health`)).json()) as Record<string, unknown>;
+    expect(health).toEqual({ ok: true, name: 'project-deck', version: d.version });
+    expect(messages.some((m) => m.startsWith('No project id:') && m.includes('is damaged'))).toBe(
+      true,
+    );
+  });
+
+  it('still refuses to start with a damaged registry when the config has a port', async () => {
+    await mkdir(join(homeDir, '.flutterdeck'), { recursive: true });
+    await writeFile(join(homeDir, '.flutterdeck', 'ports.json'), '{ damaged');
+    await writeConfig(projectDir, await freePort());
+    await expect(start()).rejects.toThrow(/is damaged/);
+  });
 });
