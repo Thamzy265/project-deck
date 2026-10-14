@@ -61,6 +61,14 @@ describe('Masker', () => {
     expect(value.message.endsWith(CUT_MARKER)).toBe(true);
   });
 
+  it('runs user rules before the cut, so a value across it is masked whole', async () => {
+    const m = masker(true, ['order-\\d+']);
+    const text = `${'x'.repeat(MAX_TEXT - 6)} order-123456 tail`;
+    const { value } = await m.mask({ message: text });
+    expect(value.message).not.toContain('order');
+    expect(value.message).toBe(`${'x'.repeat(MAX_TEXT - 6)} ${CUT_MARKER}`);
+  });
+
   it('says so when masking is off, and changes nothing but the length', async () => {
     const m = masker(false, ['jane']);
     const { value, notes } = await m.mask({ message: 'jane@example.com' });
