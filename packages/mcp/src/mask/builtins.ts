@@ -129,7 +129,7 @@ const PATTERNS: Pattern[] = [
   {
     // The value after a secret-sounding key, in key=value, key: value and "key":"value"
     // forms. An auth scheme word and a value masked already are left as they are.
-    re: /(?<![A-Za-z0-9])(password|passwd|secret|token|api[_-]?key|access[_-]?token|refresh[_-]?token|client[_-]?secret|authorization)("?\s*[:=]\s*)(?!["']?(?:bearer|basic)\s)(?!["']?\[(?:email|phone|token|secret|auth code) masked\])(?:"[^"\n]{1,256}(?=")|'[^'\n]{1,256}(?=')|["']?[^\s"',;&}]{1,256})/gi,
+    re: /(?<![A-Za-z0-9])((?:aws[_-]?)?secret[_-]?access[_-]?key|access[_-]?key|secret[_-]?key|private[_-]?key|api[_-]?secret|client[_-]?key|password|passwd|secret|token|api[_-]?key|access[_-]?token|refresh[_-]?token|client[_-]?secret|authorization)("?\s*[:=]\s*)(?!["']?(?:bearer|basic)\s)(?!["']?\[(?:email|phone|token|secret|auth code) masked\])(?:"[^"\n]{1,256}(?=")|'[^'\n]{1,256}(?=')|["']?[^\s"',;&}]{1,256})/gi,
     // A quoted value is masked up to its closing quote; the quotes stay.
     replace: (match, [key = '', separator = '']) => {
       const first = match.charAt(key.length + separator.length);

@@ -247,4 +247,16 @@ describe('credentials after a known header or key', () => {
       expect(maskBuiltIn(input)).toBe(input);
     },
   );
+
+  it.each([
+    ['aws_secret_access_key = wJalrXUtnFEMI/K7MDENG', 'aws_secret_access_key = [secret masked]'],
+    ['AWS_SECRET_ACCESS_KEY=abc', 'AWS_SECRET_ACCESS_KEY=[secret masked]'],
+    ['access_key: abc', 'access_key: [secret masked]'],
+    ['secretKey=abc', 'secretKey=[secret masked]'],
+    ['{"private_key":"-----BEGIN KEY-----"}', '{"private_key":"[secret masked]"}'],
+    ['api_secret=abc', 'api_secret=[secret masked]'],
+    ['client-key: abc', 'client-key: [secret masked]'],
+  ])('masks the value of more secret key names (%j)', (input, expected) => {
+    expect(maskBuiltIn(input)).toBe(expected);
+  });
 });
