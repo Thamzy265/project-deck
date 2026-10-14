@@ -8,13 +8,18 @@ import type {
   Registry,
   RunningApp,
 } from '@project-deck/core';
-import { MAX_LOG_LIMIT, RingBufferLogSource } from '@project-deck/core';
+import { MAX_LOG_LIMIT, RingBufferLogSource, isAtLeast } from '@project-deck/core';
+
+/** An exit within this long after an error log line counts as a crash. */
+export const CRASH_WINDOW_MS = 5000;
 
 interface Attached {
   app: RunningApp;
   /** Undefined once the app has exited; logs stay readable until the next attach. */
   session: AppSession | undefined;
   logs: RingBufferLogSource;
+  /** When the daemon last received an error-level line live (backfill doesn't count). */
+  lastErrorAt: number | undefined;
   cleanup: (() => Promise<void> | void)[];
 }
 
@@ -22,6 +27,8 @@ export interface AppManagerOptions {
   logCapacity?: number;
   /** Called when a connector fails to start. The daemon keeps running without it. */
   onConnectorError?: (connectorId: string, err: unknown) => void;
+  /** Clock for the crash window; tests pass a fake one. */
+  now?: () => number;
 }
 
 const NOT_ATTACHED: ReloadResult = {
@@ -143,10 +150,11 @@ export class AppManager {
     const session = await connector.attach(appId);
     const app = session.app;
     const logs = new RingBufferLogSource(this.opts.logCapacity);
-    const attached: Attached = { app, session, logs, cleanup: [] };
+    const attached: Attached = { app, session, logs, lastErrorAt: undefined, cleanup: [] };
     this.attached = attached;
 
     const push = (entry: LogEntry): void => {
+      if (isAtLeast(entry.level, 'error')) attached.lastErrorAt = this.now();
       logs.push(entry);
       this.bus.emit('app.log', { appId: app.id, entry });
     };
@@ -187,10 +195,13 @@ export class AppManager {
     attached.session = undefined;
     // The app is gone, but the connector may still hold resources for the session.
     await session.detach().catch(() => undefined);
-    this.bus.emit(
-      'app.exit',
-      code === undefined ? { appId: attached.app.id } : { appId: attached.app.id, code },
-    );
+    const crashed =
+      attached.lastErrorAt !== undefined && this.now() - attached.lastErrorAt <= CRASH_WINDOW_MS;
+    this.bus.emit('app.exit', {
+      appId: attached.app.id,
+      ...(code === undefined ? {} : { code }),
+      crashed,
+    });
   }
 
   /** Detaches without ever stopping the app. */
@@ -211,6 +222,10 @@ export class AppManager {
         await fn();
       }),
     );
+  }
+
+  private now(): number {
+    return (this.opts.now ?? Date.now)();
   }
 
   private connectorFor(appId: string): AppConnector {

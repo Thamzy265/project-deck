@@ -9,7 +9,8 @@ export interface DeckEvents {
   'app.attached': { app: RunningApp };
   'app.detached': { appId: string };
   'app.reloaded': { appId: string; result: ReloadResult };
-  'app.exit': { appId: string; code?: number };
+  /** The app went away by itself. `crashed`: an error log line arrived within 5 s before. */
+  'app.exit': { appId: string; code?: number; crashed: boolean };
   'app.log': { appId: string; entry: LogEntry };
   'task.current': { task: Task | null };
   'claude.done': { sessionId?: string };
