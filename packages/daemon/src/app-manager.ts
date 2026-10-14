@@ -147,6 +147,10 @@ export class AppManager {
       return this.attached.app;
     }
     await this.release();
+    // Lines logged before this (logcat prints the app's recent history first) don't count
+    // towards a crash. Compared with the line's own time, so it assumes the device clock
+    // roughly matches this machine's, as emulators and network-synced phones do.
+    const attachedAt = this.now();
     const session = await connector.attach(appId);
     const app = session.app;
     const logs = new RingBufferLogSource(this.opts.logCapacity);
@@ -154,7 +158,9 @@ export class AppManager {
     this.attached = attached;
 
     const push = (entry: LogEntry): void => {
-      if (isAtLeast(entry.level, 'error')) attached.lastErrorAt = this.now();
+      if (isAtLeast(entry.level, 'error') && entry.ts >= attachedAt) {
+        attached.lastErrorAt = this.now();
+      }
       logs.push(entry);
       this.bus.emit('app.log', { appId: app.id, entry });
     };
@@ -170,7 +176,11 @@ export class AppManager {
         this.bus.emit('app.reloaded', { appId: app.id, result });
       }),
       session.on('exit', ({ code }) => {
-        void this.serial(() => this.onExit(attached, code));
+        // Judged now: queued attach steps and cleanup can take a while before onExit runs.
+        const crashed =
+          attached.lastErrorAt !== undefined &&
+          this.now() - attached.lastErrorAt <= CRASH_WINDOW_MS;
+        void this.serial(() => this.onExit(attached, code, crashed));
       }),
     );
     const backfill = await session.logs().query({ limit: MAX_LOG_LIMIT });
@@ -188,15 +198,17 @@ export class AppManager {
     return app;
   }
 
-  private async onExit(attached: Attached, code: number | undefined): Promise<void> {
+  private async onExit(
+    attached: Attached,
+    code: number | undefined,
+    crashed: boolean,
+  ): Promise<void> {
     const session = attached.session;
     if (this.attached !== attached || session === undefined) return;
     await this.runCleanup(attached);
     attached.session = undefined;
     // The app is gone, but the connector may still hold resources for the session.
     await session.detach().catch(() => undefined);
-    const crashed =
-      attached.lastErrorAt !== undefined && this.now() - attached.lastErrorAt <= CRASH_WINDOW_MS;
     this.bus.emit('app.exit', {
       appId: attached.app.id,
       ...(code === undefined ? {} : { code }),

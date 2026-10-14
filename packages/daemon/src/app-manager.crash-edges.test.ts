@@ -55,8 +55,10 @@ function session(s: Setup) {
 }
 
 const settle = () => new Promise((r) => setTimeout(r, 20));
+/** Device time of a line logged after the attach; the fake clock starts at 5_000_000. */
+const LIVE_TS = 9_000_000;
 const line = (level: LogEntry['level'], source: LogEntry['source'] = 'app'): LogEntry => ({
-  ts: 1,
+  ts: LIVE_TS,
   level,
   source,
   message: `${level} line`,

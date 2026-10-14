@@ -1,8 +1,11 @@
-import type { DeckEvents, LogFeedFactory } from '@project-deck/core';
+import type { DeckEvents, LogEntry, LogFeedFactory } from '@project-deck/core';
 import { EventBus, Registry } from '@project-deck/core';
 import { FakeAppConnector, fakeApp } from '@project-deck/core/testing';
 import { describe, expect, it, vi } from 'vitest';
 import { AppManager, CRASH_WINDOW_MS } from './app-manager.js';
+
+/** Device time of a line logged after the attach; the fake clock starts at 1_000_000. */
+const LIVE_TS = 2_000_000;
 
 async function setup(feed?: LogFeedFactory) {
   const registry = new Registry();
@@ -30,7 +33,7 @@ describe('AppManager: stopped or crashed', () => {
 
   it('calls an exit with no error log line just before a stop', async () => {
     const { session, exits, exited } = await setup();
-    session.logs().push({ ts: 1, level: 'info', source: 'app', message: 'bye' });
+    session.logs().push({ ts: LIVE_TS, level: 'info', source: 'app', message: 'bye' });
     session.simulateExit(0);
     await exited();
     expect(exits[0]).toEqual({ appId: 'app-1', code: 0, crashed: false });
@@ -38,7 +41,9 @@ describe('AppManager: stopped or crashed', () => {
 
   it('calls an exit within 5 s of an error log line a crash', async () => {
     const { session, exits, advance, exited } = await setup();
-    session.logs().push({ ts: 1, level: 'error', source: 'app', message: 'Unhandled exception' });
+    session
+      .logs()
+      .push({ ts: LIVE_TS, level: 'error', source: 'app', message: 'Unhandled exception' });
     advance(CRASH_WINDOW_MS);
     session.simulateExit();
     await exited();
@@ -56,7 +61,7 @@ describe('AppManager: stopped or crashed', () => {
     };
     const { session, exits, exited } = await setup(feed);
     await vi.waitFor(() => expect(push).toBeDefined());
-    push?.({ ts: 1, level: 'fatal', source: 'native', message: 'SIGSEGV' });
+    push?.({ ts: LIVE_TS, level: 'fatal', source: 'native', message: 'SIGSEGV' });
     session.simulateExit();
     await exited();
     expect(exits[0]?.crashed).toBe(true);
@@ -64,7 +69,7 @@ describe('AppManager: stopped or crashed', () => {
 
   it('calls an exit more than 5 s after the last error a stop', async () => {
     const { session, exits, advance, exited } = await setup();
-    session.logs().push({ ts: 1, level: 'error', source: 'app', message: 'old error' });
+    session.logs().push({ ts: LIVE_TS, level: 'error', source: 'app', message: 'old error' });
     advance(CRASH_WINDOW_MS + 1);
     session.simulateExit();
     await exited();
@@ -73,10 +78,48 @@ describe('AppManager: stopped or crashed', () => {
 
   it('never reports an exit when FlutterDeck detaches', async () => {
     const { manager, session, exits } = await setup();
-    session.logs().push({ ts: 1, level: 'error', source: 'app', message: 'boom' });
+    session.logs().push({ ts: LIVE_TS, level: 'error', source: 'app', message: 'boom' });
     await manager.detach();
     session.simulateExit();
     await new Promise((r) => setTimeout(r, 10));
     expect(exits).toEqual([]);
+  });
+
+  it('does not count native error lines logcat replays from before the attach (C3)', async () => {
+    let push: ((e: LogEntry) => void) | undefined;
+    const feed: LogFeedFactory = {
+      id: 'native',
+      open: (_app, cb) => {
+        push = cb;
+        // logcat prints the app's recent history first, old errors included.
+        cb({ ts: 999_000, level: 'error', source: 'native', message: 'old ANR' });
+        return Promise.resolve(() => Promise.resolve());
+      },
+    };
+    const { session, exits, exited } = await setup(feed);
+    await vi.waitFor(() => expect(push).toBeDefined());
+    session.simulateExit(0);
+    await exited();
+    expect(exits[0]?.crashed).toBe(false);
+  });
+
+  it('measures the 5 s window to the exit, not to when the exit is handled (C3)', async () => {
+    const hooks: { onClose?: () => void } = {};
+    const feed: LogFeedFactory = {
+      id: 'native',
+      open: () =>
+        Promise.resolve(() => {
+          // Cleanup runs before the crash check and can take a while.
+          hooks.onClose?.();
+          return Promise.resolve();
+        }),
+    };
+    const { session, exits, advance, exited } = await setup(feed);
+    hooks.onClose = () => advance(2000);
+    session.logs().push({ ts: LIVE_TS, level: 'error', source: 'app', message: 'boom' });
+    advance(CRASH_WINDOW_MS - 1000);
+    session.simulateExit();
+    await exited();
+    expect(exits[0]?.crashed).toBe(true);
   });
 });
