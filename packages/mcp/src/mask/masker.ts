@@ -5,8 +5,13 @@
 import { maskBuiltIn } from './builtins.js';
 import { UserRuleRunner } from './user-rules.js';
 
-/** Each text is cut to this many characters before any pattern runs. */
+/**
+ * Each text is cut to this many characters after the built-ins ran (so a value across
+ * the cut is masked whole) and before the user rules run (which have a time budget).
+ */
 export const MAX_TEXT = 4096;
+/** The built-ins only look this far into a text: they are linear, but not free. */
+export const MAX_SCAN = 65_536;
 export const CUT_MARKER = ' …[cut]';
 export const MASKING_OFF = 'Masking for Claude is off';
 export const RULES_SKIPPED = 'Some masking rules were skipped (too slow)';
@@ -46,11 +51,12 @@ export class Masker {
   async mask<T extends JsonValue>(value: T): Promise<Masked<T>> {
     const texts: string[] = [];
     collect(value, texts);
-    const cut = texts.map(cutText);
     if (!this.settings.redact) {
+      const cut = texts.map((t) => cutText(t, MAX_TEXT));
       return { value: rebuild(value, cut.values()) as T, notes: [MASKING_OFF] };
     }
-    const result = await this.userRules.run(cut.map(maskBuiltIn));
+    const masked = texts.map((t) => cutText(maskBuiltIn(cutText(t, MAX_SCAN)), MAX_TEXT));
+    const result = await this.userRules.run(masked);
     return {
       value: rebuild(value, result.texts.values()) as T,
       notes: result.skipped ? [RULES_SKIPPED] : [],
@@ -62,12 +68,20 @@ export class Masker {
   }
 }
 
-function cutText(text: string): string {
-  if (text.length <= MAX_TEXT) return text;
-  let end = MAX_TEXT;
-  // Don't leave half of a surrogate pair at the end.
+const BUILT_IN_MARKER = /^\[(?:email|phone|token|secret|auth code) masked\]/;
+
+/** Cuts `text` to at most `max` characters, never inside a surrogate pair or a marker. */
+function cutText(text: string, max: number): string {
+  if (text.length <= max) return text;
+  let end = max;
   const last = text.charCodeAt(end - 1);
   if (last >= 0xd800 && last <= 0xdbff) end--;
+  // A marker has no '[' inside, so one across the cut starts at the last '[' before it.
+  const open = text.lastIndexOf('[', end - 1);
+  if (open !== -1) {
+    const marker = BUILT_IN_MARKER.exec(text.slice(open, open + 32));
+    if (marker !== null && open + marker[0].length > end) end = open;
+  }
   return text.slice(0, end) + CUT_MARKER;
 }
 

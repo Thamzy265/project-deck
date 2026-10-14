@@ -67,7 +67,7 @@ describe('the 4 kB cut', () => {
     expect(out).toContain('[email masked]');
   });
 
-  it.fails('BUG-MCP-T3: hides the part of an email left before the cut', async () => {
+  it('BUG-MCP-T3: hides the part of an email left before the cut', async () => {
     // 'jane.doe@exam' survives the cut, and without a dot after @ it isn't an email any more.
     const out = await maskText(straddle('jane.doe@example.com', 'jane.doe@exam'.length));
     expect(out).not.toContain('jane.doe');
@@ -82,7 +82,7 @@ describe('the 4 kB cut', () => {
     expect(out).not.toContain(payload);
   });
 
-  it.fails('BUG-MCP-T3: hides a Bearer token cut below 8 characters', async () => {
+  it('BUG-MCP-T3: hides a Bearer token cut below 8 characters', async () => {
     const out = await maskText(straddle('Bearer s3cr3tT0kenValue', 'Bearer s3cr3tT'.length));
     expect(out).not.toContain('s3cr3tT');
   });

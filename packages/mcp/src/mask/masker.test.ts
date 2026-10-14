@@ -39,11 +39,26 @@ describe('Masker', () => {
     expect(notes).toEqual([]);
   });
 
-  it('cuts each text to 4 kB before matching', async () => {
+  it('cuts each text to 4 kB after the built-ins, so a value across the cut is masked', async () => {
     const m = masker(true);
     const long = `${'x'.repeat(MAX_TEXT - 5)} jane@example.com`;
     const { value } = await m.mask({ message: long });
-    expect(value.message).toBe(`${'x'.repeat(MAX_TEXT - 5)} jane${CUT_MARKER}`);
+    expect(value.message).toBe(`${'x'.repeat(MAX_TEXT - 5)} ${CUT_MARKER}`);
+  });
+
+  it('masks before the cut, and never leaves half a marker', async () => {
+    const m = masker(true);
+    const { value } = await m.mask({ message: `${'z'.repeat(MAX_TEXT - 6)} jane@example.com` });
+    expect(value.message).toBe(`${'z'.repeat(MAX_TEXT - 6)} ${CUT_MARKER}`);
+  });
+
+  it('masks a huge line quickly, looking at its first 64 kB', async () => {
+    const m = masker(true);
+    const start = performance.now();
+    const { value } = await m.mask({ message: `jane@example.com ${'ab1 '.repeat(250_000)}` });
+    expect(performance.now() - start).toBeLessThan(500);
+    expect(value.message.startsWith('[email masked] ab1')).toBe(true);
+    expect(value.message.endsWith(CUT_MARKER)).toBe(true);
   });
 
   it('says so when masking is off, and changes nothing but the length', async () => {
