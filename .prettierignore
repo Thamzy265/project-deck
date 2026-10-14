@@ -3,3 +3,4 @@ coverage
 pnpm-lock.yaml
 docs/PLAN.md
 examples/
+.claude/worktrees/
