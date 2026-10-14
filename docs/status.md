@@ -23,10 +23,10 @@ Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry re
   - **Fail:** after a hot reload the breakpoint does not pause again. A control run with no daemon fails the same way, so this is upstream behaviour (Flutter tool or Dart VM), not FlutterDeck.
     PM decision, 14 Oct 2026 (PLAN.md M1 Accept line): an upstream Flutter limitation, not part of the check.
   - Evidence: [qa/M1.md](qa/M1.md#breakpoint-check-2026-10-14), `docs/qa/M1/screens/`; video `qa-artifacts/M1/m1-acceptance.mp4`.
-- Gates: developer n/a — no product code · tester n/a — no product code · reviewer n/a — QA scripts and docs only · QA fail on one sub-check (upstream) · PM merge waiting.
+- Gates: developer: rebased onto `main` and recorded the PM result · tester n/a — no product code · reviewer: blocked on F1–F4 (Medium) in the check script, plus Lows F6–F13; all fixed on the branch, re-review waiting · QA fail on one sub-check (upstream, out of scope by PM decision), rerun of the changed script waiting · PM merge waiting.
 - Open findings: none in FlutterDeck. Minor: `GET /api/apps` has no `device` before attach.
-- Decisions: waiting for the PM. Does the M1 criterion "the breakpoint still hits" include "after a hot reload"? The PM's Android Studio result (PM check step 11) informs the decision.
-- Blockers: Developer none · Tester none · Reviewer none · QA PM check steps need the PM's Android Studio · Marketer none · Lead PM decision on the criterion.
+- Decisions: PM, 14 Oct 2026 (PLAN.md M1 Accept line): a breakpoint that does not pause after a hot reload is an upstream Flutter limitation, not part of the check. PM result, 14 Oct 2026: in Android Studio the breakpoint hits while the daemon is attached. PASS.
+- Blockers: Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead none.
 
 ## 2026-10-14 — Sample app (`feat/sample-app`) — waiting for PM merge approval
 
