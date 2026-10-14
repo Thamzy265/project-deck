@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -73,5 +74,28 @@ describe('main.js over stdio', () => {
     const statusText = (status.content as { text: string }[])[0]?.text ?? '';
     expect(JSON.parse(statusText)).toMatchObject({ project: 'shop_app' });
     for (const out of [text, statusText]) expect(out).not.toContain(daemon.token);
+  });
+
+  it('exits cleanly when Claude closes stdin', async () => {
+    const child = spawn(process.execPath, [MAIN, '--project', projectDir], {
+      stdio: ['pipe', 'ignore', 'pipe'],
+      env: { ...process.env, HOME: home, USERPROFILE: home },
+    });
+    let stderr = '';
+    child.stderr.on('data', (chunk: Buffer) => (stderr += chunk.toString('utf8')));
+    const code = await new Promise<number | null>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        child.kill('SIGKILL');
+        reject(new Error('main.js did not exit'));
+      }, 5000);
+      child.once('error', reject);
+      child.once('exit', (c) => {
+        clearTimeout(timer);
+        resolve(c);
+      });
+      setTimeout(() => child.stdin.end(), 300);
+    });
+    expect(code).toBe(0);
+    expect(stderr).not.toContain('Unexpected error');
   });
 });
