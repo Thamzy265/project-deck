@@ -39,6 +39,10 @@ export class Masker {
     this.userRules = new UserRuleRunner(settings.redact ? settings.rules : []);
   }
 
+  get closed(): boolean {
+    return this.userRules.closed;
+  }
+
   get redact(): boolean {
     return this.settings.redact;
   }

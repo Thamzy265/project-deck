@@ -11,7 +11,9 @@ import { VERSION } from '@project-deck/daemon';
 import type { DaemonClient } from './daemon-client.js';
 import { DaemonError } from './daemon-client.js';
 import type { JsonValue, MaskSettings } from './mask/masker.js';
-import { MASKING_OFF, Masker } from './mask/masker.js';
+import type { Masker } from './mask/masker.js';
+import { MASKING_OFF } from './mask/masker.js';
+import { MaskerCache } from './mask/masker-cache.js';
 import { MAX_OUTPUT_ENTRIES, fitLogs } from './output.js';
 import type { LoadedSettings } from './settings.js';
 import { readMaskSettings } from './settings.js';
@@ -39,13 +41,21 @@ export function createDeckServer(opts: DeckServerOptions): DeckServer {
   const maskers = new MaskerCache();
   const server = new McpServer({ name: 'flutterdeck', version: VERSION });
   const annotations = { readOnlyHint: true, openWorldHint: false };
+  /** Holds the masker for the whole call, so a config change can't close it underneath. */
+  const withMasker = async <T>(settings: MaskSettings, use: (m: Masker) => Promise<T>) => {
+    const lease = await maskers.acquire(settings);
+    try {
+      return await use(lease.masker);
+    } finally {
+      lease.release();
+    }
+  };
 
   server.registerTool(
     'deck_status',
     { title: 'FlutterDeck status', description: DECK_STATUS_DESCRIPTION, annotations },
     async () => {
       const settings = await readSettings(opts.projectDir);
-      const masker = await maskers.get(settings.mask);
       let body: { [key: string]: JsonValue };
       try {
         const { value, warnings } = await opts.daemon.status();
@@ -54,7 +64,7 @@ export function createDeckServer(opts: DeckServerOptions): DeckServer {
         // deck_status always answers, so Claude learns why the other tools fail.
         body = { daemon: 'unavailable', problem: errorText(err), warnings: settings.warnings };
       }
-      const masked = await masker.mask(body);
+      const masked = await withMasker(settings.mask, (m) => m.mask(body));
       return json({ ...masked.value, masking: maskingLine(settings.mask, masked.notes) });
     },
   );
@@ -69,7 +79,6 @@ export function createDeckServer(opts: DeckServerOptions): DeckServer {
     },
     async (args: LogQuery) => {
       const settings = await readSettings(opts.projectDir);
-      const masker = await maskers.get(settings.mask);
       const query = GetLogsInput.parse(args);
       const requested = query.limit ?? DEFAULT_LOG_LIMIT;
       const limit = Math.min(requested, MAX_OUTPUT_ENTRIES);
@@ -77,7 +86,7 @@ export function createDeckServer(opts: DeckServerOptions): DeckServer {
       try {
         answer = await opts.daemon.logs({ ...query, limit });
       } catch (err) {
-        const masked = await masker.mask(errorText(err));
+        const masked = await withMasker(settings.mask, (m) => m.mask(errorText(err)));
         return { isError: true, content: [{ type: 'text', text: masked.value }] };
       }
       const warnings = [
@@ -86,7 +95,8 @@ export function createDeckServer(opts: DeckServerOptions): DeckServer {
         ...(requested > limit ? [LIMIT_CAPPED] : []),
       ];
       // Masked before it is cut to size, so the cut never splits a value it should hide.
-      const masked = await masker.mask({ entries: answer.value.entries, warnings });
+      const { entries } = answer.value;
+      const masked = await withMasker(settings.mask, (m) => m.mask({ entries, warnings }));
       const frame = {
         note: UNTRUSTED_NOTE,
         masking: maskingLine(settings.mask, masked.notes),
@@ -138,26 +148,4 @@ function errorText(err: unknown): string {
 
 function json(value: unknown): CallToolResult {
   return { content: [{ type: 'text', text: JSON.stringify(value) }] };
-}
-
-/** One Masker (and rule worker) per distinct settings; replaced when the config changes. */
-class MaskerCache {
-  private key: string | undefined;
-  private masker: Masker | undefined;
-
-  async get(settings: MaskSettings): Promise<Masker> {
-    const key = JSON.stringify(settings);
-    if (this.masker !== undefined && key === this.key) return this.masker;
-    await this.masker?.close();
-    this.key = key;
-    this.masker = new Masker(settings);
-    // The worker's start-up mustn't eat into the first call's 200 ms budget.
-    await this.masker.ready();
-    return this.masker;
-  }
-
-  async close(): Promise<void> {
-    await this.masker?.close();
-    this.masker = undefined;
-  }
 }

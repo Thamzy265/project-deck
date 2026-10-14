@@ -59,6 +59,7 @@ export class UserRuleRunner {
   private starting: Promise<Worker | undefined> | undefined;
   private queue: Promise<unknown> = Promise.resolve();
   private nextId = 0;
+  private isClosed = false;
   private readonly budgetMs: number;
   private readonly startupMs: number;
 
@@ -70,13 +71,17 @@ export class UserRuleRunner {
     this.startupMs = opts.startupMs ?? DEFAULT_STARTUP_MS;
   }
 
+  get closed(): boolean {
+    return this.isClosed;
+  }
+
   get workerStarted(): boolean {
     return this.worker !== undefined || this.starting !== undefined;
   }
 
   /** Starts the worker ahead of the first call, so that call has its whole budget. */
   async ready(): Promise<void> {
-    if (this.rules.length > 0) await this.start();
+    if (this.rules.length > 0 && !this.isClosed) await this.start();
   }
 
   /** Masks every text with every rule, in order. Calls run one after another. */
@@ -90,6 +95,7 @@ export class UserRuleRunner {
   }
 
   async close(): Promise<void> {
+    this.isClosed = true;
     const worker = this.worker ?? (await this.starting);
     this.worker = undefined;
     this.starting = undefined;
@@ -97,6 +103,8 @@ export class UserRuleRunner {
   }
 
   private async runNow(texts: string[]): Promise<UserRuleResult> {
+    // After close nothing would terminate a new worker, so the rules don't run.
+    if (this.isClosed) return { texts, skipped: true };
     const worker = await this.start();
     if (worker === undefined) return { texts, skipped: true };
     const id = this.nextId++;

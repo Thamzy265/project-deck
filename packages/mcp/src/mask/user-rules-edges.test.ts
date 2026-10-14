@@ -76,7 +76,7 @@ describe('user rules under load', () => {
     expect([USER_RULE_MARKER, 'jane']).toContain(result.texts[0]);
   });
 
-  it.fails('BUG-MCP-T9: starts no new worker for a call made after close()', async () => {
+  it('BUG-MCP-T9: starts no new worker for a call made after close()', async () => {
     // The server closes the old Masker when the config changes; a call still using it
     // must not leave a worker behind that nothing terminates.
     const r = runner(['jane']);
