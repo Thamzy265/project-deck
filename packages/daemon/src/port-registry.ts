@@ -1,0 +1,200 @@
+/**
+ * Per-user registry `~/.flutterdeck/ports.json`: project path → dashboard port, plus a
+ * random salt for project ids. It lets `init` give every project its own port even
+ * while no daemon runs, and lets the daemon spot a committed config port that another
+ * project on this machine already uses.
+ */
+import { createHash, randomBytes } from 'node:crypto';
+import { mkdir, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises';
+import { createServer } from 'node:net';
+import { homedir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { z } from 'zod';
+
+export const REGISTRY_DIR = '.flutterdeck';
+export const REGISTRY_FILE = 'ports.json';
+/** Where `init` starts looking. Not 9100: Dart DevTools listens there. */
+export const FIRST_PORT = 9147;
+
+const RegistrySchema = z.object({
+  version: z.literal(1),
+  salt: z.string().min(32),
+  projects: z.record(z.string(), z.number().int().min(1).max(65535)),
+});
+type PortRegistry = z.infer<typeof RegistrySchema>;
+
+export interface PortRegistryOptions {
+  /** The user's home folder; tests pass a temporary one. */
+  homeDir?: string;
+}
+
+export interface AllocateOptions extends PortRegistryOptions {
+  /** Whether nothing listens on the port right now. */
+  isFree?: (port: number) => Promise<boolean>;
+}
+
+export class PortRegistryError extends Error {}
+
+/** The port in a committed config belongs to another project on this machine. */
+export class PortClaimedError extends Error {
+  constructor(
+    readonly port: number,
+    readonly ownerId: string,
+  ) {
+    super(
+      `Port ${port} in .flutterdeck/config.json belongs to another project on this machine (project ${ownerId}). Run \`flutterdeck init\` in this project to pick a new port.`,
+    );
+  }
+}
+
+export function registryPath(homeDir: string): string {
+  return join(homeDir, REGISTRY_DIR, REGISTRY_FILE);
+}
+
+/** First 12 hex characters of SHA-256(salt + project path): stable, and reveals no path. */
+export async function projectIdentity(
+  projectDir: string,
+  opts: PortRegistryOptions = {},
+): Promise<string> {
+  const registry = await load(home(opts));
+  return idFor(registry.salt, await projectKey(projectDir));
+}
+
+/** The project's registered port, or the first free unregistered one from 9147, recorded. */
+export async function allocatePort(
+  projectDir: string,
+  opts: AllocateOptions = {},
+): Promise<number> {
+  const homeDir = home(opts);
+  const isFree = opts.isFree ?? canListen;
+  const registry = await load(homeDir);
+  const key = await projectKey(projectDir);
+  const existing = registry.projects[key];
+  if (existing !== undefined) return existing;
+  const taken = new Set(Object.values(registry.projects));
+  for (let port = FIRST_PORT; port <= 65535; port++) {
+    if (taken.has(port) || !(await isFree(port))) continue;
+    registry.projects[key] = port;
+    await save(homeDir, registry);
+    return port;
+  }
+  throw new PortRegistryError(`No free port from ${FIRST_PORT} upwards`);
+}
+
+/**
+ * Checked at daemon start for a config port. Throws PortClaimedError if another project
+ * holds it; records it when no project does, so `init` elsewhere won't hand it out.
+ */
+export async function claimConfigPort(
+  projectDir: string,
+  port: number,
+  opts: PortRegistryOptions = {},
+): Promise<void> {
+  const homeDir = home(opts);
+  const registry = await load(homeDir);
+  const key = await projectKey(projectDir);
+  for (const [other, otherPort] of Object.entries(registry.projects)) {
+    if (other !== key && otherPort === port) {
+      throw new PortClaimedError(port, idFor(registry.salt, other));
+    }
+  }
+  if (registry.projects[key] === undefined) {
+    registry.projects[key] = port;
+    await save(homeDir, registry);
+  }
+}
+
+function home(opts: PortRegistryOptions): string {
+  return opts.homeDir ?? homedir();
+}
+
+function idFor(salt: string, key: string): string {
+  return createHash('sha256')
+    .update(salt + key)
+    .digest('hex')
+    .slice(0, 12);
+}
+
+/** Symlinks resolved; case folded on Windows, whose paths are case-insensitive. */
+async function projectKey(projectDir: string): Promise<string> {
+  let path = resolve(projectDir);
+  try {
+    path = await realpath(path);
+  } catch {
+    // A folder that doesn't exist yet keeps its resolved path.
+  }
+  return process.platform === 'win32' ? path.toLowerCase() : path;
+}
+
+async function load(homeDir: string): Promise<PortRegistry> {
+  const path = registryPath(homeDir);
+  let text: string;
+  try {
+    text = await readFile(path, 'utf8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+      throw new PortRegistryError(
+        `${path} can't be read (${String((err as NodeJS.ErrnoException).code)})`,
+      );
+    }
+    return create(homeDir);
+  }
+  let parsed;
+  try {
+    parsed = RegistrySchema.safeParse(JSON.parse(text));
+  } catch {
+    parsed = undefined;
+  }
+  if (parsed?.success !== true) {
+    // Replacing it would change every project id and forget every port, so leave it be.
+    throw new PortRegistryError(
+      `${path} is damaged. Fix or delete it, then run \`flutterdeck init\`.`,
+    );
+  }
+  return parsed.data;
+}
+
+/**
+ * Exclusive create, so two daemons starting at once on a new machine can't each write
+ * a different salt; the loser reads the winner's file.
+ */
+async function create(homeDir: string): Promise<PortRegistry> {
+  const registry: PortRegistry = {
+    version: 1,
+    salt: randomBytes(32).toString('base64url'),
+    projects: {},
+  };
+  await mkdir(join(homeDir, REGISTRY_DIR), { recursive: true, mode: 0o700 });
+  try {
+    await writeFile(registryPath(homeDir), serialise(registry), { mode: 0o600, flag: 'wx' });
+    return registry;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'EEXIST') return load(homeDir);
+    throw err;
+  }
+}
+
+/** A fresh 0600 temp file renamed into place, so readers never see half a file. */
+async function save(homeDir: string, registry: PortRegistry): Promise<void> {
+  const path = registryPath(homeDir);
+  const tmp = `${path}.${randomBytes(6).toString('hex')}.tmp`;
+  try {
+    await writeFile(tmp, serialise(registry), { mode: 0o600, flag: 'wx' });
+    await rename(tmp, path);
+  } catch (err) {
+    await rm(tmp, { force: true });
+    throw err;
+  }
+}
+
+function serialise(registry: PortRegistry): string {
+  return JSON.stringify(registry, null, 2) + '\n';
+}
+
+function canListen(port: number): Promise<boolean> {
+  return new Promise((resolveFree) => {
+    const server = createServer();
+    server.once('error', () => resolveFree(false));
+    server.listen(port, '127.0.0.1', () => server.close(() => resolveFree(true)));
+  });
+}
