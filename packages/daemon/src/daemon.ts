@@ -147,7 +147,7 @@ async function startLocked(opts: DaemonOptions): Promise<Daemon> {
     projectId,
     projectName: basename(opts.projectDir),
     dashboard,
-    shutdown: () => void stop(),
+    shutdown: () => void stop().catch((err: unknown) => log('Stopping failed', err)),
   });
   const listener = getRequestListener(api.fetch);
   const server = createServer((req, res) => void listener(req, res));
@@ -203,11 +203,18 @@ async function startLocked(opts: DaemonOptions): Promise<Daemon> {
         server.close(() => resolve());
         server.closeAllConnections();
       });
-      await manager.stop();
-      await regexFilter.close();
-      stopActivity();
-      await removeRuntime(opts.projectDir, token);
-      resolveClosed();
+      try {
+        await manager.stop();
+      } finally {
+        // A connector that fails to stop must not leave a stale runtime.json behind
+        // or keep main.js waiting on `closed` for ever.
+        await regexFilter.close();
+        stopActivity();
+        await removeRuntime(opts.projectDir, token).catch((err: unknown) =>
+          log("Couldn't remove runtime.json", err),
+        );
+        resolveClosed();
+      }
     })();
     return stopping;
   }
