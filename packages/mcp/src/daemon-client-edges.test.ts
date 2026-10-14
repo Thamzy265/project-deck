@@ -185,7 +185,7 @@ describe('odd answers from the daemon', () => {
     expect(performance.now() - start).toBeLessThan(2000);
   });
 
-  it.fails('BUG-MCP-T10: calls a body that never ends a timeout, not a wrong answer', async () => {
+  it('BUG-MCP-T10: calls a body that never ends a timeout, not a wrong answer', async () => {
     await slowBody();
     const err = await rejection(client({ timeoutMs: 200 }).status());
     expect(err.message).toBe("FlutterDeck daemon didn't answer GET /api/status within 0.2 s");

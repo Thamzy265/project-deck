@@ -168,6 +168,7 @@ export class DaemonClient {
     const route = `${method} ${path.split('?')[0] ?? path}`;
     let res: Response;
     let body: unknown;
+    const signal = AbortSignal.timeout(this.timeoutMs);
     try {
       // Fixed loopback address: never a host from a file, so the token stays local.
       res = await fetch(`http://127.0.0.1:${conn.port}${path}`, {
@@ -175,11 +176,15 @@ export class DaemonClient {
         headers: conn.token === undefined ? {} : { [TOKEN_HEADER]: conn.token },
         // fetch would forward the token header to wherever a redirect points.
         redirect: 'manual',
-        signal: AbortSignal.timeout(this.timeoutMs),
+        signal,
       });
-      body = await res.json().catch(() => undefined);
-    } catch (err) {
-      if (err instanceof Error && err.name === 'TimeoutError') {
+      // A body that is not JSON is a wrong answer; one that stalls is a timeout.
+      body = await res.json().catch((err: unknown) => {
+        if (signal.aborted) throw err;
+        return undefined;
+      });
+    } catch {
+      if (signal.aborted) {
         throw new DaemonError(
           `FlutterDeck daemon didn't answer ${route} within ${this.timeoutMs / 1000} s`,
         );
