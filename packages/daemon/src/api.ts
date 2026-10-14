@@ -1,4 +1,4 @@
-import type { EventBus, LogQuery, LoginWindowResult, Status } from '@project-deck/core';
+import type { EventBus, Health, LogQuery, LoginWindowResult, Status } from '@project-deck/core';
 import { DEFAULT_LOG_LIMIT, GetLogsInput, HookEventInput } from '@project-deck/core';
 import type { Context, MiddlewareHandler } from 'hono';
 import { Hono } from 'hono';
@@ -120,7 +120,7 @@ export function createApi(ctx: ApiContext): Hono<DeckEnv> {
 
   // Unauthenticated so the CLI can tell "not running" from "wrong token". Reveals nothing else.
   api.get('/api/health', (c) =>
-    c.json({
+    c.json<Health>({
       ok: true,
       name: 'project-deck',
       version: ctx.version,

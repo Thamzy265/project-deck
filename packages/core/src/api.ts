@@ -72,6 +72,19 @@ export const HookEventInput = z.discriminatedUnion('type', [
 ]);
 export type HookEvent = z.infer<typeof HookEventInput>;
 
+/**
+ * Answer of `GET /api/health`, the one route without auth. Clients read it before
+ * sending the token, so they never hand it to another project's daemon on the port.
+ */
+export const HealthResponse = z.object({
+  ok: z.literal(true),
+  name: z.literal('project-deck'),
+  version: z.string(),
+  /** Salted hash of the project path; absent when the daemon has no port registry. */
+  projectId: z.string().optional(),
+});
+export type Health = z.infer<typeof HealthResponse>;
+
 /** Answer of `GET /api/status`. */
 export const StatusResponse = z.object({
   version: z.string(),
