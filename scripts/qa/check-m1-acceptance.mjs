@@ -2,6 +2,8 @@
 // End-to-end check of the M1 acceptance criterion: the daemon attaches next to a debugger without
 // breaking it. Needs the sample app from `scripts/qa/android-sample-app.sh up`.
 //
+// macOS and Linux only: it needs the bash script above and looks for `adb` without `.exe`.
+//
 // A second, independent VM service client stands in for the IDE debugger. It connects first and sets
 // a breakpoint, as the IDE would. Then the daemon (real mode, temp project) lists and attaches to the
 // app, the sample app's source is edited and `POST /api/reload` runs, and the breakpoint must still
