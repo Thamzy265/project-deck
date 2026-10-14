@@ -120,7 +120,7 @@ After every finished task the PM gets numbered steps with copy-paste commands, t
 Lead:
 
 - "Done" means ticked in `docs/PLAN.md` on `main`. Work on a branch is in progress.
-- Merge through a PR. Ask the PM for merge approval when the reviewer approves, not before.
+- Merge through a PR. The lead merges a PR when the reviewer approves, CI passes and QA passes, then logs the merge in `docs/status.md` (PM decision, 14 Oct 2026). A confirmed finding that is not fixed still needs the PM's dated decision before the merge.
 - After a merge, tick the box in `docs/PLAN.md` and update "Current status" in this file.
 - Each PM update lists blockers for every role, with "none" where there are none.
 
@@ -204,4 +204,4 @@ Follows [GitHub flow](https://docs.github.com/en/get-started/using-github/github
 
 ## Current status
 
-- **M1 in progress.** Done: scaffold, `core`, daemon (HTTP + WS API, token, localhost checks, default port 9147 with fallback), `connector-dart`, `logs-android`, `.mcp.json` example. Next: the M1 acceptance check (a breakpoint in the IDE still hits while the daemon is attached).
+- **M1 in progress.** Done: scaffold, `core`, daemon (HTTP + WS API, token, localhost checks, default port 9147 with fallback), `connector-dart`, `logs-android`, `.mcp.json` example, sample app (`examples/sample_app`). Next: a Flutter CI job for the sample app, the M1 acceptance PR, and the PM's breakpoint check in Android Studio (`docs/qa/M1.md`).
