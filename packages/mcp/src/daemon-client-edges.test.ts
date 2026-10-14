@@ -244,9 +244,10 @@ describe('the daemon going away', () => {
       readyTimeoutMs: 200,
     });
     const err = await rejection(c.status());
-    // The first daemon still answers health, so the retry reaches it and fails again.
+    // The first daemon still answers health, so each retry reaches it and fails again.
+    // One call starts the daemon at most twice (QA B3-2, lead 14 Oct 2026).
     expect(err.message).toBe(NOT_RUNNING);
-    expect(spawned).toBe(1);
+    expect(spawned).toBe(2);
   });
 
   it('spawns once for a storm of 20 calls, and never more than once per call', async () => {

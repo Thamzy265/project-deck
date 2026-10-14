@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, rm } from 'node:fs/promises';
+import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -254,6 +254,61 @@ describe('DaemonClient when the daemon is down', () => {
     const err = await rejection(c.status());
     expect(err.message).toContain("Another project's FlutterDeck (project bbbbbbbbbbbb)");
     expect(Date.now() - start).toBeLessThan(2000);
+  });
+
+  it("gives the daemon's own reason at once when it exits without starting", async () => {
+    const c = client({
+      readyTimeoutMs: 5000,
+      spawnDaemon: (_dir, onExit) => {
+        void writeFile(
+          join(projectDir, '.flutterdeck', 'daemon.log'),
+          'project-deck daemon starting\nAnother program uses port 9147. Change "port" in .flutterdeck/config.json.\n\n',
+        ).then(() => onExit(1));
+      },
+    });
+    const start = Date.now();
+    const err = await rejection(c.status());
+    expect(err.message).toBe(
+      'FlutterDeck daemon couldn\'t start: Another program uses port 9147. Change "port" in .flutterdeck/config.json.',
+    );
+    expect(Date.now() - start).toBeLessThan(2000);
+  });
+
+  it('starts it once more when it stops again right after starting', async () => {
+    let spawned = 0;
+    const c = client({
+      spawnDaemon: () => {
+        spawned++;
+        void fake().then((f) => {
+          // The first daemon goes away on its first call; the second one stays.
+          if (spawned === 1) {
+            f.route('GET', '/api/status', () => {
+              void f.stop();
+              return 'hang';
+            });
+          }
+        });
+      },
+    });
+    expect((await c.status()).value.projectName).toBe('shop_app');
+    expect(spawned).toBe(2);
+  });
+
+  it('starts it at most twice for one call', async () => {
+    let spawned = 0;
+    const c = client({
+      spawnDaemon: () => {
+        spawned++;
+        void fake().then((f) => {
+          f.route('GET', '/api/status', () => {
+            void f.stop();
+            return 'hang';
+          });
+        });
+      },
+    });
+    expect((await rejection(c.status())).message).toBe(NOT_RUNNING);
+    expect(spawned).toBe(2);
   });
 
   it("says it isn't running when it doesn't come up in time", async () => {

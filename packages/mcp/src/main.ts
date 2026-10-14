@@ -23,8 +23,11 @@ const log = (message: string) => process.stderr.write(`flutterdeck mcp: ${messag
 const daemon = new DaemonClient({
   projectDir,
   version: DECK_VERSION,
-  spawnDaemon: (dir) =>
-    spawnDaemon(dir, { onError: (err) => log(`Couldn't start the daemon: ${err.message}`) }),
+  spawnDaemon: (dir, onExit) =>
+    spawnDaemon(dir, {
+      onError: (err) => log(`Couldn't start the daemon: ${err.message}`),
+      onExit,
+    }),
 });
 const deck = createDeckServer({ projectDir, daemon });
 await deck.server.connect(new StdioServerTransport());

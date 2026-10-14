@@ -1,6 +1,8 @@
 import { EventEmitter } from 'node:events';
 import { existsSync } from 'node:fs';
-import { sep } from 'node:path';
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { SpawnFn } from './spawn.js';
 import { daemonMainPath, spawnDaemon } from './spawn.js';
@@ -37,5 +39,33 @@ describe('spawnDaemon', () => {
     // A failed spawn arrives as an 'error' event; it must not crash the server.
     child.emit('error', new Error('spawn EACCES'));
     expect(errors).toHaveLength(1);
+  });
+
+  it('sends the daemon output to a private .flutterdeck/daemon.log, new at each start', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'deck-spawn-'));
+    try {
+      await mkdir(join(dir, '.flutterdeck'));
+      const log = join(dir, '.flutterdeck', 'daemon.log');
+      await writeFile(log, 'old run\n', { mode: 0o644 });
+      let stdio: unknown;
+      const child = Object.assign(new EventEmitter(), { unref: () => undefined });
+      const spawn: SpawnFn = (_command, _args, options) => {
+        stdio = options.stdio;
+        return child;
+      };
+      let exit: number | null | undefined;
+      spawnDaemon(dir, { spawn, onExit: (code) => (exit = code) });
+      expect(Array.isArray(stdio)).toBe(true);
+      const [stdin, stdout, stderr] = stdio as unknown[];
+      expect(stdin).toBe('ignore');
+      expect(typeof stdout).toBe('number');
+      expect(stderr).toBe(stdout);
+      expect(await readFile(log, 'utf8')).toBe('');
+      if (process.platform !== 'win32') expect((await stat(log)).mode & 0o777).toBe(0o600);
+      child.emit('exit', 3);
+      expect(exit).toBe(3);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });

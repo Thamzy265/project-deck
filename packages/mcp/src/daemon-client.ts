@@ -13,7 +13,8 @@ import {
   TOKEN_HEADER,
 } from '@project-deck/core';
 import { configPath, readProjectIdentity, readRuntime } from '@project-deck/core/node';
-import { access } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
+import { daemonLogPath } from './spawn.js';
 import { setTimeout as sleep } from 'node:timers/promises';
 import type { z } from 'zod';
 
@@ -23,6 +24,9 @@ const TOKEN_REJECTED =
   'FlutterDeck daemon rejected the token in .flutterdeck/runtime.json. Run `flutterdeck stop`, then try again.';
 export const DEFAULT_TIMEOUT_MS = 5000;
 export const DEFAULT_READY_TIMEOUT_MS = 10_000;
+const MAX_STARTS = 2;
+/** The daemon's message is repeated to Claude: keep it short. */
+const MAX_REASON = 300;
 
 /** A message that is safe to show to Claude: it never holds the token. */
 export class DaemonError extends Error {}
@@ -34,8 +38,8 @@ export interface DaemonClientOptions {
   projectDir: string;
   /** This MCP server's version, compared with the daemon's. */
   version: string;
-  /** Starts the daemon in the background. Must not wait for it. */
-  spawnDaemon: (projectDir: string) => void;
+  /** Starts the daemon in the background, calling `onExit` if it ends. Must not wait for it. */
+  spawnDaemon: (projectDir: string, onExit: (code: number | null) => void) => void;
   /** This project's id as /api/health shows it; undefined skips the check. */
   projectId?: () => Promise<string | undefined>;
   timeoutMs?: number;
@@ -60,7 +64,7 @@ export class DaemonClient {
   private readonly readyTimeoutMs: number;
   private readonly pollMs: number;
   private ownId: string | undefined;
-  private starting: Promise<boolean> | undefined;
+  private starting: Promise<true | string> | undefined;
 
   constructor(private readonly opts: DaemonClientOptions) {
     this.timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -96,7 +100,7 @@ export class DaemonClient {
     // Lead decision 14 Oct 2026: only a folder `flutterdeck init` set up gets a daemon,
     // so opening Claude in any other folder starts nothing and writes nothing there.
     if (!(await this.isSetUp())) throw new DaemonError(NOT_SET_UP);
-    for (let attempt = 0; ; attempt++) {
+    for (let starts = 0; ; starts++) {
       const conn = await this.connect();
       if (conn !== undefined) {
         try {
@@ -105,8 +109,11 @@ export class DaemonClient {
           if (!(err instanceof Unreachable)) throw withWarnings(err, conn.warnings);
         }
       }
-      // Gone: start it and retry once.
-      if (attempt > 0 || !(await this.start())) throw new DaemonError(NOT_RUNNING);
+      // Gone: start it and retry. Twice at most, for a daemon that stopped again
+      // between its start (perhaps one another call was waiting for) and this call.
+      if (starts >= MAX_STARTS) throw new DaemonError(NOT_RUNNING);
+      const started = await this.start();
+      if (started !== true) throw new DaemonError(started);
     }
   }
 
@@ -164,21 +171,31 @@ export class DaemonClient {
     return id;
   }
 
-  /** Starts the daemon once for any number of waiting calls; true once it answers. */
-  private start(): Promise<boolean> {
-    this.starting ??= (async () => {
+  /**
+   * Starts the daemon once for any number of waiting calls. True once it answers;
+   * otherwise why not, with the daemon's own last message when it exited.
+   */
+  private start(): Promise<true | string> {
+    this.starting ??= (async (): Promise<true | string> => {
+      const child = { exited: false };
       try {
-        this.opts.spawnDaemon(this.opts.projectDir);
+        this.opts.spawnDaemon(this.opts.projectDir, () => {
+          child.exited = true;
+        });
       } catch {
-        return false;
+        return NOT_RUNNING;
       }
       const deadline = Date.now() + this.readyTimeoutMs;
       while (Date.now() < deadline) {
         await sleep(this.pollMs);
         // Throws at once when the daemon that answers belongs to another project.
         if ((await this.connect()) !== undefined) return true;
+        // Another daemon for this project may have won the start: the check above saw it.
+        if (child.exited) break;
       }
-      return false;
+      if (!child.exited) return NOT_RUNNING;
+      const line = await lastLogLine(daemonLogPath(this.opts.projectDir));
+      return line === undefined ? NOT_RUNNING : `FlutterDeck daemon couldn't start: ${line}`;
     })().finally(() => (this.starting = undefined));
     return this.starting;
   }
@@ -233,4 +250,21 @@ function withWarnings(err: unknown, warnings: string[]): DaemonError {
   const message =
     err instanceof DaemonError ? err.message : `FlutterDeck daemon call failed: ${String(err)}`;
   return new DaemonError([message, ...warnings].join('\n'));
+}
+
+/** The last non-empty line of the daemon's start-up log: its reason for stopping. */
+async function lastLogLine(path: string): Promise<string | undefined> {
+  let text: string;
+  try {
+    text = await readFile(path, 'utf8');
+  } catch {
+    return undefined;
+  }
+  const line = text
+    .slice(-16_384)
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l !== '')
+    .at(-1);
+  return line === undefined ? undefined : line.slice(0, MAX_REASON);
 }
