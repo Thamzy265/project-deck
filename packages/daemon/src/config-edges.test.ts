@@ -42,7 +42,7 @@ describe('readConfig: file contents', () => {
 
   // BUG-T4: Windows editors (PowerShell 5 Set-Content -Encoding UTF8, older Notepad) save a
   // UTF-8 byte order mark. The file is refused with an invisible "Unexpected token".
-  it.fails('reads a file that starts with a UTF-8 byte order mark (BUG-T4)', async () => {
+  it('reads a file that starts with a UTF-8 byte order mark (BUG-T4)', async () => {
     await write(Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from('{"version":1}')]));
     expect(await readConfig(projectDir)).toEqual(DEFAULT_CONFIG);
   });
