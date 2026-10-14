@@ -1,6 +1,6 @@
 # M2 dashboard — UI spec
 
-Date: 2026-10-14 — Design note: [design/m2-dashboard.md](../design/m2-dashboard.md) — Status: draft, waiting for PM
+Date: 2026-10-14 — Design note: [design/m2-dashboard.md](../design/m2-dashboard.md) — Status: approved by PM 14 Oct 2026
 
 ## User and task
 

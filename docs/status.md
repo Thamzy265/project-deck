@@ -2,6 +2,19 @@
 
 Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
 
+## 2026-10-14 — M2 plan — approved by PM
+
+- Changed: M2 plan of record: [design note](design/m2-dashboard.md), [UI spec](ui/m2-dashboard.md), [deck](slides/m2-dashboard.html), [ADR 0001](adr/0001-dashboard-login-cookie.md), [ADR 0002](adr/0002-fixed-dashboard-port.md). Size: large (new UI, browser trust boundary, MCP server, hooks, new notifier commands, logs with personal data sent to Claude). Claude Code formats checked on code.claude.com and npm on 14 Oct 2026.
+- Gates: plan stage — PM approved the deck and design.
+- Open findings: none.
+- Decisions (PM, 14 Oct 2026, chosen options word for word):
+  - D1: "Cookie the page can't read (Recommended)".
+  - D2: "Fixed port per project (Recommended)".
+  - D3: "Allow 3 fixed notifier commands (Recommended)". This changes the security rule on commands the daemon runs; CLAUDE.md and PLAN.md updated.
+  - D4: "Mask by default (Recommended)".
+- Next: batch 1 `feat/dashboard-auth` (config file and fixed port, cookie login, activity feed, security headers).
+- Blockers: Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead none.
+
 ## 2026-10-14 — Sample app merged; PM decisions
 
 - Merged: PR #14 (`examples/sample_app`). CI passes on Linux, macOS and Windows. Local: `pnpm check` 384 tests, `flutter analyze` clean, `flutter test` 24 tests.

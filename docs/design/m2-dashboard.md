@@ -1,6 +1,6 @@
 # M2 — Dashboard in Claude Desktop — design note
 
-Date: 2026-10-14 — Size: large — new UI, new browser trust boundary (dashboard login), new MCP server, Claude Code hooks, new commands the daemon runs (OS notifications), app logs that may hold personal data sent to Claude — Phase: MVP — Status: draft, waiting for PM
+Date: 2026-10-14 — Size: large — new UI, new browser trust boundary (dashboard login), new MCP server, Claude Code hooks, new commands the daemon runs (OS notifications), app logs that may hold personal data sent to Claude — Phase: MVP — Status: approved by PM 14 Oct 2026
 
 ## Context
 
@@ -127,7 +127,7 @@ App logs can hold the personal data of the app's end users (names, emails, token
 
 ## Decision
 
-Waiting for PM on D1–D4. Recommendations: D1 A, D2 A, D3 A, D4 A. D1 and D2 get ADRs once decided (they are hard to reverse once users have `launch.json` entries and dashboards open).
+PM decisions, 14 Oct 2026: D1 A (cookie the page can't read, [ADR 0001](../adr/0001-dashboard-login-cookie.md)), D2 A (fixed port per project, [ADR 0002](../adr/0002-fixed-dashboard-port.md)), D3 A (three fixed notifier commands), D4 A (mask by default; documented as the developer's own processing).
 
 ## Failure plan
 
