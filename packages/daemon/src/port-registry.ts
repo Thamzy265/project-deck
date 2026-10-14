@@ -83,7 +83,7 @@ export async function allocatePort(
 
 /**
  * Checked at daemon start for a config port. Throws PortClaimedError if another project
- * holds it; records it when no project does, so `init` elsewhere won't hand it out.
+ * holds it; otherwise records it for this project, so `init` won't hand it out elsewhere.
  */
 export async function claimConfigPort(
   projectDir: string,
@@ -98,7 +98,8 @@ export async function claimConfigPort(
       throw new PortClaimedError(port, idFor(registry.salt, other));
     }
   }
-  if (registry.projects[key] === undefined) {
+  // The config is the source of truth for this project's port, also after a manual edit.
+  if (registry.projects[key] !== port) {
     registry.projects[key] = port;
     await save(homeDir, registry);
   }

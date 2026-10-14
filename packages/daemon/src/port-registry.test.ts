@@ -117,6 +117,13 @@ describe('claimConfigPort', () => {
     expect(await allocatePort(projectB, { homeDir, isFree: allFree })).toBe(9147);
   });
 
+  it('follows a port the user changed in the config, so init never hands out the old one twice', async () => {
+    await claimConfigPort(projectA, 9200, { homeDir });
+    await claimConfigPort(projectA, 9201, { homeDir });
+    expect(Object.values((await registryFile()).projects)).toEqual([9201]);
+    expect(await allocatePort(projectA, { homeDir, isFree: allFree })).toBe(9201);
+  });
+
   it('refuses a port that belongs to another project and says to run init', async () => {
     const port = await allocatePort(projectA, { homeDir, isFree: allFree });
     const err = await claimConfigPort(projectB, port, { homeDir }).catch((e: unknown) => e);
