@@ -107,7 +107,7 @@ Project rules set paths, commands and formats, and add rules. They never relax a
 - Check command: `pnpm check`.
 - Run command: `pnpm build`, then `node packages/daemon/dist/main.js` (fake mode: add `--fake`).
 - End-to-end tools: Playwright for the dashboard (M2, web). For app flows, the existing scripted checks: `scripts/qa/android-sample-app.sh up|down` and `node scripts/qa/check-android-logs.mjs`. Maestro only if a later item needs it.
-- Approved tools: none yet.
+- Approved tools: Playwright Chromium — `pnpm exec playwright install chromium` (into `~/Library/Caches/ms-playwright`) — approved 2026-10-14.
 - Project phase: `MVP` (until the M5 release).
 - Privacy regions: UK + EU. App logs and Drift databases may hold the personal data of the app's end users. Treat them as personal data, and never log or return them beyond what the feature needs.
 
@@ -205,4 +205,4 @@ Follows [GitHub flow](https://docs.github.com/en/get-started/using-github/github
 ## Current status
 
 - **M1 done** (14 Oct 2026): scaffold, `core`, daemon, `connector-dart`, `logs-android`, `.mcp.json` example, sample app, acceptance check.
-- **M2 in progress.** Plan of record: `docs/design/m2-dashboard.md`, `docs/ui/m2-dashboard.md`, ADRs 0001–0002. Next: batch 1 `feat/dashboard-auth`.
+- **M2 in progress.** Plan of record: `docs/design/m2-dashboard.md`, `docs/ui/m2-dashboard.md`, ADRs 0001–0003. Done: batch 1 `feat/dashboard-auth` (PR #20: config, port registry, cookie login with login window, activity feed, external reloads). Next: batch 2 `feat/dashboard`.
