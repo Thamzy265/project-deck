@@ -445,3 +445,4 @@ One line per deferred item, in the format `- <what> — <why> — trigger: <meas
 - `flutterdeck init --undo` — `init` edits `.gitignore` and `launch.json`, and undoing by hand is error-prone — trigger: 3 user reports of needing to undo `init` — noted 2026-10-14 by lead
 - Logs kept across daemon restarts — logs are memory only today — trigger: 3 user requests for logs after restarting the daemon — noted 2026-10-14 by lead
 - Several projects in one dashboard — one daemon per project today — trigger: 3 user requests to see two projects in one pane — noted 2026-10-14 by lead
+- File lock around `~/.flutterdeck/ports.json` updates — two daemons of different projects that start in the same instant can each rewrite the file, and one registration is lost (the salt is safe: it is created with an exclusive write) — trigger: 1 user report of two projects given the same port by `init` — noted 2026-10-14 by developer
