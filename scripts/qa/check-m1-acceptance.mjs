@@ -443,6 +443,12 @@ try {
   const reloadStart = Date.now();
   if (CONTROL) {
     const method = services.get('reloadSources');
+    must(
+      'reloadSources service registered',
+      typeof method === 'string',
+      method ??
+        'the Flutter tool did not register reloadSources; is the app started by flutter run?',
+    );
     const reload = await debuggerClient.call(method, { isolateId }, 30_000).catch((e) => e);
     record(
       'reload via Flutter tool service',
