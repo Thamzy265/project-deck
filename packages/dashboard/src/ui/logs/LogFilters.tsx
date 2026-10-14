@@ -1,3 +1,4 @@
+import type { SearchStatus } from '../../search/useRegexSearch.js';
 import type { LogLevel } from '@project-deck/core';
 import type { LogFilters as Filters } from '../../state/logs.js';
 import { MAX_SEARCH_LENGTH, compileSearch } from '../../state/logs.js';
@@ -15,14 +16,16 @@ function isLevel(value: string): value is LogLevel | 'all' {
   return LEVELS.some((l) => l.value === value);
 }
 
-function searchError(search: string, tooSlow: boolean): string | undefined {
+function searchError(search: string, status: SearchStatus): string | undefined {
   const compiled = compileSearch(search);
   if (!compiled.ok) {
     return compiled.reason === 'unsafe'
       ? 'That pattern could freeze the page. Try a simpler one.'
       : "That pattern isn't valid";
   }
-  return tooSlow ? 'That search took too long and was stopped.' : undefined;
+  if (status === 'too-slow') return 'That search took too long and was stopped.';
+  if (status === 'error') return "Search isn't working. Reload the page.";
+  return undefined;
 }
 
 export function LogFilterBar({
@@ -30,16 +33,16 @@ export function LogFilterBar({
   onChange,
   menuOpen,
   onToggleMenu,
-  tooSlow = false,
+  searchStatus = 'idle',
 }: {
   filters: Filters;
   onChange: (f: Filters) => void;
   menuOpen: boolean;
   onToggleMenu: () => void;
-  /** The last search pass ran past its time budget and was stopped. */
-  tooSlow?: boolean;
+  /** How the pattern search in the worker is going. */
+  searchStatus?: SearchStatus;
 }) {
-  const error = searchError(filters.search, tooSlow);
+  const error = searchError(filters.search, searchStatus);
   const invalid = error !== undefined;
   return (
     <div className="flex flex-wrap items-start gap-2 p-2">

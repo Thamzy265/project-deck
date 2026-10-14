@@ -119,8 +119,8 @@ test('BUG-M2-T1: a slow pattern the check misses is stopped in the worker after 
   await expect(page.getByText('That search took too long and was stopped.')).toBeVisible();
   await expect(search).toHaveAttribute('aria-invalid', 'true');
   expect(await responsive(page, 1_000)).toBe(true);
-  // The last good results stay: nothing was filtered yet.
-  await expect(list.getByText('Tap 1')).toBeVisible();
+  // No result for this pattern, so no lines: never the unfiltered list (review C3).
+  await expect(list).toBeHidden();
   // A fresh worker answers the next search.
   await search.fill('tap');
   await expect(page.getByText('That search took too long and was stopped.')).toBeHidden();

@@ -4,6 +4,7 @@ import { useDeck } from '../../state/DeckProvider.js';
 import type { LogFilters } from '../../state/logs.js';
 import { NO_FILTERS, compileSearch, filterLogs, filtersActive } from '../../state/logs.js';
 import type { RegexRunner } from '../../search/runner.js';
+import type { SearchStatus } from '../../search/useRegexSearch.js';
 import { useRegexSearch } from '../../search/useRegexSearch.js';
 import { ConfirmDialog } from '../ConfirmDialog.js';
 import { Skeleton } from '../Skeleton.js';
@@ -39,7 +40,7 @@ export function LogsPanel(props: LogsPanelProps) {
   // Level, source, tag and time here; the pattern in the search worker.
   const base = useMemo(() => filterLogs(all, filters, reloadMark), [all, filters, reloadMark]);
   const pattern = compileSearch(filters.search).ok ? filters.search : '';
-  const { shown, tooSlow } = useRegexSearch(props.search, base, pattern);
+  const { shown, status: searchStatus } = useRegexSearch(props.search, base, pattern);
   const tags = useMemo(() => {
     const set = new Set<string>();
     for (const e of all) if (e.tag !== undefined && set.size < MAX_TAGS) set.add(e.tag);
@@ -75,7 +76,7 @@ export function LogsPanel(props: LogsPanelProps) {
           onChange={onFiltersChange}
           menuOpen={menuOpen}
           onToggleMenu={() => setMenuOpen(!menuOpen)}
-          tooSlow={tooSlow}
+          searchStatus={searchStatus}
         />
       </div>
       {menuOpen && (
@@ -115,6 +116,7 @@ export function LogsPanel(props: LogsPanelProps) {
       </div>
       <LogBody
         shown={shown}
+        searchStatus={searchStatus}
         filtersOn={active}
         onClearFilters={() => onFiltersChange(NO_FILTERS)}
         following={!pause.paused}
@@ -145,6 +147,7 @@ export function LogsPanel(props: LogsPanelProps) {
 
 function LogBody(p: {
   shown: ReturnType<typeof filterLogs>;
+  searchStatus: SearchStatus;
   filtersOn: boolean;
   onClearFilters: () => void;
   following: boolean;
@@ -165,6 +168,13 @@ function LogBody(p: {
         </button>
       </p>
     );
+  }
+  if (p.shown.length === 0 && p.searchStatus === 'searching') {
+    return <Skeleton label="Searching logs" />;
+  }
+  // The message under the search box says why; an empty-logs hint would mislead.
+  if (p.shown.length === 0 && (p.searchStatus === 'too-slow' || p.searchStatus === 'error')) {
+    return null;
   }
   if (p.shown.length === 0) {
     return (
