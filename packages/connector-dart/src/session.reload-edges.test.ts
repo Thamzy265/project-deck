@@ -193,7 +193,7 @@ describe('IsolateReload from others: timing', () => {
   // BUG-T2: JsonRpcClient.close() marks the client closed but still delivers messages
   // that arrive while the WebSocket is CLOSING, so a detached session keeps emitting.
   // The AppManager unsubscribes before detaching, so Activity is safe today.
-  it.fails('reports nothing after detach (BUG-T2)', async () => {
+  it('reports nothing after detach (BUG-T2)', async () => {
     const { server, session, results } = await attach({ graceMs: 0 });
     await session.detach();
     server.notify(isolateReloadEvent());

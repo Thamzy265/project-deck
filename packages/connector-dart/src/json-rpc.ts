@@ -191,6 +191,8 @@ export class JsonRpcClient {
   }
 
   private onMessage(data: Buffer): void {
+    // close() returns before the handshake ends; frames still arriving meanwhile are dropped.
+    if (this.isClosed) return;
     let msg: unknown;
     try {
       msg = JSON.parse(data.toString('utf8'));
