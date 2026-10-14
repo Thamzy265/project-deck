@@ -2,6 +2,8 @@ import type { IncomingMessage, Server } from 'node:http';
 import type { Duplex } from 'node:stream';
 import type { EventBus } from '@project-deck/core';
 import { WebSocket, WebSocketServer } from 'ws';
+import type { HeartbeatOptions } from './heartbeat.js';
+import { startHeartbeat } from './heartbeat.js';
 import { authenticate, isAllowedHost, isAllowedOrigin } from './security.js';
 
 export const WS_PATH = '/ws';
@@ -18,6 +20,8 @@ export interface WsOptions {
   port: () => number;
   /** First message to each client, so it doesn't start from an empty state. */
   hello: () => unknown;
+  /** Defaults to a 15 s ping and heartbeat message with a 10 s pong timeout. */
+  heartbeat?: HeartbeatOptions;
 }
 
 function reject(socket: Duplex, status: number, text: string): void {
@@ -52,6 +56,7 @@ export function attachWebSocket(opts: WsOptions): { close: () => void } {
     // Without a listener, a malformed frame's 'error' event would crash the daemon.
     ws.on('error', () => ws.terminate());
     ws.send(JSON.stringify({ type: 'hello', payload: opts.hello() }));
+    startHeartbeat(ws, opts.heartbeat);
   });
 
   const offBus = opts.bus.onAny((type, payload) => {
