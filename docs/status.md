@@ -28,6 +28,19 @@ Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry re
 - Next: Flutter CI job, the M1 acceptance PR (`test/m1-acceptance`), and the PM's breakpoint check in Android Studio.
 - **Blockers by role:** Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead: the M1 Accept box needs the PM's breakpoint check in Android Studio before M2 starts.
 
+## 2026-10-14 — M1 acceptance (breakpoint check) — QA report (`test/m1-acceptance`)
+
+- Changed:
+  - QA added `scripts/qa/check-m1-acceptance.mjs`. It runs a sample app on the emulator, with a VM service client as the IDE debugger.
+  - Result: 20 of 21 checks pass. The daemon lists the app, attaches, reloads and streams logs. The debugger stays connected. The breakpoint hits before and after attach, and after the daemon stops.
+  - **Fail:** after a hot reload the breakpoint does not pause again. A control run with no daemon fails the same way, so this is upstream behaviour (Flutter tool or Dart VM), not FlutterDeck.
+    PM decision, 14 Oct 2026 (PLAN.md M1 Accept line): an upstream Flutter limitation, not part of the check.
+  - Evidence: [qa/M1.md](qa/M1.md#breakpoint-check-2026-10-14), `docs/qa/M1/screens/`; video `qa-artifacts/M1/m1-acceptance.mp4`.
+- Gates: developer: rebased onto `main` and recorded the PM result · tester n/a — no product code · reviewer: blocked on F1–F4 (Medium) in the check script, plus Lows F6–F13; all fixed on the branch, re-review waiting · QA fail on one sub-check (upstream, out of scope by PM decision), rerun of the changed script waiting · PM merge waiting.
+- Open findings: none in FlutterDeck. Minor: `GET /api/apps` has no `device` before attach.
+- Decisions: PM, 14 Oct 2026 (PLAN.md M1 Accept line): a breakpoint that does not pause after a hot reload is an upstream Flutter limitation, not part of the check. PM result, 14 Oct 2026: in Android Studio the breakpoint hits while the daemon is attached. PASS.
+- Blockers: Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead none.
+
 ## 2026-10-14 — Sample app (`feat/sample-app`) — waiting for PM merge approval
 
 - Changed: new `examples/sample_app`, a Flutter app with a "Hit breakpoint" button (marked line `lib/main.dart:15`), a hot reload marker, and logs from print, `developer.log` and Android logcat (tag `FlutterDeckSample`). The README has the daemon steps. `examples/` is ignored by Prettier and ESLint. PLAN.md and CLAUDE.md mention the app.
