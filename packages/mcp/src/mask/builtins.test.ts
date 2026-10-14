@@ -260,3 +260,17 @@ describe('credentials after a known header or key', () => {
     expect(maskBuiltIn(input)).toBe(expected);
   });
 });
+
+describe('auth codes in encoded URLs', () => {
+  it.each([
+    ['ws://127.0.0.1:53211/ws?auth=X7mQ2pLk9aB%3D', 'ws://127.0.0.1:53211/[auth code masked]'],
+    ['http://127.0.0.1:40229/Vt6jT5lXFNM%3D/', 'http://127.0.0.1:40229/[auth code masked]'],
+    ['https://example.com/cb?code=AbCdEf12Gh%3D%3D', 'https://example.com/[auth code masked]'],
+  ])('decodes the path and query before looking (%j)', (input, expected) => {
+    expect(maskBuiltIn(input)).toBe(expected);
+  });
+
+  it('copes with a broken escape', () => {
+    expect(maskBuiltIn('http://127.0.0.1:1/a%E0%A4%A/b')).toBe('http://127.0.0.1:1/a%E0%A4%A/b');
+  });
+});

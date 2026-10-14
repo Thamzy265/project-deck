@@ -60,8 +60,14 @@ const LOOPBACK = /^(?:127\.0\.0\.1|localhost|\[::1\])(?::\d+)?$/i;
  * loopback host any random-looking first segment (a DTD secret without padding).
  */
 function hasAuthCode(host: string, path: string): boolean {
-  const segments = path.split(/[/?#]/).filter((s) => s !== '');
-  if (segments.some((s) => /^[A-Za-z0-9+_-]{6,}={1,2}$/.test(s))) return true;
+  const segments = path.split(/[/?#&]/).filter((s) => s !== '');
+  // Each path segment and query value, decoded: %3D hides the padding otherwise.
+  const candidates = segments.flatMap((s) => {
+    const eq = s.indexOf('=');
+    const value = eq > 0 && eq < s.length - 1 ? [s.slice(eq + 1)] : [];
+    return [s, ...value].map(decode);
+  });
+  if (candidates.some((s) => /^[A-Za-z0-9+_-]{6,}={1,2}$/.test(s))) return true;
   const first = segments[0];
   return (
     LOOPBACK.test(host) &&
@@ -69,6 +75,14 @@ function hasAuthCode(host: string, path: string): boolean {
     /^[A-Za-z0-9+_-]{8,}$/.test(first) &&
     isSecretLike(first)
   );
+}
+
+function decode(text: string): string {
+  try {
+    return decodeURIComponent(text);
+  } catch {
+    return text;
+  }
 }
 
 /**
