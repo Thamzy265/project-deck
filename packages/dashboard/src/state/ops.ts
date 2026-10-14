@@ -58,7 +58,8 @@ export function createActions(
     async clearLogs() {
       try {
         await client.clearLogs();
-        dispatch({ type: 'logs-cleared', at: now() });
+        // The daemon's logs.cleared event follows and adds the Activity note.
+        dispatch({ type: 'logs-cleared', at: now(), announce: false });
       } catch {
         dispatch({ type: 'clear-failed' });
       }
@@ -104,6 +105,9 @@ export function handleMessage(
       return;
     case 'app.log':
       queueLog(msg.payload.entry);
+      return;
+    case 'logs.cleared':
+      dispatch({ type: 'logs-cleared', at: msg.payload.at, announce: true });
       return;
     case 'activity':
       dispatch({ type: 'activity-add', entry: msg.payload });

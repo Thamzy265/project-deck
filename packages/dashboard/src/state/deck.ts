@@ -45,6 +45,11 @@ export interface DeckState {
     | { status: 'running'; appId: string }
     | { status: 'error'; error: string; appId: string };
   logs: LogList & { load: Loadable };
+  /**
+   * When the logs were last cleared (epoch ms). A backfill already on its way must not
+   * bring older lines back.
+   */
+  logsClearedAt: number | undefined;
   activity: { items: ActivityItem[]; load: Loadable };
   running: { kind: ActionKind; startedAt: number } | null;
   lastResult: LastResult | null;
@@ -63,6 +68,7 @@ export const initialState: DeckState = {
   stoppedApp: null,
   attach: { status: 'idle' },
   logs: { entries: [], nextKey: 0, load: { status: 'loading' } },
+  logsClearedAt: undefined,
   activity: { items: [], load: { status: 'loading' } },
   running: null,
   lastResult: null,
@@ -88,7 +94,8 @@ export type DeckAction =
   | { type: 'logs-loaded'; entries: LogEntry[]; merge: boolean }
   | { type: 'logs-failed'; error: string }
   | { type: 'logs-append'; entries: LogEntry[] }
-  | { type: 'logs-cleared'; at: number }
+  /** `announce`: from the daemon's event, so Activity notes it once in every tab. */
+  | { type: 'logs-cleared'; at: number; announce: boolean }
   | { type: 'clear-failed' }
   | { type: 'activity-loading' }
   | { type: 'activity-loaded'; entries: ActivityEntry[] }
@@ -198,9 +205,12 @@ export function deckReducer(state: DeckState, action: DeckAction): DeckState {
     case 'logs-loading':
       return { ...state, logs: { ...state.logs, load: { status: 'loading' } } };
     case 'logs-loaded': {
+      const after = state.logsClearedAt;
+      const entries =
+        after === undefined ? action.entries : action.entries.filter((e) => e.ts >= after);
       const list = action.merge
-        ? mergeBackfill(state.logs, action.entries, LOG_CAP)
-        : appendLogs({ entries: [], nextKey: state.logs.nextKey }, action.entries, LOG_CAP);
+        ? mergeBackfill(state.logs, entries, LOG_CAP)
+        : appendLogs({ entries: [], nextKey: state.logs.nextKey }, entries, LOG_CAP);
       return { ...state, logs: { ...list, load: { status: 'ready' } } };
     }
     case 'logs-failed':
@@ -210,15 +220,17 @@ export function deckReducer(state: DeckState, action: DeckAction): DeckState {
         ...state,
         logs: { ...appendLogs(state.logs, action.entries, LOG_CAP), load: state.logs.load },
       };
-    case 'logs-cleared':
-      return deckReducer(
-        {
-          ...state,
-          clearError: false,
-          logs: { entries: [], nextKey: state.logs.nextKey, load: state.logs.load },
-        },
-        { type: 'activity-local', text: 'Logs cleared', at: action.at },
-      );
+    case 'logs-cleared': {
+      const cleared: DeckState = {
+        ...state,
+        clearError: false,
+        logs: { entries: [], nextKey: state.logs.nextKey, load: state.logs.load },
+        logsClearedAt: Math.max(state.logsClearedAt ?? action.at, action.at),
+      };
+      return action.announce
+        ? deckReducer(cleared, { type: 'activity-local', text: 'Logs cleared', at: action.at })
+        : cleared;
+    }
     case 'clear-failed':
       return { ...state, clearError: true };
     case 'activity-loading':

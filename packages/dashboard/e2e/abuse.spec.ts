@@ -141,22 +141,18 @@ test('two tabs: a reload in one shows in the other', async ({ page, context }) =
   await expect(other.getByText('seen in both')).toBeVisible();
 });
 
-// BUG-M2-T2: clearing logs in one tab leaves them in every other open tab (no event
-// tells other tabs, and a reconnect's backfill only adds lines). The Clear button is the
-// delete path in the design note's privacy section.
-test.fail(
-  'BUG-M2-T2: two tabs: clearing logs in one clears the other',
-  async ({ page, context }) => {
-    deck = await startScriptedDaemon();
-    await openDashboard(page, deck.url);
-    const other = await context.newPage();
-    await openDashboard(other, deck.url);
-    push({ message: 'personal data line' });
-    await expect(other.getByText('personal data line')).toBeVisible();
-    await page.getByRole('button', { name: 'More log options' }).click();
-    await page.getByRole('button', { name: 'Clear logs' }).click();
-    await page.getByRole('alertdialog').getByRole('button', { name: 'Clear logs' }).click();
-    await expect(page.getByText('personal data line')).toBeHidden();
-    await expect(other.getByText('personal data line')).toBeHidden({ timeout: 3_000 });
-  },
-);
+// BUG-M2-T2 (fixed): clearing logs in one tab must clear every other open tab too. The
+// Clear button is the delete path in the design note's privacy section.
+test('BUG-M2-T2: two tabs: clearing logs in one clears the other', async ({ page, context }) => {
+  deck = await startScriptedDaemon();
+  await openDashboard(page, deck.url);
+  const other = await context.newPage();
+  await openDashboard(other, deck.url);
+  push({ message: 'personal data line' });
+  await expect(other.getByText('personal data line')).toBeVisible();
+  await page.getByRole('button', { name: 'More log options' }).click();
+  await page.getByRole('button', { name: 'Clear logs' }).click();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Clear logs' }).click();
+  await expect(page.getByText('personal data line')).toBeHidden();
+  await expect(other.getByText('personal data line')).toBeHidden({ timeout: 3_000 });
+});

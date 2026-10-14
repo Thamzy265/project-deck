@@ -79,7 +79,12 @@ export function renderDashboard(daemon: FakeDaemon = fakeDaemon(), prefs = new M
     restart: vi.fn(() =>
       Promise.resolve<ReloadResult>({ ok: true, kind: 'hot-restart', durationMs: 900 }),
     ),
-    clearLogs: vi.fn(() => Promise.resolve()),
+    // Like the daemon: the clear is announced to every open tab over the socket.
+    clearLogs: vi.fn(() => {
+      const message = { type: 'logs.cleared', payload: { at: Date.now() } };
+      sockets.at(-1)?.onmessage?.({ data: JSON.stringify(message) });
+      return Promise.resolve();
+    }),
   } satisfies DeckClient;
   const reloadPage = vi.fn();
   const session = new MemoryStorage();

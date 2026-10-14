@@ -248,6 +248,17 @@ describe('logs', () => {
     expect(screen.getByText('Tap 1')).toBeInTheDocument();
   });
 
+  it('empties the list when another tab clears the logs (BUG-M2-T2)', async () => {
+    const t = renderDashboard(daemon());
+    await t.connect();
+    await screen.findByText('Tap 1');
+    await t.send({ type: 'logs.cleared', payload: { at: Date.now() } });
+    expect(screen.queryByText('Tap 1')).not.toBeInTheDocument();
+    expect(t.client.clearLogs).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('tab', { name: 'Activity' }));
+    expect(screen.getByText('Logs cleared')).toBeInTheDocument();
+  });
+
   it('adds lines from the socket', async () => {
     const t = renderDashboard();
     await t.connect();
