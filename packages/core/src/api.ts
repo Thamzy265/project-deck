@@ -3,9 +3,10 @@
  * so both validate requests the same way.
  */
 import { z } from 'zod';
-import { MAX_WAITING_MESSAGE } from './activity.js';
+import { ActivityEntrySchema, MAX_WAITING_MESSAGE } from './activity.js';
+import { ReloadResultSchema, RunningAppSchema } from './apps.js';
 import { MAX_QUERY_LIMIT } from './db.js';
-import { LogQuerySchema } from './logs.js';
+import { LogEntrySchema, LogQuerySchema } from './logs.js';
 import { TaskStatusTypeSchema } from './tasks.js';
 
 const DbName = z.string().min(1).max(128);
@@ -70,3 +71,63 @@ export const HookEventInput = z.discriminatedUnion('type', [
   }),
 ]);
 export type HookEvent = z.infer<typeof HookEventInput>;
+
+/** Answer of `GET /api/status`. */
+export const StatusResponse = z.object({
+  version: z.string(),
+  dashboardUrl: z.string(),
+  /** The project folder's name, so the dashboard shows which project it belongs to. */
+  projectName: z.string(),
+  apps: z.array(RunningAppSchema),
+  attached: RunningAppSchema.nullable(),
+});
+export type Status = z.infer<typeof StatusResponse>;
+
+/** Answer of `GET /api/logs`, oldest first. */
+export const LogsResponse = z.object({
+  entries: z.array(LogEntrySchema),
+  truncated: z.boolean(),
+});
+export type LogsResult = z.infer<typeof LogsResponse>;
+
+/** Answer of routes that only confirm, such as `DELETE /api/logs`. */
+export const OkResponse = z.object({ ok: z.literal(true) });
+
+/** Body of every error answer. */
+export const ErrorResponse = z.object({ error: z.string() });
+
+/**
+ * Messages on `/ws` that the dashboard reads. Others (such as `task.current`) fail to
+ * parse, and the dashboard ignores them.
+ */
+export const WsMessageSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('hello'),
+    payload: z.object({ apps: z.array(RunningAppSchema), attached: RunningAppSchema.nullable() }),
+  }),
+  z.object({ type: z.literal('heartbeat') }),
+  z.object({
+    type: z.literal('apps.changed'),
+    payload: z.object({ connectorId: z.string(), apps: z.array(RunningAppSchema) }),
+  }),
+  z.object({ type: z.literal('app.attached'), payload: z.object({ app: RunningAppSchema }) }),
+  z.object({ type: z.literal('app.detached'), payload: z.object({ appId: z.string() }) }),
+  z.object({
+    type: z.literal('app.reloaded'),
+    payload: z.object({ appId: z.string(), result: ReloadResultSchema }),
+  }),
+  z.object({
+    type: z.literal('app.exit'),
+    payload: z.object({
+      appId: z.string(),
+      code: z.number().int().optional(),
+      crashed: z.boolean(),
+    }),
+  }),
+  z.object({
+    type: z.literal('app.log'),
+    payload: z.object({ appId: z.string(), entry: LogEntrySchema }),
+  }),
+  z.object({ type: z.literal('activity'), payload: ActivityEntrySchema }),
+]);
+export type WsMessage = z.infer<typeof WsMessageSchema>;
