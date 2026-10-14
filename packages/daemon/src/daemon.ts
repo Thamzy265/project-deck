@@ -8,6 +8,7 @@ import { createApi } from './api.js';
 import { AppManager } from './app-manager.js';
 import { readConfig } from './config.js';
 import { listen, listenWithFallback } from './listen.js';
+import { LoginWindow } from './login-window.js';
 import { identifyPortHolder } from './port-busy.js';
 import { claimConfigPort, projectIdentity } from './port-registry.js';
 import { findRunningDaemon } from './running.js';
@@ -41,6 +42,8 @@ export interface DaemonOptions {
   logCapacity?: number;
   /** Timings for the per-project startup lock; defaults suit real use. */
   startupLock?: StartupLockOptions;
+  /** Clock for the login window; tests pass a fake one. */
+  now?: () => number;
   log?: (message: string, err?: unknown) => void;
 }
 
@@ -102,6 +105,7 @@ async function startLocked(opts: DaemonOptions): Promise<Daemon> {
 
   const token = generateToken();
   const sessionSecret = generateToken();
+  const loginWindow = new LoginWindow(opts.now);
   const bus = new EventBus((err, event) => log(`Listener for ${event} threw`, err));
   const activity = new ActivityFeed(bus);
   const stopActivity = activity.start();
@@ -122,6 +126,7 @@ async function startLocked(opts: DaemonOptions): Promise<Daemon> {
     activity,
     token,
     sessionSecret,
+    loginWindow,
     port: () => port,
     version: VERSION,
     projectId,
@@ -166,6 +171,8 @@ async function startLocked(opts: DaemonOptions): Promise<Daemon> {
   }
 
   // Connectors may take a while (or fail); the API is already usable meanwhile.
+  // The dashboard can log in for 2 minutes after the start (ADR 0003).
+  loginWindow.open();
   void manager.start();
 
   function stop(): Promise<void> {

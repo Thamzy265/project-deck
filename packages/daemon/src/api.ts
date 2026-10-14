@@ -1,16 +1,20 @@
-import type { EventBus, LogQuery } from '@project-deck/core';
+import type { EventBus, LogQuery, LoginWindowResult } from '@project-deck/core';
 import { DEFAULT_LOG_LIMIT, GetLogsInput, HookEventInput } from '@project-deck/core';
 import { Hono } from 'hono';
 import type { z } from 'zod';
 import type { ActivityFeed } from './activity.js';
 import type { AppManager } from './app-manager.js';
+import type { LoginWindow } from './login-window.js';
 import { UnknownAppError } from './app-manager.js';
 import {
   authenticate,
+  cookieValues,
   isAllowedHost,
   isAllowedOrigin,
   isTopLevelNavigation,
   sessionCookie,
+  sessionCookieName,
+  tokensEqual,
 } from './security.js';
 
 export interface ApiContext {
@@ -20,6 +24,8 @@ export interface ApiContext {
   token: string;
   /** Random per daemon start; the dashboard cookie holds it. Never the token. */
   sessionSecret: string;
+  /** When `GET /` may hand out the cookie (ADR 0003). */
+  loginWindow: LoginWindow;
   /** Read lazily: the port is only known once the server is listening. */
   port: () => number;
   version: string;
@@ -67,6 +73,11 @@ const PLACEHOLDER_PAGE =
   '<!doctype html><html lang="en"><meta charset="utf-8"><title>FlutterDeck</title>' +
   '<p>FlutterDeck is running.</p></html>';
 
+const LOGIN_NEEDED_PAGE =
+  '<!doctype html><html lang="en"><meta charset="utf-8"><title>FlutterDeck</title>' +
+  '<p>Login needed. Run <code>flutterdeck open</code> in your project (or start a Claude ' +
+  'session with the plugin), then reload this page.</p></html>';
+
 const SECURITY_HEADERS: Record<string, string> = {
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'no-referrer',
@@ -111,7 +122,13 @@ export function createApi(ctx: ApiContext): Hono {
   // The dashboard's login: a tab opened on / gets the session cookie. Placeholder page
   // until the dashboard app is served here.
   api.get('/', (c) => {
-    if (isTopLevelNavigation((n) => c.req.header(n))) {
+    const header = (n: string) => c.req.header(n);
+    const cookie = cookieValues(header('cookie'), sessionCookieName(ctx.port()));
+    if (cookie.some((value) => tokensEqual(value, ctx.sessionSecret))) {
+      return c.html(PLACEHOLDER_PAGE);
+    }
+    if (!ctx.loginWindow.isOpen()) return c.html(LOGIN_NEEDED_PAGE);
+    if (isTopLevelNavigation(header)) {
       c.header('Set-Cookie', sessionCookie(ctx.port(), ctx.sessionSecret));
     }
     return c.html(PLACEHOLDER_PAGE);
@@ -123,6 +140,17 @@ export function createApi(ctx: ApiContext): Hono {
       return c.json({ error: 'Missing or invalid token' }, 401);
     }
     await next();
+  });
+
+  // Only the runtime.json token may open the window: a cookie holder (possibly another
+  // OS user who got in during an earlier window) must not extend it.
+  api.post('/api/login-window', (c) => {
+    const creds = { token: ctx.token, sessionSecret: ctx.sessionSecret, port: ctx.port() };
+    if (authenticate((n) => c.req.header(n), creds) !== 'token') {
+      return c.json({ error: 'Opening the login window needs the runtime.json token' }, 403);
+    }
+    const body: LoginWindowResult = { ok: true, until: ctx.loginWindow.open() };
+    return c.json(body);
   });
 
   api.get('/api/status', (c) =>

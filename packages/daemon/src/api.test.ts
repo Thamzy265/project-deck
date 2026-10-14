@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createApi } from './api.js';
 import { ActivityFeed } from './activity.js';
 import { AppManager } from './app-manager.js';
+import { LoginWindow } from './login-window.js';
 
 const PORT = 9100;
 const TOKEN = 'test-token-0123456789abcdef0123456789abcdef';
@@ -26,6 +27,7 @@ async function setup() {
     activity,
     token: TOKEN,
     sessionSecret: 'session-secret-0123456789abcdef0123456789abcdef',
+    loginWindow: new LoginWindow(),
     port: () => PORT,
     version: '0.0.0',
     projectId: '0123456789ab',

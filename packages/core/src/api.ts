@@ -52,6 +52,14 @@ export const TaskSetStatusInput = z.object({
   statusType: TaskStatusTypeSchema,
 });
 
+/** Answer of `POST /api/login-window`: the dashboard cookie can be had until `until`. */
+export const LoginWindowResponse = z.object({
+  ok: z.literal(true),
+  /** Epoch milliseconds. */
+  until: z.number().int(),
+});
+export type LoginWindowResult = z.infer<typeof LoginWindowResponse>;
+
 /** Body of `POST /api/events`, sent by the Claude Code hooks. */
 export const HookEventInput = z.discriminatedUnion('type', [
   z.object({ type: z.literal('claude.done'), sessionId: z.string().optional() }),
