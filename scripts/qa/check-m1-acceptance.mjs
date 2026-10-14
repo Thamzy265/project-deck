@@ -97,10 +97,10 @@ function adb(argv, encoding = 'utf8') {
   );
 }
 
-// The emulator running the sample app. Other emulators or devices are left alone.
+// The emulator running the sample app. Physical devices and other emulators are left alone.
 async function findSerial() {
   const lines = (await adb(['devices'])).split('\n');
-  for (const serial of lines.map((l) => /^(\S+)\s+device$/.exec(l)?.[1]).filter(Boolean)) {
+  for (const serial of lines.map((l) => /^(emulator-\d+)\s+device$/.exec(l)?.[1]).filter(Boolean)) {
     const pid = (await adb(['-s', serial, 'shell', 'pidof', APP_ID]).catch(() => '')).trim();
     if (pid !== '') return { serial, pid };
   }
