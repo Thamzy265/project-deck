@@ -85,7 +85,7 @@ describe('built-in masking misses (repros)', () => {
     );
   });
 
-  it.fails('BUG-MCP-T5: masks a URL-encoded email in a logged request URL', () => {
+  it('BUG-MCP-T5: masks a URL-encoded email in a logged request URL', () => {
     // Dio and http loggers print query strings as sent: @ becomes %40.
     hides('GET https://api.example.com/users?email=jane.doe%40example.com', 'jane.doe');
   });

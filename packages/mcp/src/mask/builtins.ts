@@ -100,7 +100,8 @@ const PATTERNS: Pattern[] = [
     /\bxox[abprs]-[A-Za-z0-9-]{10,250}/g, // Slack token
   ].map((re) => ({ re, replace: marker(SECRET) })),
   {
-    re: /[A-Za-z0-9._%+-]{1,64}@(?:[A-Za-z0-9-]{1,63}\.){1,8}[A-Za-z]{2,24}\b/g,
+    // %40 is a URL-encoded @, as HTTP loggers print query strings.
+    re: /[A-Za-z0-9._%+-]{1,64}(?:@|%40)(?:[A-Za-z0-9-]{1,63}\.){1,8}[A-Za-z]{2,24}\b/g,
     replace: marker(EMAIL),
   },
   {

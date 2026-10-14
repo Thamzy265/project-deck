@@ -5,6 +5,11 @@ describe('built-in masking', () => {
   it.each([
     ['email', 'login ok for jane.doe+test@example.co.uk now', 'login ok for [email masked] now'],
     [
+      'URL-encoded email',
+      'GET /users?email=jane.doe%40example.com&x=1',
+      'GET /users?email=[email masked]&x=1',
+    ],
+    [
       'bearer token',
       'Authorization: Bearer abc123DEF456ghi789',
       'Authorization: Bearer [token masked]',
