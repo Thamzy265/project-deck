@@ -145,6 +145,16 @@ test('attach errors offer to try again', async ({ page }) => {
   await expect(page.getByRole('combobox', { name: 'App' })).toHaveValue('app-2');
 });
 
+test('"Finding apps…" until discovery is done, then "No app running"', async ({ page }) => {
+  deck = await startScriptedDaemon([], { holdDiscovery: true });
+  await openDashboard(page, deck.url);
+  await expect(page.getByText('Finding apps…')).toBeVisible();
+  await expectAccessible(page);
+  deck.connector.finishDiscovery();
+  await expect(page.getByText('No app running')).toBeVisible();
+  await expect(page.getByText('Finding apps…')).toBeHidden();
+});
+
 test('no app running, then the app starts and is attached', async ({ page }) => {
   deck = await startScriptedDaemon([]);
   await openDashboard(page, deck.url);

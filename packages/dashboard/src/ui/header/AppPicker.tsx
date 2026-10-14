@@ -15,6 +15,14 @@ export function AppPicker() {
   const shown = state.attached ?? (offline ? state.lastApp : null);
   if (shown !== null && !apps.some((a) => a.id === shown.id)) apps.unshift(shown);
 
+  if (apps.length === 0 && state.discovering) {
+    return (
+      <p role="status" className="flex min-w-0 flex-1 items-center gap-2">
+        <Spinner />
+        <span>Finding apps…</span>
+      </p>
+    );
+  }
   if (apps.length === 0) {
     return (
       <div className="min-w-0 flex-1">

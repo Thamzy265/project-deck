@@ -75,9 +75,17 @@ export function handleMessage(
 ): void {
   switch (msg.type) {
     case 'hello':
-      dispatch({ type: 'apps', apps: msg.payload.apps, attached: msg.payload.attached });
+      dispatch({
+        type: 'apps',
+        apps: msg.payload.apps,
+        attached: msg.payload.attached,
+        discovering: msg.payload.discovering,
+      });
       return;
     case 'heartbeat':
+      return;
+    case 'apps.discovering':
+      dispatch({ type: 'discovering', discovering: msg.payload.discovering });
       return;
     case 'apps.changed':
       dispatch({ type: 'apps', apps: msg.payload.apps });

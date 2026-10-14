@@ -123,6 +123,23 @@ export interface ScriptedDaemon {
 /** A connector whose attach can be made to fail, for the "Couldn't attach" state. */
 export class ScriptedConnector extends FakeAppConnector {
   failAttach: string | undefined;
+  /** While set, start() waits, so the daemon stays "discovering". */
+  private hold: Promise<void> | undefined;
+  private release: () => void = () => undefined;
+
+  holdDiscovery(): void {
+    this.hold = new Promise((resolve) => (this.release = resolve));
+  }
+
+  finishDiscovery(): void {
+    this.release();
+  }
+
+  override async start(): Promise<void> {
+    await this.hold;
+    return super.start();
+  }
+
   override attach(appId: string) {
     if (this.failAttach !== undefined) return Promise.reject(new Error(this.failAttach));
     return super.attach(appId);
@@ -131,6 +148,7 @@ export class ScriptedConnector extends FakeAppConnector {
 
 export async function startScriptedDaemon(
   apps: RunningApp[] = [fakeApp()],
+  opts: { holdDiscovery?: boolean } = {},
 ): Promise<ScriptedDaemon & { connector: ScriptedConnector }> {
   const project = await scratch('deck-e2e-proj-');
   const home = await scratch('deck-e2e-home-');
@@ -138,6 +156,7 @@ export async function startScriptedDaemon(
   const registry = new Registry();
   const connector = new ScriptedConnector('fake', apps);
   registry.connectors.register(connector);
+  if (opts.holdDiscovery === true) connector.holdDiscovery();
   const daemon = await startDaemon({
     projectDir: project,
     homeDir: home,

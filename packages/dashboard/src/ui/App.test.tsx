@@ -87,6 +87,20 @@ describe('apps', () => {
     );
   });
 
+  it('says it is finding apps until discovery is done', async () => {
+    const t = renderDashboard(
+      fakeDaemon({
+        status: { ...fakeDaemon().status, apps: [], attached: null, discovering: true },
+      }),
+    );
+    await t.connect();
+    expect(await screen.findByText('Finding apps…')).toBeInTheDocument();
+    expect(screen.queryByText('No app running')).not.toBeInTheDocument();
+    await t.send({ type: 'apps.discovering', payload: { discovering: false } });
+    expect(screen.getByText('No app running')).toBeInTheDocument();
+    expect(screen.queryByText('Finding apps…')).not.toBeInTheDocument();
+  });
+
   it('explains how to start an app when none runs', async () => {
     const t = renderDashboard(
       fakeDaemon({ status: { ...fakeDaemon().status, apps: [], attached: null } }),

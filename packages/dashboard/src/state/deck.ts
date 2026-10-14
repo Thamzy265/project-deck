@@ -34,6 +34,8 @@ export interface DeckState {
   /** Set once the first status answer arrived. */
   info: { version: string; projectName: string } | undefined;
   apps: RunningApp[];
+  /** The daemon is still starting its connectors; no apps yet isn't final. */
+  discovering: boolean;
   attached: RunningApp | null;
   /** The last attached app, kept to show it greyed out when offline or stopped. */
   lastApp: RunningApp | null;
@@ -55,6 +57,7 @@ export const initialState: DeckState = {
   connection: { kind: 'connecting' },
   info: undefined,
   apps: [],
+  discovering: true,
   attached: null,
   lastApp: null,
   stoppedApp: null,
@@ -70,7 +73,8 @@ export const initialState: DeckState = {
 export type DeckAction =
   | { type: 'connection'; state: ConnectionState }
   | { type: 'status'; status: Status }
-  | { type: 'apps'; apps: RunningApp[]; attached?: RunningApp | null }
+  | { type: 'apps'; apps: RunningApp[]; attached?: RunningApp | null; discovering?: boolean }
+  | { type: 'discovering'; discovering: boolean }
   | { type: 'attached'; app: RunningApp }
   | { type: 'detached'; appId: string }
   | { type: 'exited'; appId: string }
@@ -135,11 +139,18 @@ export function deckReducer(state: DeckState, action: DeckAction): DeckState {
           ...state,
           info: { version: action.status.version, projectName: action.status.projectName },
           apps: action.status.apps,
+          discovering: action.status.discovering,
         },
         action.status.attached,
       );
+    case 'discovering':
+      return { ...state, discovering: action.discovering };
     case 'apps': {
-      const next = { ...state, apps: action.apps };
+      const next = {
+        ...state,
+        apps: action.apps,
+        discovering: action.discovering ?? state.discovering,
+      };
       return action.attached === undefined ? next : withAttached(next, action.attached);
     }
     case 'attached':
