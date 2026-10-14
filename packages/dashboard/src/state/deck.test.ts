@@ -157,32 +157,50 @@ describe('deckReducer', () => {
     const s = run(
       {
         type: 'logs-loaded',
+        gen: 0,
         entries: [{ ts: 1, level: 'info', source: 'app', message: 'x' }],
         merge: false,
       },
-      { type: 'logs-cleared', at: 9, announce: true },
+      { type: 'logs-cleared', at: 9 },
     );
     expect(s.logs.entries).toEqual([]);
     expect(s.activity.items).toMatchObject([{ kind: 'local', text: 'Logs cleared', ts: 9 }]);
   });
 
   it('notes a clear only once: the daemon event announces, this tab only empties', () => {
-    const s = run(
-      { type: 'logs-cleared', at: 9, announce: false },
-      { type: 'logs-cleared', at: 9, announce: true },
-    );
+    const s = run({ type: 'logs-cleared-here', at: 9, gen: 0 }, { type: 'logs-cleared', at: 9 });
     expect(s.activity.items).toHaveLength(1);
   });
 
-  it('never brings cleared lines back with a later backfill (BUG-M2-T2)', () => {
+  it('drops a backfill that was on its way when the logs were cleared (review C2)', () => {
     const line = (ts: number, message: string) =>
       ({ ts, level: 'info', source: 'app', message }) as const;
     const s = run(
-      { type: 'logs-append', entries: [line(5, 'private')] },
-      { type: 'logs-cleared', at: 10, announce: true },
-      // A backfill that was already on its way when the clear happened.
-      { type: 'logs-loaded', entries: [line(5, 'private'), line(12, 'after')], merge: true },
+      { type: 'logs-append', entries: [line(50, 'private')] },
+      { type: 'logs-cleared', at: 10 },
+      // Asked for before the clear (generation 0). The device clock is ahead of the
+      // computer's, so comparing times would keep these lines.
+      { type: 'logs-loaded', entries: [line(40, 'old'), line(50, 'private')], merge: true, gen: 0 },
+      { type: 'logs-append', entries: [line(60, 'after the clear')] },
     );
-    expect(s.logs.entries.map((e) => e.message)).toEqual(['after']);
+    expect(s.logs.entries.map((e) => e.message)).toEqual(['after the clear']);
+    expect(s.logs.load).toEqual({ status: 'ready' });
+  });
+
+  it('does not clear again on the HTTP answer after the event already did (review C1)', () => {
+    const line = (message: string) => ({ ts: 1, level: 'info', source: 'app', message }) as const;
+    const s = run(
+      { type: 'logs-append', entries: [line('before')] },
+      { type: 'logs-cleared', at: 10 },
+      { type: 'logs-append', entries: [line('arrived in between')] },
+      { type: 'logs-cleared-here', at: 11, gen: 0 },
+    );
+    expect(s.logs.entries.map((e) => e.message)).toEqual(['arrived in between']);
+    // Without the event (socket down), the HTTP answer clears.
+    const alone = run(
+      { type: 'logs-append', entries: [line('before')] },
+      { type: 'logs-cleared-here', at: 11, gen: 0 },
+    );
+    expect(alone.logs.entries).toEqual([]);
   });
 });

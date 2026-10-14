@@ -25,10 +25,11 @@ export function createActions(
 ): DeckActions {
   return {
     loadLogs(limit = MAX_LOG_LIMIT) {
+      const gen = getState().clearGen;
       dispatch({ type: 'logs-loading' });
       // Always merged: live lines may already have arrived while this was loading.
       client.logs(limit).then(
-        (res) => dispatch({ type: 'logs-loaded', entries: res.entries, merge: true }),
+        (res) => dispatch({ type: 'logs-loaded', entries: res.entries, merge: true, gen }),
         (err: unknown) => dispatch({ type: 'logs-failed', error: message(err) }),
       );
     },
@@ -56,10 +57,12 @@ export function createActions(
       );
     },
     async clearLogs() {
+      const gen = getState().clearGen;
       try {
         await client.clearLogs();
-        // The daemon's logs.cleared event follows and adds the Activity note.
-        dispatch({ type: 'logs-cleared', at: now(), announce: false });
+        // Usually the daemon's logs.cleared event has already emptied the list; this only
+        // matters when the socket is down.
+        dispatch({ type: 'logs-cleared-here', at: now(), gen });
       } catch {
         dispatch({ type: 'clear-failed' });
       }
@@ -107,7 +110,7 @@ export function handleMessage(
       queueLog(msg.payload.entry);
       return;
     case 'logs.cleared':
-      dispatch({ type: 'logs-cleared', at: msg.payload.at, announce: true });
+      dispatch({ type: 'logs-cleared', at: msg.payload.at });
       return;
     case 'activity':
       dispatch({ type: 'activity-add', entry: msg.payload });

@@ -46,10 +46,10 @@ export interface DeckState {
     | { status: 'error'; error: string; appId: string };
   logs: LogList & { load: Loadable };
   /**
-   * When the logs were last cleared (epoch ms). A backfill already on its way must not
-   * bring older lines back.
+   * Counts clears. A log fetch or clear call remembers it when it starts; if a clear
+   * happened meanwhile, its answer is stale. No clocks are compared.
    */
-  logsClearedAt: number | undefined;
+  clearGen: number;
   activity: { items: ActivityItem[]; load: Loadable; nextLocal: number };
   /** `matched`: the daemon's app.reloaded for it has already arrived. */
   running: { kind: ActionKind; startedAt: number; matched: boolean } | null;
@@ -74,7 +74,7 @@ export const initialState: DeckState = {
   stoppedApp: null,
   attach: { status: 'idle' },
   logs: { entries: [], nextKey: 0, load: { status: 'loading' } },
-  logsClearedAt: undefined,
+  clearGen: 0,
   activity: { items: [], load: { status: 'loading' }, nextLocal: 0 },
   running: null,
   lastOwn: null,
@@ -98,11 +98,14 @@ export type DeckAction =
   | { type: 'attach-start'; appId: string }
   | { type: 'attach-failed'; appId: string; error: string }
   | { type: 'logs-loading' }
-  | { type: 'logs-loaded'; entries: LogEntry[]; merge: boolean }
+  /** `gen`: the clear generation when the fetch started. */
+  | { type: 'logs-loaded'; entries: LogEntry[]; merge: boolean; gen: number }
   | { type: 'logs-failed'; error: string }
   | { type: 'logs-append'; entries: LogEntry[] }
-  /** `announce`: from the daemon's event, so Activity notes it once in every tab. */
-  | { type: 'logs-cleared'; at: number; announce: boolean }
+  /** The daemon's logs.cleared event: every tab empties and notes it once in Activity. */
+  | { type: 'logs-cleared'; at: number }
+  /** This tab's clear call answered; `gen` is the clear generation when it started. */
+  | { type: 'logs-cleared-here'; at: number; gen: number }
   | { type: 'clear-failed' }
   | { type: 'activity-loading' }
   | { type: 'activity-loaded'; entries: ActivityEntry[] }
@@ -181,6 +184,15 @@ function reloaded(state: DeckState, result: ReloadResult, at: number): DeckState
   return { ...state, lastResult: resultFrom(result, 'reload', at), unsupported };
 }
 
+function emptyLogs(state: DeckState): DeckState {
+  return {
+    ...state,
+    clearError: false,
+    logs: { entries: [], nextKey: state.logs.nextKey, load: state.logs.load },
+    clearGen: state.clearGen + 1,
+  };
+}
+
 export function deckReducer(state: DeckState, action: DeckAction): DeckState {
   switch (action.type) {
     case 'connection':
@@ -247,9 +259,8 @@ export function deckReducer(state: DeckState, action: DeckAction): DeckState {
     case 'logs-loading':
       return { ...state, logs: { ...state.logs, load: { status: 'loading' } } };
     case 'logs-loaded': {
-      const after = state.logsClearedAt;
-      const entries =
-        after === undefined ? action.entries : action.entries.filter((e) => e.ts >= after);
+      // Fetched before a clear: it may hold cleared lines, so none of it is used.
+      const entries = action.gen === state.clearGen ? action.entries : [];
       const list = action.merge
         ? mergeBackfill(state.logs, entries, LOG_CAP)
         : appendLogs({ entries: [], nextKey: state.logs.nextKey }, entries, LOG_CAP);
@@ -262,17 +273,16 @@ export function deckReducer(state: DeckState, action: DeckAction): DeckState {
         ...state,
         logs: { ...appendLogs(state.logs, action.entries, LOG_CAP), load: state.logs.load },
       };
-    case 'logs-cleared': {
-      const cleared: DeckState = {
-        ...state,
-        clearError: false,
-        logs: { entries: [], nextKey: state.logs.nextKey, load: state.logs.load },
-        logsClearedAt: Math.max(state.logsClearedAt ?? action.at, action.at),
-      };
-      return action.announce
-        ? deckReducer(cleared, { type: 'activity-local', text: 'Logs cleared', at: action.at })
-        : cleared;
-    }
+    case 'logs-cleared':
+      return deckReducer(emptyLogs(state), {
+        type: 'activity-local',
+        text: 'Logs cleared',
+        at: action.at,
+      });
+    case 'logs-cleared-here':
+      // The event got here first; lines that arrived since then must stay.
+      if (action.gen !== state.clearGen) return { ...state, clearError: false };
+      return emptyLogs(state);
     case 'clear-failed':
       return { ...state, clearError: true };
     case 'activity-loading':

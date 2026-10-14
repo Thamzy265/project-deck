@@ -261,6 +261,28 @@ describe('logs', () => {
     expect(screen.getByText('Tap 1')).toBeInTheDocument();
   });
 
+  it('keeps lines that arrive between the clear event and the HTTP answer (review C1)', async () => {
+    const t = renderDashboard(daemon());
+    await t.connect();
+    await screen.findByText('Tap 1');
+    t.client.clearLogs.mockImplementation(async () => {
+      const send = (m: unknown) => t.socket().onmessage?.({ data: JSON.stringify(m) });
+      send({ type: 'logs.cleared', payload: { at: Date.now() } });
+      send({ type: 'app.log', payload: { appId: 'app-1', entry: log(9, 'right after') } });
+      // Let the batched line reach the list before the HTTP answer.
+      await new Promise((r) => setTimeout(r, 100));
+    });
+    await userEvent.click(screen.getByRole('button', { name: 'More log options' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Clear logs' }));
+    await userEvent.click(
+      within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Clear logs' }),
+    );
+    await waitFor(() => expect(t.client.clearLogs).toHaveBeenCalled());
+    await act(() => new Promise((r) => setTimeout(r, 150)));
+    expect(screen.getByText('right after')).toBeInTheDocument();
+    expect(screen.queryByText('Tap 1')).not.toBeInTheDocument();
+  });
+
   it('empties the list when another tab clears the logs (BUG-M2-T2)', async () => {
     const t = renderDashboard(daemon());
     await t.connect();
