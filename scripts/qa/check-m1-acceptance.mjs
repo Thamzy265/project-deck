@@ -332,14 +332,20 @@ try {
   breakpointId = bp.id;
   record('debugger sets breakpoint', bp.type === 'Breakpoint', `${bp.id}, resolved ${bp.resolved}`);
 
+  // The timer is cleared when the hit wins, and a timeout only clears its own waiter, so a stale
+  // timer can never swallow a later call's hit and leave the app paused.
   const waitHit = (timeoutMs) =>
-    Promise.race([
-      new Promise((ok) => (hitWaiter = ok)),
-      sleep(timeoutMs).then(() => {
-        hitWaiter = undefined;
-        return undefined;
-      }),
-    ]);
+    new Promise((ok) => {
+      const waiter = (hit) => {
+        clearTimeout(timer);
+        ok(hit);
+      };
+      const timer = setTimeout(() => {
+        if (hitWaiter === waiter) hitWaiter = undefined;
+        ok(undefined);
+      }, timeoutMs);
+      hitWaiter = waiter;
+    });
   const before = await waitHit(HIT_TIMEOUT_MS);
   if (before !== undefined) await debuggerClient.call('resume', { isolateId });
   must(
@@ -523,16 +529,20 @@ try {
   await rm(project, { recursive: true, force: true });
 }
 
+// Informational, not a check: how many PauseBreakpoint events the debugger saw in total.
+results.push({ name: 'breakpoint hits seen', pass: null, detail: String(hits.length) });
 const width = Math.max(...results.map((r) => r.name.length));
 console.log(`${'CHECK'.padEnd(width)}  RESULT  DETAIL`);
 for (const r of results) {
-  console.log(`${r.name.padEnd(width)}  ${r.pass ? 'PASS  ' : 'FAIL  '}  ${mask(r.detail)}`);
+  const label = r.pass === null ? 'INFO  ' : r.pass ? 'PASS  ' : 'FAIL  ';
+  console.log(`${r.name.padEnd(width)}  ${label}  ${mask(r.detail)}`);
 }
-const failed = results.filter((r) => !r.pass).length;
+const checks = results.filter((r) => r.pass !== null);
+const failed = checks.filter((r) => !r.pass).length;
 console.log(
   failed === 0
-    ? `All ${results.length} checks passed.`
-    : `${failed} of ${results.length} checks failed.`,
+    ? `All ${checks.length} checks passed.`
+    : `${failed} of ${checks.length} checks failed.`,
 );
 console.log(`Evidence: ${shots.length} screenshot(s) in ${join(EVIDENCE, 'screens')}`);
 if (failed > 0 && daemonOutput.length > 0) {
