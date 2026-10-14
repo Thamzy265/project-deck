@@ -89,7 +89,9 @@ describe('fixed port from .flutterdeck/config.json', () => {
     await writeConfig(projectDir, port);
     const err = await start().catch((e: unknown) => e);
     expect(err).toBeInstanceOf(PortBusyError);
-    expect((err as Error).message).toMatch(new RegExp(`^Another program uses port ${port}\\b`));
+    expect((err as Error).message).toBe(
+      `Another program uses port ${port}. Stop it, or pick another port: run \`flutterdeck init\`, or change "port" in .flutterdeck/config.json and the url in .claude/launch.json.`,
+    );
     expect((err as Error).message).toContain('flutterdeck init');
     expect(await readRuntime(projectDir)).toBeUndefined();
   });

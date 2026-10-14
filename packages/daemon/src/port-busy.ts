@@ -4,7 +4,7 @@ import { z } from 'zod';
 export const HEALTH_PROBE_TIMEOUT_MS = 2000;
 
 const HOW_TO_CHANGE =
-  'Run `flutterdeck init` to pick another port, or change "port" in .flutterdeck/config.json (and the url in .claude/launch.json).';
+  'run `flutterdeck init`, or change "port" in .flutterdeck/config.json and the url in .claude/launch.json.';
 
 /** The configured port is taken. Never names a process: we never run a process lookup. */
 export class PortBusyError extends Error {
@@ -14,8 +14,8 @@ export class PortBusyError extends Error {
   ) {
     super(
       holder.kind === 'flutterdeck'
-        ? `Another FlutterDeck (project ${holder.projectId ?? 'unknown'}) uses port ${port}. Stop it with \`flutterdeck stop\` in that project, or pick another port here. ${HOW_TO_CHANGE}`
-        : `Another program uses port ${port}. Stop that program, or pick another port. ${HOW_TO_CHANGE}`,
+        ? `Another FlutterDeck (project ${holder.projectId ?? 'unknown'}) uses port ${port}. Stop it with \`flutterdeck stop\` in that project, or pick another port here: ${HOW_TO_CHANGE}`
+        : `Another program uses port ${port}. Stop it, or pick another port: ${HOW_TO_CHANGE}`,
     );
   }
 }
