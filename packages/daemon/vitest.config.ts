@@ -4,5 +4,6 @@ export default defineProject({
   test: {
     name: 'daemon',
     include: ['src/**/*.test.ts'],
+    globalSetup: ['./vitest.global-setup.ts'],
   },
 });

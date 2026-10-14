@@ -1,16 +1,22 @@
+import type { Server } from 'node:http';
 import { createServer } from 'node:http';
 import type { Registry } from '@project-deck/core';
 import { EventBus } from '@project-deck/core';
 import { getRequestListener } from '@hono/node-server';
 import { createApi } from './api.js';
 import { AppManager } from './app-manager.js';
-import { listenWithFallback } from './listen.js';
+import { readConfig } from './config.js';
+import { listen, listenWithFallback } from './listen.js';
+import { identifyPortHolder } from './port-busy.js';
+import { claimConfigPort, projectIdentity } from './port-registry.js';
 import { findRunningDaemon } from './running.js';
 import { removeRuntime, writeRuntime } from './runtime.js';
 import { generateToken } from './security.js';
 import type { StartupLockOptions } from './startup-lock.js';
 import { StartupLockBusyError, acquireStartupLock } from './startup-lock.js';
 import { attachWebSocket } from './ws.js';
+
+export { PortBusyError } from './port-busy.js';
 
 /** Not 9100: Dart DevTools, which Android Studio starts, listens there. */
 export const DEFAULT_PORT = 9147;
@@ -22,8 +28,13 @@ export interface DaemonOptions {
   /** Project root; `.flutterdeck/runtime.json` is written here. */
   projectDir: string;
   registry: Registry;
-  /** Preferred port; the next free one is used if it is busy. 0 picks any free port. */
+  /**
+   * Preferred port when `.flutterdeck/config.json` has none; the next free one is used
+   * if it is busy. 0 picks any free port. A config port always wins and is never moved.
+   */
   port?: number;
+  /** Home folder holding the per-user port registry; defaults to the user's home. */
+  homeDir?: string;
   /** Ports tried from `port` upwards before falling back to an OS-assigned one. */
   portAttempts?: number;
   logCapacity?: number;
@@ -36,6 +47,9 @@ export interface Daemon {
   readonly port: number;
   readonly url: string;
   readonly token: string;
+  readonly version: string;
+  /** Salted hash of the project path, as shown on /api/health. */
+  readonly projectId: string;
   readonly bus: EventBus;
   readonly manager: AppManager;
   /** Resolves once the daemon has fully stopped. */
@@ -74,6 +88,11 @@ async function startLocked(opts: DaemonOptions): Promise<Daemon> {
   const running = await findRunningDaemon(opts.projectDir);
   if (running !== undefined) throw new DaemonAlreadyRunningError(running);
 
+  const config = await readConfig(opts.projectDir);
+  const registryOpts = opts.homeDir === undefined ? {} : { homeDir: opts.homeDir };
+  if (config.port !== undefined) await claimConfigPort(opts.projectDir, config.port, registryOpts);
+  const projectId = await projectIdentity(opts.projectDir, registryOpts);
+
   const token = generateToken();
   const bus = new EventBus((err, event) => log(`Listener for ${event} threw`, err));
   const manager = new AppManager(opts.registry, bus, {
@@ -81,7 +100,7 @@ async function startLocked(opts: DaemonOptions): Promise<Daemon> {
     onConnectorError: (id, err) => log(`Connector '${id}' failed to start`, err),
   });
 
-  const requestedPort = opts.port ?? DEFAULT_PORT;
+  const requestedPort = config.port ?? opts.port ?? DEFAULT_PORT;
   let port = requestedPort;
   let resolveClosed: () => void = () => undefined;
   const closed = new Promise<void>((resolve) => (resolveClosed = resolve));
@@ -93,6 +112,7 @@ async function startLocked(opts: DaemonOptions): Promise<Daemon> {
     token,
     port: () => port,
     version: VERSION,
+    projectId,
     shutdown: () => void stop(),
   });
   const listener = getRequestListener(api.fetch);
@@ -106,7 +126,11 @@ async function startLocked(opts: DaemonOptions): Promise<Daemon> {
   });
 
   try {
-    port = await listenWithFallback(server, HOST, requestedPort, opts.portAttempts);
+    if (config.port === undefined) {
+      port = await listenWithFallback(server, HOST, requestedPort, opts.portAttempts);
+    } else {
+      await listenFixed(server, config.port);
+    }
   } catch (err) {
     ws.close();
     throw err;
@@ -140,5 +164,29 @@ async function startLocked(opts: DaemonOptions): Promise<Daemon> {
     return stopping;
   }
 
-  return { port, url: `http://${HOST}:${port}`, token, bus, manager, closed, stop };
+  return {
+    port,
+    url: `http://${HOST}:${port}`,
+    token,
+    version: VERSION,
+    projectId,
+    bus,
+    manager,
+    closed,
+    stop,
+  };
+}
+
+/**
+ * The dashboard URL in launch.json names this port, so moving would leave the pane on
+ * someone else's server. Say who holds it instead.
+ */
+async function listenFixed(server: Server, port: number): Promise<void> {
+  try {
+    await listen(server, HOST, port);
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'EADDRINUSE' || code === 'EACCES') throw await identifyPortHolder(port);
+    throw err;
+  }
 }

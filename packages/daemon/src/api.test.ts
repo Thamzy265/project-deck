@@ -23,6 +23,7 @@ async function setup() {
     token: TOKEN,
     port: () => PORT,
     version: '0.0.0',
+    projectId: '0123456789ab',
     shutdown,
   });
 
