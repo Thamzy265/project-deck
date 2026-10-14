@@ -51,7 +51,13 @@ export interface DeckState {
    */
   logsClearedAt: number | undefined;
   activity: { items: ActivityItem[]; load: Loadable; nextLocal: number };
-  running: { kind: ActionKind; startedAt: number } | null;
+  /** `matched`: the daemon's app.reloaded for it has already arrived. */
+  running: { kind: ActionKind; startedAt: number; matched: boolean } | null;
+  /**
+   * Our last finished action whose app.reloaded event hasn't arrived yet (the HTTP answer
+   * came first). The event, when it comes, belongs to it, not to a new reload.
+   */
+  lastOwn: { kind: ActionKind; startedAt: number; finishedAt: number } | null;
   lastResult: LastResult | null;
   /** Apps whose reload answered `unsupported`; the buttons are hidden for them. */
   unsupported: string[];
@@ -71,6 +77,7 @@ export const initialState: DeckState = {
   logsClearedAt: undefined,
   activity: { items: [], load: { status: 'loading' }, nextLocal: 0 },
   running: null,
+  lastOwn: null,
   lastResult: null,
   unsupported: [],
   clearError: false,
@@ -86,8 +93,8 @@ export type DeckAction =
   | { type: 'exited'; appId: string }
   | { type: 'reloaded'; result: ReloadResult; at: number }
   | { type: 'action-start'; kind: ActionKind; at: number }
-  | { type: 'action-done'; result: ReloadResult }
-  | { type: 'action-failed'; message: string }
+  | { type: 'action-done'; result: ReloadResult; at: number }
+  | { type: 'action-failed'; message: string; at: number }
   | { type: 'attach-start'; appId: string }
   | { type: 'attach-failed'; appId: string; error: string }
   | { type: 'logs-loading' }
@@ -145,6 +152,35 @@ function markUnsupported(state: DeckState, result: ReloadResult): string[] {
   return state.unsupported.includes(id) ? state.unsupported : [...state.unsupported, id];
 }
 
+/** How long after our action's HTTP answer its app.reloaded event may still arrive. */
+export const OWN_EVENT_WINDOW_MS = 2000;
+
+/** Our own reload answers twice (HTTP and the socket); label both as the same action. */
+function reloaded(state: DeckState, result: ReloadResult, at: number): DeckState {
+  const unsupported = markUnsupported(state, result);
+  if (result.source !== 'external') {
+    const run = state.running;
+    if (run !== null) {
+      return {
+        ...state,
+        running: { ...run, matched: true },
+        lastResult: resultFrom(result, run.kind, run.startedAt),
+        unsupported,
+      };
+    }
+    const own = state.lastOwn;
+    if (own !== null && at - own.finishedAt <= OWN_EVENT_WINDOW_MS) {
+      return {
+        ...state,
+        lastOwn: null,
+        lastResult: resultFrom(result, own.kind, own.startedAt),
+        unsupported,
+      };
+    }
+  }
+  return { ...state, lastResult: resultFrom(result, 'reload', at), unsupported };
+}
+
 export function deckReducer(state: DeckState, action: DeckAction): DeckState {
   switch (action.type) {
     case 'connection':
@@ -176,25 +212,22 @@ export function deckReducer(state: DeckState, action: DeckAction): DeckState {
     case 'exited':
       if (state.attached?.id !== action.appId) return state;
       return { ...state, attached: null, stoppedApp: state.attached, running: null };
-    case 'reloaded': {
-      // Our own reload answers through the HTTP call too; keep its start time.
-      const ours = state.running !== null && action.result.source !== 'external';
-      const startedAt = ours && state.running !== null ? state.running.startedAt : action.at;
-      const kind = state.running?.kind ?? 'reload';
+    case 'reloaded':
+      return reloaded(state, action.result, action.at);
+    case 'action-start':
       return {
         ...state,
-        lastResult: resultFrom(action.result, kind, startedAt),
-        unsupported: markUnsupported(state, action.result),
+        running: { kind: action.kind, startedAt: action.at, matched: false },
+        lastOwn: null,
       };
-    }
-    case 'action-start':
-      return { ...state, running: { kind: action.kind, startedAt: action.at } };
     case 'action-done': {
-      if (state.running === null) return state;
+      const run = state.running;
+      if (run === null) return state;
       return {
         ...state,
         running: null,
-        lastResult: resultFrom(action.result, state.running.kind, state.running.startedAt),
+        lastOwn: run.matched ? null : { ...run, finishedAt: action.at },
+        lastResult: resultFrom(action.result, run.kind, run.startedAt),
         unsupported: markUnsupported(state, action.result),
       };
     }

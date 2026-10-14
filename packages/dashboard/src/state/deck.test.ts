@@ -41,7 +41,7 @@ describe('deckReducer', () => {
       { type: 'attached', app },
       { type: 'action-start', kind: 'reload', at: 100 },
       { type: 'reloaded', result: { ok: true, kind: 'hot-reload', durationMs: 182 }, at: 400 },
-      { type: 'action-done', result: { ok: true, kind: 'hot-reload', durationMs: 182 } },
+      { type: 'action-done', result: { ok: true, kind: 'hot-reload', durationMs: 182 }, at: 450 },
     );
     expect(s.running).toBeNull();
     expect(s.lastResult).toEqual({
@@ -65,15 +65,32 @@ describe('deckReducer', () => {
   it('keeps the failure message and which action failed', () => {
     const s = run(
       { type: 'action-start', kind: 'restart', at: 5 },
-      { type: 'action-done', result: { ok: false, reason: 'compile-error', message: 'bad' } },
+      {
+        type: 'action-done',
+        result: { ok: false, reason: 'compile-error', message: 'bad' },
+        at: 6,
+      },
     );
     expect(s.lastResult).toMatchObject({ ok: false, kind: 'restart', message: 'bad' });
+  });
+
+  it('matches the socket event to our restart when the HTTP answer came first (review C4)', () => {
+    const failed = { ok: false, reason: 'compile-error', message: 'bad' } as const;
+    const s = run(
+      { type: 'action-start', kind: 'restart', at: 5 },
+      { type: 'action-done', result: failed, at: 6 },
+      { type: 'reloaded', result: failed, at: 7 },
+    );
+    expect(s.lastResult).toMatchObject({ ok: false, kind: 'restart', startedAt: 5 });
+    // A later reload by another tab is its own event.
+    const later = deckReducer(s, { type: 'reloaded', result: failed, at: 9000 });
+    expect(later.lastResult).toMatchObject({ kind: 'reload', startedAt: 9000 });
   });
 
   it('turns a failed HTTP call into a failed result and frees the buttons', () => {
     const s = run(
       { type: 'action-start', kind: 'reload', at: 5 },
-      { type: 'action-failed', message: 'Network error' },
+      { type: 'action-failed', message: 'Network error', at: 6 },
     );
     expect(s.running).toBeNull();
     expect(s.lastResult).toMatchObject({ ok: false, message: 'Network error' });
@@ -83,7 +100,7 @@ describe('deckReducer', () => {
     const s = run(
       { type: 'attached', app },
       { type: 'action-start', kind: 'reload', at: 1 },
-      { type: 'action-done', result: { ok: false, reason: 'unsupported', message: 'no' } },
+      { type: 'action-done', result: { ok: false, reason: 'unsupported', message: 'no' }, at: 2 },
     );
     expect(s.unsupported).toEqual([app.id]);
   });

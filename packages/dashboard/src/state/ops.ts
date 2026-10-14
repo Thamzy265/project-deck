@@ -44,8 +44,8 @@ export function createActions(
       if (s.running !== null || s.attached === null || s.connection.kind !== 'connected') return;
       dispatch({ type: 'action-start', kind, at: now() });
       (kind === 'reload' ? client.reload() : client.restart()).then(
-        (result) => dispatch({ type: 'action-done', result }),
-        (err: unknown) => dispatch({ type: 'action-failed', message: message(err) }),
+        (result) => dispatch({ type: 'action-done', result, at: now() }),
+        (err: unknown) => dispatch({ type: 'action-failed', message: message(err), at: now() }),
       );
     },
     attach(appId) {
