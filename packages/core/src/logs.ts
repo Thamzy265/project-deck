@@ -17,6 +17,11 @@ export const LogEntrySchema = z.object({
   tag: z.string().optional(),
   message: z.string(),
   stack: z.string().optional(),
+  /**
+   * Set by the daemon: the order it took the line in, counting up for its whole run.
+   * Clients order and compare lines by this, never by `ts`, which is the device's clock.
+   */
+  seq: z.number().int().nonnegative().optional(),
 });
 export type LogEntry = z.infer<typeof LogEntrySchema>;
 

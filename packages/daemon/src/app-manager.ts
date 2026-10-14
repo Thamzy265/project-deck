@@ -53,6 +53,8 @@ export class AppManager {
   private readonly unsubscribers: (() => void)[] = [];
   /** Set by stop(); connectors that finish starting afterwards are ignored. */
   private stopped = false;
+  /** Numbers every log line taken in (LogEntry.seq), across attaches. */
+  private nextSeq = 0;
   /** Until start() is done, an empty app list may just mean "not scanned yet". */
   private discoveringNow = true;
 
@@ -184,10 +186,11 @@ export class AppManager {
     const attached: Attached = { app, session, logs, lastErrorAt: undefined, cleanup: [] };
     this.attached = attached;
 
-    const push = (entry: LogEntry): void => {
-      if (isAtLeast(entry.level, 'error') && entry.ts >= attachedAt) {
+    const push = (raw: LogEntry): void => {
+      if (isAtLeast(raw.level, 'error') && raw.ts >= attachedAt) {
         attached.lastErrorAt = this.now();
       }
+      const entry = this.stamp(raw);
       logs.push(entry);
       this.bus.emit('app.log', { appId: app.id, entry });
     };
@@ -211,7 +214,7 @@ export class AppManager {
       }),
     );
     const backfill = await session.logs().query({ limit: MAX_LOG_LIMIT });
-    for (const entry of backfill) logs.push(entry);
+    for (const entry of backfill) logs.push(this.stamp(entry));
     const seen = new Set(backfill);
     const live = pending;
     pending = undefined;
@@ -261,6 +264,10 @@ export class AppManager {
         await fn();
       }),
     );
+  }
+
+  private stamp(entry: LogEntry): LogEntry {
+    return { ...entry, seq: this.nextSeq++ };
   }
 
   private now(): number {
