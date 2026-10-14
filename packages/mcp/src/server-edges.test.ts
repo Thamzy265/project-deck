@@ -288,7 +288,7 @@ describe('secrets never reach Claude', () => {
     });
   });
 
-  it.fails('BUG-MCP-T1: masks the VM service URI that Flutter prints to logcat', async () => {
+  it('BUG-MCP-T1: masks the VM service URI that Flutter prints to logcat', async () => {
     // The engine prints this line to logcat on every Android start (logs-android fixture).
     const f = await fake();
     f.logs = {
@@ -301,7 +301,7 @@ describe('secrets never reach Claude', () => {
     expect(out.text).not.toContain(VM_AUTH);
   });
 
-  it.fails('BUG-MCP-T1: masks a DTD URI printed by the app or tool', async () => {
+  it('BUG-MCP-T1: masks a DTD URI printed by the app or tool', async () => {
     const f = await fake();
     f.logs = {
       entries: [line(`Connected to the Dart Tooling Daemon at ${DTD_URI}`)],

@@ -7,13 +7,15 @@
 
 interface Pattern {
   re: RegExp;
-  replace: (match: string) => string;
+  /** `groups` are the capture groups, in order; undefined when a group didn't take part. */
+  replace: (match: string, groups: (string | undefined)[]) => string;
 }
 
 const EMAIL = '[email masked]';
 const PHONE = '[phone masked]';
 const TOKEN = '[token masked]';
 const SECRET = '[secret masked]';
+const AUTH_CODE = '[auth code masked]';
 
 const marker = (text: string) => () => text;
 
@@ -37,7 +39,42 @@ function isSecretLike(candidate: string): boolean {
   );
 }
 
+const LOOPBACK = /^(?:127\.0\.0\.1|localhost|\[::1\])(?::\d+)?$/i;
+
+/**
+ * A path segment that is an auth code: base64 with padding (VM service, DTD), or on a
+ * loopback host any random-looking first segment (a DTD secret without padding).
+ */
+function hasAuthCode(host: string, path: string): boolean {
+  const segments = path.split(/[/?#]/).filter((s) => s !== '');
+  if (segments.some((s) => /^[A-Za-z0-9+_-]{6,}={1,2}$/.test(s))) return true;
+  const first = segments[0];
+  return (
+    LOOPBACK.test(host) &&
+    first !== undefined &&
+    /^[A-Za-z0-9+_-]{8,}$/.test(first) &&
+    isSecretLike(first)
+  );
+}
+
+/**
+ * VM service and DTD URIs carry their auth code in the path, and anyone holding one can
+ * drive the app. Keeps scheme, host and port so the line still says where it pointed.
+ */
+function maskUrl(match: string, groups: (string | undefined)[]): string {
+  const [userinfo, host = '', path = ''] = groups;
+  const scheme = match.slice(0, match.indexOf('://'));
+  const who = userinfo === undefined ? '' : `${AUTH_CODE}@`;
+  if (hasAuthCode(host, path)) return `${scheme}://${who}${host}/${AUTH_CODE}`;
+  return userinfo === undefined ? match : `${scheme}://${who}${host}${path}`;
+}
+
 const PATTERNS: Pattern[] = [
+  {
+    // Before the email rule, which would take user:pass@host for an address.
+    re: /\b(?:https?|wss?):\/\/([^\s/?#"'<>@]*@)?([^\s/?#"'<>]+)([^\s"'<>]*)/gi,
+    replace: maskUrl,
+  },
   {
     re: /\bbearer\s+[A-Za-z0-9._~+/=-]{8,}/gi,
     // Keeps the word as written (Bearer, bearer, BEARER).
@@ -69,6 +106,11 @@ const PATTERNS: Pattern[] = [
 /** Replaces every built-in match in `text` with a marker that says what was masked. */
 export function maskBuiltIn(text: string): string {
   let out = text;
-  for (const { re, replace } of PATTERNS) out = out.replace(re, replace);
+  for (const { re, replace } of PATTERNS) {
+    // Without named groups the replacer gets (match, ...groups, offset, whole).
+    out = out.replace(re, (match: string, ...args: unknown[]) =>
+      replace(match, args.slice(0, -2) as (string | undefined)[]),
+    );
+  }
   return out;
 }

@@ -41,6 +41,49 @@ describe('built-in masking', () => {
     expect(maskBuiltIn(input)).toBe(input);
   });
 
+  it.each([
+    [
+      'VM service URI',
+      'The Dart VM service is listening on http://127.0.0.1:40229/Vt6jT5lXFNM=/',
+      'The Dart VM service is listening on http://127.0.0.1:40229/[auth code masked]',
+    ],
+    [
+      'VM service WebSocket URI',
+      'ws://127.0.0.1:40229/Vt6jT5lXFNM=/ws connected',
+      'ws://127.0.0.1:40229/[auth code masked] connected',
+    ],
+    [
+      'DTD URI',
+      'DTD at ws://127.0.0.1:53211/X7mQ2pLk9aB=',
+      'DTD at ws://127.0.0.1:53211/[auth code masked]',
+    ],
+    [
+      'DTD URI without padding',
+      'dtd ws://localhost:53211/q8ZtYb2Wd4Kx',
+      'dtd ws://localhost:53211/[auth code masked]',
+    ],
+    [
+      'auth code in a remote URL',
+      'GET https://api.example.com/v1/AbCdEf12Gh==/items',
+      'GET https://api.example.com/[auth code masked]',
+    ],
+    [
+      'user and password in a URL',
+      'connect wss://admin:hunter2@db.example.com:5432/app',
+      'connect wss://[auth code masked]@db.example.com:5432/app',
+    ],
+  ])('masks the secret part of a %s', (_name, input, expected) => {
+    expect(maskBuiltIn(input)).toBe(expected);
+  });
+
+  it.each([
+    ['dashboard URL', 'dashboard at http://127.0.0.1:9147/'],
+    ['plain API URL', 'GET https://api.example.com/v1/users/42?page=2'],
+    ['local route', 'http://localhost:8080/products/details'],
+  ])('leaves a %s alone', (_name, input) => {
+    expect(maskBuiltIn(input)).toBe(input);
+  });
+
   it('stays fast on a hostile 4 kB line', () => {
     const lines = [
       'a'.repeat(4096),
@@ -49,6 +92,10 @@ describe('built-in masking', () => {
       `${'a'.repeat(4000)}@`,
       'eyJ'.repeat(1365),
       '+1'.repeat(2048),
+      `http://${'a'.repeat(4089)}`,
+      'http://a/'.repeat(455),
+      `ws://h/${'A1='.repeat(1363)}`,
+      'ws://a:'.repeat(585),
     ];
     const start = performance.now();
     for (const line of lines) maskBuiltIn(line);
