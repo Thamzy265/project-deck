@@ -23,6 +23,8 @@ Future<void> onHitBreakpoint() async {
     await sampleChannel.invokeMethod<void>('log', message);
   } on MissingPluginException {
     // Only Android registers the channel. iOS and tests skip the native log.
+  } on PlatformException {
+    // The native log is best-effort; the counter has already advanced.
   }
 }
 

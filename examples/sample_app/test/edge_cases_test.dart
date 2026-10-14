@@ -117,20 +117,16 @@ void main() {
     });
 
     test(
-      'a PlatformException from the channel does not escape onHitBreakpoint',
+      'onHitBreakpoint ignores a PlatformException from the channel',
       () async {
         _mockChannel((_) async => throw failure());
 
         await expectLater(onHitBreakpoint(), completes);
       },
-      skip:
-          'BUG: onHitBreakpoint() catches only MissingPluginException, so a '
-          'PlatformException escapes as an unhandled async error from the '
-          'button callback',
     );
 
     testWidgets(
-      'tapping while the channel throws leaves no uncaught error',
+      'a tap while the channel throws still counts and raises no error',
       (tester) async {
         _mockChannel((_) async => throw failure());
         await tester.pumpWidget(const SampleApp());
@@ -141,7 +137,6 @@ void main() {
         expect(find.text('Taps: 1'), findsOneWidget);
         expect(tester.takeException(), isNull);
       },
-      skip: true, // BUG: same as above; the tap's unawaited future errors.
     );
   });
 
