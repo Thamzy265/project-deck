@@ -275,6 +275,9 @@ let debuggerClient;
 let isolateId;
 let breakpointId;
 let originalSource;
+let edited = false;
+// Flutter tool services seen on the Service stream (reloadSources among them).
+const services = new Map();
 let recorder;
 let serial;
 
@@ -345,7 +348,6 @@ try {
   secrets.push(vm.uri, toWs(vm.uri));
   debuggerClient = new RpcClient(toWs(vm.uri), traffic);
   await debuggerClient.open();
-  const services = new Map();
   debuggerClient.listeners.add((params) => {
     const event = params.event;
     if (event?.kind === 'ServiceRegistered') services.set(event.service, event.method);
@@ -432,6 +434,26 @@ try {
   // 4. Edit the source and hot reload through the daemon. Reload right after a resumed hit so the
   // isolate is running; hits come every 5 s.
   must('source has the original string', originalSource.includes(ORIGINAL_TEXT), ORIGINAL_TEXT);
+  if (!CONTROL) {
+    // An app still running the edited code from an earlier run would print the new string without
+    // any reload, and make the log check below pass on its own. Look at the newest print tick only,
+    // so old lines from a run that was reloaded back are ignored.
+    const latest = await waitFor(async () => {
+      const { entries } = await api('/api/logs?text=qa-sample&limit=20');
+      const ticks = entries.filter((e) => /qa-sample (print|reloaded) tick/.test(e.message));
+      return ticks.length > 0 ? ticks.reduce((a, b) => (b.ts > a.ts ? b : a)) : undefined;
+    }, 5_000);
+    must(
+      'app runs the original code',
+      latest !== undefined && latest.message.includes('print tick'),
+      latest === undefined
+        ? 'no print ticks in the logs'
+        : latest.message.includes('print tick')
+          ? latest.message
+          : 'the app still prints the reloaded string; restart it (android-sample-app.sh down, then up)',
+    );
+  }
+  edited = true;
   await writeFile(MAIN_DART, originalSource.replace(ORIGINAL_TEXT, RELOADED_TEXT));
   const sync = await waitHit(HIT_TIMEOUT_MS);
   if (sync !== undefined) await debuggerClient.call('resume', { isolateId });
@@ -566,9 +588,18 @@ try {
       await debuggerClient.call('removeBreakpoint', { isolateId, breakpointId }).catch(() => {});
     // Never leave the app paused.
     await debuggerClient.call('resume', { isolateId }).catch(() => {});
-    debuggerClient.close();
   }
   if (originalSource !== undefined) await writeFile(MAIN_DART, originalSource).catch(() => {});
+  // Reload the restored source too, so the app doesn't keep running the edited code into the next run.
+  const reloadMethod = services.get('reloadSources');
+  if (
+    edited &&
+    reloadMethod !== undefined &&
+    debuggerClient !== undefined &&
+    !debuggerClient.closed
+  )
+    await debuggerClient.call(reloadMethod, { isolateId }, 30_000).catch(() => {});
+  debuggerClient?.close();
   if (recorder !== undefined) {
     // screenrecord finishes the file on SIGINT. Signal only this run's screenrecord, matched by its
     // unique file path; `screenrecor[d]` keeps the pattern from matching the shell running pkill.
