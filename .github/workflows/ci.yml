@@ -27,6 +27,31 @@ jobs:
       - run: pnpm format:check
       - run: pnpm test
 
+  # Dashboard end-to-end tests (Playwright, Chromium) against the built daemon.
+  # Ubuntu only: the browser download is large, and the unit tests cover the OS matrix.
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm --filter @project-deck/dashboard exec playwright install --with-deps chromium
+      - run: pnpm test:e2e
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-e2e
+          path: qa-artifacts/m2-dashboard/
+          retention-days: 7
+
   # PM decision R1, 14 Oct 2026: CI runs the sample app's Flutter tests.
   # Ubuntu only to save runner minutes; the repo-hygiene tests are not
   # exercised on macOS or Windows. The SDK version matches .metadata.
