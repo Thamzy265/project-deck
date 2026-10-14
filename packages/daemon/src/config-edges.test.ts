@@ -170,7 +170,7 @@ describe('readConfig: file contents', () => {
 
   // BUG-T5: the design note (D4) says nested quantifiers in user rules are rejected; the
   // config schema accepts them. Lead to confirm whether the masking item will add this.
-  it.fails('refuses a rule with nested quantifiers such as (a+)+ (BUG-T5)', async () => {
+  it('refuses a rule with nested quantifiers such as (a+)+ (BUG-T5)', async () => {
     await write(JSON.stringify({ version: 1, logs: { rules: ['(a+)+b'] } }));
     expect(await refusal()).toContain('logs.rules.0:');
   });

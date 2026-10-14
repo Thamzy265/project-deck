@@ -64,4 +64,30 @@ describe('DeckConfigSchema', () => {
     expect(rules(['']).success).toBe(false);
     expect(rules(['(unclosed']).success).toBe(false);
   });
+
+  it.each(['(a+)+b', '(a*)*', '(\\w+){2,}', '((a+))+', '(?:x+|y)*', '(a{2,})+'])(
+    'rejects the nested quantifier in %s',
+    (rule) => {
+      const result = DeckConfigSchema.safeParse({ version: 1, logs: { rules: [rule] } });
+      expect(result.success).toBe(false);
+      expect(JSON.stringify(result.error?.issues)).toContain('nested quantifier');
+    },
+  );
+
+  it.each([
+    'user-\\d+',
+    '(ab)+',
+    'a+b+',
+    '(a|b)*',
+    '(a+)?',
+    '(a+)b+',
+    '[(a+)]+',
+    '\\(a+\\)+',
+    '(?:x+)y',
+    '(a{2})+',
+    '(?<id>\\d+)-x',
+    '(a\\+)+',
+  ])('accepts %s', (rule) => {
+    expect(DeckConfigSchema.safeParse({ version: 1, logs: { rules: [rule] } }).success).toBe(true);
+  });
 });
