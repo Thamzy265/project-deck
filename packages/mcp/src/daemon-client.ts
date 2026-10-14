@@ -152,7 +152,8 @@ export class DaemonClient {
       const deadline = Date.now() + this.readyTimeoutMs;
       while (Date.now() < deadline) {
         await sleep(this.pollMs);
-        if ((await this.connect().catch(() => undefined)) !== undefined) return true;
+        // Throws at once when the daemon that answers belongs to another project.
+        if ((await this.connect()) !== undefined) return true;
       }
       return false;
     })().finally(() => (this.starting = undefined));

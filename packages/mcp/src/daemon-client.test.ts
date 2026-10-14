@@ -211,6 +211,21 @@ describe('DaemonClient when the daemon is down', () => {
     expect(spawned).toBe(1);
   });
 
+  it("reports another project's daemon at once when one turns up after the start", async () => {
+    const c = client({
+      readyTimeoutMs: 5000,
+      spawnDaemon: () => {
+        void fake().then((f) => {
+          f.health = { ...f.health, projectId: 'bbbbbbbbbbbb' };
+        });
+      },
+    });
+    const start = Date.now();
+    const err = await rejection(c.status());
+    expect(err.message).toContain("Another project's FlutterDeck (project bbbbbbbbbbbb)");
+    expect(Date.now() - start).toBeLessThan(2000);
+  });
+
   it("says it isn't running when it doesn't come up in time", async () => {
     let spawned = 0;
     const err = await rejection(
