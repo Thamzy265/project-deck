@@ -15,7 +15,7 @@ import { writeRuntime } from '@project-deck/daemon';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DaemonClientOptions } from './daemon-client.js';
 import { DaemonClient, DaemonError, NOT_RUNNING } from './daemon-client.js';
-import { FAKE_STATUS, FakeDaemon } from './testing/fake-daemon.js';
+import { FAKE_STATUS, FakeDaemon, initProject } from './testing/fake-daemon.js';
 
 let projectDir: string;
 const cleanups: (() => Promise<void>)[] = [];
@@ -26,6 +26,7 @@ const fetched: string[] = [];
 
 beforeEach(async () => {
   projectDir = await mkdtemp(join(tmpdir(), 'deck-mcp-edges-'));
+  await initProject(projectDir);
   const realFetch = globalThis.fetch;
   vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
     fetched.push(input instanceof Request ? input.url : String(input));

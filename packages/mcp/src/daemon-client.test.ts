@@ -1,16 +1,17 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { DaemonClientOptions } from './daemon-client.js';
-import { DaemonClient, DaemonError, NOT_RUNNING } from './daemon-client.js';
-import { FakeDaemon } from './testing/fake-daemon.js';
+import { DaemonClient, DaemonError, NOT_RUNNING, NOT_SET_UP } from './daemon-client.js';
+import { FakeDaemon, initProject } from './testing/fake-daemon.js';
 
 let projectDir: string;
 const fakes: FakeDaemon[] = [];
 
 beforeEach(async () => {
   projectDir = await mkdtemp(join(tmpdir(), 'deck-mcp-'));
+  await initProject(projectDir);
 });
 
 afterEach(async () => {
@@ -289,5 +290,34 @@ describe('DaemonClient when the daemon is down', () => {
     await c.openLoginWindow();
     expect(spawned).toBe(1);
     expect(fakes[0]?.requests.some((r) => r.path === '/api/login-window')).toBe(true);
+  });
+});
+
+describe('DaemonClient in a folder without FlutterDeck', () => {
+  it('neither starts nor contacts a daemon, and writes nothing', async () => {
+    const bare = await mkdtemp(join(tmpdir(), 'deck-bare-'));
+    try {
+      let spawned = 0;
+      const c = new DaemonClient({
+        projectDir: bare,
+        version: '0.0.0',
+        spawnDaemon: () => {
+          spawned++;
+        },
+        readyTimeoutMs: 300,
+        pollMs: 20,
+      });
+      for (const call of [() => c.status(), () => c.logs({}), () => c.openLoginWindow()]) {
+        const err = await rejection(call());
+        expect(err.message).toBe(NOT_SET_UP);
+      }
+      expect(NOT_SET_UP).toBe(
+        "FlutterDeck isn't set up in this folder. Run `flutterdeck init` first.",
+      );
+      expect(spawned).toBe(0);
+      expect(await readdir(bare)).toEqual([]);
+    } finally {
+      await rm(bare, { recursive: true, force: true });
+    }
   });
 });

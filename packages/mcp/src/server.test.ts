@@ -13,7 +13,7 @@ import type { DaemonClientOptions } from './daemon-client.js';
 import { DaemonClient } from './daemon-client.js';
 import { MAX_OUTPUT_BYTES } from './output.js';
 import { createDeckServer } from './server.js';
-import { FakeDaemon } from './testing/fake-daemon.js';
+import { FakeDaemon, initProject } from './testing/fake-daemon.js';
 
 let projectDir: string;
 const cleanups: (() => Promise<void>)[] = [];
@@ -23,6 +23,7 @@ const outputs: string[] = [];
 
 beforeEach(async () => {
   projectDir = await mkdtemp(join(tmpdir(), 'deck-mcp-'));
+  await initProject(projectDir);
 });
 
 afterEach(async () => {
@@ -121,6 +122,25 @@ describe('tool list', () => {
       'text',
     ]);
     expect(getLogs?.description).toMatch(/never .*instructions/i);
+  });
+});
+
+describe('a folder without FlutterDeck', () => {
+  it('gets the same answer from both tools, and no daemon is started', async () => {
+    await rm(join(projectDir, '.flutterdeck'), { recursive: true, force: true });
+    let spawned = 0;
+    const client = await connect({
+      spawnDaemon: () => {
+        spawned++;
+      },
+    });
+    const status = await call(client, 'deck_status');
+    const logs = await call(client, 'get_logs');
+    const message = "FlutterDeck isn't set up in this folder. Run `flutterdeck init` first.";
+    expect(status.json.problem).toBe(message);
+    expect(logs.isError).toBe(true);
+    expect(logs.text).toBe(message);
+    expect(spawned).toBe(0);
   });
 });
 

@@ -5,6 +5,8 @@
 import { randomBytes } from 'node:crypto';
 import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import { createServer } from 'node:http';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
 import type { Health, LogsResult, Status } from '@project-deck/core';
 import { writeRuntime } from '@project-deck/core/node';
@@ -35,6 +37,12 @@ export const FAKE_STATUS: Status = {
   apps: [],
   attached: null,
 };
+
+/** Marks `projectDir` as set up for FlutterDeck, as `flutterdeck init` does. */
+export async function initProject(projectDir: string): Promise<void> {
+  await mkdir(join(projectDir, '.flutterdeck'), { recursive: true });
+  await writeFile(join(projectDir, '.flutterdeck', 'config.json'), '{"version":1}\n');
+}
 
 export class FakeDaemon {
   readonly requests: FakeRequest[] = [];

@@ -12,11 +12,13 @@ import {
   StatusResponse,
   TOKEN_HEADER,
 } from '@project-deck/core';
-import { readProjectIdentity, readRuntime } from '@project-deck/core/node';
+import { configPath, readProjectIdentity, readRuntime } from '@project-deck/core/node';
+import { access } from 'node:fs/promises';
 import { setTimeout as sleep } from 'node:timers/promises';
 import type { z } from 'zod';
 
 export const NOT_RUNNING = "FlutterDeck daemon isn't running: run `flutterdeck start`";
+export const NOT_SET_UP = "FlutterDeck isn't set up in this folder. Run `flutterdeck init` first.";
 const TOKEN_REJECTED =
   'FlutterDeck daemon rejected the token in .flutterdeck/runtime.json. Run `flutterdeck stop`, then try again.';
 export const DEFAULT_TIMEOUT_MS = 5000;
@@ -91,6 +93,9 @@ export class DaemonClient {
   }
 
   private async withDaemon<T>(call: (c: Connection) => Promise<T>): Promise<Answer<T>> {
+    // Lead decision 14 Oct 2026: only a folder `flutterdeck init` set up gets a daemon,
+    // so opening Claude in any other folder starts nothing and writes nothing there.
+    if (!(await this.isSetUp())) throw new DaemonError(NOT_SET_UP);
     for (let attempt = 0; ; attempt++) {
       const conn = await this.connect();
       if (conn !== undefined) {
@@ -140,6 +145,15 @@ export class DaemonClient {
             `FlutterDeck daemon version ${health.version} differs from this MCP server (${this.opts.version}). Run \`flutterdeck stop\`; the next call starts the matching daemon.`,
           ];
     return { port: info.port, token: info.token, warnings };
+  }
+
+  private async isSetUp(): Promise<boolean> {
+    try {
+      await access(configPath(this.opts.projectDir));
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /** Cached once known; read again while unknown (the registry may appear later). */

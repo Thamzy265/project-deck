@@ -14,7 +14,7 @@ import type { DaemonClientOptions } from './daemon-client.js';
 import { DaemonClient, DaemonError } from './daemon-client.js';
 import { MAX_OUTPUT_BYTES } from './output.js';
 import { createDeckServer } from './server.js';
-import { FAKE_STATUS, FakeDaemon } from './testing/fake-daemon.js';
+import { FAKE_STATUS, FakeDaemon, initProject } from './testing/fake-daemon.js';
 
 let projectDir: string;
 const cleanups: (() => Promise<void>)[] = [];
@@ -30,6 +30,7 @@ const DTD_URI = `ws://127.0.0.1:53211/${DTD_AUTH}`;
 
 beforeEach(async () => {
   projectDir = await mkdtemp(join(tmpdir(), 'deck-mcp-srv-'));
+  await initProject(projectDir);
 });
 
 afterEach(async () => {

@@ -8,7 +8,7 @@ import {
   getDefaultEnvironment,
 } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { FakeDaemon } from './testing/fake-daemon.js';
+import { FakeDaemon, initProject } from './testing/fake-daemon.js';
 
 // The entrypoint runs top-level code, so it is exercised as a process. CI builds first.
 const MAIN = fileURLToPath(new URL('../dist/main.js', import.meta.url));
@@ -25,6 +25,7 @@ let client: Client | undefined;
 beforeEach(async () => {
   projectDir = await mkdtemp(join(tmpdir(), 'deck-mcp-main-'));
   home = await mkdtemp(join(tmpdir(), 'deck-mcp-main-home-'));
+  await initProject(projectDir);
   daemon = await FakeDaemon.start(projectDir);
 });
 
