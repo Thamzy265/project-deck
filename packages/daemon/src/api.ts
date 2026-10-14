@@ -7,6 +7,7 @@ import type { ActivityFeed } from './activity.js';
 import type { DashboardAsset, DashboardAssets } from './dashboard-assets.js';
 import type { AppManager } from './app-manager.js';
 import type { LoginWindow } from './login-window.js';
+import { DEFAULT_CSP, LOGIN_NEEDED_PAGE, LOGIN_PAGE_CSP } from './login-page.js';
 import { UnknownAppError } from './app-manager.js';
 import {
   authenticate,
@@ -79,15 +80,9 @@ const PLACEHOLDER_PAGE =
   '<!doctype html><html lang="en"><meta charset="utf-8"><title>FlutterDeck</title>' +
   '<p>FlutterDeck is running.</p></html>';
 
-const LOGIN_NEEDED_PAGE =
-  '<!doctype html><html lang="en"><meta charset="utf-8"><title>FlutterDeck</title>' +
-  '<p>Login needed. Run <code>flutterdeck open</code> in your project (or start a Claude ' +
-  'session with the plugin), then reload this page.</p></html>';
-
 const SECURITY_HEADERS: Record<string, string> = {
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'no-referrer',
-  'Content-Security-Policy': "default-src 'self'; connect-src 'self'; frame-ancestors 'none'",
   'X-Frame-Options': 'DENY',
 };
 
@@ -95,19 +90,23 @@ function asset(c: Context, file: DashboardAsset): Response {
   return c.body(file.body, 200, { 'Content-Type': file.type });
 }
 
-function setSecurityHeaders(headers: Headers, path: string): void {
+function setSecurityHeaders(headers: Headers, path: string, csp: string): void {
   for (const [name, value] of Object.entries(SECURITY_HEADERS)) headers.set(name, value);
+  headers.set('Content-Security-Policy', csp);
   // API answers hold logs and app state; a page that sets the login cookie mustn't be cached.
   if (path === '/' || path.startsWith('/api/')) headers.set('Cache-Control', 'no-store');
 }
 
-export function createApi(ctx: ApiContext): Hono {
-  const api = new Hono();
+/** `csp` lets one route (the Login needed page) name its own policy. */
+type DeckEnv = { Variables: { csp: string | undefined } };
+
+export function createApi(ctx: ApiContext): Hono<DeckEnv> {
+  const api = new Hono<DeckEnv>();
 
   // First, so error responses from later checks get the headers too.
   api.use('*', async (c, next) => {
     await next();
-    setSecurityHeaders(c.res.headers, c.req.path);
+    setSecurityHeaders(c.res.headers, c.req.path, c.get('csp') ?? DEFAULT_CSP);
   });
 
   api.use('*', async (c, next) => {
@@ -138,7 +137,10 @@ export function createApi(ctx: ApiContext): Hono {
     const header = (n: string) => c.req.header(n);
     const cookie = cookieValues(header('cookie'), sessionCookieName(ctx.port()));
     if (cookie.some((value) => tokensEqual(value, ctx.sessionSecret))) return dashboardPage(c);
-    if (!ctx.loginWindow.isOpen()) return c.html(LOGIN_NEEDED_PAGE);
+    if (!ctx.loginWindow.isOpen()) {
+      c.set('csp', LOGIN_PAGE_CSP);
+      return c.html(LOGIN_NEEDED_PAGE);
+    }
     if (isTopLevelNavigation(header)) {
       c.header('Set-Cookie', sessionCookie(ctx.port(), ctx.sessionSecret));
     }

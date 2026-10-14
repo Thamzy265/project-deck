@@ -53,6 +53,35 @@ test('"Login needed" once the 2-minute window has closed; an old cookie still wo
   await expect(page.getByRole('contentinfo')).toContainText('Connected');
 });
 
+test('the "Login needed" page is styled within its CSP, light and dark (QA B2-2)', async ({
+  browser,
+}) => {
+  deck = await startScriptedDaemon();
+  deck.advance(LOGIN_WINDOW_MS + 1000);
+  for (const colorScheme of ['light', 'dark'] as const) {
+    const context = await browser.newContext({
+      colorScheme,
+      viewport: { width: 320, height: 600 },
+    });
+    const page = await context.newPage();
+    const watch = await watchPage(page);
+    await page.goto(deck.url);
+    await expect(page.getByText(/Login needed/)).toBeVisible();
+    const look = await page.evaluate(() => {
+      const body = getComputedStyle(document.body);
+      return { display: body.display, background: body.backgroundColor };
+    });
+    expect(look.display).toBe('flex');
+    expect(look.background).toBe(
+      colorScheme === 'light' ? 'rgb(255, 255, 255)' : 'rgb(18, 20, 24)',
+    );
+    expect(watch.cspViolations).toEqual([]);
+    await expectAccessible(page);
+    await screenshot(page, `login-needed-320-${colorScheme}`);
+    await context.close();
+  }
+});
+
 test('a new log line shows in under 250 ms', async ({ page }) => {
   deck = await startScriptedDaemon();
   await openDashboard(page, deck.url);
