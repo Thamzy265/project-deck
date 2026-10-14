@@ -44,7 +44,7 @@ pnpm check          # typecheck + lint + format + test
 
 Packages import each other through `dist`, so run `pnpm build` after changing a dependency before typechecking or testing a dependent package.
 
-CI (`.github/workflows/ci.yml`) runs the same steps on Linux, macOS and Windows.
+CI (`.github/workflows/ci.yml`) runs the same steps on Linux, macOS and Windows. A separate Ubuntu-only job runs `flutter pub get`, `flutter analyze` and `flutter test` for `examples/sample_app`.
 
 ## Coding rules
 
