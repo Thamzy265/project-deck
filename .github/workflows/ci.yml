@@ -26,3 +26,25 @@ jobs:
       - run: pnpm lint
       - run: pnpm format:check
       - run: pnpm test
+
+  # PM decision R1, 14 Oct 2026: CI runs the sample app's Flutter tests.
+  # Ubuntu only to save runner minutes; the repo-hygiene tests are not
+  # exercised on macOS or Windows. The SDK version matches .metadata.
+  sample-app:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: examples/sample_app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: 3.44.6
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze
+      - run: flutter test
