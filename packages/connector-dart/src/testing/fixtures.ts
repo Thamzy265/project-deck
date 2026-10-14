@@ -158,6 +158,8 @@ function onlyEvent(name: string): RecordedNotify {
 export const recorded = {
   /** A successful `hot_reload`: one IsolateReload, status "success", no isolate field. */
   reloadSuccess: () => onlyEvent('reloadSuccess'),
+  /** A `hot_reload` that failed to compile: the VM was never asked, so no events. */
+  reloadCompileError: () => recordedCase('reloadCompileError'),
   /** A reload the VM rejected (enum changed to a class): still status "success". */
   reloadRejectedByVm: () => onlyEvent('reloadRejectedByVm'),
   /** A `hot_restart`: IsolateExit, then IsolateStart and IsolateRunnable in a new group. */

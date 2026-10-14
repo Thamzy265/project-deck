@@ -16,6 +16,7 @@ import {
   JsonRpcClient,
   JsonRpcError,
 } from './json-rpc.js';
+import { OwnEvents } from './own-events.js';
 import { LineBuffer, entryFromLogRecord } from './vm-logs.js';
 
 /** Service names the Flutter tool registers on the app's VM service. */
@@ -141,12 +142,12 @@ export class DartAppSession implements AppSession {
   private isolateId: string | undefined;
   /** The main isolate's group: IsolateReload events name a group, not an isolate. */
   private isolateGroupId: string | undefined;
-  /** Our own hot reloads in flight. Restarts post no IsolateReload, so they don't count. */
-  private ownReloadsRunning = 0;
-  /** IsolateReload events our own hot reloads will still cause: at most one each. */
-  private ownEventsExpected = 0;
-  /** After this time an expected event that never came is given up on. */
-  private ownEventsExpectedUntil = Number.POSITIVE_INFINITY;
+  /** The last main isolate group seen; a change to a new one is a hot restart. */
+  private mainGroupSeen: string | undefined;
+  /** Own hot reloads, each expecting one IsolateReload. Restarts post none. */
+  private readonly ownReloads: OwnEvents;
+  /** Own hot restarts, each expecting one move of the main isolate to a new group. */
+  private readonly ownRestarts: OwnEvents;
   private refreshing: Promise<void> | undefined;
   /** A follow-up refresh, requested while one was running. */
   private refreshQueued: Promise<void> | undefined;
@@ -163,6 +164,9 @@ export class DartAppSession implements AppSession {
     private readonly opts: DartAppSessionOptions,
   ) {
     this.currentApp = app;
+    const graceMs = opts.ownReloadGraceMs ?? DEFAULT_OWN_RELOAD_GRACE_MS;
+    this.ownReloads = new OwnEvents(graceMs);
+    this.ownRestarts = new OwnEvents(graceMs);
     this.logSource = new RingBufferLogSource(opts.logCapacity ?? DEFAULT_SESSION_LOG_CAPACITY);
     this.stdout = new LineBuffer((line, ts) => this.pushLine(line, ts, 'info', 'stdout'));
     this.stderr = new LineBuffer((line, ts) => this.pushLine(line, ts, 'error', 'stderr'));
@@ -265,11 +269,8 @@ export class DartAppSession implements AppSession {
     const label = kind === 'hot-reload' ? 'Hot reload' : 'Hot restart';
     const started = performance.now();
     let result: ReloadResult;
-    const ownReload = kind === 'hot-reload';
-    if (ownReload) {
-      this.ownReloadsRunning++;
-      this.ownEventsExpected++;
-    }
+    const own = kind === 'hot-reload' ? this.ownReloads : this.ownRestarts;
+    own.started();
     try {
       await run(method);
       result = { ok: true, kind, durationMs: Math.round(performance.now() - started) };
@@ -296,12 +297,7 @@ export class DartAppSession implements AppSession {
       }
       result = reloadFailure(kind, err);
     } finally {
-      if (ownReload) {
-        this.ownReloadsRunning--;
-        // The event and the answer take different routes, so the event may still come.
-        this.ownEventsExpectedUntil =
-          performance.now() + (this.opts.ownReloadGraceMs ?? DEFAULT_OWN_RELOAD_GRACE_MS);
-      }
+      own.finished();
     }
     this.events.emit('reloaded', result);
     return result;
@@ -322,8 +318,16 @@ export class DartAppSession implements AppSession {
       return;
     }
     if (isolate.name !== 'main') return;
+    const group = isolate.isolateGroupId ?? event.isolateGroup?.id;
     this.isolateId = isolate.id;
-    this.isolateGroupId = isolate.isolateGroupId ?? event.isolateGroup?.id;
+    this.isolateGroupId = group;
+    if (group === undefined) return;
+    const restarted = this.mainGroupSeen !== undefined && group !== this.mainGroupSeen;
+    this.mainGroupSeen = group;
+    // A hot restart posts no IsolateReload; the move to a new group is the only sign.
+    if (restarted && !this.ownRestarts.claim()) {
+      this.events.emit('reloaded', { ok: true, kind: 'hot-restart', source: 'external' });
+    }
   }
 
   /**
@@ -341,19 +345,10 @@ export class DartAppSession implements AppSession {
     if (group !== undefined && this.isolateGroupId !== undefined && group !== this.isolateGroupId) {
       return;
     }
-    if (
-      this.ownEventsExpected > 0 &&
-      this.ownReloadsRunning === 0 &&
-      performance.now() > this.ownEventsExpectedUntil
-    ) {
-      // Our reloads' events never came (e.g. the Flutter tool failed before the VM ran).
-      this.ownEventsExpected = 0;
-    }
-    if (this.ownEventsExpected > 0) {
-      // One event per own reload; any further one is someone else's.
-      this.ownEventsExpected--;
-      return;
-    }
+    // One event per own reload; any further one is someone else's.
+    if (this.ownReloads.claim()) return;
+    // "success" also covers a reload the VM rejected (QA's recording): nothing on the wire
+    // tells them apart, so it is reported as the VM says. See docs/notes/dtd.md.
     if (event.status === 'success') {
       this.events.emit('reloaded', { ok: true, kind: 'hot-reload', source: 'external' });
     } else if (event.status === 'failure') {
@@ -425,6 +420,9 @@ export class DartAppSession implements AppSession {
         const main = isolates.find((i) => i.name === 'main') ?? isolates[0];
         this.isolateId = main?.id;
         this.isolateGroupId = main?.isolateGroupId;
+        // Only a first value: a getVM sent before a restart can answer after it, and
+        // restarts are detected from the Isolate events instead.
+        this.mainGroupSeen ??= main?.isolateGroupId;
       } catch (err) {
         if (!(err instanceof ConnectionClosedError)) throw err;
       } finally {

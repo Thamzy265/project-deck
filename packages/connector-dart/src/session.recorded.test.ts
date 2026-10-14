@@ -28,6 +28,7 @@ afterEach(async () => {
 });
 
 const EXTERNAL_OK: ReloadResult = { ok: true, kind: 'hot-reload', source: 'external' };
+const EXTERNAL_RESTART: ReloadResult = { ok: true, kind: 'hot-restart', source: 'external' };
 
 /** getVM as the recorded app answers it: one main isolate in `group`. */
 function vm(isolate: string, group: string) {
@@ -38,16 +39,24 @@ function vm(isolate: string, group: string) {
   };
 }
 
-async function attach() {
+async function attach(graceMs = 0) {
   const srv = await FakeRpcServer.start('/AbC=/ws');
   server = srv;
   asFlutterVmService(srv);
   srv.handle('getVM', () => vm(RECORDED_ISOLATE, RECORDED_GROUP));
-  const s = await DartAppSession.attach(srv.uri, app, { serviceWaitMs: 100, ownReloadGraceMs: 0 });
+  const s = await DartAppSession.attach(srv.uri, app, {
+    serviceWaitMs: 100,
+    ownReloadGraceMs: graceMs,
+  });
   session = s;
   const results: ReloadResult[] = [];
   s.on('reloaded', (r) => results.push(r));
-  return { server: srv, results };
+  return { server: srv, session: s, results };
+}
+
+/** After this the fake answers getVM as the restarted app does. */
+function restartTheVm(srv: FakeRpcServer): void {
+  srv.handle('getVM', () => vm(RECORDED_ISOLATE_AFTER_RESTART, RECORDED_GROUP_AFTER_RESTART));
 }
 
 const settle = (ms = 30) => new Promise((r) => setTimeout(r, ms));
@@ -73,7 +82,7 @@ describe('DartAppSession with the recorded Isolate stream', () => {
     for (const event of recorded.hotRestart()) server.notify(event);
     await settle();
     server.notify(recorded.reloadAfterRestart());
-    await vi.waitFor(() => expect(results).toEqual([EXTERNAL_OK]));
+    await vi.waitFor(() => expect(results).toEqual([EXTERNAL_RESTART, EXTERNAL_OK]));
   });
 
   it('sees a reload in the new group even before getVM has answered after the restart', async () => {
@@ -88,15 +97,85 @@ describe('DartAppSession with the recorded Isolate stream', () => {
     );
     for (const event of recorded.hotRestart()) server.notify(event);
     server.notify(recorded.reloadAfterRestart());
-    await vi.waitFor(() => expect(results).toEqual([EXTERNAL_OK]));
+    await vi.waitFor(() => expect(results).toEqual([EXTERNAL_RESTART, EXTERNAL_OK]));
     answer?.();
   });
 
-  it('reports nothing for the restart itself', async () => {
+  it('reports nothing for a hot_reload that failed to compile: the VM posts no event', async () => {
     const { server, results } = await attach();
-    server.handle('getVM', () => vm(RECORDED_ISOLATE_AFTER_RESTART, RECORDED_GROUP_AFTER_RESTART));
-    for (const event of recorded.hotRestart()) server.notify(event);
+    const events = recorded.reloadCompileError();
+    expect(events).toEqual([]);
+    for (const event of events) server.notify(event);
     await settle();
     expect(results).toEqual([]);
+  });
+
+  it('reports a hot restart by someone else once, then their reloads in the new group', async () => {
+    const { server, results } = await attach();
+    restartTheVm(server);
+    for (const event of recorded.hotRestart()) server.notify(event);
+    await vi.waitFor(() => expect(results).toEqual([EXTERNAL_RESTART]));
+    server.notify(recorded.reloadAfterRestart());
+    await vi.waitFor(() => expect(results).toEqual([EXTERNAL_RESTART, EXTERNAL_OK]));
+  });
+
+  it("does not report its own hot restart as someone else's", async () => {
+    const { server, session, results } = await attach(1000);
+    server.handle('s0.hotRestart', () => {
+      restartTheVm(server);
+      for (const event of recorded.hotRestart()) server.notify(event);
+      return { type: 'Success' };
+    });
+    const own = await session.restart();
+    await settle();
+    expect(results).toEqual([own]);
+    expect(own).toMatchObject({ ok: true, kind: 'hot-restart' });
+    expect(own).not.toHaveProperty('source');
+  });
+
+  it('does not report its own hot restart when the events come just after the answer', async () => {
+    const { server, session, results } = await attach(1000);
+    server.handle('s0.hotRestart', () => {
+      setTimeout(() => {
+        restartTheVm(server);
+        for (const event of recorded.hotRestart()) server.notify(event);
+      }, 20);
+      return { type: 'Success' };
+    });
+    const own = await session.restart();
+    await settle(80);
+    expect(results).toEqual([own]);
+  });
+
+  it('reports a restart by someone else after its own restart has settled', async () => {
+    const { server, session, results } = await attach(30);
+    server.handle('s0.hotRestart', () => {
+      restartTheVm(server);
+      for (const event of recorded.hotRestart()) server.notify(event);
+      return { type: 'Success' };
+    });
+    await session.restart();
+    await settle(60);
+    // Someone else restarts back into a new group.
+    server.handle('getVM', () => vm(RECORDED_ISOLATE, RECORDED_GROUP));
+    for (const event of recorded.hotRestart().reverse()) {
+      const kind = event.event.kind;
+      if (kind === 'IsolateExit') continue;
+      server.notify({
+        ...event,
+        event: {
+          ...event.event,
+          isolate: {
+            type: '@Isolate',
+            id: RECORDED_ISOLATE,
+            name: 'main',
+            isolateGroupId: RECORDED_GROUP,
+          },
+          isolateGroup: { type: '@IsolateGroup', id: RECORDED_GROUP },
+        },
+      });
+    }
+    await vi.waitFor(() => expect(results).toHaveLength(2));
+    expect(results[1]).toEqual(EXTERNAL_RESTART);
   });
 });
