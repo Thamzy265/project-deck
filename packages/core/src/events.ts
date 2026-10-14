@@ -14,6 +14,8 @@ export interface DeckEvents {
   /** The app went away by itself. `crashed`: an error log line arrived within 5 s before. */
   'app.exit': { appId: string; code?: number; crashed: boolean };
   'app.log': { appId: string; entry: LogEntry };
+  /** The log buffer was emptied (epoch ms), so every open dashboard empties its list too. */
+  'logs.cleared': { at: number };
   'task.current': { task: Task | null };
   'claude.done': { sessionId?: string };
   'claude.waiting': { sessionId?: string; message?: string };

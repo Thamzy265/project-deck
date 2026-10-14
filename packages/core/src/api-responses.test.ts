@@ -28,6 +28,7 @@ describe('dashboard response schemas', () => {
     const messages = [
       { type: 'hello', payload: { apps: [fakeApp()], attached: fakeApp(), discovering: true } },
       { type: 'apps.discovering', payload: { discovering: false } },
+      { type: 'logs.cleared', payload: { at: 1 } },
       { type: 'heartbeat' },
       { type: 'apps.changed', payload: { connectorId: 'dart', apps: [] } },
       { type: 'app.attached', payload: { app: fakeApp() } },

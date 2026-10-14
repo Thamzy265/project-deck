@@ -212,6 +212,8 @@ export function createApi(ctx: ApiContext): Hono {
 
   api.delete('/api/logs', (c) => {
     ctx.manager.logs()?.clear();
+    // Other open tabs must drop the lines too: the Clear button is the delete path.
+    ctx.bus.emit('logs.cleared', { at: Date.now() });
     return c.json({ ok: true });
   });
 

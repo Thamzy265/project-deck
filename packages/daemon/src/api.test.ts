@@ -137,6 +137,18 @@ describe('API routes', () => {
     expect((await logsAt('/api/logs')).entries).toEqual([]);
   });
 
+  it('tells every client when the logs were cleared (BUG-M2-T2)', async () => {
+    const { request, bus } = await setup();
+    const cleared = vi.fn();
+    bus.on('logs.cleared', cleared);
+    const before = Date.now();
+    expect((await request('/api/logs', { method: 'DELETE' })).status).toBe(200);
+    expect(cleared).toHaveBeenCalledTimes(1);
+    const at = (cleared.mock.calls[0]?.[0] as { at: number }).at;
+    expect(at).toBeGreaterThanOrEqual(before);
+    expect(at).toBeLessThanOrEqual(Date.now());
+  });
+
   it('turns hook events into bus events', async () => {
     const { request, bus } = await setup();
     const waiting = vi.fn();

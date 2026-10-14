@@ -138,6 +138,7 @@ export const WsMessageSchema = z.discriminatedUnion('type', [
     type: z.literal('app.log'),
     payload: z.object({ appId: z.string(), entry: LogEntrySchema }),
   }),
+  z.object({ type: z.literal('logs.cleared'), payload: z.object({ at: z.number() }) }),
   z.object({ type: z.literal('activity'), payload: ActivityEntrySchema }),
 ]);
 export type WsMessage = z.infer<typeof WsMessageSchema>;
