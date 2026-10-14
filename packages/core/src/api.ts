@@ -3,6 +3,7 @@
  * so both validate requests the same way.
  */
 import { z } from 'zod';
+import { MAX_WAITING_MESSAGE } from './activity.js';
 import { MAX_QUERY_LIMIT } from './db.js';
 import { LogQuerySchema } from './logs.js';
 import { TaskStatusTypeSchema } from './tasks.js';
@@ -51,13 +52,21 @@ export const TaskSetStatusInput = z.object({
   statusType: TaskStatusTypeSchema,
 });
 
+/** Answer of `POST /api/login-window`: the dashboard cookie can be had until `until`. */
+export const LoginWindowResponse = z.object({
+  ok: z.literal(true),
+  /** Epoch milliseconds. */
+  until: z.number().int(),
+});
+export type LoginWindowResult = z.infer<typeof LoginWindowResponse>;
+
 /** Body of `POST /api/events`, sent by the Claude Code hooks. */
 export const HookEventInput = z.discriminatedUnion('type', [
   z.object({ type: z.literal('claude.done'), sessionId: z.string().optional() }),
   z.object({
     type: z.literal('claude.waiting'),
     sessionId: z.string().optional(),
-    message: z.string().max(2000).optional(),
+    message: z.string().max(MAX_WAITING_MESSAGE).optional(),
   }),
 ]);
 export type HookEvent = z.infer<typeof HookEventInput>;

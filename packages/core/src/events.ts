@@ -1,3 +1,4 @@
+import type { ActivityEntry } from './activity.js';
 import type { ReloadResult, RunningApp } from './apps.js';
 import type { LogEntry } from './logs.js';
 import type { Task } from './tasks.js';
@@ -8,11 +9,14 @@ export interface DeckEvents {
   'app.attached': { app: RunningApp };
   'app.detached': { appId: string };
   'app.reloaded': { appId: string; result: ReloadResult };
-  'app.exit': { appId: string; code?: number };
+  /** The app went away by itself. `crashed`: an error log line arrived within 5 s before. */
+  'app.exit': { appId: string; code?: number; crashed: boolean };
   'app.log': { appId: string; entry: LogEntry };
   'task.current': { task: Task | null };
   'claude.done': { sessionId?: string };
   'claude.waiting': { sessionId?: string; message?: string };
+  /** A new Activity feed entry, already stored. */
+  activity: ActivityEntry;
 }
 
 type Listener<P> = (payload: P) => void;

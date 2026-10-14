@@ -8,13 +8,18 @@ import type {
   Registry,
   RunningApp,
 } from '@project-deck/core';
-import { MAX_LOG_LIMIT, RingBufferLogSource } from '@project-deck/core';
+import { MAX_LOG_LIMIT, RingBufferLogSource, isAtLeast } from '@project-deck/core';
+
+/** An exit within this long after an error log line counts as a crash. */
+export const CRASH_WINDOW_MS = 5000;
 
 interface Attached {
   app: RunningApp;
   /** Undefined once the app has exited; logs stay readable until the next attach. */
   session: AppSession | undefined;
   logs: RingBufferLogSource;
+  /** When the daemon last received an error-level line live (backfill doesn't count). */
+  lastErrorAt: number | undefined;
   cleanup: (() => Promise<void> | void)[];
 }
 
@@ -22,6 +27,8 @@ export interface AppManagerOptions {
   logCapacity?: number;
   /** Called when a connector fails to start. The daemon keeps running without it. */
   onConnectorError?: (connectorId: string, err: unknown) => void;
+  /** Clock for the crash window; tests pass a fake one. */
+  now?: () => number;
 }
 
 const NOT_ATTACHED: ReloadResult = {
@@ -140,13 +147,20 @@ export class AppManager {
       return this.attached.app;
     }
     await this.release();
+    // Lines logged before this (logcat prints the app's recent history first) don't count
+    // towards a crash. Compared with the line's own time, so it assumes the device clock
+    // roughly matches this machine's, as emulators and network-synced phones do.
+    const attachedAt = this.now();
     const session = await connector.attach(appId);
     const app = session.app;
     const logs = new RingBufferLogSource(this.opts.logCapacity);
-    const attached: Attached = { app, session, logs, cleanup: [] };
+    const attached: Attached = { app, session, logs, lastErrorAt: undefined, cleanup: [] };
     this.attached = attached;
 
     const push = (entry: LogEntry): void => {
+      if (isAtLeast(entry.level, 'error') && entry.ts >= attachedAt) {
+        attached.lastErrorAt = this.now();
+      }
       logs.push(entry);
       this.bus.emit('app.log', { appId: app.id, entry });
     };
@@ -162,7 +176,11 @@ export class AppManager {
         this.bus.emit('app.reloaded', { appId: app.id, result });
       }),
       session.on('exit', ({ code }) => {
-        void this.serial(() => this.onExit(attached, code));
+        // Judged now: queued attach steps and cleanup can take a while before onExit runs.
+        const crashed =
+          attached.lastErrorAt !== undefined &&
+          this.now() - attached.lastErrorAt <= CRASH_WINDOW_MS;
+        void this.serial(() => this.onExit(attached, code, crashed));
       }),
     );
     const backfill = await session.logs().query({ limit: MAX_LOG_LIMIT });
@@ -180,17 +198,22 @@ export class AppManager {
     return app;
   }
 
-  private async onExit(attached: Attached, code: number | undefined): Promise<void> {
+  private async onExit(
+    attached: Attached,
+    code: number | undefined,
+    crashed: boolean,
+  ): Promise<void> {
     const session = attached.session;
     if (this.attached !== attached || session === undefined) return;
     await this.runCleanup(attached);
     attached.session = undefined;
     // The app is gone, but the connector may still hold resources for the session.
     await session.detach().catch(() => undefined);
-    this.bus.emit(
-      'app.exit',
-      code === undefined ? { appId: attached.app.id } : { appId: attached.app.id, code },
-    );
+    this.bus.emit('app.exit', {
+      appId: attached.app.id,
+      ...(code === undefined ? {} : { code }),
+      crashed,
+    });
   }
 
   /** Detaches without ever stopping the app. */
@@ -211,6 +234,10 @@ export class AppManager {
         await fn();
       }),
     );
+  }
+
+  private now(): number {
+    return (this.opts.now ?? Date.now)();
   }
 
   private connectorFor(appId: string): AppConnector {

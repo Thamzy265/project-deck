@@ -27,6 +27,8 @@ export interface StartupLockOptions {
   waitMs?: number;
   /** A lock older than this is left over from a crash, even if its pid is alive. */
   staleMs?: number;
+  /** Mode for the lock's folder if it has to be created (it never changes an existing one). */
+  dirMode?: number;
   /** Test seams for interleavings and platform errors that timing can't produce. */
   hooks?: StartupLockHooks;
 }
@@ -75,21 +77,50 @@ export function startupLockPath(projectDir: string): string {
  * "nothing running" and both write runtime.json. Resolves with a release function, or
  * throws StartupLockBusyError when the lock stays held for `waitMs`.
  */
-export async function acquireStartupLock(
+export function acquireStartupLock(
   projectDir: string,
   opts: StartupLockOptions = {},
+): Promise<() => Promise<void>> {
+  return acquireFileLock(
+    join(projectDir, STATE_DIR),
+    LOCK_FILE,
+    opts,
+    (pid, staleInMs) => new StartupLockBusyError(pid, staleInMs),
+  );
+}
+
+/**
+ * A cross-process lock: an exclusively created file in `dir` holding our pid, taken
+ * over when its pid is gone or it is older than `staleMs`. Plain files only (no native
+ * modules), and it copes with Windows' EPERM/EBUSY. `busy` makes the error thrown when
+ * the lock stays held for `waitMs`.
+ */
+export async function acquireFileLock(
+  dir: string,
+  fileName: string,
+  opts: StartupLockOptions,
+  busy: (holderPid: number | undefined, staleInMs: number | undefined) => Error,
 ): Promise<() => Promise<void>> {
   const { retryMs = 100, staleMs = DEFAULT_STALE_MS } = opts;
   const create = opts.hooks?.create ?? createExclusive;
   const waitMs = opts.waitMs ?? staleMs + 1000;
-  const path = startupLockPath(projectDir);
-  await mkdir(join(projectDir, STATE_DIR), { recursive: true });
+  const path = join(dir, fileName);
+  await mkdir(dir, {
+    recursive: true,
+    ...(opts.dirMode === undefined ? {} : { mode: opts.dirMode }),
+  });
   const deadline = Date.now() + waitMs;
   for (;;) {
-    const content = JSON.stringify({ pid: process.pid, createdAt: Date.now() });
+    // The nonce tells apart two holders in one process created in the same millisecond,
+    // so one never releases the other's lock.
+    const content = JSON.stringify({
+      pid: process.pid,
+      createdAt: Date.now(),
+      nonce: randomBytes(6).toString('hex'),
+    });
     try {
       await create(path, content);
-      await sweepLeftovers(join(projectDir, STATE_DIR), staleMs);
+      await sweepLeftovers(dir, fileName, staleMs);
       return () => releaseIfOurs(path, content);
     } catch (err) {
       const code = (err as NodeJS.ErrnoException).code;
@@ -101,7 +132,7 @@ export async function acquireStartupLock(
       if (await removeStale(path, held.raw)) continue;
     }
     if (Date.now() >= deadline) {
-      throw new StartupLockBusyError(held?.lock?.pid, await staleIn(path, held, staleMs));
+      throw busy(held?.lock?.pid, await staleIn(path, held, staleMs));
     }
     await sleep(retryMs);
   }
@@ -183,9 +214,9 @@ async function removeStale(path: string, staleRaw: string): Promise<boolean> {
  * A crash between renaming a stale lock aside and deleting it leaves a `.stale` file.
  * Only old ones are removed, so a waiter still checking its own aside file is unaffected.
  */
-async function sweepLeftovers(dir: string, staleMs: number): Promise<void> {
+async function sweepLeftovers(dir: string, fileName: string, staleMs: number): Promise<void> {
   try {
-    const prefix = `${LOCK_FILE}.`;
+    const prefix = `${fileName}.`;
     for (const name of await readdir(dir)) {
       if (!name.startsWith(prefix) || !name.endsWith('.stale')) continue;
       const file = join(dir, name);

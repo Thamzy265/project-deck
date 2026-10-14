@@ -3,7 +3,9 @@
  * Development entrypoint until the CLI exists (M2):
  *   node packages/daemon/dist/main.js [--port 9147] [--project <dir>]
  *     [--dtd-uri <ws://…>]... [--vm-service-uri <ws://…|http://…>]... [--fake]
- * If the port is busy it uses the next free one; clients read it from runtime.json.
+ * A "port" in .flutterdeck/config.json wins over --port and is never moved: if it is busy
+ * the daemon exits and says who holds it. Without one, a busy port means the next free one;
+ * clients read it from runtime.json.
  * By default it discovers running Dart/Flutter apps through every local DTD, and streams
  * Android native logs (adb logcat) for an attached app on an Android device.
  * Addresses can also come from DECK_DTD_URIS and DECK_VM_SERVICE_URIS (comma-separated).

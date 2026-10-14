@@ -45,6 +45,21 @@ Every DTD on Dart 3.12+ writes a pid file at `<DartDataHome>/dtd/<pid>`, contain
 - Results: success is `{type:"Success"}`. Failure arrives on the wire as `{"code":-32603,"message":""}`. flutter_tools throws `RPCError('Unable to reload sources' | 'Unable to restart', -32603, '')`, but that first argument is vm_service's `callingMethod`, which is never serialised. So treat -32603 from the Flutter tool's own service as a failed reload and **don't match on message text**. Corrected 12 Oct 2026 after review. **Compile error text is not available through this path.** The Dart MCP server has the same limitation.
 - Don't call `ext.flutter.reassemble`; `reloadSources` already does it.
 
+### Reloads made by others (checked 14 Oct 2026, verified live the same day)
+
+Checked against dart-lang/sdk main: `runtime/vm/service/service.md` (header says protocol 4.23, body still says 4.22), `runtime/vm/service_event.cc` and `runtime/vm/isolate_reload.cc`. Then verified by QA on a real app (Flutter 3.44.6, Dart 3.12.2, Android emulator) with the official Dart MCP server's `hot_reload` and `hot_restart`. The recording is `packages/connector-dart/src/testing/fixtures/isolate-reload.recorded.json`; evidence is in `docs/qa/M2.md`.
+
+- The event is `IsolateReload` on the `Isolate` stream. The VM posts it for a hot reload of an isolate group, whoever asked for it (Claude through the Dart MCP server, the IDE, `flutter run`'s `r`, or us).
+- It is posted per isolate group and skips system groups. It carries `isolateGroup` and **no `isolate`**. FlutterDeck matches the group against the main isolate's group.
+- The spec allows `status: "failure"` with `reloadFailureReason`, but no recorded case produced one:
+  - **A reload that fails to compile posts no event at all.** flutter_tools stops before it asks the VM, so a compile error by someone else doesn't show in Activity. (The batch-5 PostToolUse hook is meant to report Claude's failed reloads.)
+  - **A reload the VM rejects (for example an enum redefined as a class) posts `status: "success"`**, with no `reloadFailureReason`. No other event on the Isolate, Debug, Extension, Service, VM or Timeline streams tells it apart. Lead decision: FlutterDeck reports what the VM says, so such a reload shows as "Reloaded" in Activity. This is a known limitation.
+  - The connector still handles `"failure"` (spec-built tests) in case another VM or tool posts it.
+- A reload with no changed libraries posts no event, so such a reload by someone else doesn't show in Activity.
+- **A hot restart posts no `IsolateReload`** (verified). It posts `IsolateExit` for the old main isolate, then `IsolateStart` and `IsolateRunnable` for a new main isolate in a **new isolate group**. The connector takes the new group straight from those events, so later reloads are matched at once. When the main isolate moves to a new group without an own restart, it reports a hot restart by someone else (`kind: "hot-restart"`, `source: "external"`).
+- Our own reloads and restarts produce the same signals. The connector matches at most one signal per own action: an `IsolateReload` per own hot reload, a group change per own hot restart. The signal is matched while the action runs or up to 1 s after its answer, because the signal and the answer take different routes.
+- **Known gap, accepted (review finding C4):** an own reload with no changed libraries, or one that fails to compile, posts no event, and the Flutter tool's answer (`{type: "Success"}`, or error -32603) doesn't say whether one is coming. So for 1 s after such a reload, a reload by someone else is taken for ours and doesn't show in Activity. A test pins this behaviour (`session.test.ts`).
+
 ## Logs
 
 - VM service streams: `Stdout`, `Stderr` (`WriteEvent`, `bytes` base64) and `Logging` (`logRecord` with `message`, `loggerName`, `error`, `stackTrace` as `@Instance`, plus `time`, `level` 0–2000 using package:logging values, and `sequenceNumber`).

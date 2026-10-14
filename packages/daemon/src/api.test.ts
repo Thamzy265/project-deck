@@ -1,9 +1,11 @@
 import type { DeckEvents, LogEntry } from '@project-deck/core';
-import { EventBus, Registry } from '@project-deck/core';
+import { ActivityListSchema, EventBus, Registry } from '@project-deck/core';
 import { FakeAppConnector, fakeApp } from '@project-deck/core/testing';
 import { describe, expect, it, vi } from 'vitest';
 import { createApi } from './api.js';
+import { ActivityFeed } from './activity.js';
 import { AppManager } from './app-manager.js';
+import { LoginWindow } from './login-window.js';
 
 const PORT = 9100;
 const TOKEN = 'test-token-0123456789abcdef0123456789abcdef';
@@ -13,6 +15,8 @@ async function setup() {
   const connector = new FakeAppConnector('fake', [fakeApp()]);
   registry.connectors.register(connector);
   const bus = new EventBus<DeckEvents>();
+  const activity = new ActivityFeed(bus);
+  activity.start();
   const manager = new AppManager(registry, bus);
   await manager.start();
   await vi.waitFor(() => expect(manager.attachedApp()).toBeDefined());
@@ -20,9 +24,13 @@ async function setup() {
   const api = createApi({
     manager,
     bus,
+    activity,
     token: TOKEN,
+    sessionSecret: 'session-secret-0123456789abcdef0123456789abcdef',
+    loginWindow: new LoginWindow(),
     port: () => PORT,
     version: '0.0.0',
+    projectId: '0123456789ab',
     shutdown,
   });
 
@@ -148,5 +156,83 @@ describe('API routes', () => {
     const { request, shutdown } = await setup();
     await request('/api/shutdown', { method: 'POST' });
     await vi.waitFor(() => expect(shutdown).toHaveBeenCalled());
+  });
+});
+
+describe('security headers', () => {
+  const expectHeaders = (res: Response) => {
+    expect(res.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(res.headers.get('referrer-policy')).toBe('no-referrer');
+    expect(res.headers.get('content-security-policy')).toBe(
+      "default-src 'self'; connect-src 'self'; frame-ancestors 'none'",
+    );
+    expect(res.headers.get('x-frame-options')).toBe('DENY');
+  };
+
+  it('are on every response, including errors', async () => {
+    const { request } = await setup();
+    const responses = [
+      await request('/api/health'),
+      await request('/api/status'),
+      await request('/api/status', { headers: { 'x-deck-token': 'wrong' } }),
+      await request('/api/status', { headers: { host: 'evil.example:9100' } }),
+      await request('/api/nope'),
+      await request('/api/events', { method: 'POST', body: 'not json' }),
+    ];
+    expect(responses.map((r) => r.status)).toEqual([200, 200, 401, 403, 404, 400]);
+    for (const res of responses) expectHeaders(res);
+  });
+
+  it('forbid caching of API JSON', async () => {
+    const { request } = await setup();
+    for (const path of ['/api/health', '/api/status', '/api/logs']) {
+      expect((await request(path)).headers.get('cache-control')).toBe('no-store');
+    }
+    const denied = await request('/api/status', { headers: { 'x-deck-token': 'wrong' } });
+    expect(denied.headers.get('cache-control')).toBe('no-store');
+  });
+});
+
+describe('GET /api/activity', () => {
+  it('lists what happened, oldest first', async () => {
+    const { request } = await setup();
+    await request('/api/reload', { method: 'POST' });
+    await request('/api/events', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ type: 'claude.done', sessionId: 's1' }),
+    });
+    const res = await request('/api/activity');
+    expect(res.status).toBe(200);
+    const body = ActivityListSchema.parse(await res.json());
+    expect(body.entries.map((e) => e.kind)).toEqual([
+      'app.attached',
+      'app.reloaded',
+      'claude.done',
+    ]);
+  });
+
+  it('needs the token', async () => {
+    const { request } = await setup();
+    expect((await request('/api/activity', { headers: { 'x-deck-token': 'wrong' } })).status).toBe(
+      401,
+    );
+  });
+
+  it("never keeps a Stop hook's last assistant message", async () => {
+    const { request } = await setup();
+    const res = await request('/api/events', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        type: 'claude.done',
+        last_assistant_message: 'The plan is secret',
+        transcript_path: '/home/me/t.jsonl',
+      }),
+    });
+    expect(res.status).toBe(200);
+    const text = await (await request('/api/activity')).text();
+    expect(text).not.toContain('secret');
+    expect(text).not.toContain('jsonl');
   });
 });

@@ -2,6 +2,14 @@
 
 Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
 
+## 2026-10-14 — M2 batch 1 (`feat/dashboard-auth`) — PM decision on S1
+
+- Changed: reviewer finding S1 (Medium): another OS user on the same machine could load `/` and get the dashboard cookie. Design fix in [ADR 0003](adr/0003-dashboard-login-window.md).
+- Decisions: PM, 14 Oct 2026, chose the option "Login window (Recommended)": the cookie is handed out only during a 2-minute window opened at daemon start or with the `runtime.json` token (`flutterdeck open`, MCP server start). No risk accepted.
+- Lead decisions: C1 — prune registry entries whose folder is gone; a duplicate checkout on a free port starts with a warning. `logs.rules` are plain regex strings; config port range 1024–65535. A wrong token header is refused even with a valid cookie.
+- Host change approved by PM: delete the local branch `reorder-tmp` (done).
+- Blockers: Developer none · Tester none · Reviewer none (re-review after the S1 and D1 fixes) · QA none · Marketer none · Lead none.
+
 ## 2026-10-14 — M1 closed
 
 - Changed: merged PR #16 (CI runs the sample app's Flutter checks), PR #17 (M2 plan, decisions and ADRs) and PR #18 (M1 acceptance check). M1 Accept ticked in PLAN.md.

@@ -49,6 +49,19 @@ describe('FakeAppSession', () => {
     await session.detach();
     expect(await session.restart()).toMatchObject({ ok: false, reason: 'not-attached' });
   });
+
+  it('simulates a reload made by someone else', async () => {
+    const session = await new FakeAppConnector('fake', [fakeApp()]).attach('app-1');
+    const reloaded = vi.fn();
+    session.on('reloaded', reloaded);
+    session.simulateExternalReload();
+    session.simulateExternalReload({ ok: false, reason: 'compile-error', message: 'oops' });
+    expect(reloaded.mock.calls).toEqual([
+      [{ ok: true, kind: 'hot-reload', source: 'external' }],
+      [{ ok: false, reason: 'compile-error', message: 'oops', source: 'external' }],
+    ]);
+    expect(session.reloadCount).toBe(0);
+  });
 });
 
 describe('FakeDbInspector', () => {

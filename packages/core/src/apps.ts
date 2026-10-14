@@ -22,22 +22,33 @@ export const RunningAppSchema = z.object({
 });
 export type RunningApp = z.infer<typeof RunningAppSchema>;
 
+/**
+ * Who started a reload. Absent means FlutterDeck did (the dashboard or the API);
+ * `external` is anyone else, such as Claude through the Dart MCP server or the IDE.
+ */
+export const ReloadSourceSchema = z.enum(['deck', 'external']);
+export type ReloadSource = z.infer<typeof ReloadSourceSchema>;
+
 export const ReloadResultSchema = z.discriminatedUnion('ok', [
   z.object({
     ok: z.literal(true),
     kind: z.enum(['hot-reload', 'hot-restart', 'rebuild']),
-    durationMs: z.number().nonnegative(),
+    /** Absent for reloads made by others: the VM doesn't report how long they took. */
+    durationMs: z.number().nonnegative().optional(),
+    source: ReloadSourceSchema.optional(),
   }),
   z.object({
     ok: z.literal(false),
     reason: z.enum(['compile-error', 'needs-restart', 'not-attached', 'unsupported']),
     message: z.string(),
+    source: ReloadSourceSchema.optional(),
   }),
 ]);
 export type ReloadResult = z.infer<typeof ReloadResultSchema>;
 
 /** Events an attached session emits, keyed by name. */
 export interface AppSessionEvents {
+  /** Every finished reload or restart, including ones made by others (`source: 'external'`). */
   reloaded: ReloadResult;
   /** The app process went away. The session is unusable afterwards. */
   exit: { code?: number };

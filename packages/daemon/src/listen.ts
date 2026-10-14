@@ -45,7 +45,8 @@ export async function listenWithFallback(
   throw new Error('unreachable');
 }
 
-function listen(server: Server, host: string, port: number): Promise<void> {
+/** Listens on exactly `port`; rejects with the listen error (e.g. EADDRINUSE). */
+export function listen(server: Server, host: string, port: number): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     server.once('error', reject);
     server.listen(port, host, () => {

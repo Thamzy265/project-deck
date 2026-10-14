@@ -27,6 +27,25 @@ describe('domain schemas', () => {
         .success,
     ).toBe(true);
   });
+
+  it('mark reloads made by others, whose duration FlutterDeck never sees', () => {
+    expect(ReloadResultSchema.parse({ ok: true, kind: 'hot-reload', source: 'external' })).toEqual({
+      ok: true,
+      kind: 'hot-reload',
+      source: 'external',
+    });
+    expect(
+      ReloadResultSchema.safeParse({
+        ok: false,
+        reason: 'compile-error',
+        message: 'x',
+        source: 'external',
+      }).success,
+    ).toBe(true);
+    expect(
+      ReloadResultSchema.safeParse({ ok: true, kind: 'hot-reload', source: 'claude' }).success,
+    ).toBe(false);
+  });
 });
 
 describe('TaskSchema', () => {

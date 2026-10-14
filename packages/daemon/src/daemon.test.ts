@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Registry } from '@project-deck/core';
 import { FakeAppConnector, fakeApp } from '@project-deck/core/testing';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
 import type { Daemon } from './daemon.js';
 import { DEFAULT_PORT, DaemonAlreadyRunningError, startDaemon } from './daemon.js';
@@ -47,8 +47,10 @@ function rawGet(port: number, path: string, headers: Record<string, string>): Pr
 }
 
 function openWs(d: Daemon, token?: string, origin?: string) {
-  const url = `ws://127.0.0.1:${d.port}/ws${token === undefined ? '' : `?token=${token}`}`;
-  return new WebSocket(url, origin === undefined ? {} : { origin });
+  return new WebSocket(`ws://127.0.0.1:${d.port}/ws`, {
+    ...(token === undefined ? {} : { headers: { 'x-deck-token': token } }),
+    ...(origin === undefined ? {} : { origin }),
+  });
 }
 
 function nextMessage(ws: WebSocket): Promise<{ type: string; payload: unknown }> {
@@ -97,6 +99,25 @@ describe('startDaemon', () => {
       body: JSON.stringify({ type: 'claude.done' }),
     });
     expect(await next).toEqual({ type: 'claude.done', payload: {} });
+    ws.close();
+  });
+
+  it('pushes new Activity entries over WebSocket', async () => {
+    const d = await start();
+    const ws = openWs(d, d.token);
+    await nextMessage(ws);
+    const messages: { type: string; payload: unknown }[] = [];
+    ws.on('message', (data) => {
+      messages.push(JSON.parse((data as Buffer).toString('utf8')) as (typeof messages)[number]);
+    });
+    await fetch(`${d.url}/api/events`, {
+      method: 'POST',
+      headers: { 'x-deck-token': d.token, 'content-type': 'application/json' },
+      body: JSON.stringify({ type: 'claude.waiting', message: 'Allow edit?' }),
+    });
+    await vi.waitFor(() => expect(messages.map((m) => m.type)).toContain('activity'));
+    const activity = messages.find((m) => m.type === 'activity');
+    expect(activity?.payload).toMatchObject({ kind: 'claude.waiting', message: 'Allow edit?' });
     ws.close();
   });
 
@@ -196,17 +217,23 @@ describe('port selection', () => {
     await Promise.all(servers.splice(0).map((s) => new Promise((r) => s.close(r))));
   });
 
+  /**
+   * Occupies `count` consecutive ports and checks the one after them is free. They are
+   * picked below every OS's ephemeral range (macOS and Windows from 49152, Linux from
+   * 32768), so tests that listen on port 0 in parallel can't take the free one first.
+   */
   async function occupy(count: number): Promise<number> {
     for (;;) {
-      const base = await freePort();
-      if (base + count > 65535) continue;
+      const base = 20_000 + Math.floor(Math.random() * 10_000);
       const taken: Server[] = [];
-      for (let i = 0; i < count; i++) {
+      for (let i = 0; i <= count; i++) {
         const srv = await tryListen(base + i);
         if (srv === undefined) break;
         taken.push(srv);
       }
-      if (taken.length === count) {
+      const next = taken.length === count + 1 ? taken.pop() : undefined;
+      if (next !== undefined) {
+        await new Promise((r) => next.close(r));
         servers.push(...taken);
         return base;
       }

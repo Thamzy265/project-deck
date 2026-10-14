@@ -2,7 +2,9 @@ import type { IncomingMessage, Server } from 'node:http';
 import type { Duplex } from 'node:stream';
 import type { EventBus } from '@project-deck/core';
 import { WebSocket, WebSocketServer } from 'ws';
-import { isAllowedHost, isAllowedOrigin, tokenFromHeaders, tokensEqual } from './security.js';
+import type { HeartbeatOptions } from './heartbeat.js';
+import { startHeartbeat } from './heartbeat.js';
+import { authenticate, isAllowedHost, isAllowedOrigin } from './security.js';
 
 export const WS_PATH = '/ws';
 /** Clients never send us anything meaningful, so refuse large frames outright. */
@@ -14,9 +16,12 @@ export interface WsOptions {
   server: Server;
   bus: EventBus;
   token: string;
+  sessionSecret: string;
   port: () => number;
   /** First message to each client, so it doesn't start from an empty state. */
   hello: () => unknown;
+  /** Defaults to a 15 s ping and heartbeat message with a 10 s pong timeout. */
+  heartbeat?: HeartbeatOptions;
 }
 
 function reject(socket: Duplex, status: number, text: string): void {
@@ -25,7 +30,8 @@ function reject(socket: Duplex, status: number, text: string): void {
 
 /**
  * Broadcasts every bus event as `{ type, payload }`.
- * Browsers can't set headers on a WebSocket, so the token may also come as `?token=`.
+ * Browsers can't set headers on a WebSocket, so the dashboard uses its cookie. A token in
+ * the query string is never accepted: URLs end up in history and logs.
  */
 export function attachWebSocket(opts: WsOptions): { close: () => void } {
   const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_INCOMING_BYTES });
@@ -41,8 +47,8 @@ export function attachWebSocket(opts: WsOptions): { close: () => void } {
     if (!isAllowedHost(header('host'), port) || !isAllowedOrigin(header('origin'), port)) {
       return reject(socket, 403, 'Forbidden');
     }
-    const token = tokenFromHeaders(header) ?? url.searchParams.get('token') ?? undefined;
-    if (!tokensEqual(token, opts.token)) return reject(socket, 401, 'Unauthorized');
+    const creds = { token: opts.token, sessionSecret: opts.sessionSecret, port };
+    if (authenticate(header, creds) === undefined) return reject(socket, 401, 'Unauthorized');
     wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
   };
 
@@ -50,6 +56,7 @@ export function attachWebSocket(opts: WsOptions): { close: () => void } {
     // Without a listener, a malformed frame's 'error' event would crash the daemon.
     ws.on('error', () => ws.terminate());
     ws.send(JSON.stringify({ type: 'hello', payload: opts.hello() }));
+    startHeartbeat(ws, opts.heartbeat);
   });
 
   const offBus = opts.bus.onAny((type, payload) => {
