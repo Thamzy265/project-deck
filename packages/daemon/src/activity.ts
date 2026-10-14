@@ -20,7 +20,13 @@ type NewEntry = ActivityEntry extends infer E
  */
 export class ActivityFeed {
   private readonly entries: ActivityEntry[] = [];
-  private readonly names = new Map<string, string>();
+  /**
+   * Names for entries: the apps in the latest list, plus the attached app, which may
+   * already have left the list when its exit arrives. Nothing else is kept, so this
+   * never grows past the current app list.
+   */
+  private listed = new Map<string, string>();
+  private attached: { id: string; name: string } | undefined;
   private nextId = 0;
   private readonly capacity: number;
   private readonly now: () => number;
@@ -37,14 +43,15 @@ export class ActivityFeed {
   start(): () => void {
     const offs = [
       this.bus.on('apps.changed', ({ apps }) => {
-        for (const app of apps) this.names.set(app.id, app.name);
+        this.listed = new Map(apps.map((app) => [app.id, app.name]));
       }),
       this.bus.on('app.attached', ({ app }) => {
-        this.names.set(app.id, app.name);
+        this.attached = { id: app.id, name: app.name };
         this.add({ kind: 'app.attached', ...this.app(app.id) });
       }),
       this.bus.on('app.detached', ({ appId }) => {
         this.add({ kind: 'app.detached', ...this.app(appId) });
+        this.forgetAttached(appId);
       }),
       this.bus.on('app.reloaded', ({ appId, result }) => {
         this.add({ kind: 'app.reloaded', ...this.app(appId), result });
@@ -55,6 +62,7 @@ export class ActivityFeed {
           ...this.app(appId),
           ...(code === undefined ? {} : { code }),
         });
+        this.forgetAttached(appId);
       }),
       this.bus.on('claude.done', ({ sessionId }) => {
         this.add({ kind: 'claude.done', ...(sessionId === undefined ? {} : { sessionId }) });
@@ -78,7 +86,12 @@ export class ActivityFeed {
   }
 
   private app(appId: string): { appId: string; appName: string } {
-    return { appId, appName: this.names.get(appId) ?? appId };
+    const name = this.attached?.id === appId ? this.attached.name : this.listed.get(appId);
+    return { appId, appName: name ?? appId };
+  }
+
+  private forgetAttached(appId: string): void {
+    if (this.attached?.id === appId) this.attached = undefined;
   }
 
   private add(fields: NewEntry): void {

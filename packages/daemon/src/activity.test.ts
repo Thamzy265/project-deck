@@ -117,4 +117,19 @@ describe('ActivityFeed', () => {
     bus.emit('claude.done', {});
     expect(feed.list()).toEqual([]);
   });
+
+  it('keeps names only for listed apps and the attached one', () => {
+    const { bus, feed } = setup();
+    const gone = fakeApp({ id: 'gone', name: 'gone-app' });
+    const kept = fakeApp({ id: 'kept', name: 'kept-app' });
+    bus.emit('apps.changed', { connectorId: 'fake', apps: [gone, kept] });
+    bus.emit('app.attached', { app: kept });
+    // Both leave the list; only the attached one keeps its name until its exit.
+    bus.emit('apps.changed', { connectorId: 'fake', apps: [] });
+    bus.emit('app.detached', { appId: 'gone' });
+    bus.emit('app.exit', { appId: 'kept', crashed: false });
+    bus.emit('app.reloaded', { appId: 'kept', result: { ok: true, kind: 'hot-reload' } });
+    const names = feed.list().map((e) => ('appName' in e ? e.appName : ''));
+    expect(names).toEqual(['kept-app', 'gone', 'kept-app', 'kept']);
+  });
 });
