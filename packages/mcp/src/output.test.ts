@@ -54,4 +54,15 @@ describe('fitLogs', () => {
     expect(out.truncated).toBe(true);
     expect(out.hint).toContain('Narrow with since');
   });
+
+  it('always keeps the newest line, cut to fit by bytes', () => {
+    // Control characters take 6 bytes each in JSON: 4096 of them don't fit in 20 kB.
+    const huge = { ...entry(7), message: '\u0001'.repeat(4096), stack: '€'.repeat(4096) };
+    const out = fitLogs(frame, [huge], false);
+    expect(Buffer.byteLength(JSON.stringify(out))).toBeLessThanOrEqual(MAX_OUTPUT_BYTES);
+    expect(out.entries).toHaveLength(1);
+    expect(out.entries[0]?.ts).toBe(7);
+    expect(out.entries[0]?.message.length).toBeGreaterThan(1000);
+    expect(out.truncated).toBe(true);
+  });
 });

@@ -32,13 +32,19 @@ export function fitLogs(frame: LogsFrame, entries: LogEntry[], moreMatched: bool
   const sizes = kept.map((e) => Buffer.byteLength(JSON.stringify(e)) + 1);
   // The frame, the hint and the JSON punctuation around the list.
   const overhead = Buffer.byteLength(
-    JSON.stringify({ ...frame, truncated: true, hint: hint(MAX_OUTPUT_ENTRIES) }),
+    JSON.stringify({ ...frame, entries: [], truncated: true, hint: hint(MAX_OUTPUT_ENTRIES) }),
   );
   let total = overhead + sizes.reduce((a, b) => a + b, 0);
   let drop = 0;
   while (drop < kept.length && total > MAX_OUTPUT_BYTES) total -= sizes[drop++] ?? 0;
   kept = kept.slice(drop);
-  const truncated = moreMatched || kept.length < all.length;
+  const newest = all.at(-1);
+  const shrunk = kept.length === 0 && newest !== undefined;
+  if (shrunk) {
+    // Never an empty answer while lines matched: the newest one, cut to fit.
+    kept = [shrinkToFit(newest, MAX_OUTPUT_BYTES - overhead)];
+  }
+  const truncated = moreMatched || shrunk || kept.length < all.length;
   return {
     ...frame,
     entries: kept,
@@ -46,6 +52,33 @@ export function fitLogs(frame: LogsFrame, entries: LogEntry[], moreMatched: bool
     ...(truncated ? { hint: hint(kept.length) } : {}),
   };
 }
+
+/** Cuts the stack, then the message, then the tag until the entry fits in `budget` bytes. */
+function shrinkToFit(entry: OutputEntry, budget: number): OutputEntry {
+  const size = (e: OutputEntry) => Buffer.byteLength(JSON.stringify(e));
+  let out = { ...entry };
+  for (const field of ['stack', 'message', 'tag'] as const) {
+    if (size(out) <= budget) break;
+    const text = out[field];
+    if (text === undefined) continue;
+    const withText = (n: number): OutputEntry => ({
+      ...out,
+      [field]: n >= text.length ? text : `${text.slice(0, n)}${CUT}`,
+    });
+    // The longest prefix that fits, found by halving.
+    let lo = 0;
+    let hi = text.length;
+    while (lo < hi) {
+      const mid = Math.ceil((lo + hi) / 2);
+      if (size(withText(mid)) <= budget) lo = mid;
+      else hi = mid - 1;
+    }
+    out = withText(lo);
+  }
+  return out;
+}
+
+const CUT = ' …[cut]';
 
 function hint(shown: number): string {
   return `Showing the newest ${shown} matching lines; older ones were left out. Narrow with since, minLevel, tag, text or regex to see others.`;
