@@ -63,6 +63,7 @@ void main() {
         .toList();
 
     expect(marked, hasLength(1));
-    expect(marked.single, contains('taps.value += 1;'));
+    final code = marked.single.split('//').first.trim();
+    expect(code, 'taps.value += 1;');
   });
 }
