@@ -85,7 +85,7 @@ test('a 10,000-line burst keeps the page responsive and the list virtual', async
   expect(await responsive(page, 1_000)).toBe(true);
 });
 
-test.fail('BUG-M2-T1: typing a catastrophic pattern does not freeze the tab', async ({ page }) => {
+test('BUG-M2-T1: typing a catastrophic pattern does not freeze the tab', async ({ page }) => {
   test.setTimeout(30_000);
   deck = await startScriptedDaemon();
   await openDashboard(page, deck.url);
@@ -97,6 +97,38 @@ test.fail('BUG-M2-T1: typing a catastrophic pattern does not freeze the tab', as
   await page.getByRole('searchbox', { name: 'Search logs' }).fill('(a+)+$');
   expect(await responsive(page, 2_000)).toBe(true);
   expect(Date.now() - started).toBeLessThan(2_000);
+});
+
+test('BUG-M2-T1: a slow pattern the check misses is stopped in the worker after 200 ms', async ({
+  page,
+}) => {
+  deck = await startScriptedDaemon();
+  const watch = await watchPage(page);
+  const workerFiles: number[] = [];
+  page.on('response', (r) => {
+    if (/\/assets\/search-worker-[\w-]+\.js$/.test(r.url())) workerFiles.push(r.status());
+  });
+  await openDashboard(page, deck.url);
+  push({ message: `${'a'.repeat(30)}!` });
+  push({ message: 'Tap 1' });
+  const list = page.getByRole('list', { name: 'Log lines' });
+  await expect(list.getByText('Tap 1')).toBeVisible();
+  const search = page.getByRole('searchbox', { name: 'Search logs' });
+  // Alternation, not a nested quantifier, so only the time budget can stop it.
+  await search.fill('(a|a)*b');
+  await expect(page.getByText('That search took too long and was stopped.')).toBeVisible();
+  await expect(search).toHaveAttribute('aria-invalid', 'true');
+  expect(await responsive(page, 1_000)).toBe(true);
+  // The last good results stay: nothing was filtered yet.
+  await expect(list.getByText('Tap 1')).toBeVisible();
+  // A fresh worker answers the next search.
+  await search.fill('tap');
+  await expect(page.getByText('That search took too long and was stopped.')).toBeHidden();
+  await expect(page.getByText(/Showing 1 of 2/)).toBeVisible();
+  expect(workerFiles.length).toBeGreaterThan(0);
+  expect(workerFiles.every((status) => status === 200)).toBe(true);
+  expect(watch.cspViolations).toEqual([]);
+  expect(watch.consoleErrors).toEqual([]);
 });
 
 test('r in the search box types, r on the page reloads, Escape returns focus', async ({ page }) => {

@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
+import type { RegexRunner } from '../search/runner.js';
 import { useDeck } from '../state/DeckProvider.js';
 import type { LogFilters } from '../state/logs.js';
 import { NO_FILTERS } from '../state/logs.js';
@@ -14,7 +15,7 @@ import { useShortcuts } from './useShortcuts.js';
 
 type TabId = 'logs' | 'activity';
 
-export function App({ prefs }: { prefs: StorageSource }) {
+export function App({ prefs, search }: { prefs: StorageSource; search: RegexRunner }) {
   const { state, actions } = useDeck();
   const [tab, setTab] = useState<TabId>('logs');
   const [filters, setFilters] = useState<LogFilters>(NO_FILTERS);
@@ -71,6 +72,7 @@ export function App({ prefs }: { prefs: StorageSource }) {
                 label: 'Logs',
                 panel: (
                   <LogsPanel
+                    search={search}
                     filters={filters}
                     onFiltersChange={setFilters}
                     shortcuts={shortcuts}

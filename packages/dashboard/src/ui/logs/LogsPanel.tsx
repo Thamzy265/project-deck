@@ -2,7 +2,9 @@ import type { RefObject } from 'react';
 import { useMemo, useRef, useState } from 'react';
 import { useDeck } from '../../state/DeckProvider.js';
 import type { LogFilters } from '../../state/logs.js';
-import { NO_FILTERS, filterLogs, filtersActive } from '../../state/logs.js';
+import { NO_FILTERS, compileSearch, filterLogs, filtersActive } from '../../state/logs.js';
+import type { RegexRunner } from '../../search/runner.js';
+import { useRegexSearch } from '../../search/useRegexSearch.js';
 import { ConfirmDialog } from '../ConfirmDialog.js';
 import { Skeleton } from '../Skeleton.js';
 import { linkButton } from '../styles.js';
@@ -20,6 +22,8 @@ export interface LogsPanelProps {
   shortcuts: boolean;
   onToggleShortcuts: () => void;
   listRef: RefObject<HTMLDivElement | null>;
+  /** Runs the search pattern off the page's thread (BUG-M2-T1). */
+  search: RegexRunner;
 }
 
 export function LogsPanel(props: LogsPanelProps) {
@@ -32,7 +36,13 @@ export function LogsPanel(props: LogsPanelProps) {
 
   const all = state.logs.entries;
   const reloadAt = state.lastResult?.startedAt;
-  const shown = useMemo(() => filterLogs(all, filters, reloadAt), [all, filters, reloadAt]);
+  // Level, source, tag and time here; the pattern in the search worker.
+  const base = useMemo(
+    () => filterLogs(all, { ...filters, search: '' }, reloadAt),
+    [all, filters, reloadAt],
+  );
+  const pattern = compileSearch(filters.search).ok ? filters.search : '';
+  const { shown, tooSlow } = useRegexSearch(props.search, base, pattern);
   const tags = useMemo(() => {
     const set = new Set<string>();
     for (const e of all) if (e.tag !== undefined && set.size < MAX_TAGS) set.add(e.tag);
@@ -68,6 +78,7 @@ export function LogsPanel(props: LogsPanelProps) {
           onChange={onFiltersChange}
           menuOpen={menuOpen}
           onToggleMenu={() => setMenuOpen(!menuOpen)}
+          tooSlow={tooSlow}
         />
       </div>
       {menuOpen && (

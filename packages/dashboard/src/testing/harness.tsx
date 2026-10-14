@@ -14,6 +14,8 @@ import type { SocketLike } from '../api/connection.js';
 import { DeckProvider } from '../state/DeckProvider.js';
 import type { StorageLike } from '../state/storage.js';
 import { createSessionGuard } from '../state/storage.js';
+import type { RegexRunner } from '../search/runner.js';
+import { createInlineRunner } from '../search/runner.js';
 import { App } from '../ui/App.js';
 
 export class FakeSocket implements SocketLike {
@@ -65,7 +67,11 @@ export function fakeDaemon(overrides: Partial<FakeDaemon> = {}): FakeDaemon {
 }
 
 /** Renders the dashboard against an in-memory daemon and lets tests drive the socket. */
-export function renderDashboard(daemon: FakeDaemon = fakeDaemon(), prefs = new MemoryStorage()) {
+export function renderDashboard(
+  daemon: FakeDaemon = fakeDaemon(),
+  prefs = new MemoryStorage(),
+  search: RegexRunner = createInlineRunner(),
+) {
   const sockets: FakeSocket[] = [];
   const client = {
     status: vi.fn<DeckClient['status']>(() => Promise.resolve(daemon.status)),
@@ -101,7 +107,7 @@ export function renderDashboard(daemon: FakeDaemon = fakeDaemon(), prefs = new M
   };
   const view = render(
     <DeckProvider deps={deps}>
-      <App prefs={() => prefs} />
+      <App prefs={() => prefs} search={search} />
     </DeckProvider>,
   );
   const socket = (): FakeSocket => {

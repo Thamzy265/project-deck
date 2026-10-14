@@ -3,6 +3,8 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { dashboardSocketUrl, openBrowserSocket } from './api/browser-socket.js';
 import { createClient } from './api/client.js';
+import { openSearchWorker } from './search/browser-worker.js';
+import { createWorkerRunner } from './search/runner.js';
 import { DeckProvider } from './state/DeckProvider.js';
 import type { DeckDeps } from './state/DeckProvider.js';
 import { createSessionGuard } from './state/storage.js';
@@ -23,10 +25,13 @@ const deps: DeckDeps = {
   now: Date.now,
 };
 
+// The log search runs in a worker so a slow pattern can't freeze the page (BUG-M2-T1).
+const search = createWorkerRunner(openSearchWorker);
+
 createRoot(root).render(
   <StrictMode>
     <DeckProvider deps={deps}>
-      <App prefs={() => localStorage} />
+      <App prefs={() => localStorage} search={search} />
     </DeckProvider>
   </StrictMode>,
 );
