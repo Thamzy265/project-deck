@@ -11,7 +11,7 @@ FlutterDeck (working name) is an open-source dashboard and Claude Code plugin fo
 
 ## Repo layout
 
-TypeScript (strict) pnpm monorepo, Node 22.12+, plus one Dart package.
+TypeScript (strict) pnpm monorepo, Node 22.12+, plus Dart code: one Dart package (M3) and an example Flutter app.
 
 | Path                                      | Purpose                                                                                                       | Status |
 | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------- | ------ |
