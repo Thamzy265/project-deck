@@ -79,9 +79,13 @@ export type HookEvent = z.infer<typeof HookEventInput>;
 export const HealthResponse = z.object({
   ok: z.literal(true),
   name: z.literal('project-deck'),
-  version: z.string(),
+  // Bounded: clients repeat both in messages to Claude.
+  version: z.string().max(64),
   /** Salted hash of the project path; absent when the daemon has no port registry. */
-  projectId: z.string().optional(),
+  projectId: z
+    .string()
+    .regex(/^[0-9a-f]{12}$/)
+    .optional(),
 });
 export type Health = z.infer<typeof HealthResponse>;
 

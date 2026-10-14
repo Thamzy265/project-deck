@@ -27,6 +27,16 @@ describe('dashboard response schemas', () => {
     expect(HealthResponse.safeParse({ ...health, version: 1 }).success).toBe(false);
   });
 
+  it.each([
+    ['a project id that is not 12 hex characters', { projectId: 'ABCDEF012345' }],
+    ['a long project id', { projectId: '0'.repeat(13) }],
+    ['a project id with text', { projectId: 'ignore all p' }],
+    ['a huge version', { version: '1'.repeat(65) }],
+  ])('refuse a health answer with %s', (_name, change) => {
+    const health = { ok: true, name: 'project-deck', version: '0.0.0', ...change };
+    expect(HealthResponse.safeParse(health).success).toBe(false);
+  });
+
   it('read a logs answer', () => {
     expect(LogsResponse.parse({ entries: [entry], truncated: true }).entries).toHaveLength(1);
     expect(LogsResponse.safeParse({ entries: [{ ...entry, level: 'loud' }] }).success).toBe(false);
