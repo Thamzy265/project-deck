@@ -5,7 +5,8 @@ import type { LogSource } from './logs.js';
 export const DeviceInfoSchema = z.object({
   id: z.string(),
   name: z.string(),
-  platform: z.enum(['android', 'ios', 'web', 'desktop']),
+  /** Unknown until the app's VM has been read, for example in a listing before attach. */
+  platform: z.enum(['android', 'ios', 'web', 'desktop']).optional(),
 });
 export type DeviceInfo = z.infer<typeof DeviceInfoSchema>;
 

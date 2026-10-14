@@ -23,6 +23,16 @@ describe('appLabel', () => {
     expect(appLabel(fakeApp({ startedBy: 'terminal' }))).toBe(
       'com.example.shop · Pixel 9 API 36 · terminal',
     );
+    // A live app from flutter run: device from the tool's name, no platform yet (QA B2-1).
+    expect(
+      appLabel(
+        fakeApp({
+          name: 'qa_sample_app',
+          device: { id: 'unknown', name: 'sdk gphone64 arm64' },
+          startedBy: 'unknown',
+        }),
+      ),
+    ).toBe('qa_sample_app · sdk gphone64 arm64');
     const bare = fakeApp({ startedBy: 'unknown' });
     delete bare.device;
     expect(appLabel(bare)).toBe('com.example.shop');

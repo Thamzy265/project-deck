@@ -52,6 +52,27 @@ describe('DartAppSession', () => {
     });
   });
 
+  it("adds the platform to the device named in the tool's app name (QA B2-1)", async () => {
+    const named = { ...app, device: { id: 'unknown', name: 'sdk gphone64 arm64' } };
+    server = await FakeRpcServer.start('/AbC=/ws');
+    asFlutterVmService(server);
+    session = await DartAppSession.attach(server.uri, named, { serviceWaitMs: 100 });
+    expect(session.app.device).toEqual({
+      id: 'unknown',
+      name: 'sdk gphone64 arm64',
+      platform: 'android',
+    });
+  });
+
+  it('records a desktop platform from the VM when the device is known', async () => {
+    const named = { ...app, device: { id: 'unknown', name: 'macOS' } };
+    server = await FakeRpcServer.start('/AbC=/ws');
+    asFlutterVmService(server);
+    server.handle('getVM', () => ({ ...vmResponse(), operatingSystem: 'macos', pid: 77 }));
+    session = await DartAppSession.attach(server.uri, named, { serviceWaitMs: 100 });
+    expect(session.app.device).toEqual({ id: 'unknown', name: 'macOS', platform: 'desktop' });
+  });
+
   it('records only the process id when the app is not on Android', async () => {
     server = await FakeRpcServer.start('/AbC=/ws');
     asFlutterVmService(server);
