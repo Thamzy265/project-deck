@@ -22,6 +22,7 @@
     "@hono/node-server": "^2.1.4",
     "@project-deck/connector-dart": "workspace:*",
     "@project-deck/core": "workspace:*",
+    "@project-deck/dashboard": "workspace:*",
     "@project-deck/logs-android": "workspace:*",
     "hono": "^4.13.13",
     "ws": "^8.22.0",

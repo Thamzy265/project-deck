@@ -1,8 +1,10 @@
 import type { EventBus, LogQuery, LoginWindowResult, Status } from '@project-deck/core';
 import { DEFAULT_LOG_LIMIT, GetLogsInput, HookEventInput } from '@project-deck/core';
+import type { Context, MiddlewareHandler } from 'hono';
 import { Hono } from 'hono';
 import type { z } from 'zod';
 import type { ActivityFeed } from './activity.js';
+import type { DashboardAsset, DashboardAssets } from './dashboard-assets.js';
 import type { AppManager } from './app-manager.js';
 import type { LoginWindow } from './login-window.js';
 import { UnknownAppError } from './app-manager.js';
@@ -34,6 +36,8 @@ export interface ApiContext {
   projectId: string | undefined;
   /** The project folder's name, shown in the dashboard header. */
   projectName: string;
+  /** The built dashboard; a placeholder page is served without it. */
+  dashboard?: DashboardAssets | undefined;
   /** Stops the daemon after the response is sent. */
   shutdown: () => void;
 }
@@ -87,6 +91,10 @@ const SECURITY_HEADERS: Record<string, string> = {
   'X-Frame-Options': 'DENY',
 };
 
+function asset(c: Context, file: DashboardAsset): Response {
+  return c.body(file.body, 200, { 'Content-Type': file.type });
+}
+
 function setSecurityHeaders(headers: Headers, path: string): void {
   for (const [name, value] of Object.entries(SECURITY_HEADERS)) headers.set(name, value);
   // API answers hold logs and app state; a page that sets the login cookie mustn't be cached.
@@ -121,27 +129,36 @@ export function createApi(ctx: ApiContext): Hono {
     }),
   );
 
-  // The dashboard's login: a tab opened on / gets the session cookie. Placeholder page
-  // until the dashboard app is served here.
+  const page = ctx.dashboard?.get('/');
+  const dashboardPage = (c: Context) =>
+    page === undefined ? c.html(PLACEHOLDER_PAGE) : asset(c, page);
+
+  // The dashboard's login: a tab opened on / gets the session cookie (ADR 0001, 0003).
   api.get('/', (c) => {
     const header = (n: string) => c.req.header(n);
     const cookie = cookieValues(header('cookie'), sessionCookieName(ctx.port()));
-    if (cookie.some((value) => tokensEqual(value, ctx.sessionSecret))) {
-      return c.html(PLACEHOLDER_PAGE);
-    }
+    if (cookie.some((value) => tokensEqual(value, ctx.sessionSecret))) return dashboardPage(c);
     if (!ctx.loginWindow.isOpen()) return c.html(LOGIN_NEEDED_PAGE);
     if (isTopLevelNavigation(header)) {
       c.header('Set-Cookie', sessionCookie(ctx.port(), ctx.sessionSecret));
     }
-    return c.html(PLACEHOLDER_PAGE);
+    return dashboardPage(c);
   });
 
-  api.use('/api/*', async (c, next) => {
+  const requireAuth: MiddlewareHandler = async (c, next) => {
     const creds = { token: ctx.token, sessionSecret: ctx.sessionSecret, port: ctx.port() };
     if (authenticate((n) => c.req.header(n), creds) === undefined) {
       return c.json({ error: 'Missing or invalid token' }, 401);
     }
     await next();
+  };
+  api.use('/api/*', requireAuth);
+  api.use('/assets/*', requireAuth);
+
+  // Only the exact files the build produced: no SPA fallback, no file system lookups.
+  api.get('/assets/*', (c) => {
+    const file = ctx.dashboard?.get(c.req.path);
+    return file === undefined ? c.json({ error: 'Not found' }, 404) : asset(c, file);
   });
 
   // Only the runtime.json token may open the window: a cookie holder (possibly another

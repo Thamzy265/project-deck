@@ -63,6 +63,9 @@ importers:
       '@project-deck/core':
         specifier: workspace:*
         version: link:../core
+      '@project-deck/dashboard':
+        specifier: workspace:*
+        version: link:../dashboard
       '@project-deck/logs-android':
         specifier: workspace:*
         version: link:../logs-android
