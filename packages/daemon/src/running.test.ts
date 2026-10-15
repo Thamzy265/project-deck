@@ -6,10 +6,10 @@ import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Registry } from '@project-deck/core';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Daemon } from './daemon.js';
 import { DaemonAlreadyRunningError, startDaemon } from './daemon.js';
-import { findRunningDaemon } from './running.js';
+import { PROBE_TIMEOUT_MS, findRunningDaemon } from './running.js';
 import { STATE_DIR, readRuntime, runtimePath, writeRuntime } from './runtime.js';
 
 let projectDir: string;
@@ -57,9 +57,12 @@ async function httpOn(
 }
 
 /** A TCP server that accepts connections and never writes or closes them. */
-async function silentTcp(): Promise<number> {
+async function silentTcp(onConnection?: () => void): Promise<number> {
   const sockets: Socket[] = [];
-  const srv: Server = createServer((socket) => sockets.push(socket));
+  const srv: Server = createServer((socket) => {
+    sockets.push(socket);
+    onConnection?.();
+  });
   await new Promise<void>((resolve) => srv.listen(0, '127.0.0.1', () => resolve()));
   cleanups.push(
     () =>
@@ -206,23 +209,58 @@ describe('findRunningDaemon', () => {
     expect(ms).toBeLessThan(2800);
   });
 
+  // The probe's timeout is an AbortSignal. These tests abort it themselves once the
+  // peer is stuck, so they don't depend on how fast the machine is.
   it('does not hang on a peer that accepts the connection and never answers', async () => {
-    await record(await silentTcp());
-    const { value, ms } = await timed(findRunningDaemon(projectDir));
-    expect(value).toBeUndefined();
-    expect(ms).toBeLessThan(3000);
+    let connected!: () => void;
+    const reached = new Promise<void>((resolve) => (connected = resolve));
+    await record(await silentTcp(() => connected()));
+    const probe = new AbortController();
+    const result = findRunningDaemon(projectDir, { probeSignal: () => probe.signal });
+    await reached;
+    probe.abort(new DOMException('timed out', 'TimeoutError'));
+    expect(await result).toBeUndefined();
   });
 
   it('does not hang on a peer that sends headers and then stalls the body', async () => {
+    let stalled!: () => void;
+    const reached = new Promise<void>((resolve) => (stalled = resolve));
     await record(
       await httpOn((_req, res) => {
         res.writeHead(200, { 'content-type': 'application/json' });
-        res.write('{"name":"proj');
+        res.write('{"name":"proj', () => stalled());
       }),
     );
-    const { value, ms } = await timed(findRunningDaemon(projectDir));
-    expect(value).toBeUndefined();
-    expect(ms).toBeLessThan(3000);
+    const probe = new AbortController();
+    const result = findRunningDaemon(projectDir, { probeSignal: () => probe.signal });
+    await reached;
+    probe.abort(new DOMException('timed out', 'TimeoutError'));
+    expect(await result).toBeUndefined();
+  });
+
+  it('gives each probe its own 2 s timeout by default', async () => {
+    const timeout = vi.spyOn(AbortSignal, 'timeout');
+    await record(await httpOn(status()));
+    await findRunningDaemon(projectDir);
+    expect(timeout).toHaveBeenCalledWith(PROBE_TIMEOUT_MS);
+    expect(PROBE_TIMEOUT_MS).toBe(2000);
+    timeout.mockRestore();
+  });
+
+  it('sends nothing once the probe is aborted', async () => {
+    let requests = 0;
+    await record(
+      await httpOn((req, res) => {
+        requests++;
+        status()(req, res);
+      }),
+    );
+    const probe = new AbortController();
+    probe.abort();
+    expect(
+      await findRunningDaemon(projectDir, { probeSignal: () => probe.signal }),
+    ).toBeUndefined();
+    expect(requests).toBe(0);
   });
 
   it('lets startup proceed promptly past a silent peer on the recorded port', async () => {

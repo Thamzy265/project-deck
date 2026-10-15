@@ -4,28 +4,28 @@
  * while no daemon runs, and lets the daemon spot a committed config port that another
  * project on this machine already uses.
  */
-import { createHash, randomBytes } from 'node:crypto';
-import { mkdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { randomBytes } from 'node:crypto';
+import { link, mkdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { homedir } from 'node:os';
-import { join, resolve } from 'node:path';
-import { z } from 'zod';
+import { join } from 'node:path';
+import type { PortRegistry } from '@project-deck/core/node';
+import {
+  REGISTRY_DIR,
+  projectIdFor,
+  projectKey,
+  readRegistry,
+  registryPath,
+  retryWhileBusy,
+} from '@project-deck/core/node';
 import { acquireFileLock } from './startup-lock.js';
 
-export const REGISTRY_DIR = '.flutterdeck';
-export const REGISTRY_FILE = 'ports.json';
+export { REGISTRY_DIR, REGISTRY_FILE, registryPath } from '@project-deck/core/node';
 /** Where `init` starts looking. Not 9100: Dart DevTools listens there. */
 export const FIRST_PORT = 9147;
 const LOCK_FILE = 'ports.json.lock';
 /** Updates take milliseconds; a lock this old was left by a crash. */
 const LOCK_STALE_MS = 5000;
-
-const RegistrySchema = z.object({
-  version: z.literal(1),
-  salt: z.string().min(32),
-  projects: z.record(z.string(), z.number().int().min(1).max(65535)),
-});
-type PortRegistry = z.infer<typeof RegistrySchema>;
 
 export interface PortRegistryOptions {
   /** The user's home folder; tests pass a temporary one. */
@@ -61,17 +61,13 @@ async function withRegistryLock<T>(homeDir: string, fn: () => Promise<T>): Promi
   }
 }
 
-export function registryPath(homeDir: string): string {
-  return join(homeDir, REGISTRY_DIR, REGISTRY_FILE);
-}
-
 /** First 12 hex characters of SHA-256(salt + project path): stable, and reveals no path. */
 export async function projectIdentity(
   projectDir: string,
   opts: PortRegistryOptions = {},
 ): Promise<string> {
   const registry = await load(home(opts));
-  return idFor(registry.salt, await projectKey(projectDir));
+  return projectIdFor(registry.salt, await projectKey(projectDir));
 }
 
 /** The project's registered port, or the first free unregistered one from 9147, recorded. */
@@ -134,7 +130,7 @@ async function claimLocked(
   for (const [other, otherPort] of Object.entries(registry.projects)) {
     if (other !== key && otherPort === port) {
       if (pruned) await save(homeDir, registry);
-      return idFor(registry.salt, other);
+      return projectIdFor(registry.salt, other);
     }
   }
   // The config is the source of truth for this project's port, also after a manual edit.
@@ -172,50 +168,22 @@ function home(opts: PortRegistryOptions): string {
   return opts.homeDir ?? homedir();
 }
 
-function idFor(salt: string, key: string): string {
-  return createHash('sha256')
-    .update(salt + key)
-    .digest('hex')
-    .slice(0, 12);
-}
-
-/** Symlinks resolved; case folded on Windows, whose paths are case-insensitive. */
-async function projectKey(projectDir: string): Promise<string> {
-  let path = resolve(projectDir);
-  try {
-    path = await realpath(path);
-  } catch {
-    // A folder that doesn't exist yet keeps its resolved path.
-  }
-  return process.platform === 'win32' ? path.toLowerCase() : path;
-}
-
 async function load(homeDir: string): Promise<PortRegistry> {
   const path = registryPath(homeDir);
-  let text: string;
-  try {
-    text = await readFile(path, 'utf8');
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
-      throw new PortRegistryError(
-        `${path} can't be read (${String((err as NodeJS.ErrnoException).code)})`,
-      );
-    }
-    return create(homeDir);
-  }
-  let parsed;
-  try {
-    parsed = RegistrySchema.safeParse(JSON.parse(text));
-  } catch {
-    parsed = undefined;
-  }
-  if (parsed?.success !== true) {
-    // Replacing it would change every project id and forget every port, so leave it be.
+  const read = await readRegistry(homeDir);
+  if (read.state === 'ok') return read.registry;
+  if (read.state === 'missing') return create(homeDir);
+  if (read.state === 'unreadable') {
     throw new PortRegistryError(
-      `${path} is damaged. Fix or delete it, then run \`flutterdeck init\`.`,
+      read.code === 'ENOTREG'
+        ? `${path} is not a regular file (a link or a folder). FlutterDeck doesn't follow links there.`
+        : `${path} can't be read (${read.code})`,
     );
   }
-  return parsed.data;
+  // Replacing it would change every project id and forget every port, so leave it be.
+  throw new PortRegistryError(
+    `${path} is damaged. Fix or delete it, then run \`flutterdeck init\`.`,
+  );
 }
 
 /**
@@ -229,12 +197,19 @@ async function create(homeDir: string): Promise<PortRegistry> {
     projects: {},
   };
   await mkdir(join(homeDir, REGISTRY_DIR), { recursive: true, mode: 0o700 });
+  // Written whole to a temp file, then linked into place: link fails if the file
+  // exists, like an exclusive create, and readers never see it half written.
+  const tmp = `${registryPath(homeDir)}.${randomBytes(6).toString('hex')}.tmp`;
   try {
-    await writeFile(registryPath(homeDir), serialise(registry), { mode: 0o600, flag: 'wx' });
+    await writeFile(tmp, serialise(registry), { mode: 0o600, flag: 'wx' });
+    // EEXIST (another start won) passes straight through; only busy codes are retried.
+    await retryWhileBusy(() => link(tmp, registryPath(homeDir)));
     return registry;
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'EEXIST') return load(homeDir);
+    if ((err as NodeJS.ErrnoException).code === 'EEXIST') return await load(homeDir);
     throw err;
+  } finally {
+    await rm(tmp, { force: true });
   }
 }
 
@@ -244,7 +219,8 @@ async function save(homeDir: string, registry: PortRegistry): Promise<void> {
   const tmp = `${path}.${randomBytes(6).toString('hex')}.tmp`;
   try {
     await writeFile(tmp, serialise(registry), { mode: 0o600, flag: 'wx' });
-    await rename(tmp, path);
+    // Windows refuses while a client is reading the old file; that takes a moment only.
+    await retryWhileBusy(() => rename(tmp, path));
   } catch (err) {
     await rm(tmp, { force: true });
     throw err;

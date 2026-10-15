@@ -140,7 +140,8 @@ describe('readConfig: file contents', () => {
     'refuses a %s key instead of merging it',
     async (key) => {
       await write(`{"version":1,"${key}":{"port":1}}`);
-      expect(await refusal()).toContain(key);
+      // Counted, never named (review R3).
+      expect(await refusal()).toContain('(top level): 1 unrecognised setting');
       expect(({} as Record<string, unknown>).port).toBeUndefined();
     },
   );
@@ -179,7 +180,7 @@ describe('readConfig: file contents', () => {
 describe('readConfig: the file system', () => {
   it('reports a folder where the file should be', async () => {
     await mkdir(configPath(projectDir));
-    expect(await refusal()).toMatch(/can't be read \((EISDIR|EPERM|EACCES)\)/);
+    expect(await refusal()).toMatch(/is not a regular file/);
   });
 
   it('uses the defaults when .flutterdeck itself is missing', async () => {
@@ -191,9 +192,11 @@ describe('readConfig: the file system', () => {
     expect(await readConfig(join(projectDir, 'nope'))).toEqual(DEFAULT_CONFIG);
   });
 
-  it.skipIf(process.platform === 'win32')('treats a dangling symlink as missing', async () => {
+  // Changed 15 Oct 2026 (review R1): links under .flutterdeck are never followed, so a
+  // dangling one is refused like any other link instead of meaning "no config".
+  it.skipIf(process.platform === 'win32')('refuses a dangling symlink', async () => {
     await symlink(join(projectDir, 'gone.json'), configPath(projectDir));
-    expect(await readConfig(projectDir)).toEqual(DEFAULT_CONFIG);
+    expect(await refusal()).toMatch(/is not a regular file/);
   });
 
   it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(

@@ -45,7 +45,9 @@ describe('readConfig', () => {
     expect(err).toBeInstanceOf(ConfigError);
     const message = (err as Error).message;
     expect(message).toContain('port');
-    expect(message).toContain('redcat');
+    // Unknown keys are counted, never named (review R3): they could come from any file.
+    expect(message).toContain('logs: 1 unrecognised setting');
+    expect(message).not.toContain('redcat');
   });
 
   it('refuses an unknown version and says the file was left as it is', async () => {

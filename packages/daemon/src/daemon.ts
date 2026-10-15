@@ -2,7 +2,8 @@ import type { Server } from 'node:http';
 import { createServer } from 'node:http';
 import { basename } from 'node:path';
 import type { Registry } from '@project-deck/core';
-import { EventBus } from '@project-deck/core';
+import { DECK_VERSION, EventBus } from '@project-deck/core';
+import { checkStateDir } from '@project-deck/core/node';
 import { getRequestListener } from '@hono/node-server';
 import { ActivityFeed } from './activity.js';
 import { createApi } from './api.js';
@@ -14,6 +15,7 @@ import { LoginWindow } from './login-window.js';
 import { identifyPortHolder } from './port-busy.js';
 import { claimConfigPort, projectIdentity } from './port-registry.js';
 import { findRunningDaemon } from './running.js';
+import { RegexFilter } from './regex-filter.js';
 import { removeRuntime, writeRuntime } from './runtime.js';
 import { generateToken } from './security.js';
 import type { StartupLockOptions } from './startup-lock.js';
@@ -24,7 +26,7 @@ export { PortBusyError } from './port-busy.js';
 
 /** Not 9100: Dart DevTools, which Android Studio starts, listens there. */
 export const DEFAULT_PORT = 9147;
-export const VERSION = '0.0.0';
+export const VERSION = DECK_VERSION;
 /** The daemon never listens anywhere else. */
 const HOST = '127.0.0.1';
 
@@ -78,6 +80,9 @@ export class DaemonAlreadyRunningError extends Error {
 }
 
 export async function startDaemon(opts: DaemonOptions): Promise<Daemon> {
+  // Before anything is created in it: a linked .flutterdeck would send every write
+  // (runtime.json with the token, the lock) to wherever a cloned repo points it.
+  await checkStateDir(opts.projectDir);
   // Held from the "is one running?" check until runtime.json is written, so two daemons
   // started together for the same project can't both pass the check.
   let release: () => Promise<void>;
@@ -132,7 +137,9 @@ async function startLocked(opts: DaemonOptions): Promise<Daemon> {
   const closed = new Promise<void>((resolve) => (resolveClosed = resolve));
   let stopping: Promise<void> | undefined;
 
+  const regexFilter = new RegexFilter();
   const api = createApi({
+    regexFilter,
     manager,
     bus,
     activity,
@@ -144,7 +151,7 @@ async function startLocked(opts: DaemonOptions): Promise<Daemon> {
     projectId,
     projectName: basename(opts.projectDir),
     dashboard,
-    shutdown: () => void stop(),
+    shutdown: () => void stop().catch((err: unknown) => log('Stopping failed', err)),
   });
   const listener = getRequestListener(api.fetch);
   const server = createServer((req, res) => void listener(req, res));
@@ -200,10 +207,18 @@ async function startLocked(opts: DaemonOptions): Promise<Daemon> {
         server.close(() => resolve());
         server.closeAllConnections();
       });
-      await manager.stop();
-      stopActivity();
-      await removeRuntime(opts.projectDir, token);
-      resolveClosed();
+      try {
+        await manager.stop();
+      } finally {
+        // A connector that fails to stop must not leave a stale runtime.json behind
+        // or keep main.js waiting on `closed` for ever.
+        await regexFilter.close();
+        stopActivity();
+        await removeRuntime(opts.projectDir, token).catch((err: unknown) =>
+          log("Couldn't remove runtime.json", err),
+        );
+        resolveClosed();
+      }
     })();
     return stopping;
   }

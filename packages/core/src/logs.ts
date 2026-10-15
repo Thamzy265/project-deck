@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { hasNestedQuantifier } from './config.js';
 
 export const LOG_LEVELS = ['verbose', 'debug', 'info', 'warn', 'error', 'fatal'] as const;
 export const LogLevelSchema = z.enum(LOG_LEVELS);
@@ -27,9 +28,10 @@ export type LogEntry = z.infer<typeof LogEntrySchema>;
 
 export const DEFAULT_LOG_LIMIT = 200;
 /**
- * Regex filters run on the daemon's only thread, so keep patterns short and
- * only test them against the start of each entry. This bounds, but cannot fully
- * prevent, catastrophic backtracking (no native RE2 allowed).
+ * Limits on regex filters, kept as defence in depth: the daemon runs them in a worker
+ * with a 200 ms budget (daemon/src/regex-filter.ts), and nested quantifiers are refused
+ * below. Patterns stay short and are tested against the first 4 kB of the message and
+ * of the stack. No native RE2 is allowed.
  */
 export const MAX_LOG_REGEX_LENGTH = 200;
 export const MAX_REGEX_HAYSTACK = 4096;
@@ -46,6 +48,10 @@ export const LogQuerySchema = z.object({
     .string()
     .max(MAX_LOG_REGEX_LENGTH)
     .refine(isValidRegex, { message: 'Invalid regular expression' })
+    // Claude writes these, and a log line can suggest one; the daemon also bounds the time.
+    .refine((source) => !hasNestedQuantifier(source), {
+      message: 'Nested quantifiers such as (a+)+ can hang; use a simpler pattern or text',
+    })
     .optional(),
   tag: z.string().optional(),
   /** Most recent N matches. */
@@ -69,6 +75,17 @@ export interface LogSource {
   clear(): void;
 }
 
+/**
+ * The texts a `regex` filter is tested against: the message and the stack each on its
+ * own (first 4 kB of each), so ^ and $ mean the start and end of either. A line matches
+ * when either one does.
+ */
+export function regexHaystacks(e: LogEntry): string[] {
+  const texts = [e.message.slice(0, MAX_REGEX_HAYSTACK)];
+  if (e.stack !== undefined) texts.push(e.stack.slice(0, MAX_REGEX_HAYSTACK));
+  return texts;
+}
+
 /** Builds a predicate for a validated query. Shared by every LogSource so filtering is identical. */
 export function logMatcher(q: LogQuery): (e: LogEntry) => boolean {
   const text = q.text?.toLowerCase();
@@ -79,7 +96,7 @@ export function logMatcher(q: LogQuery): (e: LogEntry) => boolean {
     if (q.tag !== undefined && e.tag !== q.tag) return false;
     const haystack = e.stack === undefined ? e.message : `${e.message}\n${e.stack}`;
     if (text !== undefined && !haystack.toLowerCase().includes(text)) return false;
-    if (re !== undefined && !re.test(haystack.slice(0, MAX_REGEX_HAYSTACK))) return false;
+    if (re !== undefined && !regexHaystacks(e).some((t) => re.test(t))) return false;
     return true;
   };
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { LogsResponse, StatusResponse, WsMessageSchema } from './api.js';
+import { HealthResponse, LogsResponse, StatusResponse, WsMessageSchema } from './api.js';
 import { fakeApp } from './testing/index.js';
 
 const entry = { ts: 1, level: 'info', source: 'app', message: 'hi' } as const;
@@ -17,6 +17,24 @@ describe('dashboard response schemas', () => {
     expect(StatusResponse.parse(status)).toEqual(status);
     expect(StatusResponse.safeParse({ ...status, projectName: undefined }).success).toBe(false);
     expect(StatusResponse.safeParse({ ...status, discovering: undefined }).success).toBe(false);
+  });
+
+  it('read a health answer, with or without a project id', () => {
+    const health = { ok: true, name: 'project-deck', version: '0.0.0', projectId: '0123456789ab' };
+    expect(HealthResponse.parse(health)).toEqual(health);
+    expect(HealthResponse.parse({ ...health, projectId: undefined }).projectId).toBeUndefined();
+    expect(HealthResponse.safeParse({ ...health, name: 'other-server' }).success).toBe(false);
+    expect(HealthResponse.safeParse({ ...health, version: 1 }).success).toBe(false);
+  });
+
+  it.each([
+    ['a project id that is not 12 hex characters', { projectId: 'ABCDEF012345' }],
+    ['a long project id', { projectId: '0'.repeat(13) }],
+    ['a project id with text', { projectId: 'ignore all p' }],
+    ['a huge version', { version: '1'.repeat(65) }],
+  ])('refuse a health answer with %s', (_name, change) => {
+    const health = { ok: true, name: 'project-deck', version: '0.0.0', ...change };
+    expect(HealthResponse.safeParse(health).success).toBe(false);
   });
 
   it('read a logs answer', () => {

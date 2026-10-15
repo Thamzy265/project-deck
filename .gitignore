@@ -5,6 +5,7 @@ coverage/
 .DS_Store
 .flutterdeck/state.json
 .flutterdeck/runtime.json
+.flutterdeck/daemon.log
 .flutterdeck/startup.lock
 .flutterdeck/*.tmp
 .flutterdeck/*.stale

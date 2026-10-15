@@ -70,7 +70,9 @@ console.log(`project-deck daemon listening on ${daemon.url}`);
 console.log(`Token in ${resolve(values.project, '.flutterdeck/runtime.json')}`);
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
-  process.once(signal, () => void daemon.stop());
+  process.once(signal, () => {
+    daemon.stop().catch((err: unknown) => console.error('Stopping failed:', String(err)));
+  });
 }
 await daemon.closed;
 process.exit(0);

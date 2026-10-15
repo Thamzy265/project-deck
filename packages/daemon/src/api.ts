@@ -1,5 +1,17 @@
-import type { EventBus, LogQuery, LoginWindowResult, Status } from '@project-deck/core';
-import { DEFAULT_LOG_LIMIT, GetLogsInput, HookEventInput } from '@project-deck/core';
+import type {
+  EventBus,
+  Health,
+  LogEntry,
+  LogQuery,
+  LoginWindowResult,
+  Status,
+} from '@project-deck/core';
+import {
+  DEFAULT_LOG_LIMIT,
+  GetLogsInput,
+  HookEventInput,
+  regexHaystacks,
+} from '@project-deck/core';
 import type { Context, MiddlewareHandler } from 'hono';
 import { Hono } from 'hono';
 import type { z } from 'zod';
@@ -9,6 +21,7 @@ import type { AppManager } from './app-manager.js';
 import type { LoginWindow } from './login-window.js';
 import { DEFAULT_CSP, LOGIN_NEEDED_PAGE, LOGIN_PAGE_CSP } from './login-page.js';
 import { UnknownAppError } from './app-manager.js';
+import { REGEX_FAILED, REGEX_TOO_SLOW, RegexFilter } from './regex-filter.js';
 import {
   authenticate,
   cookieValues,
@@ -41,6 +54,8 @@ export interface ApiContext {
   dashboard?: DashboardAssets | undefined;
   /** Stops the daemon after the response is sent. */
   shutdown: () => void;
+  /** Runs `regex` log filters off the main thread; one is made if not given. */
+  regexFilter?: RegexFilter | undefined;
 }
 
 class BadRequest extends Error {
@@ -102,6 +117,7 @@ type DeckEnv = { Variables: { csp: string | undefined } };
 
 export function createApi(ctx: ApiContext): Hono<DeckEnv> {
   const api = new Hono<DeckEnv>();
+  const regexFilter = ctx.regexFilter ?? new RegexFilter();
 
   // First, so error responses from later checks get the headers too.
   api.use('*', async (c, next) => {
@@ -120,7 +136,7 @@ export function createApi(ctx: ApiContext): Hono<DeckEnv> {
 
   // Unauthenticated so the CLI can tell "not running" from "wrong token". Reveals nothing else.
   api.get('/api/health', (c) =>
-    c.json({
+    c.json<Health>({
       ok: true,
       name: 'project-deck',
       version: ctx.version,
@@ -202,10 +218,32 @@ export function createApi(ctx: ApiContext): Hono<DeckEnv> {
   api.get('/api/logs', async (c) => {
     const logs = ctx.manager.logs();
     if (logs === undefined) return c.json({ entries: [], truncated: false });
-    const q = logQueryFromSearch(c.req.query());
+    const { regex, ...q } = logQueryFromSearch(c.req.query());
     const limit = q.limit ?? DEFAULT_LOG_LIMIT;
-    // Ask for one extra so we can tell the caller the result was cut short.
-    const entries = await logs.query({ ...q, limit: limit + 1 });
+    let entries: LogEntry[];
+    if (regex === undefined) {
+      // Ask for one extra so we can tell the caller the result was cut short.
+      entries = await logs.query({ ...q, limit: limit + 1 });
+    } else {
+      // The other filters here, the regex in a worker with a time budget.
+      const candidates = await logs.query({ ...q, limit: Number.MAX_SAFE_INTEGER });
+      // Message and stack are tested separately; owner[i] is the entry text i belongs to.
+      const owner: number[] = [];
+      const texts = candidates.flatMap((e, i) =>
+        regexHaystacks(e).map((t) => {
+          owner.push(i);
+          return t;
+        }),
+      );
+      const result = await regexFilter.match(regex, texts);
+      if (!result.ok) {
+        return result.reason === 'slow'
+          ? c.json({ error: REGEX_TOO_SLOW }, 400)
+          : c.json({ error: REGEX_FAILED }, 503);
+      }
+      const hit = new Set(owner.filter((_, t) => result.matches[t] === true));
+      entries = candidates.filter((_, i) => hit.has(i)).slice(-(limit + 1));
+    }
     const truncated = entries.length > limit;
     return c.json({ entries: truncated ? entries.slice(1) : entries, truncated });
   });
