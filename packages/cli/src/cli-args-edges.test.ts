@@ -107,10 +107,11 @@ describe('runCli argument edges', () => {
 
   // BUG-CLI-T9: an empty value (for example `--project="$DIR"` with DIR unset) silently
   // means the current folder, so init may set up the wrong folder.
-  it.fails.each([[['mcp', '--project=']], [['mcp', '--project', '']]])(
+  it.each([[['mcp', '--project=']], [['mcp', '--project', '']]])(
     'BUG-CLI-T9: refuses an empty --project in %j',
     async (argv) => {
       expect(await runCli(argv, deps())).toBe(2);
+      expect(err).toContain('--project needs a folder');
       expect(served).toEqual([]);
     },
   );

@@ -86,6 +86,11 @@ export async function runCli(argv: readonly string[], deps: CliDeps): Promise<nu
     return 2;
   }
 
+  // An empty value (`--project="$DIR"` with DIR unset) must not mean the current folder.
+  if (values.project?.trim() === '') {
+    io.err('--project needs a folder');
+    return 2;
+  }
   const projectDir = resolve(deps.cwd, values.project ?? '.');
   if (!(await isFolder(projectDir))) {
     io.err(`No folder at ${projectDir}`);
