@@ -14,6 +14,7 @@ import { HookEventInput, MAX_RELOAD_MESSAGE, MAX_WAITING_MESSAGE } from '@projec
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import * as hook from '../hooks/deck-hook.mjs';
 import * as fx from './fixtures.js';
+import { growth } from './timing.js';
 
 const { scrubReloadMessage, scrubText, toDeckEvent, projectDirOf, readDaemonAddress } = hook;
 const posix = process.platform === 'win32' ? it.skip : it;
@@ -419,15 +420,8 @@ describe('scrubReloadMessage: more shapes', () => {
   });
 
   it('T-P5-2 every pattern grows linearly with the text (scrubText, before the cut)', () => {
-    const best = (text: string) => {
-      let min = Number.POSITIVE_INFINITY;
-      for (let i = 0; i < 5; i++) {
-        const started = performance.now();
-        scrubText(text);
-        min = Math.min(min, performance.now() - started);
-      }
-      return Math.max(min, 0.05);
-    };
+    // 64k and 512k characters: a few milliseconds and more, so constant costs and timer
+    // resolution don't dominate; warm-up and best of 5 drop compiling and GC pauses.
     for (const unit of [
       'a.',
       'a:',
@@ -443,10 +437,9 @@ describe('scrubReloadMessage: more shapes', () => {
       'a.b:1/',
       'a-',
     ]) {
-      const small = best(unit.repeat(20_000));
-      const large = best(unit.repeat(160_000));
+      const { ratio, small, large } = growth(scrubText, unit, 64_000, 512_000);
       // 8 times the text: linear is about 8, quadratic about 64.
-      expect(large / small, unit).toBeLessThan(24);
+      expect(ratio, `${unit}: ${small.toFixed(2)} ms -> ${large.toFixed(2)} ms`).toBeLessThan(24);
     }
   });
 });
