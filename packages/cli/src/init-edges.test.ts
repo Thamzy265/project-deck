@@ -14,6 +14,7 @@ import {
   symlink,
   writeFile,
 } from 'node:fs/promises';
+import { realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parse } from 'jsonc-parser';
@@ -456,6 +457,14 @@ describe('init: concurrency and partial failures', () => {
       { name: 'web', port: 3000 },
       launchEntry(9147),
     ]);
+  });
+
+  it('hides the project folder in every form the system names it (review S2)', async () => {
+    // macOS names tmp folders /var/… and /private/var/…; fs errors may use either.
+    const real = realpathSync.native(project);
+    const odd = Object.assign(new Error(`EIO: i/o error, open '${real}/x'`), { code: 'EIO' });
+    expect(await init({ acquireLock: () => Promise.reject(odd) })).toBe(1);
+    expect(errors.join('\n')).toContain("open '<project>/x'");
   });
 
   it('says another init is running when its lock folder vanished (review C3)', async () => {

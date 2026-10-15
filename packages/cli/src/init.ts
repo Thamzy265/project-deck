@@ -12,6 +12,7 @@ import {
   StateDirError,
   checkStateDir,
   configPath,
+  pathScrubber,
   readConfig,
 } from '@project-deck/core/node';
 import {
@@ -115,6 +116,9 @@ export async function runInit(opts: InitOptions): Promise<number> {
     for (const line of nextSteps(opts.mcpMainPath)) io.out(line);
     return 0;
   } catch (err) {
+    // Every form of the project and home folders (Windows slashes, case, 8.3 names) is
+    // hidden: messages name files by their project path only.
+    const hide = pathScrubber(projectDir, { home: opts.homeDir });
     if (
       err instanceof Refused ||
       err instanceof UnsafeFileError ||
@@ -122,12 +126,12 @@ export async function runInit(opts: InitOptions): Promise<number> {
       err instanceof ConfigError ||
       err instanceof PortRegistryError
     ) {
-      io.err(hidePaths(err.message, projectDir, opts.homeDir));
+      io.err(hide(err.message));
       io.err('init changed nothing in the project.');
       return 1;
     }
     // fs errors name absolute paths; only project-relative ones are shown.
-    io.err(`init failed: ${hidePaths(messageOf(err), projectDir, opts.homeDir)}`);
+    io.err(`init failed: ${hide(messageOf(err))}`);
     return 1;
   }
 }
@@ -189,18 +193,6 @@ async function withInitLock<T>(
   } finally {
     await release?.();
   }
-}
-
-/** The project folder becomes `<project>` and the home folder `~`, longest first. */
-export function hidePaths(text: string, projectDir: string, homeDir: string): string {
-  const names: [string, string][] = [
-    [projectDir, '<project>'],
-    [homeDir, '~'],
-  ];
-  names.sort((a, b) => b[0].length - a[0].length);
-  let out = text;
-  for (const [path, name] of names) if (path !== '') out = out.split(path).join(name);
-  return out;
 }
 
 /**
