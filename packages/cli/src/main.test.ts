@@ -57,7 +57,8 @@ describe('main.js', () => {
     const result = await run(['init', '--project', project]);
     expect(result.code).toBe(0);
     expect(result.stdout).toContain('Changes:');
-    expect(result.stdout).toContain(join('packages', 'mcp', 'dist', 'main.js'));
+    expect(result.stdout).toContain(join('packages', 'cli', 'dist', 'main.js'));
+    expect(result.stdout).toContain('"mcp"');
     const config = JSON.parse(
       await readFile(join(project, '.flutterdeck', 'config.json'), 'utf8'),
     ) as { port: number };

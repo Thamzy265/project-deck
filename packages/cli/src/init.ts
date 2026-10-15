@@ -41,8 +41,8 @@ export interface InitOptions {
   /** Where the per-user port registry lives (the user's home folder). */
   homeDir: string;
   run: RunTool;
-  /** Absolute path of the MCP server's main.js, for the printed .mcp.json snippet. */
-  mcpMainPath: string;
+  /** Absolute path of this CLI's main.js: the printed .mcp.json runs `node <it> mcp`. */
+  cliMainPath: string;
   /** Test seam: whether nothing listens on a port. */
   isFree?: (port: number) => Promise<boolean>;
   /** Test seam: the cross-process lock (the daemon's acquireFileLock). */
@@ -113,7 +113,7 @@ export async function runInit(opts: InitOptions): Promise<number> {
       io.out(`  ${outcome.padEnd(10)}${file}${outcome === 'unchanged' ? '' : ` (${detail})`}`);
     }
     io.out('');
-    for (const line of nextSteps(opts.mcpMainPath)) io.out(line);
+    for (const line of nextSteps(opts.cliMainPath)) io.out(line);
     return 0;
   } catch (err) {
     // Every form of the project and home folders (Windows slashes, case, 8.3 names) is
@@ -331,11 +331,11 @@ async function apply(
   return changes;
 }
 
-function nextSteps(mcpMainPath: string): string[] {
+function nextSteps(cliMainPath: string): string[] {
   const snippet = {
     mcpServers: {
       dart: { type: 'stdio', command: 'dart', args: ['mcp-server'] },
-      flutterdeck: { type: 'stdio', command: 'node', args: [mcpMainPath] },
+      flutterdeck: { type: 'stdio', command: 'node', args: [cliMainPath, 'mcp'] },
     },
   };
   return [

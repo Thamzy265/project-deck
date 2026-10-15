@@ -47,7 +47,7 @@ function init(opts: Partial<InitOptions> = {}): Promise<number> {
     projectDir: project,
     homeDir: home,
     run: tools,
-    mcpMainPath: MCP_MAIN,
+    cliMainPath: MCP_MAIN,
     isFree: () => Promise.resolve(true),
     io: { out: (l) => lines.push(l), err: (l) => errors.push(l) },
     ...opts,
@@ -98,8 +98,8 @@ describe('init in a fresh Flutter project', () => {
     expect(Object.values(registry.projects)).toEqual([9147]);
   });
 
-  it('prints an .mcp.json snippet that runs the FlutterDeck MCP server, as valid JSON', async () => {
-    await init({ mcpMainPath: 'C:\\Users\\Jo Doe\\deck\\packages\\mcp\\dist\\main.js' });
+  it('prints an .mcp.json snippet that runs `flutterdeck mcp` through the CLI, as valid JSON', async () => {
+    await init({ cliMainPath: 'C:\\Users\\Jo Doe\\deck\\packages\\cli\\dist\\main.js' });
     const text = lines.join('\n');
     const json = text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1);
     expect(JSON.parse(json)).toEqual({
@@ -108,7 +108,7 @@ describe('init in a fresh Flutter project', () => {
         flutterdeck: {
           type: 'stdio',
           command: 'node',
-          args: ['C:\\Users\\Jo Doe\\deck\\packages\\mcp\\dist\\main.js'],
+          args: ['C:\\Users\\Jo Doe\\deck\\packages\\cli\\dist\\main.js', 'mcp'],
         },
       },
     });

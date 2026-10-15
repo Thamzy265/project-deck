@@ -32,7 +32,7 @@ function deps(): CliDeps {
     cwd,
     homeDir: home,
     run: () => Promise.reject(new Error('not installed')),
-    mcpMainPath: '/x/main.js',
+    cliMainPath: '/x/main.js',
     spawnDaemon: () => {
       spawned++;
     },
