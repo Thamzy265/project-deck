@@ -278,6 +278,21 @@ function maskEncodedUrl(match: string): string {
   return url !== null && hasAuthCode(url[1] ?? '', url[2] ?? '') ? AUTH_CODE : match;
 }
 
+/**
+ * A bare encoded URI: the scheme, then `://` with each escape encoded up to
+ * DECODE_ROUNDS times (DECODE_ROUNDS - 1 extra %25), after a word boundary or after an
+ * escape encoded as many times, as `%253Dhttp%25253A…` in a twice-encoded `/?uri=`.
+ */
+function encodedUrlPattern(): RegExp {
+  const extra = `(?:25){0,${DECODE_ROUNDS - 1}}`;
+  const escape = (hex: string) => `%${extra}${hex}`;
+  return new RegExp(
+    `(?:(?<=%${extra}[0-9A-Fa-f]{2})|(?<![A-Za-z0-9_]))(?:https?|wss?)` +
+      `${escape('3A')}${escape('2F')}${escape('2F')}[A-Za-z0-9%._~+=-]+`,
+    'gi',
+  );
+}
+
 const PATTERNS: Pattern[] = [
   {
     // Before the email rule, which would take user:pass@host for an address.
@@ -286,9 +301,10 @@ const PATTERNS: Pattern[] = [
   },
   {
     // The scheme and an encoded :// anchor every match. The scheme may follow an escape
-    // such as %3D, as in an encoded query holding an encoded URI. The value takes the
-    // whole run, with nothing after it to backtrack into; a long one fails closed.
-    re: /(?:(?<=%[0-9A-Fa-f]{2})|(?<![A-Za-z0-9_]))(?:https?|wss?)%(?:25){0,2}3A%(?:25){0,2}2F%(?:25){0,2}2F[A-Za-z0-9%._~+=-]+/gi,
+    // such as %3D, itself encoded again (%253D) when the query around the URI was
+    // encoded too. The value takes the whole run, with nothing after it to backtrack
+    // into; a long one fails closed.
+    re: encodedUrlPattern(),
     replace: maskEncodedUrl,
   },
   {
