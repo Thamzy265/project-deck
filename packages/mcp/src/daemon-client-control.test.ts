@@ -2,7 +2,7 @@ import { mkdtemp, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { runtimePath } from '@project-deck/core/node';
+import { runtimePath, writeRuntime } from '@project-deck/core/node';
 import type { DaemonClientOptions } from './daemon-client.js';
 import { DaemonClient, DaemonError, NOT_RUNNING } from './daemon-client.js';
 import { FakeDaemon, initProject } from './testing/fake-daemon.js';
@@ -132,6 +132,23 @@ describe('DaemonClient.shutdown', () => {
     const call = f.requests.at(-1);
     expect(`${call?.method} ${call?.path}`).toBe('POST /api/shutdown');
     expect(call?.headers['x-deck-token']).toBe(f.token);
+  });
+
+  it('counts a runtime.json that now belongs to another daemon as stopped', async () => {
+    const f = await fake();
+    f.route('POST', '/api/shutdown', () => {
+      // A new daemon (another start) replaced the file while this one stopped.
+      setTimeout(() => {
+        void writeRuntime(projectDir, {
+          pid: process.pid + 1,
+          port: f.port + 1,
+          token: 'n'.repeat(43),
+          startedAt: Date.now(),
+        });
+      }, 30);
+      return { status: 200, body: { ok: true } };
+    });
+    expect(await client().shutdown()).toBe(true);
   });
 
   it('reports a daemon that answers but doesn’t stop in time', async () => {

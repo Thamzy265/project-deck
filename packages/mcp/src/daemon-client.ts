@@ -70,6 +70,7 @@ type StartResult = { kind: 'up' } | { kind: 'gone' } | { kind: 'failed'; reason:
 interface Connection {
   port: number;
   token: string;
+  pid: number;
   warnings: string[];
 }
 
@@ -135,9 +136,9 @@ export class DaemonClient {
   }
 
   /**
-   * Asks this project's daemon to stop and waits until its runtime.json is gone. False
-   * when none was running. Never starts one, and never signals a process: the pid in
-   * runtime.json may belong to another program by now.
+   * Asks this project's daemon to stop and waits until its runtime.json is gone or holds
+   * another daemon's details. False when none was running. Never starts one, and never
+   * signals a process: the pid in runtime.json may belong to another program by now.
    */
   async shutdown(): Promise<boolean> {
     const conn = await this.connectChecked();
@@ -151,7 +152,16 @@ export class DaemonClient {
     }
     const deadline = Date.now() + this.stopTimeoutMs;
     while (Date.now() < deadline) {
-      if ((await readRuntime(this.opts.projectDir)) === undefined) return true;
+      // Gone, or replaced by another daemon's (a new start): either way this one stopped.
+      const now = await readRuntime(this.opts.projectDir);
+      if (
+        now === undefined ||
+        now.token !== conn.token ||
+        now.pid !== conn.pid ||
+        now.port !== conn.port
+      ) {
+        return true;
+      }
       await sleep(this.pollMs);
     }
     throw new DaemonError(
@@ -226,7 +236,7 @@ export class DaemonClient {
         : [
             `FlutterDeck daemon version ${health.version} differs from this MCP server (${this.opts.version}). Run \`flutterdeck stop\`; the next call starts the matching daemon.`,
           ];
-    return { port: info.port, token: info.token, warnings };
+    return { port: info.port, token: info.token, pid: info.pid, warnings };
   }
 
   private async isSetUp(): Promise<boolean> {
