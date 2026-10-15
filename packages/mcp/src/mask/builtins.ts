@@ -103,8 +103,8 @@ function urlParts(path: string): { own: string[]; nested: string[] } {
 }
 
 /**
- * Rounds of percent-decoding tried, in URLs and in bare encoded URIs alike; the bare
- * pattern allows the matching number of %25 prefixes (DECODE_ROUNDS - 1).
+ * Rounds of percent-decoding tried, in URLs and in bare encoded URIs alike. A bare URI
+ * encoded more times than this is masked whole without being read.
  */
 const DECODE_ROUNDS = 3;
 
@@ -259,24 +259,26 @@ function maskUrl(match: string, groups: (string | undefined)[]): string {
  */
 function maskEncodedUrl(match: string): string {
   if (match.length > MAX_URL_PART) return AUTH_CODE;
-  const url = INNER_URL.exec(decodings(match).at(-1) ?? match);
+  const decoded = decodings(match).at(-1) ?? match;
+  // Encoded more times than DECODE_ROUNDS undoes: never read, so masked whole (I3-1).
+  if (STILL_ENCODED.test(decoded)) return AUTH_CODE;
+  const url = INNER_URL.exec(decoded);
   return url !== null && hasAuthCode(url[1] ?? '', url[2] ?? '') ? AUTH_CODE : match;
 }
 
 /**
- * A bare encoded URI: the scheme, then `://` with each escape encoded up to
- * DECODE_ROUNDS times (DECODE_ROUNDS - 1 extra %25), after a word boundary or after an
- * escape encoded as many times, as `%253Dhttp%25253A…` in a twice-encoded `/?uri=`.
+ * A bare encoded URI: the scheme, then `://` with its escapes encoded any number of
+ * times (`%3A`, `%253A`, …). The scheme must start the text, follow a character that
+ * isn't part of a word, or follow an escape encoded any number of times, as in
+ * `%253Dhttp%25253A…` in a twice-encoded `/?uri=`. That check is a lookbehind placed
+ * after the scheme, so it only runs where a scheme is, and each backward scan stops at
+ * the `%` of its own escape: linear. Deeper than DECODE_ROUNDS fails closed.
  */
-function encodedUrlPattern(): RegExp {
-  const extra = `(?:25){0,${DECODE_ROUNDS - 1}}`;
-  const escape = (hex: string) => `%${extra}${hex}`;
-  return new RegExp(
-    `(?:(?<=%${extra}[0-9A-Fa-f]{2})|(?<![A-Za-z0-9_]))(?:https?|wss?)` +
-      `${escape('3A')}${escape('2F')}${escape('2F')}[A-Za-z0-9%._~+=-]+`,
-    'gi',
-  );
-}
+const ENCODED_URL =
+  /(?:https?|wss?)(?<=(?:^|[^A-Za-z0-9_]|%(?:25)*[0-9A-Fa-f]{2})(?:https?|wss?))%(?:25)*3A%(?:25)*2F%(?:25)*2F[A-Za-z0-9%._~+=-]+/gi;
+
+/** An encoded scheme and `://` still left after DECODE_ROUNDS rounds of decoding. */
+const STILL_ENCODED = /^(?:https?|wss?)%(?:25)*3A/i;
 
 const PATTERNS: Pattern[] = [
   {
@@ -289,7 +291,7 @@ const PATTERNS: Pattern[] = [
     // such as %3D, itself encoded again (%253D) when the query around the URI was
     // encoded too. The value takes the whole run, with nothing after it to backtrack
     // into; a long one fails closed.
-    re: encodedUrlPattern(),
+    re: ENCODED_URL,
     replace: maskEncodedUrl,
   },
   {

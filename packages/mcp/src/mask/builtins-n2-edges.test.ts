@@ -179,8 +179,9 @@ describe('unpadded auth codes on a loopback port (N2)', () => {
     hidesCode(text, code);
   });
 
-  // I3-1: a fourth level of encoding is past DECODE_ROUNDS and is neither read nor failed closed.
-  it.fails('I3-1: masks a four-times-encoded VM service URI', () => {
+  // I3-1: a fourth level of encoding is past DECODE_ROUNDS; it used to be neither read
+  // nor failed closed.
+  it('I3-1: masks a four-times-encoded VM service URI', () => {
     hidesCode(`x ${enc(enc(enc(enc(`http://127.0.0.1:50123/${padded}/`))))} `, 'qXHgMx0RRm4');
   });
 });
