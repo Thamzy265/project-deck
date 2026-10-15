@@ -264,9 +264,16 @@ export function createApi(ctx: ApiContext): Hono<DeckEnv> {
         'claude.done',
         event.sessionId === undefined ? {} : { sessionId: event.sessionId },
       );
-    } else {
+    } else if (event.type === 'claude.waiting') {
       ctx.bus.emit('claude.waiting', {
         ...(event.sessionId === undefined ? {} : { sessionId: event.sessionId }),
+        ...(event.message === undefined ? {} : { message: event.message }),
+      });
+    } else {
+      ctx.bus.emit('claude.reload', {
+        ...(event.sessionId === undefined ? {} : { sessionId: event.sessionId }),
+        ok: event.ok,
+        kind: event.kind,
         ...(event.message === undefined ? {} : { message: event.message }),
       });
     }

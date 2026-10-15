@@ -19,6 +19,13 @@ export interface DeckEvents {
   'task.current': { task: Task | null };
   'claude.done': { sessionId?: string };
   'claude.waiting': { sessionId?: string; message?: string };
+  /** Outcome of Claude's hot_reload or hot_restart call, from the reload hook. */
+  'claude.reload': {
+    sessionId?: string;
+    ok: boolean;
+    kind: 'hot-reload' | 'hot-restart';
+    message?: string;
+  };
   /** A new Activity feed entry, already stored. */
   activity: ActivityEntry;
 }

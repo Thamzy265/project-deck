@@ -3,7 +3,12 @@
  * so both validate requests the same way.
  */
 import { z } from 'zod';
-import { ActivityEntrySchema, MAX_WAITING_MESSAGE } from './activity.js';
+import {
+  ActivityEntrySchema,
+  MAX_RELOAD_MESSAGE,
+  MAX_SESSION_ID,
+  MAX_WAITING_MESSAGE,
+} from './activity.js';
 import { ReloadResultSchema, RunningAppSchema } from './apps.js';
 import { MAX_QUERY_LIMIT } from './db.js';
 import { LogEntrySchema, LogQuerySchema } from './logs.js';
@@ -61,13 +66,23 @@ export const LoginWindowResponse = z.object({
 });
 export type LoginWindowResult = z.infer<typeof LoginWindowResponse>;
 
-/** Body of `POST /api/events`, sent by the Claude Code hooks. */
+const SessionId = z.string().max(MAX_SESSION_ID);
+
+/** Body of `POST /api/events`, sent by the Claude Code hooks. Unknown fields are dropped. */
 export const HookEventInput = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('claude.done'), sessionId: z.string().optional() }),
+  z.object({ type: z.literal('claude.done'), sessionId: SessionId.optional() }),
   z.object({
     type: z.literal('claude.waiting'),
-    sessionId: z.string().optional(),
+    sessionId: SessionId.optional(),
     message: z.string().max(MAX_WAITING_MESSAGE).optional(),
+  }),
+  /** Claude called the Dart MCP server's hot_reload or hot_restart tool; `ok` is its outcome. */
+  z.object({
+    type: z.literal('claude.reload'),
+    sessionId: SessionId.optional(),
+    ok: z.boolean(),
+    kind: z.enum(['hot-reload', 'hot-restart']),
+    message: z.string().max(MAX_RELOAD_MESSAGE).optional(),
   }),
 ]);
 export type HookEvent = z.infer<typeof HookEventInput>;

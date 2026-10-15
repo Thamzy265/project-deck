@@ -168,6 +168,36 @@ describe('API routes', () => {
     ).toBe(400);
   });
 
+  it("turns a reload hook result into a claude.reload bus event, without the hook's extras", async () => {
+    const { request, bus } = await setup();
+    const reloads = vi.fn();
+    bus.on('claude.reload', reloads);
+    const post = (body: unknown) =>
+      request('/api/events', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    expect(
+      (
+        await post({
+          type: 'claude.reload',
+          sessionId: 's1',
+          ok: false,
+          kind: 'hot-reload',
+          message: 'Hot reload failed.',
+          tool_input: { appUri: 'ws://127.0.0.1:1/abc=/ws' },
+        })
+      ).status,
+    ).toBe(200);
+    expect((await post({ type: 'claude.reload', ok: true, kind: 'hot-restart' })).status).toBe(200);
+    expect(reloads.mock.calls).toEqual([
+      [{ sessionId: 's1', ok: false, kind: 'hot-reload', message: 'Hot reload failed.' }],
+      [{ ok: true, kind: 'hot-restart' }],
+    ]);
+    expect((await post({ type: 'claude.reload', ok: true })).status).toBe(400);
+  });
+
   it('shuts down on request', async () => {
     const { request, shutdown } = await setup();
     await request('/api/shutdown', { method: 'POST' });
