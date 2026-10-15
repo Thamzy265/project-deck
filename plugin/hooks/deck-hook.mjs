@@ -98,7 +98,7 @@ const BARE_ADDRESS =
  * required, so `main.dart:12:3` stays.
  */
 const HOST_ADDRESS =
-  /(?<![A-Za-z0-9._:/\]-])[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*:\d{1,5}\/[^\s"'`<>]*/g;
+  /(?<![A-Za-z0-9._:/\]-])[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*:\d{1,5}\/[^\s"'`<>]*/g;
 /** Percent-decoding rounds: a URI inside a query can be encoded once, twice or three times. */
 const DECODE_ROUNDS = 3;
 /** An absolute path runs to the end of the line or a quote, spaces included. */

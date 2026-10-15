@@ -368,6 +368,15 @@ describe('scrubReloadMessage: more shapes', () => {
     }
   });
 
+  it('R2-4 removes host:port/… addresses whose host has an underscore', () => {
+    const code = randomBytes(9).toString('base64url');
+    for (const host of ['my_host', 'dev_box.local', '_gateway']) {
+      expect(scrubReloadMessage(`cannot reach ${host}:5/${code} now`)).toBe(
+        'cannot reach [address] now',
+      );
+    }
+  });
+
   it('S1 leaves file:line:column positions alone', () => {
     expect(scrubReloadMessage('main.dart:12:3: Error: x')).toBe('main.dart:12:3: Error: x');
     expect(scrubReloadMessage('lib/main.dart:12:3 x')).toBe('lib/main.dart:12:3 x');
