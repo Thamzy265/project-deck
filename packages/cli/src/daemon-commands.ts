@@ -46,8 +46,8 @@ async function guarded(io: Io, body: () => Promise<number>): Promise<number> {
 }
 
 /** The dashboard address from the daemon, checked, plus any version warning. */
-async function dashboard(client: DaemonClient, io: Io): Promise<string> {
-  const status = await client.status();
+async function dashboard(client: DaemonClient, io: Io, start: boolean): Promise<string> {
+  const status = await client.status({ start });
   for (const warning of status.warnings) io.err(`Warning: ${warning}`);
   const url = status.value.dashboardUrl;
   if (!isDashboardUrl(url)) throw new DaemonError('FlutterDeck daemon sent an unexpected address');
@@ -68,7 +68,7 @@ export function runStart(opts: DaemonCommandOptions): Promise<number> {
     const wasRunning = await client.running();
     // Starts the daemon when it isn't running, and waits until it answers.
     const window = await client.openLoginWindow();
-    const url = await dashboard(client, opts.io);
+    const url = await dashboard(client, opts.io, true);
     opts.io.out(
       wasRunning
         ? 'FlutterDeck is already running for this project; the login window is open again.'
@@ -90,8 +90,9 @@ export function runStop(opts: DaemonCommandOptions): Promise<number> {
 export function runOpen(opts: OpenOptions): Promise<number> {
   return guarded(opts.io, async () => {
     const client = clientFor(opts);
+    // Never starts a daemon, also when it goes away between these two calls.
     const window = await client.openLoginWindow({ start: false });
-    const url = await dashboard(client, opts.io);
+    const url = await dashboard(client, opts.io, false);
     for (const line of loginLines(url, window.until)) opts.io.out(line);
     if (opts.browser && !opts.openBrowser(url)) {
       opts.io.out("Couldn't find a way to open the browser here; open the address above.");

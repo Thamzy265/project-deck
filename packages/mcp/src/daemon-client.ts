@@ -91,8 +91,10 @@ export class DaemonClient {
     this.pollMs = opts.pollMs ?? 100;
   }
 
-  status(): Promise<Answer<Status>> {
-    return this.withDaemon((c) => this.request(c, 'GET', '/api/status', StatusResponse));
+  /** `start: false` never starts a daemon: it fails with NOT_RUNNING instead. */
+  status(opts: { start?: boolean } = {}): Promise<Answer<Status>> {
+    const call = (c: Connection) => this.request(c, 'GET', '/api/status', StatusResponse);
+    return opts.start === false ? this.withRunning(call) : this.withDaemon(call);
   }
 
   logs(query: LogQuery): Promise<Answer<LogsResult>> {
@@ -111,12 +113,20 @@ export class DaemonClient {
   async openLoginWindow(opts: { start?: boolean } = {}): Promise<LoginWindowResult> {
     const call = (c: Connection) =>
       this.request(c, 'POST', '/api/login-window', LoginWindowResponse);
-    if (opts.start !== false) return (await this.withDaemon(call)).value;
+    const answer = opts.start === false ? this.withRunning(call) : this.withDaemon(call);
+    return (await answer).value;
+  }
+
+  /** Like withDaemon, but a daemon that isn't running is an error, never started. */
+  private async withRunning<T>(call: (c: Connection) => Promise<T>): Promise<Answer<T>> {
     const conn = await this.connectChecked();
     if (conn === undefined) throw new DaemonError(NOT_RUNNING);
-    return call(conn).catch((err: unknown) => {
-      throw err instanceof Unreachable ? new DaemonError(NOT_RUNNING) : err;
-    });
+    try {
+      return { value: await call(conn), warnings: conn.warnings };
+    } catch (err) {
+      if (err instanceof Unreachable) throw new DaemonError(NOT_RUNNING);
+      throw withWarnings(err, conn.warnings);
+    }
   }
 
   /** Whether this project's daemon answers. Never starts one. */

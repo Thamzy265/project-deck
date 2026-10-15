@@ -101,6 +101,20 @@ describe('DaemonClient.openLoginWindow without starting', () => {
   });
 });
 
+describe('DaemonClient.status without starting', () => {
+  it('says the daemon is not running and starts none', async () => {
+    const err = await rejection(client().status({ start: false }));
+    expect(err.message).toBe(NOT_RUNNING);
+    expect(spawns).toBe(0);
+  });
+
+  it('reads the status of a running daemon', async () => {
+    await fake();
+    const answer = await client().status({ start: false });
+    expect(answer.value.projectName).toBe('shop_app');
+  });
+});
+
 describe('DaemonClient.shutdown', () => {
   it('is false without a daemon, and starts none', async () => {
     expect(await client().shutdown()).toBe(false);
