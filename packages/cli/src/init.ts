@@ -16,7 +16,6 @@ import {
   readConfig,
 } from '@project-deck/core/node';
 import {
-  FIRST_PORT,
   PortRegistryError,
   acquireFileLock,
   allocatePort,
@@ -29,7 +28,7 @@ import { detectFlutterProject, readApplicationId } from './flutter-project.js';
 import { addIgnoreBlock } from './gitignore.js';
 import type { Io } from './io.js';
 import { messageOf } from './io.js';
-import { mergeLaunchJson } from './launch-json.js';
+import { launchJsonProblem, mergeLaunchJson } from './launch-json.js';
 import { CLI_NAME } from './name.js';
 import type { RunTool } from './prerequisites.js';
 import { checkPrerequisites, formatPrerequisites } from './prerequisites.js';
@@ -233,9 +232,10 @@ async function inspect(projectDir: string): Promise<Plan> {
       ? ({ kind: 'missing' } as const)
       : await inspectFile(join(projectDir, CLAUDE_DIR, 'launch.json'), LAUNCH_SHOWN);
   if (launch.kind === 'file') {
-    // Any valid port: this only checks that the file can be merged.
-    const check = mergeLaunchJson(launch.text, FIRST_PORT);
-    if (check.kind === 'refused') throw new Refused(`${LAUNCH_SHOWN} ${check.reason}.`);
+    // What makes a file unmergeable doesn't depend on the port, so this runs before the
+    // port is chosen (and recorded in the registry).
+    const problem = launchJsonProblem(launch.text);
+    if (problem !== undefined) throw new Refused(`${LAUNCH_SHOWN} ${problem}.`);
   }
 
   // Every other folder a write may go to. .claude is checked whenever it exists, since
@@ -276,19 +276,34 @@ async function choosePort(
   return chosen;
 }
 
+interface Write {
+  path: string;
+  text: string;
+  mode: number;
+}
+
+/**
+ * Works out every change with the chosen port first, and only then writes. A launch.json
+ * the merge refuses therefore stops init before config.json or .gitignore change.
+ */
 async function apply(
   projectDir: string,
   plan: Plan,
   port: number,
 ): Promise<[string, Outcome, string][]> {
   const changes: [string, Outcome, string][] = [];
+  const writes: Write[] = [];
 
   const config = plan.config.state;
   if (config.kind === 'missing') {
-    await writeAtomic(configPath(projectDir), newConfigText(port), NEW_FILE_MODE);
+    writes.push({ path: configPath(projectDir), text: newConfigText(port), mode: NEW_FILE_MODE });
     changes.push([CONFIG_SHOWN, 'created', `version 1, port ${port}`]);
   } else if (plan.config.settings?.port === undefined) {
-    await writeAtomic(configPath(projectDir), withPort(config.text, port), config.mode);
+    writes.push({
+      path: configPath(projectDir),
+      text: withPort(config.text, port),
+      mode: config.mode,
+    });
     changes.push([CONFIG_SHOWN, 'updated', `added port ${port}`]);
   } else {
     changes.push([CONFIG_SHOWN, 'unchanged', '']);
@@ -300,7 +315,7 @@ async function apply(
     changes.push([GITIGNORE_SHOWN, 'unchanged', '']);
   } else {
     const mode = ignore.kind === 'file' ? ignore.mode : NEW_FILE_MODE;
-    await writeAtomic(join(projectDir, GITIGNORE_SHOWN), ignored, mode);
+    writes.push({ path: join(projectDir, GITIGNORE_SHOWN), text: ignored, mode });
     changes.push([
       GITIGNORE_SHOWN,
       ignore.kind === 'file' ? 'updated' : 'created',
@@ -314,17 +329,20 @@ async function apply(
   if (merged.kind === 'unchanged') {
     changes.push([LAUNCH_SHOWN, 'unchanged', '']);
   } else {
-    // recursive: no error if it appeared since the inspect.
-    if (plan.claudeDir === 'missing')
-      await mkdir(join(projectDir, CLAUDE_DIR), { recursive: true });
     const mode = launch.kind === 'file' ? launch.mode : NEW_FILE_MODE;
-    await writeAtomic(join(projectDir, CLAUDE_DIR, 'launch.json'), merged.text, mode);
+    writes.push({ path: join(projectDir, CLAUDE_DIR, 'launch.json'), text: merged.text, mode });
     changes.push([
       LAUNCH_SHOWN,
       launch.kind === 'file' ? 'updated' : 'created',
       `"FlutterDeck" opens http://127.0.0.1:${port}`,
     ]);
   }
+
+  // recursive: no error if it appeared since the inspect.
+  if (plan.claudeDir === 'missing' && merged.kind === 'changed') {
+    await mkdir(join(projectDir, CLAUDE_DIR), { recursive: true });
+  }
+  for (const write of writes) await writeAtomic(write.path, write.text, write.mode);
   return changes;
 }
 

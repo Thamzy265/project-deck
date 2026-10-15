@@ -102,6 +102,17 @@ function sameEntry(value: unknown, entry: LaunchEntry): boolean {
 }
 
 /**
+ * Why the file can't be merged, or undefined when it can. Nothing here depends on the
+ * port, so init checks it before it chooses one.
+ */
+export function launchJsonProblem(text: string): string | undefined {
+  const body = text.replace(/^\uFEFF/, '');
+  if (body.trim() === '') return undefined;
+  const parsed = parse(body);
+  return typeof parsed === 'string' ? parsed : undefined;
+}
+
+/**
  * Adds the FlutterDeck entry, or replaces ours when it differs (another port, or a
  * command someone added). `text` undefined means no file yet.
  */

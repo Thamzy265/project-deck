@@ -1,6 +1,29 @@
 import { parse } from 'jsonc-parser';
 import { describe, expect, it } from 'vitest';
-import { LAUNCH_ENTRY_NAME, launchEntry, mergeLaunchJson } from './launch-json.js';
+import {
+  LAUNCH_ENTRY_NAME,
+  launchEntry,
+  launchJsonProblem,
+  mergeLaunchJson,
+} from './launch-json.js';
+
+describe('launchJsonProblem', () => {
+  it.each([[''], ['  \n'], ['﻿{"configurations":[]}'], ['{"version":"0.0.1"}']])(
+    'finds nothing wrong with %j',
+    (text) => {
+      expect(launchJsonProblem(text)).toBeUndefined();
+    },
+  );
+
+  it.each([
+    ['{', 'is not valid JSON'],
+    ['[]', 'is not a JSON object'],
+    ['{"version":1,"version":2}', 'twice'],
+    ['{"configurations":[{"name":"FlutterDeck"},{"name":"FlutterDeck"}]}', 'keep one'],
+  ])('names the problem with %j', (text, reason) => {
+    expect(launchJsonProblem(text)).toContain(reason);
+  });
+});
 
 function changed(text: string | undefined, port = 9147): string {
   const result = mergeLaunchJson(text, port);
