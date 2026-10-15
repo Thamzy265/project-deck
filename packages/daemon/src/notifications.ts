@@ -37,9 +37,12 @@ function message(entry: ActivityEntry): { kind: Kind; head: string; tail?: strin
         ...(entry.appName === undefined ? {} : { tail: entry.appName }),
       };
     case 'claude.waiting': {
-      const text = Array.from((entry.message ?? '').trim())
-        .slice(0, WAITING_CHARS)
-        .join('');
+      // Control and invisible characters don't count: a message of only those is empty.
+      const visible = (entry.message ?? '')
+        .replace(/\p{Cc}/gu, ' ')
+        .replace(/\p{Cf}/gu, '')
+        .trim();
+      const text = Array.from(visible).slice(0, WAITING_CHARS).join('');
       return {
         kind: 'claudeWaiting',
         head: 'Claude is waiting',

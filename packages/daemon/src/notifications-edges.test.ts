@@ -221,15 +221,11 @@ describe('notifications end to end, with a fake spawn', () => {
     expect(spawned[0]?.args[4]).toBe('Claude is waiting');
   });
 
-  // T-P5-8: a message of only control or invisible characters survives the trim in
-  // notifications.ts, so the text ends in a dangling " —" once the notifier cleans it.
-  it.fails(
-    'T-P5-8 says "Claude is waiting" alone for a message of invisible characters',
-    async () => {
-      const { bus, spawned } = setup('darwin');
-      bus.emit('claude.waiting', { message: '\u202e\u0007\u200b' });
-      await flush();
-      expect(spawned[0]?.args[4]).toBe('Claude is waiting');
-    },
-  );
+  // T-P5-8 (fixed): a message of only control or invisible characters counts as empty.
+  it('T-P5-8 says "Claude is waiting" alone for a message of invisible characters', async () => {
+    const { bus, spawned } = setup('darwin');
+    bus.emit('claude.waiting', { message: '\u202e\u0007\u200b' });
+    await flush();
+    expect(spawned[0]?.args[4]).toBe('Claude is waiting');
+  });
 });
