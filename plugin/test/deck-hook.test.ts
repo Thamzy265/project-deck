@@ -98,7 +98,12 @@ describe('toDeckEvent', () => {
     ['hot RESTART failed - y', 'hot RESTART failed - y'],
     ['Hot restart failed:   y\nz', 'y'],
     ['\n\nHot reload failed: first real line\nsecond', 'first real line'],
-    ['Hot reload failed.\r\nmore', undefined],
+    // R2-6: the prefix goes first, then the first non-empty line is the reason.
+    ['Hot reload failed.\r\nmore', 'more'],
+    ['Hot reload failed: \nUnable to reload sources', 'Unable to reload sources'],
+    ['Hot restart failed\n\n  Unable to restart\n#0 trace', 'Unable to restart'],
+    ['Hot reload failed.', undefined],
+    ['Hot reload failed:  \n \n', undefined],
     ['Error: Hot reload failed: x', 'Error: Hot reload failed: x'],
   ])('QA F-B5-1 reads %j as %j', (error, message) => {
     const event = toDeckEvent({ ...fx.reloadFailed, error });

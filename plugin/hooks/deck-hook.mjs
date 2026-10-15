@@ -161,8 +161,13 @@ export function scrubReloadMessage(text) {
     .join('');
   // The first line says what failed; the rest is a flutter_tools stack trace (QA F-B5-1).
   // The Activity row already says "Reload failed", so the tool's own prefix goes.
-  const first = raw.split(/\r\n?|\n/).find((line) => line.trim() !== '') ?? '';
-  const reason = first.replace(/^\s*hot (?:reload|restart) failed(?:\s*[:.]\s*|\s*$)/i, '');
+  // The prefix goes first, so "Hot reload failed:" alone on its line leaves the reason on
+  // the next one (R2-6).
+  const rest = raw.replace(
+    /^\s*hot (?:reload|restart) failed(?:[ \t]*[:.]|[ \t]*(?=\r|\n|$))/i,
+    '',
+  );
+  const reason = rest.split(/\r\n?|\n/).find((line) => line.trim() !== '') ?? '';
   return cut(scrubText(reason), MAX_RELOAD_MESSAGE);
 }
 
