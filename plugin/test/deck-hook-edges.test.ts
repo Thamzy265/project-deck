@@ -15,7 +15,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import * as hook from '../hooks/deck-hook.mjs';
 import * as fx from './fixtures.js';
 
-const { scrubReloadMessage, toDeckEvent, projectDirOf, readDaemonAddress } = hook;
+const { scrubReloadMessage, scrubText, toDeckEvent, projectDirOf, readDaemonAddress } = hook;
 const posix = process.platform === 'win32' ? it.skip : it;
 /** In `u` mode a pair is one code point, so only a lone half matches. */
 const hasLoneSurrogate = (text: string) => /\p{Cs}/u.test(text);
@@ -255,7 +255,7 @@ describe('scrubReloadMessage: more shapes', () => {
 
   // T-P5-1: a VM service address on IPv6 loopback without a scheme keeps its auth code.
   // `\b` never matches before `[` after a space, so only the `/…` part goes, after the code.
-  it.fails('T-P5-1 removes an IPv6 VM service address and its auth code', () => {
+  it('T-P5-1 removes an IPv6 VM service address and its auth code', () => {
     const code = randomBytes(8).toString('base64url');
     const out = scrubReloadMessage(`Hot reload failed: cannot reach [::1]:8181/${code}=/ws`);
     expect(out).not.toContain(code);
@@ -264,24 +264,21 @@ describe('scrubReloadMessage: more shapes', () => {
   // T-P5-3: an absolute path right after a character outside the fixed list (`[`, a
   // backtick, `{`) is kept as is. So is one after a control or zero-width character: those
   // are removed only after the path pattern ran, so they hide the path from it.
-  it.fails(
-    'T-P5-3 removes absolute paths after brackets, backticks, braces or hidden characters',
-    () => {
-      for (const text of [
-        'failed [/Users/dev/app/lib/main.dart:3]',
-        'failed `/Users/dev/app`',
-        'failed {/Users/dev/app}',
-        'failed \u200b/Users/dev/app',
-        'failed\u0000/Users/dev/app',
-      ]) {
-        expect(scrubReloadMessage(text)).not.toContain('/Users/dev');
-      }
-    },
-  );
+  it('T-P5-3 removes absolute paths after brackets, backticks, braces or hidden characters', () => {
+    for (const text of [
+      'failed [/Users/dev/app/lib/main.dart:3]',
+      'failed `/Users/dev/app`',
+      'failed {/Users/dev/app}',
+      'failed \u200b/Users/dev/app',
+      'failed\u0000/Users/dev/app',
+    ]) {
+      expect(scrubReloadMessage(text)).not.toContain('/Users/dev');
+    }
+  });
 
   // T-P5-4: a path with a space keeps everything after the space: the user's surname in a
   // Windows profile folder, or the project folder name.
-  it.fails('T-P5-4 removes the whole of a path with a space in it', () => {
+  it('T-P5-4 removes the whole of a path with a space in it', () => {
     expect(scrubReloadMessage('failed in C:\\Users\\Jane Doe\\shop\\main.dart')).not.toContain(
       'Doe',
     );
@@ -294,10 +291,53 @@ describe('scrubReloadMessage: more shapes', () => {
   // quadratic in the error's length. The error is scrubbed before it is cut, and stdin may
   // be 4 MB, so a long error keeps the hook busy far past its 2 s deadline (a timer can't
   // interrupt a running regular expression).
-  it.fails('T-P5-2 scrubs a 64 kB error in well under the hook deadline', () => {
+  it('T-P5-2 scrubs a 64 kB error in well under the hook deadline', () => {
     const started = performance.now();
     scrubReloadMessage(`Hot reload failed: ${'a.'.repeat(32_000)}`);
     expect(performance.now() - started).toBeLessThan(500);
+  });
+
+  it('T-P5-1 removes addresses without a scheme, whole', () => {
+    for (const [text, out] of [
+      ['cannot reach [::1]:8181/AbC=/ws now', 'cannot reach [address] now'],
+      ['cannot reach 127.0.0.1:8181/AbC=/ws', 'cannot reach [address]'],
+      ['cannot reach localhost:8181/AbC=/ws', 'cannot reach [address]'],
+      ['cannot reach [::1]:8181', 'cannot reach [address]'],
+    ] as const) {
+      expect(scrubReloadMessage(text)).toBe(out);
+    }
+  });
+
+  it('T-P5-2 cuts the raw error before it scrubs, so a path past the cut never matters', () => {
+    const out = scrubReloadMessage(`${'x '.repeat(2000)}/Users/dev/secret`);
+    expect(out).not.toContain('/Users');
+    expect(Array.from(out)).toHaveLength(MAX_RELOAD_MESSAGE);
+  });
+
+  it('T-P5-2 scrubs a 4 MB error in well under the hook deadline', () => {
+    for (const unit of ['a.', 'a:', '/', 'a:/', '[::', '1.1.1.', 'C:\\', 'aa://']) {
+      const started = performance.now();
+      scrubReloadMessage(`Hot reload failed: ${unit.repeat(4_000_000 / unit.length)}`);
+      expect(performance.now() - started, unit).toBeLessThan(500);
+    }
+  });
+
+  it('T-P5-2 every pattern grows linearly with the text (scrubText, before the cut)', () => {
+    const best = (text: string) => {
+      let min = Number.POSITIVE_INFINITY;
+      for (let i = 0; i < 5; i++) {
+        const started = performance.now();
+        scrubText(text);
+        min = Math.min(min, performance.now() - started);
+      }
+      return Math.max(min, 0.05);
+    };
+    for (const unit of ['a.', 'a:', '/', 'a:/', '[::', '1.1.1.', 'C:\\', 'aa://', 'x ']) {
+      const small = best(unit.repeat(20_000));
+      const large = best(unit.repeat(160_000));
+      // 8 times the text: linear is about 8, quadratic about 64.
+      expect(large / small, unit).toBeLessThan(24);
+    }
   });
 });
 

@@ -72,26 +72,61 @@ function cut(text, max) {
   return chars.length <= max ? text : `${chars.slice(0, max - 1).join('')}…`;
 }
 
+/** The raw error is cut to this many characters before any pattern runs. */
+export const MAX_RAW_RELOAD_MESSAGE = 1024;
+
+/*
+ * Every pattern below is linear: each starts only where a lookbehind allows (one character
+ * back), its prefix is bounded, and its tail is one greedy class run. A timer can't stop a
+ * running regular expression, so a backtracking pattern on a long error would hold the hook
+ * past its deadline.
+ */
+/** `scheme://…`: scheme at most 31 characters, starting where no scheme character is. */
+const URI = /(?<![A-Za-z0-9+.-])[A-Za-z][A-Za-z0-9+.-]{0,30}:\/\/[^\s"'`<>]*/g;
+/** `host:port[/…]` without a scheme: localhost, IPv4 or bracketed IPv6. */
+const BARE_ADDRESS =
+  /(?<![A-Za-z0-9.:\]-])(?:localhost|\d{1,3}(?:\.\d{1,3}){3}|\[[0-9A-Fa-f:.]{2,45}\]):\d{1,5}(?:\/[^\s"'`<>]*)?/gi;
+/** An absolute path runs to the end of the line or a quote, spaces included. */
+const PATH_TAIL = String.raw`[^\n"'` + '`' + ']*';
+/** Windows drive paths: `C:\…` or `C:/…`. */
+const DRIVE_PATH = new RegExp(String.raw`(?<![A-Za-z0-9])[A-Za-z]:[\\/]` + PATH_TAIL, 'g');
+/** UNC paths: `\\server\share…`. */
+const UNC_PATH = new RegExp(String.raw`(?<![A-Za-z0-9._~/\\-])\\\\` + PATH_TAIL, 'g');
+/** POSIX and home paths: `/…` or `~/…` after any character that can't be part of a path. */
+const POSIX_PATH = new RegExp(String.raw`(?<![A-Za-z0-9._~/\\-])~?/` + PATH_TAIL, 'g');
+
+/**
+ * Removes control and invisible format characters (a zero-width space could hide a path
+ * from the patterns), then addresses and absolute paths, then squeezes white space. No cut:
+ * scrubReloadMessage cuts before and after.
+ * @param {string} text
+ */
+export function scrubText(text) {
+  return text
+    .replace(/\r\n?/g, '\n')
+    .replace(/[^\P{Cc}\n]/gu, ' ')
+    .replace(/\p{Cf}/gu, '')
+    .replace(URI, '[address]')
+    .replace(BARE_ADDRESS, '[address]')
+    .replace(DRIVE_PATH, '[path]')
+    .replace(UNC_PATH, '[path]')
+    .replace(POSIX_PATH, '[path]')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 /**
  * A reload error for the Activity feed: no addresses (VM service URIs carry auth codes),
- * no absolute paths (they name the user and the project), one line, short.
+ * no absolute paths (they name the user and the project), one line, short. The raw text
+ * is cut first, so the work is bounded whatever the error's length.
  * @param {string} text
  */
 export function scrubReloadMessage(text) {
-  const flat = text
-    .replace(/\b[a-z][a-z0-9+.-]*:\/\/[^\s"'<>]*/gi, '[address]')
-    .replace(
-      /\b(?:localhost|\d{1,3}(?:\.\d{1,3}){3}|\[[0-9a-f:]+\]):\d+(?:\/[^\s"'<>]*)?/gi,
-      '[address]',
-    )
-    .replace(/\b[A-Za-z]:[\\/][^\s"'<>]*/g, '[path]')
-    .replace(/\\\\[^\s"'<>]+/g, '[path]')
-    .replace(/(^|[\s"'(=:,])~?\/[^\s"'<>]*/g, '$1[path]')
-    .replace(/\p{Cc}/gu, ' ')
-    .replace(/\p{Cf}/gu, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  return cut(flat, MAX_RELOAD_MESSAGE);
+  // 2 code units per character at most, so this slice still holds the first 1024.
+  const raw = Array.from(text.slice(0, 2 * MAX_RAW_RELOAD_MESSAGE))
+    .slice(0, MAX_RAW_RELOAD_MESSAGE)
+    .join('');
+  return cut(scrubText(raw), MAX_RELOAD_MESSAGE);
 }
 
 /**

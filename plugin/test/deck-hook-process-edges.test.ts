@@ -275,20 +275,28 @@ describe('the hook process under load and failure', () => {
   });
 
   // T-P5-2: a long reload error keeps the hook busy far past its deadline.
-  it.fails(
-    'T-P5-2 exits within the deadline on an 80 kB reload error',
-    async () => {
-      daemon = await fake();
-      await initProject(projectDir, daemon.port);
-      const r = await runHook(
-        { ...fx.reloadFailed, error: `Hot reload failed: ${'a.'.repeat(40_000)}` },
-        { CLAUDE_PROJECT_DIR: projectDir },
-      );
-      quiet(r);
-      expect(r.ms).toBeLessThan(3500);
-    },
-    30_000,
-  );
+  it('T-P5-2 exits within the deadline on an 80 kB reload error', async () => {
+    daemon = await fake();
+    await initProject(projectDir, daemon.port);
+    const r = await runHook(
+      { ...fx.reloadFailed, error: `Hot reload failed: ${'a.'.repeat(40_000)}` },
+      { CLAUDE_PROJECT_DIR: projectDir },
+    );
+    quiet(r);
+    expect(r.ms).toBeLessThan(3500);
+  }, 30_000);
+
+  it('T-P5-2 exits within the deadline on a 4 MB reload error and still sends the event', async () => {
+    daemon = await fake();
+    await initProject(projectDir, daemon.port);
+    const r = await runHook(
+      { ...fx.reloadFailed, error: `Hot reload failed: ${'a.'.repeat(2_000_000)}` },
+      { CLAUDE_PROJECT_DIR: projectDir },
+    );
+    quiet(r);
+    expect(r.ms).toBeLessThan(3500);
+    expect(events(daemon)).toHaveLength(1);
+  }, 30_000);
 });
 
 describe('the hook process: finding the project', () => {
