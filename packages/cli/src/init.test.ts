@@ -114,6 +114,27 @@ describe('init in a fresh Flutter project', () => {
     });
   });
 
+  it('prints how to install the plugin from the checkout this CLI runs from', async () => {
+    const checkout = join(outside, 'deck checkout');
+    await mkdir(join(checkout, '.claude-plugin'), { recursive: true });
+    await writeFile(join(checkout, '.claude-plugin', 'marketplace.json'), '{}');
+    await init({ cliMainPath: join(checkout, 'packages', 'cli', 'dist', 'main.js') });
+    const text = lines.join('\n');
+    expect(text).toContain(`claude plugin marketplace add "${checkout}"`);
+    expect(text).toContain('claude plugin install flutterdeck@flutterdeck-dev');
+    // The raw MCP config stays, for use without the plugin or with other agents.
+    expect(text.indexOf('claude plugin install')).toBeLessThan(text.indexOf('"mcpServers"'));
+    const json = text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1);
+    expect(JSON.parse(json)).toHaveProperty('mcpServers.flutterdeck.command', 'node');
+  });
+
+  it('prints the MCP config only when the CLI is not in a checkout with the plugin', async () => {
+    await init();
+    const text = lines.join('\n');
+    expect(text).not.toContain('claude plugin');
+    expect(text).toContain('"mcpServers"');
+  });
+
   it('never fails because a tool is missing', async () => {
     expect(await init({ run: () => Promise.reject(new Error('ENOENT')) })).toBe(0);
     expect(lines.join('\n')).toContain('flutter missing');
