@@ -3,6 +3,7 @@
  * socket, and checks what reaches the daemon, the exit code and that nothing is printed.
  */
 import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import type { IncomingHttpHeaders, Server, ServerResponse } from 'node:http';
@@ -424,6 +425,18 @@ describe('the hook process: project id (S2)', () => {
     const id = await ownProjectId(projectDir);
     expect(id).toMatch(/^[0-9a-f]{12}$/);
     expect(id).toBe(await readProjectIdentity(projectDir, { homeDir: homedir() }));
+  });
+
+  it('R2-1 matches core for a project path spelled in another case than on disk', async (ctx) => {
+    const real = join(projectDir, 'Shop_App');
+    await mkdir(real);
+    const other = join(projectDir, 'sHOP_aPP');
+    // Only a case-insensitive file system (the macOS and Windows defaults) has this case.
+    if (!existsSync(other)) ctx.skip();
+    await writeRegistry(JSON.stringify({ version: 1, salt: salt(), projects: {} }));
+    expect(await ownProjectId(other)).toBe(
+      await readProjectIdentity(other, { homeDir: homedir() }),
+    );
   });
 
   it('still sends when the daemon shows no project id (no registry on its side)', async () => {

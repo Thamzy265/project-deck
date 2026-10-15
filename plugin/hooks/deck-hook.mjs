@@ -357,7 +357,9 @@ export async function ownProjectId(projectDir) {
     }
     let key = resolve(projectDir);
     try {
-      key = realpathSync(key);
+      // The native realpath, as core's fs/promises realpath: it gives the on-disk case,
+      // subst drives and long names, so both work out the same id (R2-1).
+      key = realpathSync.native(key);
     } catch {
       // A folder that is gone keeps its resolved path, as in core.
     }
