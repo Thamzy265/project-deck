@@ -84,13 +84,13 @@ describe('ActivityFeed and the reload hook', () => {
     const { bus, feed, clock, vmSuccess } = setup();
     vmSuccess();
     clock.now += RELOAD_MERGE_WINDOW_MS + 1;
-    bus.emit('claude.reload', { ok: true, kind: 'hot-reload' });
+    bus.emit('claude.reload', { ok: false, kind: 'hot-reload' });
     expect(reloads(feed).map((e) => e.kind)).toEqual(['app.reloaded', 'claude.reload']);
   });
 
-  it('drops a VM "success" that comes up to 3 s after the hook result', () => {
+  it('drops a VM "success" that comes up to 3 s after a successful hook result', () => {
     const { bus, feed, clock, vmSuccess } = setup();
-    bus.emit('claude.reload', { ok: false, kind: 'hot-reload', message: 'Hot reload failed.' });
+    bus.emit('claude.reload', { ok: true, kind: 'hot-reload' });
     clock.now += RELOAD_MERGE_WINDOW_MS;
     vmSuccess();
     expect(reloads(feed).map((e) => e.kind)).toEqual(['claude.reload']);
@@ -110,8 +110,8 @@ describe('ActivityFeed and the reload hook', () => {
   it('only pairs a reload with a reload and a restart with a restart', () => {
     const { bus, feed, vmSuccess } = setup();
     vmSuccess('hot-restart');
-    bus.emit('claude.reload', { ok: true, kind: 'hot-reload' });
-    bus.emit('claude.reload', { ok: true, kind: 'hot-restart' });
+    bus.emit('claude.reload', { ok: false, kind: 'hot-reload' });
+    bus.emit('claude.reload', { ok: false, kind: 'hot-restart' });
     expect(reloads(feed).map((e) => (e.kind === 'claude.reload' ? e.reload : e.kind))).toEqual([
       'hot-restart',
       'hot-reload',
@@ -139,13 +139,18 @@ describe('ActivityFeed and the reload hook', () => {
   it('pairs one VM event with one hook result only', () => {
     const { bus, feed, vmSuccess } = setup();
     vmSuccess();
+    // The success is a duplicate of the VM row; the failure then finds no free VM row.
     bus.emit('claude.reload', { ok: true, kind: 'hot-reload' });
     bus.emit('claude.reload', { ok: false, kind: 'hot-reload' });
-    expect(reloads(feed).map((e) => e.kind)).toEqual(['claude.reload', 'claude.reload']);
-    expect(reloads(feed).map((e) => (e.kind === 'claude.reload' ? e.ok : undefined))).toEqual([
-      true,
-      false,
-    ]);
+    expect(reloads(feed).map((e) => e.kind)).toEqual(['app.reloaded', 'claude.reload']);
+  });
+
+  it('never lets a failed hook result suppress a later VM success', () => {
+    const { bus, feed, clock, vmSuccess } = setup();
+    bus.emit('claude.reload', { ok: false, kind: 'hot-reload' });
+    clock.now += 100;
+    vmSuccess();
+    expect(reloads(feed).map((e) => e.kind)).toEqual(['claude.reload', 'app.reloaded']);
   });
 
   it('replaces the newest matching VM event, not an older one', () => {

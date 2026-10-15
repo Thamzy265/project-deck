@@ -2,9 +2,15 @@ import type { ActivityEntry, EventBus } from '@project-deck/core';
 import { ACTIVITY_CAPACITY } from '@project-deck/core';
 
 /**
- * A hook result this close to a VM "success" for the same kind is the same reload. The VM
- * says "success" even when it rejected the reload, and says nothing when the code didn't
- * compile, so the hook's result (which knows the tool's outcome) wins.
+ * How close a hook result and a VM "success" of the same kind must be to count as one
+ * reload (lead decision 15 Oct 2026, design note "Seeing reloads"):
+ * - A FAILED hook result replaces a VM success from the 3 s before it: the VM says
+ *   "success" even when it rejected the reload. Otherwise it is its own row, and it never
+ *   hides a later VM event (a compile failure posts none, so a later one is another reload).
+ * - A SUCCESSFUL hook result is a duplicate of a VM success from the 3 s before it and adds
+ *   nothing (that row already reads "from Claude or the IDE"). Otherwise it is its own row
+ *   and hides the next VM success within 3 s after it. It never replaces an earlier row.
+ * Each VM row pairs with one hook result at most.
  */
 export const RELOAD_MERGE_WINDOW_MS = 3000;
 
@@ -36,8 +42,10 @@ export class ActivityFeed {
    */
   private listed = new Map<string, string>();
   private attached: { id: string; name: string } | undefined;
-  /** Recent hook results not yet paired with a VM event that may still come. */
+  /** Recent successful hook results whose VM event may still come. */
   private unpairedHooks: { ts: number; kind: ReloadKind }[] = [];
+  /** Ids of recent VM rows a successful hook result already counted as its own. */
+  private pairedVmRows: { id: number; ts: number }[] = [];
   private nextId = 0;
   private readonly capacity: number;
   private readonly now: () => number;
@@ -121,20 +129,30 @@ export class ActivityFeed {
   /** Replaces the VM's report of the same reload, if one came just before. */
   private claudeReload(fields: Extract<NewEntry, { kind: 'claude.reload' }>): void {
     const now = this.now();
+    this.pairedVmRows = this.pairedVmRows.filter((p) => now - p.ts <= RELOAD_MERGE_WINDOW_MS);
     const at = this.entries.findLastIndex(
       (e) =>
         now - e.ts <= RELOAD_MERGE_WINDOW_MS &&
         e.kind === 'app.reloaded' &&
         e.result.ok &&
         e.result.source === 'external' &&
-        e.result.kind === fields.reload,
+        e.result.kind === fields.reload &&
+        !this.pairedVmRows.some((p) => p.id === e.id),
     );
     const old = this.entries[at];
-    if (old === undefined) {
+    if (fields.ok) {
+      if (old !== undefined) {
+        this.pairedVmRows.push({ id: old.id, ts: old.ts });
+        return;
+      }
       this.unpairedHooks = [
         ...this.unpairedHooks.filter((h) => now - h.ts <= RELOAD_MERGE_WINDOW_MS),
         { ts: now, kind: fields.reload },
       ];
+      this.add(fields);
+      return;
+    }
+    if (old === undefined) {
       this.add(fields);
       return;
     }
@@ -144,7 +162,7 @@ export class ActivityFeed {
     queueMicrotask(() => this.bus.emit('activity', entry));
   }
 
-  /** True when a hook result just came for this reload, so the VM's report is dropped. */
+  /** True when a successful hook result just came for this reload: the VM's is a duplicate. */
   private pairWithHook(kind: string): boolean {
     if (this.unpairedHooks.length === 0) return false;
     const now = this.now();

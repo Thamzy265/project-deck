@@ -77,13 +77,14 @@ describe('reload merge window edges', () => {
     vm();
     clock.now += 200;
     hook(true);
-    expect(rows(feed)).toEqual(['claude:failed@100000', 'claude:ok@101000']);
+    // The failure replaces its VM row; the success is a duplicate of its VM row.
+    expect(rows(feed)).toEqual(['claude:failed@100000', 'vm:external@101000']);
     await flush();
-    // Each replacement is announced again under the id of the row it replaced.
+    // The replacement is announced again under the id of the row it replaced.
     const ids = feed.list().map((e) => e.id);
     expect(new Set(ids).size).toBe(ids.length);
     const replaced = pushed.filter((e) => e.kind === 'claude.reload');
-    expect(replaced.map((e) => ids.includes(e.id))).toEqual([true, true]);
+    expect(replaced.map((e) => ids.includes(e.id))).toEqual([true]);
   });
 
   it('pairs two hooks that both come before their VM events', () => {
@@ -98,7 +99,13 @@ describe('reload merge window edges', () => {
     clock.now += 100;
     // A third VM event has no hook left to pair with: it stays.
     vm();
-    expect(rows(feed)).toEqual(['claude:failed@100000', 'claude:ok@100100', 'vm:external@100400']);
+    // Only the successful hook absorbs a later VM event; a failure never does.
+    expect(rows(feed)).toEqual([
+      'claude:failed@100000',
+      'claude:ok@100100',
+      'vm:external@100300',
+      'vm:external@100400',
+    ]);
   });
 
   it('never pairs a restart hook with a reload event, in either order', () => {
@@ -108,10 +115,10 @@ describe('reload merge window edges', () => {
     vm('hot-reload');
     clock.now += 100;
     hook(true, 'hot-reload');
-    expect(rows(feed)).toEqual(['claude:ok@100000', 'claude:ok@100100']);
+    // The reload hook is a duplicate of the reload VM event, never of the restart hook.
+    expect(rows(feed)).toEqual(['claude:ok@100000', 'vm:external@100100']);
     expect(feed.list().flatMap((e) => (e.kind === 'claude.reload' ? [e.reload] : []))).toEqual([
       'hot-restart',
-      'hot-reload',
     ]);
   });
 
@@ -144,9 +151,9 @@ describe('reload merge window edges', () => {
     expect(row).not.toHaveProperty('appId');
   });
 
-  // T-P5-6 (design gap): a reload that fails to compile posts no VM event, so Claude's
-  // failed hook stays unpaired for 3 s and swallows the next real reload by the IDE.
-  it.fails("T-P5-6 keeps an IDE reload that follows Claude's compile failure within 3 s", () => {
+  // T-P5-6 (fixed, lead decision 15 Oct 2026): a failed hook never suppresses a later VM
+  // event; a compile failure posts no VM event, so the next one is someone else's reload.
+  it("T-P5-6 keeps an IDE reload that follows Claude's compile failure within 3 s", () => {
     const { feed, clock, vm, hook } = setup();
     hook(false);
     clock.now += 1500;
@@ -154,18 +161,40 @@ describe('reload merge window edges', () => {
     expect(rows(feed)).toEqual(['claude:failed@100000', 'vm:external@101500']);
   });
 
-  // T-P5-7 (design gap): when the hook comes before its own VM event, it replaces an
-  // earlier, unrelated IDE reload instead, and its own VM event is then shown on its own.
-  it.fails(
-    'T-P5-7 leaves an earlier IDE reload alone when a hook comes before its VM event',
-    () => {
-      const { feed, clock, vm, hook } = setup();
-      vm();
-      clock.now += 2000;
-      hook(false);
-      clock.now += 100;
-      vm();
-      expect(rows(feed)).toEqual(['vm:external@100000', 'claude:failed@102000']);
-    },
-  );
+  // T-P5-7 (lead decision 15 Oct 2026): a FAILED hook replaces a VM success only from the
+  // 3 s before it (the VM-rejection case, which can't be told from an IDE reload then), and
+  // never suppresses a later VM event, which is shown on its own.
+  it('T-P5-7 a failed hook replaces the VM success just before it and keeps later ones', () => {
+    const { feed, clock, vm, hook } = setup();
+    vm();
+    clock.now += 2000;
+    hook(false);
+    clock.now += 100;
+    vm();
+    expect(rows(feed)).toEqual(['claude:failed@100000', 'vm:external@102100']);
+  });
+
+  // T-P5-7: a SUCCESSFUL hook never replaces an earlier IDE reload; with a VM success of
+  // the same kind within 3 s before it, it is a duplicate and adds nothing.
+  it('T-P5-7 a successful hook never replaces an earlier VM row', async () => {
+    const { feed, clock, vm, hook, pushed, flush } = setup();
+    vm();
+    clock.now += 2000;
+    hook(true);
+    clock.now += 100;
+    vm();
+    expect(rows(feed)).toEqual(['vm:external@100000', 'vm:external@102100']);
+    await flush();
+    expect(pushed.filter((e) => e.kind === 'claude.reload')).toEqual([]);
+  });
+
+  it('T-P5-7 a successful hook with no VM row before it absorbs the next VM success only', () => {
+    const { feed, clock, vm, hook } = setup();
+    hook(true);
+    clock.now += 100;
+    vm();
+    clock.now += 100;
+    vm();
+    expect(rows(feed)).toEqual(['claude:ok@100000', 'vm:external@100200']);
+  });
 });
