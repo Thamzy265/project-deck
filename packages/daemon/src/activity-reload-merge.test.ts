@@ -170,6 +170,21 @@ describe('ActivityFeed and the reload hook', () => {
     expect(new Set(pushed.filter((e) => e.kind !== 'app.attached').map((e) => e.id)).size).toBe(1);
   });
 
+  it('C5 a replaced row keeps the app of the VM row it replaces', () => {
+    const { bus, feed, clock, app } = setup();
+    const other = { ...app, id: 'app-2', name: 'other_app' };
+    bus.emit('app.reloaded', {
+      appId: app.id,
+      result: { ok: true, kind: 'hot-reload', source: 'external' },
+    });
+    // By the time the hook result arrives, another app is attached.
+    bus.emit('app.attached', { app: other });
+    clock.now += 500;
+    bus.emit('claude.reload', { ok: false, kind: 'hot-reload' });
+    const row = reloads(feed).find((e) => e.kind === 'claude.reload');
+    expect(row).toMatchObject({ appId: app.id, appName: app.name });
+  });
+
   it('C3 a successful hook result never pairs with a VM failure', () => {
     const { bus, feed, app } = setup();
     bus.emit('app.reloaded', {

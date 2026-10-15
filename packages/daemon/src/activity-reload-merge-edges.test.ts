@@ -140,14 +140,28 @@ describe('reload merge window edges', () => {
     for (const entry of feed.list()) expect(ActivityEntrySchema.parse(entry)).toEqual(entry);
   });
 
-  it('leaves the app out when it was detached before the hook result arrived', () => {
+  // C5 (reviewer): a replaced row keeps the VM row's app, even after a detach.
+  it("keeps the VM row's app when it was detached before the hook result arrived", () => {
     const { bus, feed, clock, vm, app } = setup();
     vm();
     bus.emit('app.detached', { appId: app.id });
     clock.now += 100;
     bus.emit('claude.reload', { ok: false, kind: 'hot-reload' });
     const [row] = feed.list().filter((e) => e.kind === 'claude.reload');
-    expect(row).toMatchObject({ kind: 'claude.reload', ok: false });
+    expect(row).toMatchObject({
+      kind: 'claude.reload',
+      ok: false,
+      appId: app.id,
+      appName: app.name,
+    });
+  });
+
+  it('leaves the app out of an unpaired hook result when nothing is attached', () => {
+    const { bus, feed, clock, app } = setup();
+    bus.emit('app.detached', { appId: app.id });
+    clock.now += 100;
+    bus.emit('claude.reload', { ok: false, kind: 'hot-reload' });
+    const [row] = feed.list().filter((e) => e.kind === 'claude.reload');
     expect(row).not.toHaveProperty('appId');
   });
 

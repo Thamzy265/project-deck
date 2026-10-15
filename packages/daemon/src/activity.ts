@@ -160,7 +160,9 @@ export class ActivityFeed {
       return;
     }
     // Same id and time: dashboards replace the row in place.
-    const entry = { id: old.id, ts: old.ts, ...fields };
+    // It is the VM row's reload, so it keeps that row's app (C5).
+    const app = old.kind === 'app.reloaded' ? { appId: old.appId, appName: old.appName } : {};
+    const entry = { id: old.id, ts: old.ts, ...fields, ...app };
     this.entries[at] = entry;
     queueMicrotask(() => this.bus.emit('activity', entry));
   }
