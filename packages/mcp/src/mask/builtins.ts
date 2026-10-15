@@ -131,9 +131,12 @@ function hasAuthCode(host: string, path: string, depth = 0): boolean {
   }
   const first = FIRST_SEGMENT.exec(path)?.[1];
   if (!LOOPBACK.test(host) || first === undefined) return false;
-  const segment = uncut(first);
-  if (!/^[A-Za-z0-9+_-]{8,}$/.test(segment)) return false;
-  return isSecretLike(segment) || (LOOPBACK_PORT.test(host) && isUnpaddedCode(segment));
+  // As written and decoded: %5F for _ or %41 for A would hide the code's shape (R3).
+  return decodings(first).some((text) => {
+    const segment = uncut(text);
+    if (!/^[A-Za-z0-9+_-]{8,}$/.test(segment)) return false;
+    return isSecretLike(segment) || (LOOPBACK_PORT.test(host) && isUnpaddedCode(segment));
+  });
 }
 
 /** The first path segment or query piece, after any leading separators. */

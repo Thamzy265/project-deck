@@ -351,6 +351,18 @@ describe('unpadded auth codes on a loopback port (N2)', () => {
     expect(maskBuiltIn(text)).toBe(text);
   });
 
+  // R3: the segment is checked as written and after each round of decoding.
+  it.each([
+    ['an encoded _', code.replace('_', '%5F')],
+    ['an encoded first letter', `%41${code.slice(1)}`],
+    ['a twice-encoded _', code.replace('_', '%255F')],
+    ['lower-case hex', code.replace('_', '%5f')],
+  ])('masks a code written with %s', (_name, written) => {
+    expect(maskBuiltIn(`ws://127.0.0.1:50123/${written}/ws`)).toBe(
+      `ws://127.0.0.1:50123/${MASKED}`,
+    );
+  });
+
   // Known over-masks, accepted by the lead (15 Oct 2026) as failing closed: an
   // 11-character route with mixed case or a digit can't be told apart from a code.
   it.each(['iPhone15Pro', 'getVMStatus'])('masks the 11-character route /%s (known)', (route) => {
