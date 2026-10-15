@@ -22,7 +22,7 @@ import {
   readRuntime,
 } from '@project-deck/core/node';
 import { access } from 'node:fs/promises';
-import { pathScrubber } from './paths.js';
+import { pathScrubber } from '@project-deck/core/node';
 import { daemonLogPath } from './spawn.js';
 import { setTimeout as sleep } from 'node:timers/promises';
 import type { z } from 'zod';

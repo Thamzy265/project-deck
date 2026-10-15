@@ -14,7 +14,7 @@ import type { Masker } from './mask/masker.js';
 import { MASKING_OFF } from './mask/masker.js';
 import { MaskerCache } from './mask/masker-cache.js';
 import { MAX_OUTPUT_ENTRIES, fitLogs, fitStatus } from './output.js';
-import { pathScrubber } from './paths.js';
+import { pathScrubber } from '@project-deck/core/node';
 import type { LoadedSettings } from './settings.js';
 import { readMaskSettings } from './settings.js';
 import { DECK_STATUS_DESCRIPTION, GET_LOGS_DESCRIPTION } from './tool-text.js';

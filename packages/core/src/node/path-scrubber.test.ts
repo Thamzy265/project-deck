@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pathScrubber } from './paths.js';
+import { pathScrubber } from './path-scrubber.js';
 
 describe('pathScrubber', () => {
   it('replaces the project folder first, then the home folder', () => {

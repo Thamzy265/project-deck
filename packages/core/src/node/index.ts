@@ -6,6 +6,7 @@
 export * from './budgeted-worker.js';
 export * from './fs-retry.js';
 export * from './config-file.js';
+export * from './path-scrubber.js';
 export * from './project-id.js';
 export * from './runtime.js';
 export { NotRegularFileError, StateDirError, checkStateDir, readRegularFile } from './safe-file.js';
