@@ -118,10 +118,20 @@ describe('hooks/hooks.json', () => {
   });
 
   it('runs on the waiting notifications only', () => {
-    for (const type of ['permission_prompt', 'idle_prompt']) {
+    for (const type of [
+      'permission_prompt',
+      'idle_prompt',
+      'elicitation_dialog',
+      'agent_needs_input',
+    ]) {
       expect(matches(matcher('Notification'), type)).toBe(true);
     }
-    for (const type of ['auth_success', 'elicitation_dialog', 'agent_completed']) {
+    for (const type of [
+      'auth_success',
+      'elicitation_complete',
+      'elicitation_response',
+      'agent_completed',
+    ]) {
       expect(matches(matcher('Notification'), type)).toBe(false);
     }
   });

@@ -35,8 +35,17 @@ export const DEADLINE_MS = 2000;
 export const MAX_STDIN_BYTES = 4 * 1024 * 1024;
 const MAX_RUNTIME_BYTES = 65_536;
 
-/** Claude Code notifications that mean "Claude is waiting for you". */
-const WAITING_TYPES = new Set(['permission_prompt', 'idle_prompt']);
+/**
+ * Claude Code notifications that mean "Claude is waiting for you" (hooks reference,
+ * 15 Oct 2026): a permission prompt, an idle prompt, an MCP server's input form, and a
+ * background session or teammate that needs input.
+ */
+const WAITING_TYPES = new Set([
+  'permission_prompt',
+  'idle_prompt',
+  'elicitation_dialog',
+  'agent_needs_input',
+]);
 /** The Dart MCP server's reload tools, under any server name that says dart. */
 const RELOAD_TOOL = /^mcp__(.*dart.*)__hot_(reload|restart)$/i;
 

@@ -26,8 +26,22 @@ describe('toDeckEvent', () => {
     expect(toDeckEvent(input)).toEqual({ type: 'claude.waiting', sessionId: 'abc123', message });
   });
 
+  it.each(['elicitation_dialog', 'agent_needs_input'])(
+    'also treats a %s notification as Claude waiting for you',
+    (type) => {
+      expect(toDeckEvent({ ...fx.permissionPrompt, notification_type: type })).toEqual({
+        type: 'claude.waiting',
+        sessionId: 'abc123',
+        message: 'Claude needs your permission to use Bash',
+      });
+    },
+  );
+
   it('ignores other notifications', () => {
     expect(toDeckEvent(fx.authSuccess)).toBeUndefined();
+    for (const type of ['elicitation_complete', 'elicitation_response', 'agent_completed']) {
+      expect(toDeckEvent({ ...fx.permissionPrompt, notification_type: type })).toBeUndefined();
+    }
     expect(toDeckEvent({ ...fx.permissionPrompt, notification_type: undefined })).toBeUndefined();
   });
 

@@ -29,7 +29,7 @@
     ],
     "Notification": [
       {
-        "matcher": "permission_prompt|idle_prompt",
+        "matcher": "permission_prompt|idle_prompt|elicitation_dialog|agent_needs_input",
         "hooks": [
           {
             "type": "command",
