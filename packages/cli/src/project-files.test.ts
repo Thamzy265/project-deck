@@ -1,6 +1,16 @@
-import { mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises';
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rename,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { UnsafeFileError, inspectDir, inspectFile, writeAtomic } from './project-files.js';
 
@@ -68,6 +78,36 @@ describe('inspectDir', () => {
     expect((await rejection(inspectDir(join(dir, 'l'), '.claude'))).message).toContain('.claude');
     await writeFile(join(dir, 'f'), '');
     await rejection(inspectDir(join(dir, 'f'), 'f'));
+  });
+});
+
+describe('writeAtomic temp files (review K4)', () => {
+  it('writes its temp file in the given folder and renames it across', async () => {
+    const tmpDir = join(dir, '.flutterdeck');
+    await mkdir(tmpDir);
+    const moves: string[] = [];
+    await writeAtomic(join(dir, '.gitignore'), 'x\n', 0o644, {
+      tmpDir,
+      rename: async (from, to) => {
+        moves.push(from);
+        await rename(from, to);
+      },
+    });
+    expect(moves).toHaveLength(1);
+    expect(dirname(moves[0] ?? '')).toBe(tmpDir);
+    expect(basename(moves[0] ?? '')).toMatch(/^\.gitignore\.[0-9a-f]+\.tmp$/);
+    expect(await readFile(join(dir, '.gitignore'), 'utf8')).toBe('x\n');
+    expect(await readdir(tmpDir)).toEqual([]);
+  });
+
+  it('removes its temp file when the rename fails', async () => {
+    const tmpDir = join(dir, '.flutterdeck');
+    await mkdir(tmpDir);
+    const failure = Object.assign(new Error('nope'), { code: 'EXDEV' });
+    await expect(
+      writeAtomic(join(dir, 'a'), 'x', 0o644, { tmpDir, rename: () => Promise.reject(failure) }),
+    ).rejects.toBe(failure);
+    expect(await readdir(tmpDir)).toEqual([]);
   });
 });
 

@@ -3,11 +3,12 @@
  * and `.claude/launch.json`. A cloned repository may have planted a link at any of them
  * (or at `.claude`) that points at one of the user's own files, so a link is refused
  * with a message, never followed (docs/notes/untrusted-project-files.md). Writes go to a
- * new temp file that is renamed into place: a link that appears in between is replaced,
+ * new temp file (in `.flutterdeck/` for init) that is renamed into place: a link that appears in between is replaced,
  * not written through, and readers never see half a file.
  */
 import { randomBytes } from 'node:crypto';
 import { chmod, lstat, rename, rm, writeFile } from 'node:fs/promises';
+import { basename, dirname, join } from 'node:path';
 import { NotRegularFileError, readRegularFile, retryWhileBusy } from '@project-deck/core/node';
 
 /** Far more than any real pubspec.yaml, .gitignore or launch.json. */
@@ -89,15 +90,37 @@ export async function inspectDir(path: string, shown: string): Promise<'missing'
   return 'dir';
 }
 
-/** Writes `text` whole: a fresh temp file next to `path`, renamed over it. */
-export async function writeAtomic(path: string, text: string, mode: number): Promise<void> {
-  const tmp = `${path}.${randomBytes(6).toString('hex')}.tmp`;
+export interface WriteAtomicOptions {
+  /**
+   * Where the temp file goes. init passes `.flutterdeck`, whose `*.tmp` files are
+   * git-ignored, so a crash never leaves a stray temp file git would pick up next to
+   * `.gitignore` or `launch.json`. Defaults to the target's own folder.
+   */
+  tmpDir?: string;
+  /** Test seam: the rename that puts the file in place. */
+  rename?: (from: string, to: string) => Promise<void>;
+}
+
+/**
+ * Writes `text` whole: a fresh temp file, renamed over `path`. `mode` is the target's
+ * own mode when it exists, so a read-only file the user made stays read-only (the
+ * rename needs only the folder to be writable, which init checks first).
+ */
+export async function writeAtomic(
+  path: string,
+  text: string,
+  mode: number,
+  opts: WriteAtomicOptions = {},
+): Promise<void> {
+  const move = opts.rename ?? rename;
+  const name = `${basename(path)}.${randomBytes(6).toString('hex')}.tmp`;
+  const tmp = join(opts.tmpDir ?? dirname(path), name);
   try {
     await writeFile(tmp, text, { mode, flag: 'wx' });
-    // The umask may have narrowed the mode; an existing file keeps the one it had.
+    // The umask may have narrowed the mode.
     await chmod(tmp, mode);
     // Windows refuses while another program reads the old file; that takes a moment only.
-    await retryWhileBusy(() => rename(tmp, path));
+    await retryWhileBusy(() => move(tmp, path));
   } catch (err) {
     await rm(tmp, { force: true });
     throw err;

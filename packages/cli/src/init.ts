@@ -342,7 +342,9 @@ async function apply(
   if (plan.claudeDir === 'missing' && merged.kind === 'changed') {
     await mkdir(join(projectDir, CLAUDE_DIR), { recursive: true });
   }
-  for (const write of writes) await writeAtomic(write.path, write.text, write.mode);
+  // Temp files go in .flutterdeck, where `*.tmp` is git-ignored, and are renamed across.
+  const tmpDir = join(projectDir, STATE_DIR);
+  for (const write of writes) await writeAtomic(write.path, write.text, write.mode, { tmpDir });
   return changes;
 }
 
