@@ -70,12 +70,41 @@ describe('OS notifications', () => {
     expect(notify.mock.calls).toEqual([['FlutterDeck', 'Reload failed — shop_app']]);
   });
 
-  it('says "Reload failed" alone when no app is attached', async () => {
-    const { bus, notify, app } = setup();
+  it('C2 shows no notification for a failed reload with no app attached (Activity only)', async () => {
+    const { bus, notify, app, clock } = setup();
     bus.emit('app.detached', { appId: app.id });
     bus.emit('claude.reload', { ok: false, kind: 'hot-reload' });
     await flush();
-    expect(notify.mock.calls).toEqual([['FlutterDeck', 'Reload failed']]);
+    expect(notify).not.toHaveBeenCalled();
+    // It doesn't use up the rate limit either.
+    bus.emit('app.attached', { app });
+    clock.now += 1;
+    bus.emit('claude.reload', { ok: false, kind: 'hot-reload' });
+    await flush();
+    expect(notify.mock.calls).toEqual([['FlutterDeck', 'Reload failed — shop_app']]);
+  });
+
+  it('C6 starts the count again when the next event comes more than two windows later', async () => {
+    const { notify, failReload, clock } = setup();
+    failReload();
+    clock.now += 1000;
+    failReload();
+    failReload();
+    clock.now += 2 * NOTIFY_RATE_WINDOW_MS + 1;
+    failReload();
+    await flush();
+    expect(notify.mock.calls.at(-1)).toEqual(['FlutterDeck', 'Reload failed — shop_app']);
+  });
+
+  it('C6 still counts held events in the next one within two windows', async () => {
+    const { notify, failReload, clock } = setup();
+    failReload();
+    clock.now += 1000;
+    failReload();
+    clock.now += 2 * NOTIFY_RATE_WINDOW_MS - 1000;
+    failReload();
+    await flush();
+    expect(notify.mock.calls.at(-1)).toEqual(['FlutterDeck', 'Reload failed (2 times) — shop_app']);
   });
 
   it('skips reloads that never ran: no app attached, or the app cannot reload', async () => {

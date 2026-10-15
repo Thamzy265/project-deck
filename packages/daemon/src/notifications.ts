@@ -30,12 +30,9 @@ function message(entry: ActivityEntry): { kind: Kind; head: string; tail?: strin
       if (entry.result.reason === 'unsupported') return undefined;
       return { kind: 'reloadFailed', head: 'Reload failed', tail: entry.appName };
     case 'claude.reload':
-      if (entry.ok) return undefined;
-      return {
-        kind: 'reloadFailed',
-        head: 'Reload failed',
-        ...(entry.appName === undefined ? {} : { tail: entry.appName }),
-      };
+      // No app attached: nothing in the dashboard failed, so Activity only (C2).
+      if (entry.ok || entry.appName === undefined) return undefined;
+      return { kind: 'reloadFailed', head: 'Reload failed', tail: entry.appName };
     case 'claude.waiting': {
       // Control and invisible characters don't count: a message of only those is empty.
       const visible = (entry.message ?? '')
@@ -67,7 +64,10 @@ export function startNotifications(bus: EventBus, opts: NotificationsOptions): (
       last.held++;
       return;
     }
-    const times = (last?.held ?? 0) + 1;
+    // Held events count in the next one, unless that comes much later: then they are old
+    // news, and "(5 times)" would describe a burst long past (C6).
+    const stale = last === undefined || t - last.at > 2 * NOTIFY_RATE_WINDOW_MS;
+    const times = (stale ? 0 : last.held) + 1;
     sent.set(msg.kind, { at: t, held: 0 });
     const head = times > 1 ? `${msg.head} (${times} times)` : msg.head;
     try {
