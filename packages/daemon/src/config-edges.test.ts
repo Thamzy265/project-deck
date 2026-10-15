@@ -140,7 +140,8 @@ describe('readConfig: file contents', () => {
     'refuses a %s key instead of merging it',
     async (key) => {
       await write(`{"version":1,"${key}":{"port":1}}`);
-      expect(await refusal()).toContain(key);
+      // Counted, never named (review R3).
+      expect(await refusal()).toContain('(top level): 1 unrecognised setting');
       expect(({} as Record<string, unknown>).port).toBeUndefined();
     },
   );

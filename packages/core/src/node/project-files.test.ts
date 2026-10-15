@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ConfigError, configPath, readConfig } from './config-file.js';
+import { StateDirError } from './safe-file.js';
 import { readRuntime, runtimePath } from './runtime.js';
 
 let project: string;
@@ -63,5 +64,41 @@ describe('runtime.json from a cloned repository', () => {
     );
     await symlink(target, runtimePath(project));
     expect(await readRuntime(project)).toBeUndefined();
+  });
+});
+
+describe('a .flutterdeck linked to another folder', () => {
+  links('is refused by readConfig, and the linked file is not used', async () => {
+    await rm(join(project, '.flutterdeck'), { recursive: true });
+    await writeFile(
+      join(outside, 'config.json'),
+      '{"auths":{"registry.example":{"auth":"c2VjcmV0"}},"credsStore":"osxkeychain"}',
+    );
+    await symlink(outside, join(project, '.flutterdeck'));
+    let message = '';
+    try {
+      await readConfig(project);
+    } catch (err) {
+      message = (err as Error).message;
+      expect(err).toBeInstanceOf(StateDirError);
+    }
+    expect(message).toMatch(/not a real folder/);
+    for (const leaked of ['auths', 'credsStore', 'osxkeychain', 'c2VjcmV0']) {
+      expect(message).not.toContain(leaked);
+    }
+  });
+});
+
+describe('settings FlutterDeck does not know', () => {
+  it('are counted, never named, while invalid known settings are named', async () => {
+    await writeFile(
+      configPath(project),
+      JSON.stringify({ version: 1, port: 80, auths: {}, credsStore: 'x', logs: { tokn: 1 } }),
+    );
+    const message = await refusal();
+    expect(message).toContain('(top level): 2 unrecognised settings');
+    expect(message).toContain('logs: 1 unrecognised setting');
+    expect(message).toContain('port:');
+    for (const leaked of ['auths', 'credsStore', 'tokn']) expect(message).not.toContain(leaked);
   });
 });

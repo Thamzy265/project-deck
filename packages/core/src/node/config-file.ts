@@ -2,7 +2,7 @@ import { join } from 'node:path';
 import type { DeckConfig } from '../config.js';
 import { CONFIG_VERSION, DEFAULT_CONFIG, DeckConfigSchema } from '../config.js';
 import { STATE_DIR } from './runtime.js';
-import { NotRegularFileError, readRegularFile } from './safe-file.js';
+import { NotRegularFileError, checkStateDir, readRegularFile } from './safe-file.js';
 
 /** Far more than any real config; a bigger file is not one. */
 const MAX_FILE_BYTES = 8_388_608;
@@ -18,6 +18,8 @@ export class ConfigError extends Error {}
 
 /** Reads `.flutterdeck/config.json`; a missing file means the defaults. Never writes the file. */
 export async function readConfig(projectDir: string): Promise<DeckConfig> {
+  // Every reader refuses a .flutterdeck that is a link (StateDirError), before any read.
+  await checkStateDir(projectDir);
   const shown = join(STATE_DIR, CONFIG_FILE);
   let text: string;
   try {
@@ -50,10 +52,16 @@ export async function readConfig(projectDir: string): Promise<DeckConfig> {
   }
   const parsed = DeckConfigSchema.safeParse(raw);
   if (!parsed.success) {
+    // Paths name only FlutterDeck's own settings. Unknown keys are counted, never named,
+    // and values are never quoted: the file may hold anything (another tool's config).
     const problems = parsed.error.issues.map((issue) => {
-      const keys = 'keys' in issue && Array.isArray(issue.keys) ? issue.keys.join(', ') : '';
-      const path = [...issue.path.map(String), ...(keys === '' ? [] : [keys])].join('.');
-      return `${path === '' ? '(top level)' : path}: ${issue.message}`;
+      const path = issue.path.map(String).join('.');
+      const where = path === '' ? '(top level)' : path;
+      if (issue.code === 'unrecognized_keys') {
+        const n = issue.keys.length;
+        return `${where}: ${n} unrecognised setting${n === 1 ? '' : 's'}`;
+      }
+      return `${where}: ${issue.message}`;
     });
     throw new ConfigError(`${shown} is invalid: ${problems.join('; ')}`);
   }

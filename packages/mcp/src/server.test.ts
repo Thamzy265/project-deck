@@ -174,6 +174,33 @@ describe('a .flutterdeck that is a link', () => {
   );
 });
 
+describe("a .flutterdeck linked to another tool's folder", () => {
+  it.skipIf(process.platform === 'win32')(
+    "never shows that folder's keys, and keeps the built-in masking",
+    async () => {
+      const elsewhere = await mkdtemp(join(tmpdir(), 'deck-docker-'));
+      try {
+        await writeFile(
+          join(elsewhere, 'config.json'),
+          '{"auths":{"registry.example":{"auth":"c2VjcmV0"}},"credsStore":"osxkeychain"}',
+        );
+        await rm(join(projectDir, '.flutterdeck'), { recursive: true, force: true });
+        await symlink(elsewhere, join(projectDir, '.flutterdeck'));
+        const client = await connect();
+        const outs = [await call(client, 'deck_status'), await call(client, 'get_logs')];
+        for (const out of outs) {
+          for (const leaked of ['auths', 'credsStore', 'osxkeychain', 'c2VjcmV0']) {
+            expect(out.text).not.toContain(leaked);
+          }
+        }
+        expect(String(outs[0]?.json.masking)).toMatch(/^Best-effort masking is on/);
+      } finally {
+        await rm(elsewhere, { recursive: true, force: true });
+      }
+    },
+  );
+});
+
 describe('deck_status', () => {
   it('stays within 20 kB and says when it was cut', async () => {
     const f = await fake();
