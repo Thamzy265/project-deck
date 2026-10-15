@@ -440,6 +440,10 @@ describe('auth codes in twice-encoded URIs', () => {
     `https://shop.example.com/cart?return=${enc('/checkout?step=review&note=thanks=')}`,
     `https://example.com/go?to=${enc('/page/section==')}`,
     `https://example.com/go?to=${enc('/a?x=1&flag=enabled=')}`,
+    // The reviewer's three (R2).
+    `https://example.com/search?q=${enc('/items/abcdef=')}`,
+    `https://example.com/r?next=${enc('/page?id=abcdefgh==')}`,
+    `http://localhost:9100/login?next=${enc('/devtools?page=abcdef=')}`,
   ])('leaves an ordinary link with = signs in an encoded value alone (R2): %s', (text) => {
     expect(maskBuiltIn(text)).toBe(text);
   });
