@@ -223,6 +223,8 @@ describe('built-in masking', () => {
     '%3Dhttp%25253A%25252F%25252Fa%25252F%252526',
     `x http%3A%2F%2F127.0.0.1%2F${'%E9'.repeat(20)} `,
     'http://127.0.0.1:1/aB3dEfGhIj ',
+    'ws://[0:',
+    'x ws://[::ffff:127.0.0.1]:1/aB3dEfGhIjA ',
     'http%3A%2F%2Flocalhost%3A1%2FgetUserProfile%3 ',
   ])('runs every built-in in linear time on 64 kB of %j', (unit) => {
     // Compared with 8 kB of the same text, not with the clock, so a busy machine doesn't
@@ -379,6 +381,35 @@ describe('unpadded auth codes on a loopback port (N2)', () => {
 
   it('leaves a raw link to an ordinary local page in a query value alone', () => {
     const text = 'http://127.0.0.1:9100/?page=http://localhost:8080/api/status';
+    expect(maskBuiltIn(text)).toBe(text);
+  });
+
+  // N2-U2: every way of writing a loopback host.
+  it.each([
+    '127.255.0.9',
+    '0.0.0.0',
+    'localhost.',
+    'LOCALHOST',
+    '[0:0:0:0:0:0:0:1]',
+    '[0000:0000::0001]',
+    '[::ffff:127.0.0.1]',
+    '[::FFFF:127.1.2.3]',
+    '[0:0:0:0:0:ffff:127.0.0.1]',
+    '[::ffff:7f00:1]',
+  ])('masks a code on the loopback host %s', (host) => {
+    expect(maskBuiltIn(`ws://${host}:50123/${code}/ws`)).toBe(`ws://${host}:50123/${MASKED}`);
+  });
+
+  it.each([
+    '128.0.0.1',
+    '127.0.0.1.example.com',
+    'localhost.example.com',
+    'mylocalhost',
+    '[::2]',
+    '[::ffff:10.0.0.1]',
+    '1270.0.0.1',
+  ])('leaves a code-shaped segment on the other host %s alone', (host) => {
+    const text = `ws://${host}:50123/${code}/ws`;
     expect(maskBuiltIn(text)).toBe(text);
   });
 

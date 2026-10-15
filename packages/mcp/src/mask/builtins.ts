@@ -53,7 +53,13 @@ function isPathLike(candidate: string, before: string, after: string): boolean {
   return candidate.split('/').some((segment) => /^[a-z_]{2,}$/.test(segment));
 }
 
-const LOOPBACK = /^(?:127\.0\.0\.1|localhost|\[::1\])(?::\d+)?$/i;
+/**
+ * A loopback host and its port (group 1), however it is written: 127.0.0.0/8, 0.0.0.0,
+ * localhost with or without a trailing dot, ::1 in short or full form, and IPv4-mapped
+ * 127.x.x.x (dotted or hex). Case doesn't matter. Every repeat is bounded (N2-U2).
+ */
+const LOOPBACK =
+  /^(?:127(?:\.\d{1,3}){3}|0\.0\.0\.0|localhost\.?|\[(?:0{0,4}:){2,7}0{0,3}1\]|\[(?:0{0,4}:){2,6}ffff:(?:127(?:\.\d{1,3}){3}|7f[0-9a-f]{2}:[0-9a-f]{1,4})\])(:\d+)?$/i;
 
 /**
  * Longest URL path or query looked at for auth codes. Each level of decoding and nesting
@@ -133,19 +139,19 @@ function hasAuthCode(host: string, path: string, depth = 0): boolean {
     }
   }
   const first = FIRST_SEGMENT.exec(path)?.[1];
-  if (!LOOPBACK.test(host) || first === undefined) return false;
+  const loopback = LOOPBACK.exec(host);
+  if (loopback === null || first === undefined) return false;
+  const port = loopback[1] !== undefined;
   // As written and decoded: %5F for _ or %41 for A would hide the code's shape (R3).
   return decodings(first).some((text) => {
     const segment = uncut(text);
     if (!/^[A-Za-z0-9+_-]{8,}$/.test(segment)) return false;
-    return isSecretLike(segment) || (LOOPBACK_PORT.test(host) && isUnpaddedCode(segment));
+    return isSecretLike(segment) || (port && isUnpaddedCode(segment));
   });
 }
 
 /** The first path segment or query piece, after any leading separators. */
 const FIRST_SEGMENT = /^[/?#&]*([^/?#&]+)/;
-
-const LOOPBACK_PORT = /:\d+$/;
 
 /**
  * Review N2: a VM service, DDS or DTD auth code written without its `=` padding. All

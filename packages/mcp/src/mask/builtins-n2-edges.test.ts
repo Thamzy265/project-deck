@@ -168,8 +168,8 @@ describe('unpadded auth codes on a loopback port (N2)', () => {
     hidesCode(`ws://127.0.0.1:50123/${secret}/ws`, secret);
   });
 
-  // N2-U2: loopback forms the rule doesn't list (design names 127.0.0.1, localhost, [::1]).
-  it.fails.each([
+  // N2-U2: loopback forms the rule used to miss (it named 127.0.0.1, localhost, [::1]).
+  it.each([
     ['127.0.0.2', `ws://127.0.0.2:50123/${code}/ws`],
     ['0.0.0.0', `ws://0.0.0.0:50123/${code}/ws`],
     ['long IPv6 loopback', `ws://[0:0:0:0:0:0:0:1]:50123/${code}/ws`],
