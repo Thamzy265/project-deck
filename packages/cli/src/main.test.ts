@@ -57,8 +57,16 @@ describe('main.js', () => {
     const result = await run(['init', '--project', project]);
     expect(result.code).toBe(0);
     expect(result.stdout).toContain('Changes:');
-    expect(result.stdout).toContain(join('packages', 'cli', 'dist', 'main.js'));
-    expect(result.stdout).toContain('"mcp"');
+    // The snippet is JSON, so a Windows path shows with escaped backslashes: parse it.
+    const out = result.stdout;
+    const snippet = JSON.parse(out.slice(out.indexOf('{'), out.lastIndexOf('}') + 1)) as {
+      mcpServers: { flutterdeck: { command: string; args: string[] } };
+    };
+    const { command, args } = snippet.mcpServers.flutterdeck;
+    expect(command).toBe('node');
+    expect(args).toHaveLength(2);
+    expect(args[0]?.endsWith(join('packages', 'cli', 'dist', 'main.js'))).toBe(true);
+    expect(args[1]).toBe('mcp');
     const config = JSON.parse(
       await readFile(join(project, '.flutterdeck', 'config.json'), 'utf8'),
     ) as { port: number };
