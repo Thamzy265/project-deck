@@ -14,9 +14,15 @@ import {
   configPath,
   readConfig,
 } from '@project-deck/core/node';
-import { FIRST_PORT, PortRegistryError, allocatePort, claimConfigPort } from '@project-deck/daemon';
+import {
+  FIRST_PORT,
+  PortRegistryError,
+  acquireFileLock,
+  allocatePort,
+  claimConfigPort,
+} from '@project-deck/daemon';
 import { constants } from 'node:fs';
-import { access, mkdir } from 'node:fs/promises';
+import { access, mkdir, rmdir } from 'node:fs/promises';
 import { newConfigText, withPort } from './config-merge.js';
 import { detectFlutterProject, readApplicationId } from './flutter-project.js';
 import { addIgnoreBlock } from './gitignore.js';
@@ -67,13 +73,18 @@ export async function runInit(opts: InitOptions): Promise<number> {
     io.err(project.reason);
     return 1;
   }
+  // Slow (flutter --version can take a while), so before the lock is taken.
+  const prerequisites = await checkPrerequisites(opts.run);
+  const applicationId = await readApplicationId(projectDir);
   try {
-    const plan = await inspect(projectDir);
-    const applicationId = await readApplicationId(projectDir);
-    const prerequisites = await checkPrerequisites(opts.run);
-
-    const port = await choosePort(opts, plan.config.settings);
-    const changes = await apply(projectDir, plan, port.port);
+    // Under the lock, another init can't change the files between this run's read and
+    // its write, so two runs at once end with one block and one entry.
+    const { plan, port, changes } = await withInitLock(projectDir, async () => {
+      const plan = await inspect(projectDir);
+      const port = await choosePort(opts, plan.config.settings);
+      const changes = await apply(projectDir, plan, port.port);
+      return { plan, port, changes };
+    });
 
     io.out(`FlutterDeck init in ${projectDir}`);
     const name = project.name ?? 'this app';
@@ -112,6 +123,52 @@ export async function runInit(opts: InitOptions): Promise<number> {
     // fs errors name absolute paths; only project-relative ones are shown.
     io.err(`init failed: ${hidePaths(messageOf(err), projectDir, opts.homeDir)}`);
     return 1;
+  }
+}
+
+/** Each step takes milliseconds; a lock this old was left by a crash. */
+const INIT_LOCK_STALE_MS = 10_000;
+const INIT_LOCK = 'init.lock';
+
+/**
+ * Runs `fn` holding `.flutterdeck/init.lock`. The folder is made for the lock when it is
+ * missing, and removed again (only if still empty) when `fn` fails, so a refused init
+ * leaves the project as it was.
+ */
+async function withInitLock<T>(projectDir: string, fn: () => Promise<T>): Promise<T> {
+  // A linked .flutterdeck is refused before the lock goes into it.
+  await checkStateDir(projectDir);
+  const stateDir = join(projectDir, STATE_DIR);
+  let made = false;
+  if ((await inspectDir(stateDir, STATE_DIR)) === 'missing') {
+    await checkWritable(projectDir, 'the project folder');
+    try {
+      await mkdir(stateDir);
+      made = true;
+    } catch (err) {
+      // Another init made it a moment ago.
+      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+    }
+  } else {
+    await checkWritable(stateDir, STATE_DIR);
+  }
+  let release: (() => Promise<void>) | undefined;
+  try {
+    release = await acquireFileLock(
+      stateDir,
+      INIT_LOCK,
+      { staleMs: INIT_LOCK_STALE_MS, retryMs: 20 },
+      () => new Refused(`Another \`${CLI_NAME} init\` is running in this project; try again.`),
+    );
+    return await fn();
+  } catch (err) {
+    await release?.();
+    release = undefined;
+    // rmdir removes only an empty folder: nothing else of the user's can go.
+    if (made) await rmdir(stateDir).catch(() => undefined);
+    throw err;
+  } finally {
+    await release?.();
   }
 }
 
@@ -249,7 +306,9 @@ async function apply(
   if (merged.kind === 'unchanged') {
     changes.push([LAUNCH_SHOWN, 'unchanged', '']);
   } else {
-    if (plan.claudeDir === 'missing') await mkdir(join(projectDir, CLAUDE_DIR));
+    // recursive: no error if it appeared since the inspect.
+    if (plan.claudeDir === 'missing')
+      await mkdir(join(projectDir, CLAUDE_DIR), { recursive: true });
     const mode = launch.kind === 'file' ? launch.mode : NEW_FILE_MODE;
     await writeAtomic(join(projectDir, CLAUDE_DIR, 'launch.json'), merged.text, mode);
     changes.push([

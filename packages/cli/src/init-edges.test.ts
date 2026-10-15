@@ -415,11 +415,39 @@ describe('init: unusual project paths', () => {
 
 describe('init: concurrency and partial failures', () => {
   // BUG-CLI-T1: both runs see .claude missing; the second mkdir throws EEXIST.
-  it.fails('BUG-CLI-T1: two inits at once both succeed with one block and one entry', async () => {
+  it('BUG-CLI-T1: two inits at once both succeed with one block and one entry', async () => {
     const codes = await Promise.all([init(), init()]);
     expect(errors).toEqual([]);
     expect(codes).toEqual([0, 0]);
     expect(countBlocks(await read('.gitignore'))).toBe(1);
+    const launch = parse(await read('.claude', 'launch.json')) as { configurations: unknown[] };
+    expect(launch.configurations).toEqual([launchEntry(9147)]);
+    // The lock is gone afterwards.
+    expect(await readdir(join(project, '.flutterdeck'))).toEqual(['config.json']);
+  });
+
+  it('BUG-CLI-T1: four inits at once over existing files keep the user’s lines and entries', async () => {
+    await writeFile(join(project, '.gitignore'), 'build/\n');
+    await writeLaunch('{\n  // mine\n  "configurations": [{ "name": "web", "port": 3000 }]\n}\n');
+    const codes = await Promise.all([init(), init(), init(), init()]);
+    expect(codes).toEqual([0, 0, 0, 0]);
+    expect(errors).toEqual([]);
+    const ignore = await read('.gitignore');
+    expect(ignore.startsWith('build/\n')).toBe(true);
+    expect(countBlocks(ignore)).toBe(1);
+    const text = await read('.claude', 'launch.json');
+    expect(text).toContain('// mine');
+    expect((parse(text) as { configurations: unknown[] }).configurations).toEqual([
+      { name: 'web', port: 3000 },
+      launchEntry(9147),
+    ]);
+  });
+
+  it('BUG-CLI-T1: a refused init removes the .flutterdeck folder it made for its lock', async () => {
+    await writeLaunch('{ "configurations": [');
+    const before = await snapshot();
+    expect(await init()).toBe(1);
+    expect(await snapshot()).toEqual(before);
   });
 
   it('two inits at once never leave two blocks, two entries or two ports', async () => {

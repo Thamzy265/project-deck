@@ -66,6 +66,22 @@ describe('main.js', () => {
     await readFile(join(home, '.flutterdeck', 'ports.json'), 'utf8');
   }, 30_000);
 
+  it('runs three init processes at once into one block and one entry (BUG-CLI-T1)', async () => {
+    await writeFile(
+      join(project, 'pubspec.yaml'),
+      'name: shop_app\ndependencies:\n  flutter:\n    sdk: flutter\n',
+    );
+    await writeFile(join(project, '.gitignore'), 'build/\n');
+    const results = await Promise.all([1, 2, 3].map(() => run(['init', '--project', project])));
+    expect(results.map((r) => r.code)).toEqual([0, 0, 0]);
+    const ignore = await readFile(join(project, '.gitignore'), 'utf8');
+    expect(ignore.split('\n').filter((l) => l.startsWith('# >>> flutterdeck'))).toHaveLength(1);
+    const launch = JSON.parse(await readFile(join(project, '.claude', 'launch.json'), 'utf8')) as {
+      configurations: unknown[];
+    };
+    expect(launch.configurations).toHaveLength(1);
+  }, 60_000);
+
   it('exits 2 with usage for an unknown command', async () => {
     const result = await run(['frobnicate']);
     expect(result.code).toBe(2);
