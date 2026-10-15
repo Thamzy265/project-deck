@@ -14,6 +14,7 @@ import {
 } from '@project-deck/core';
 import type { Context, MiddlewareHandler } from 'hono';
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import type { z } from 'zod';
 import type { ActivityFeed } from './activity.js';
 import type { DashboardAsset, DashboardAssets } from './dashboard-assets.js';
@@ -57,6 +58,12 @@ export interface ApiContext {
   /** Runs `regex` log filters off the main thread; one is made if not given. */
   regexFilter?: RegexFilter | undefined;
 }
+
+/**
+ * Largest `POST /api/events` body. A real hook event is under 3 kB (a 2000-character
+ * waiting message at most), so anything bigger is refused before it is read as JSON.
+ */
+export const EVENTS_BODY_LIMIT = 16 * 1024;
 
 class BadRequest extends Error {
   constructor(
@@ -257,7 +264,12 @@ export function createApi(ctx: ApiContext): Hono<DeckEnv> {
     return c.json({ ok: true });
   });
 
-  api.post('/api/events', async (c) => {
+  const eventsBodyLimit = bodyLimit({
+    maxSize: EVENTS_BODY_LIMIT,
+    onError: (c) => c.json({ error: 'Body too large' }, 413),
+  });
+
+  api.post('/api/events', eventsBodyLimit, async (c) => {
     const event = parse(HookEventInput, await jsonBody(c.req));
     if (event.type === 'claude.done') {
       ctx.bus.emit(

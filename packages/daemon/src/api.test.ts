@@ -2,7 +2,7 @@ import type { DeckEvents, LogEntry } from '@project-deck/core';
 import { ActivityListSchema, EventBus, Registry, StatusResponse } from '@project-deck/core';
 import { FakeAppConnector, fakeApp } from '@project-deck/core/testing';
 import { describe, expect, it, vi } from 'vitest';
-import { createApi } from './api.js';
+import { EVENTS_BODY_LIMIT, createApi } from './api.js';
 import { ActivityFeed } from './activity.js';
 import { AppManager } from './app-manager.js';
 import { LoginWindow } from './login-window.js';
@@ -196,6 +196,45 @@ describe('API routes', () => {
       [{ ok: true, kind: 'hot-restart' }],
     ]);
     expect((await post({ type: 'claude.reload', ok: true })).status).toBe(400);
+  });
+
+  it('refuses a hook body over 16 kB with 413, before parsing it', async () => {
+    const { request, bus } = await setup();
+    const waiting = vi.fn();
+    bus.on('claude.waiting', waiting);
+    const pad = (size: number) => {
+      const base = JSON.stringify({ type: 'claude.waiting', message: '', x: '' });
+      return JSON.stringify({
+        type: 'claude.waiting',
+        message: '',
+        x: 'a'.repeat(size - base.length),
+      });
+    };
+    expect(pad(EVENTS_BODY_LIMIT)).toHaveLength(EVENTS_BODY_LIMIT);
+    const post = (body: string, headers: Record<string, string> = {}) =>
+      request('/api/events', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...headers },
+        body,
+      });
+
+    expect((await post(pad(EVENTS_BODY_LIMIT))).status).toBe(200);
+    const big = await post(pad(EVENTS_BODY_LIMIT + 1));
+    expect(big.status).toBe(413);
+    expect(await big.json()).toEqual({ error: 'Body too large' });
+    // Not JSON at all: still 413, so the size is checked first.
+    expect((await post('x'.repeat(EVENTS_BODY_LIMIT + 1))).status).toBe(413);
+    // A streamed body without Content-Length is counted too.
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(pad(EVENTS_BODY_LIMIT + 1)));
+        controller.close();
+      },
+    });
+    expect(
+      (await request('/api/events', { method: 'POST', body: stream, duplex: 'half' })).status,
+    ).toBe(413);
+    expect(waiting).toHaveBeenCalledTimes(1);
   });
 
   it('shuts down on request', async () => {
