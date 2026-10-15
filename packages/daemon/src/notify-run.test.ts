@@ -163,3 +163,43 @@ describe('systemNotifier', () => {
     ]);
   });
 });
+
+describe('notifier clean-up', () => {
+  it("doesn't keep the daemon alive with its kill timer", async () => {
+    const realSetTimeout = globalThis.setTimeout;
+    const timers: NodeJS.Timeout[] = [];
+    const spy = vi
+      .spyOn(globalThis, 'setTimeout')
+      .mockImplementation((cb: () => void, ms?: number) => {
+        const t = realSetTimeout(cb, ms);
+        timers.push(t);
+        return t;
+      });
+    try {
+      const { spawn, children } = fakeSpawn();
+      const done = runNotifier(
+        { file: '/usr/bin/osascript', args: [] },
+        { spawn, onFailure: vi.fn() },
+      );
+      expect(timers).toHaveLength(1);
+      expect(timers[0]?.hasRef()).toBe(false);
+      children[0]?.emit('exit', 0, null);
+      await done;
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('close() kills notifiers still running, and later calls run nothing', () => {
+    const { spawn, children, calls } = fakeSpawn();
+    const notify = systemNotifier({ platform: 'darwin', env: {}, spawn, log: vi.fn() });
+    notify('FlutterDeck', 'a');
+    notify('FlutterDeck', 'b');
+    children[0]?.emit('exit', 0, null);
+    notify.close?.();
+    expect(children[0]?.killed).toEqual([]);
+    expect(children[1]?.killed).toEqual(['SIGKILL']);
+    notify('FlutterDeck', 'c');
+    expect(calls).toHaveLength(2);
+  });
+});

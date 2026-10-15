@@ -177,6 +177,16 @@ describe('OS notifications', () => {
     expect(notify).not.toHaveBeenCalled();
   });
 
+  it('closes the notifier when it stops, so no notifier child outlives the daemon', () => {
+    const bus = new EventBus<DeckEvents>();
+    const close = vi.fn();
+    const notify = Object.assign(vi.fn(), { close });
+    const stop = startNotifications(bus, { settings: DEFAULT_CONFIG.notifications, notify });
+    expect(close).not.toHaveBeenCalled();
+    stop();
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
   it('survives a notifier that throws', async () => {
     const { notify, failReload, clock } = setup();
     notify.mockImplementation(() => {

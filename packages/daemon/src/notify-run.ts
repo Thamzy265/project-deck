@@ -6,7 +6,11 @@ import { LINUX_NOTIFY_SEND_PATHS, notifierCommand } from './notify-command.js';
 export const NOTIFIER_TIMEOUT_MS = 5000;
 
 /** Shows one OS notification; never throws. */
-export type Notifier = (title: string, text: string) => void;
+export interface Notifier {
+  (title: string, text: string): void;
+  /** Kills notifier commands still running; later calls show nothing. */
+  close?: () => void;
+}
 
 export interface NotifierChild {
   on(event: 'error', cb: (err: Error) => void): unknown;
@@ -29,6 +33,8 @@ export interface RunNotifierOptions {
   spawn: SpawnNotifier;
   /** Called at most once with a short reason (an error code, `exit 1`, `timeout`). */
   onFailure: (reason: string) => void;
+  /** Holds the child while it runs, so its owner can kill it on close. */
+  running?: Set<NotifierChild>;
   timeoutMs?: number;
 }
 
@@ -43,14 +49,17 @@ export function runNotifier(cmd: NotifierCommand, opts: RunNotifierOptions): Pro
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      if (child !== undefined) opts.running?.delete(child);
       if (failure !== undefined) opts.onFailure(failure);
       resolve();
     };
-    let child: NotifierChild;
+    let child: NotifierChild | undefined;
     const timer = setTimeout(() => {
-      child.kill('SIGKILL');
+      child?.kill('SIGKILL');
       finish('timeout');
     }, opts.timeoutMs ?? NOTIFIER_TIMEOUT_MS);
+    // A notification is never a reason to keep the daemon running.
+    timer.unref();
     try {
       child = opts.spawn(cmd.file, cmd.args, {
         shell: false,
@@ -62,6 +71,7 @@ export function runNotifier(cmd: NotifierCommand, opts: RunNotifierOptions): Pro
       finish(codeOf(err));
       return;
     }
+    opts.running?.add(child);
     child.on('error', (err) => finish(codeOf(err)));
     child.on('exit', (code, signal) => {
       if (code === 0) finish();
@@ -114,11 +124,15 @@ export function systemNotifier(opts: SystemNotifierOptions): Notifier {
   };
   let missingNoted = false;
   let failureLogged = false;
-  return (title, text) => {
+  let closed = false;
+  const running = new Set<NotifierChild>();
+  const notify: Notifier = (title, text) => {
+    if (closed) return;
     const cmd = notifierCommand(platform, title, text, deps);
     if (cmd === undefined) return;
     void runNotifier(cmd, {
       spawn,
+      running,
       onFailure: (reason) => {
         if (failureLogged) return;
         failureLogged = true;
@@ -126,4 +140,10 @@ export function systemNotifier(opts: SystemNotifierOptions): Notifier {
       },
     });
   };
+  notify.close = () => {
+    closed = true;
+    for (const child of running) child.kill('SIGKILL');
+    running.clear();
+  };
+  return notify;
 }

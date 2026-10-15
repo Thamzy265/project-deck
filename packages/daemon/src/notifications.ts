@@ -54,7 +54,7 @@ function message(entry: ActivityEntry): { kind: Kind; head: string; tail?: strin
 /** Subscribes to Activity entries. Returns a function that unsubscribes. */
 export function startNotifications(bus: EventBus, opts: NotificationsOptions): () => void {
   const sent = new Map<Kind, { at: number; held: number }>();
-  return bus.on('activity', (entry) => {
+  const off = bus.on('activity', (entry) => {
     const msg = message(entry);
     if (msg === undefined || !opts.settings[msg.kind]) return;
     // The feed's time for the event, not the time this microtask runs.
@@ -76,4 +76,8 @@ export function startNotifications(bus: EventBus, opts: NotificationsOptions): (
       // A notifier must never break the daemon; the system one logs its own failures.
     }
   });
+  return () => {
+    off();
+    opts.notify.close?.();
+  };
 }
