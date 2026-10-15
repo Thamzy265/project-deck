@@ -153,6 +153,33 @@ describe('ActivityFeed and the reload hook', () => {
     expect(reloads(feed).map((e) => e.kind)).toEqual(['claude.reload', 'app.reloaded']);
   });
 
+  it('C3 a failed hook result replaces an external VM failure from the 3 s before it', async () => {
+    const { bus, feed, clock, app, pushed, flush } = setup();
+    bus.emit('app.reloaded', {
+      appId: app.id,
+      result: { ok: false, reason: 'compile-error', message: 'x', source: 'external' },
+    });
+    const vm = feed.list().at(-1);
+    clock.now += 1000;
+    bus.emit('claude.reload', { ok: false, kind: 'hot-reload', message: 'Unable to reload' });
+    await flush();
+    const list = reloads(feed);
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({ id: vm?.id, kind: 'claude.reload', ok: false });
+    // One failure, so one row: the dashboard and the notifier see the same id again.
+    expect(new Set(pushed.filter((e) => e.kind !== 'app.attached').map((e) => e.id)).size).toBe(1);
+  });
+
+  it('C3 a successful hook result never pairs with a VM failure', () => {
+    const { bus, feed, app } = setup();
+    bus.emit('app.reloaded', {
+      appId: app.id,
+      result: { ok: false, reason: 'compile-error', message: 'x', source: 'external' },
+    });
+    bus.emit('claude.reload', { ok: true, kind: 'hot-reload' });
+    expect(reloads(feed).map((e) => e.kind)).toEqual(['app.reloaded', 'claude.reload']);
+  });
+
   it('replaces the newest matching VM event, not an older one', () => {
     const { bus, feed, clock, vmSuccess } = setup();
     vmSuccess();

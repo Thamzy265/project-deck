@@ -10,6 +10,8 @@ import { ACTIVITY_CAPACITY } from '@project-deck/core';
  * - A SUCCESSFUL hook result is a duplicate of a VM success from the 3 s before it and adds
  *   nothing (that row already reads "from Claude or the IDE"). Otherwise it is its own row
  *   and hides the next VM success within 3 s after it. It never replaces an earlier row.
+ * - A FAILED hook result also replaces an external VM failure from the 3 s before it,
+ *   whatever its kind (a VM failure has none), so one failure is one row.
  * Each VM row pairs with one hook result at most.
  */
 export const RELOAD_MERGE_WINDOW_MS = 3000;
@@ -134,9 +136,9 @@ export class ActivityFeed {
       (e) =>
         now - e.ts <= RELOAD_MERGE_WINDOW_MS &&
         e.kind === 'app.reloaded' &&
-        e.result.ok &&
         e.result.source === 'external' &&
-        e.result.kind === fields.reload &&
+        // A VM failure carries no kind; a failed hook result is the same failure (C3).
+        (e.result.ok ? e.result.kind === fields.reload : !fields.ok) &&
         !this.pairedVmRows.some((p) => p.id === e.id),
     );
     const old = this.entries[at];
