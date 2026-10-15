@@ -332,9 +332,16 @@ describe('init: launch.json variants', () => {
   });
 
   // BUG-CLI-T6: Windows editors save JSON with a byte order mark; config.json accepts it.
-  it.fails('BUG-CLI-T6: accepts a launch.json that starts with a byte order mark', async () => {
+  it('BUG-CLI-T6: accepts a launch.json that starts with a byte order mark, and keeps it', async () => {
     await writeLaunch('﻿{"configurations":[]}');
     expect(await init()).toBe(0);
+    const text = await read('.claude', 'launch.json');
+    expect(text.startsWith('﻿{')).toBe(true);
+    expect(parse(text.slice(1))).toEqual({ configurations: [launchEntry(9147)] });
+    // Already right the second time, BOM and all.
+    lines = [];
+    expect(await init()).toBe(0);
+    expect(lines.join('\n')).toMatch(/unchanged +\.claude\/launch\.json/);
   });
 
   // BUG-CLI-T7: an empty launch.json (from `touch`) holds no settings to protect.

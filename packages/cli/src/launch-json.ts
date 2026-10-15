@@ -111,6 +111,13 @@ export function mergeLaunchJson(text: string | undefined, port: number): LaunchM
     const file = { version: LAUNCH_VERSION, configurations: [entry] };
     return { kind: 'changed', text: JSON.stringify(file, null, 2) + '\n' };
   }
+  // Some Windows editors save UTF-8 with a byte order mark; keep it where it was.
+  const bom = text.startsWith('\uFEFF') ? '\uFEFF' : '';
+  const merged = mergeExisting(text.slice(bom.length), entry);
+  return merged.kind === 'changed' ? { kind: 'changed', text: bom + merged.text } : merged;
+}
+
+function mergeExisting(text: string, entry: LaunchEntry): LaunchMerge {
   const before = parse(text);
   if (typeof before === 'string') return { kind: 'refused', reason: before };
   if (before.ours >= 0 && sameEntry(before.configurations[before.ours], entry)) {
