@@ -6,6 +6,12 @@ import type { DaemonClientOptions } from './daemon-client.js';
 import { DaemonClient, DaemonError, NOT_RUNNING, NOT_SET_UP } from './daemon-client.js';
 import { FakeDaemon, initProject } from './testing/fake-daemon.js';
 
+/** Background work a test starts (a fake daemon, a log write): awaited after each test. */
+const pending: Promise<unknown>[] = [];
+function track(work: Promise<unknown>): void {
+  pending.push(work.catch(() => undefined));
+}
+
 let projectDir: string;
 const fakes: FakeDaemon[] = [];
 
@@ -15,6 +21,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  await Promise.all(pending.splice(0));
   await Promise.all(fakes.splice(0).map((f) => f.stop()));
   await rm(projectDir, { recursive: true, force: true });
 });
@@ -207,7 +214,7 @@ describe('DaemonClient when the daemon is down', () => {
     const c = client({
       spawnDaemon: (dir) => {
         spawned.push(dir);
-        setTimeout(() => void fake(), 50);
+        setTimeout(() => track(fake()), 50);
       },
     });
     const answer = await c.status();
@@ -222,7 +229,7 @@ describe('DaemonClient when the daemon is down', () => {
     const c = client({
       spawnDaemon: () => {
         spawned++;
-        void fake();
+        track(fake());
       },
     });
     expect((await c.status()).value.projectName).toBe('shop_app');
@@ -234,7 +241,7 @@ describe('DaemonClient when the daemon is down', () => {
     const c = client({
       spawnDaemon: () => {
         spawned++;
-        setTimeout(() => void fake(), 50);
+        setTimeout(() => track(fake()), 50);
       },
     });
     await Promise.all([c.status(), c.logs({}), c.status()]);
@@ -245,9 +252,11 @@ describe('DaemonClient when the daemon is down', () => {
     const c = client({
       readyTimeoutMs: 5000,
       spawnDaemon: () => {
-        void fake().then((f) => {
-          f.health = { ...f.health, projectId: 'bbbbbbbbbbbb' };
-        });
+        track(
+          fake().then((f) => {
+            f.health = { ...f.health, projectId: 'bbbbbbbbbbbb' };
+          }),
+        );
       },
     });
     const start = Date.now();
@@ -260,10 +269,12 @@ describe('DaemonClient when the daemon is down', () => {
     const c = client({
       readyTimeoutMs: 5000,
       spawnDaemon: (_dir, onExit) => {
-        void writeFile(
-          join(projectDir, '.flutterdeck', 'daemon.log'),
-          'project-deck daemon starting\nAnother program uses port 9147. Change "port" in .flutterdeck/config.json.\n\n',
-        ).then(() => onExit(1));
+        track(
+          writeFile(
+            join(projectDir, '.flutterdeck', 'daemon.log'),
+            'project-deck daemon starting\nAnother program uses port 9147. Change "port" in .flutterdeck/config.json.\n\n',
+          ).then(() => onExit(1)),
+        );
       },
     });
     const start = Date.now();
@@ -282,12 +293,14 @@ describe('DaemonClient when the daemon is down', () => {
         spawned++;
         if (spawned === 1) {
           // Up, then stopped (exit 0) before this call saw it: gone, not a failure.
-          void writeFile(
-            join(projectDir, '.flutterdeck', 'daemon.log'),
-            `Token in ${projectDir}/.flutterdeck/runtime.json\n`,
-          ).then(() => onExit(0));
+          track(
+            writeFile(
+              join(projectDir, '.flutterdeck', 'daemon.log'),
+              `Token in ${projectDir}/.flutterdeck/runtime.json\n`,
+            ).then(() => onExit(0)),
+          );
         } else {
-          void fake();
+          track(fake());
         }
       },
     });
@@ -305,9 +318,11 @@ describe('DaemonClient when the daemon is down', () => {
         readyTimeoutMs: 5000,
         spawnDaemon: (_dir, onExit) => {
           const log = join(projectDir, '.flutterdeck', 'daemon.log');
-          void rm(log, { force: true })
-            .then(() => symlink(secret, log))
-            .then(() => onExit(1));
+          track(
+            rm(log, { force: true })
+              .then(() => symlink(secret, log))
+              .then(() => onExit(1)),
+          );
         },
       });
       const err = await rejection(c.status());
@@ -321,8 +336,10 @@ describe('DaemonClient when the daemon is down', () => {
     const c = client({
       readyTimeoutMs: 5000,
       spawnDaemon: (_dir, onExit) => {
-        void writeFile(join(projectDir, '.flutterdeck', 'daemon.log'), `${line}\n`).then(() =>
-          onExit(1),
+        track(
+          writeFile(join(projectDir, '.flutterdeck', 'daemon.log'), `${line}\n`).then(() =>
+            onExit(1),
+          ),
         );
       },
     });
@@ -339,7 +356,7 @@ describe('DaemonClient when the daemon is down', () => {
       spawnDaemon: (_dir, onExit) => {
         spawned++;
         if (spawned === 1) onExit(null);
-        else void fake();
+        else track(fake());
       },
     });
     expect((await c.status()).value.projectName).toBe('shop_app');
@@ -351,15 +368,17 @@ describe('DaemonClient when the daemon is down', () => {
     const c = client({
       spawnDaemon: () => {
         spawned++;
-        void fake().then((f) => {
-          // The first daemon goes away on its first call; the second one stays.
-          if (spawned === 1) {
-            f.route('GET', '/api/status', () => {
-              void f.stop();
-              return 'hang';
-            });
-          }
-        });
+        track(
+          fake().then((f) => {
+            // The first daemon goes away on its first call; the second one stays.
+            if (spawned === 1) {
+              f.route('GET', '/api/status', () => {
+                track(f.stop());
+                return 'hang';
+              });
+            }
+          }),
+        );
       },
     });
     expect((await c.status()).value.projectName).toBe('shop_app');
@@ -371,12 +390,14 @@ describe('DaemonClient when the daemon is down', () => {
     const c = client({
       spawnDaemon: () => {
         spawned++;
-        void fake().then((f) => {
-          f.route('GET', '/api/status', () => {
-            void f.stop();
-            return 'hang';
-          });
-        });
+        track(
+          fake().then((f) => {
+            f.route('GET', '/api/status', () => {
+              track(f.stop());
+              return 'hang';
+            });
+          }),
+        );
       },
     });
     expect((await rejection(c.status())).message).toBe(NOT_RUNNING);
@@ -411,7 +432,7 @@ describe('DaemonClient when the daemon is down', () => {
     const c = client({
       spawnDaemon: () => {
         spawned++;
-        void fake();
+        track(fake());
       },
     });
     await c.openLoginWindow();

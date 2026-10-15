@@ -17,6 +17,12 @@ import type { DaemonClientOptions } from './daemon-client.js';
 import { DaemonClient, DaemonError, NOT_RUNNING } from './daemon-client.js';
 import { FAKE_STATUS, FakeDaemon, initProject } from './testing/fake-daemon.js';
 
+/** Background work a test starts (a fake daemon, a log write): awaited after each test. */
+const pending: Promise<unknown>[] = [];
+function track(work: Promise<unknown>): void {
+  pending.push(work.catch(() => undefined));
+}
+
 let projectDir: string;
 const cleanups: (() => Promise<void>)[] = [];
 /** Every token written to a runtime.json in this file. */
@@ -35,6 +41,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  await Promise.all(pending.splice(0));
   vi.restoreAllMocks();
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
   await rm(projectDir, { recursive: true, force: true });
@@ -227,7 +234,7 @@ describe('the daemon going away', () => {
     const c = client({
       spawnDaemon: () => {
         spawned++;
-        void fake();
+        track(fake());
       },
     });
     expect((await c.status()).value.projectName).toBe(FAKE_STATUS.projectName);
@@ -333,7 +340,7 @@ describe('a damaged or hostile runtime.json', () => {
     const c = client({
       spawnDaemon: () => {
         spawned++;
-        void fake();
+        track(fake());
       },
     });
     expect((await c.status()).value.projectName).toBe(FAKE_STATUS.projectName);
