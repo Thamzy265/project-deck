@@ -5,6 +5,7 @@
  * and they never hold log content: only the app's name or Claude Code's waiting message.
  */
 import type { ActivityEntry, DeckConfig, EventBus } from '@project-deck/core';
+import { visibleText } from './notify-command.js';
 import type { Notifier } from './notify-run.js';
 
 export const NOTIFY_RATE_WINDOW_MS = 30_000;
@@ -35,11 +36,9 @@ function message(entry: ActivityEntry): { kind: Kind; head: string; tail?: strin
       return { kind: 'reloadFailed', head: 'Reload failed', tail: entry.appName };
     case 'claude.waiting': {
       // Control and invisible characters don't count: a message of only those is empty.
-      const visible = (entry.message ?? '')
-        .replace(/\p{Cc}/gu, ' ')
-        .replace(/\p{Cf}/gu, '')
-        .trim();
-      const text = Array.from(visible).slice(0, WAITING_CHARS).join('');
+      const text = Array.from(visibleText(entry.message ?? ''))
+        .slice(0, WAITING_CHARS)
+        .join('');
       return {
         kind: 'claudeWaiting',
         head: 'Claude is waiting',

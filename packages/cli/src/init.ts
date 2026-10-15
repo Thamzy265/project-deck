@@ -24,7 +24,7 @@ import {
 import { constants } from 'node:fs';
 import { access, mkdir, rmdir } from 'node:fs/promises';
 import { newConfigText, withPort } from './config-merge.js';
-import { detectFlutterProject, readApplicationId } from './flutter-project.js';
+import { detectFlutterProject, isRecord, readApplicationId } from './flutter-project.js';
 import { addIgnoreBlock } from './gitignore.js';
 import type { Io } from './io.js';
 import { messageOf } from './io.js';
@@ -357,9 +357,6 @@ async function apply(
 /** The development marketplace at the root of a checkout (plugin/README.md). */
 const DEV_MARKETPLACE = 'flutterdeck-dev';
 const PLUGIN_NAME = 'flutterdeck';
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
 
 /**
  * The checkout this CLI runs from (`<root>/packages/cli/dist/main.js`), if it holds the

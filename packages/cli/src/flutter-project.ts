@@ -21,7 +21,7 @@ const MAX_ALIASES = 50;
 
 type Pubspec = { valid: false } | { valid: true; flutter: boolean; name?: string };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 

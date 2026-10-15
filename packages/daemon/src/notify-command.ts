@@ -48,15 +48,20 @@ export interface NotifierCommandDeps {
 
 /**
  * Control characters become spaces (a newline could start a new script line or option
- * somewhere); invisible format characters such as bidi overrides go. Then the text is cut
- * to `max` characters, with "…" marking the cut.
+ * somewhere); invisible format characters such as bidi overrides go; white space is
+ * squeezed and trimmed. A text of only such characters comes out empty.
  */
-export function cleanNotifyText(text: string, max: number): string {
-  const flat = text
+export function visibleText(text: string): string {
+  return text
     .replace(/\p{Cc}/gu, ' ')
     .replace(/\p{Cf}/gu, '')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+/** visibleText cut to `max` characters, with "…" marking the cut. */
+export function cleanNotifyText(text: string, max: number): string {
+  const flat = visibleText(text);
   const chars = Array.from(flat);
   return chars.length <= max ? flat : `${chars.slice(0, max - 1).join('')}…`;
 }
