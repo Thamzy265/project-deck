@@ -28,7 +28,7 @@ describe('OS notifications', () => {
     const { bus, notify, app } = setup();
     bus.emit('app.exit', { appId: app.id, code: 1, crashed: true });
     await flush();
-    expect(notify.mock.calls).toEqual([['FlutterDeck', 'App stopped — shop_app']]);
+    expect(notify.mock.calls).toEqual([['FlutterDeck', 'App crashed — shop_app']]);
   });
 
   it('stays quiet when the app stops without a crash, when attached or when Claude finishes', async () => {

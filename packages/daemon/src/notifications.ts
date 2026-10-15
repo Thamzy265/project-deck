@@ -23,7 +23,7 @@ export interface NotificationsOptions {
 function message(entry: ActivityEntry): { kind: Kind; head: string; tail?: string } | undefined {
   switch (entry.kind) {
     case 'app.crashed':
-      return { kind: 'appCrashed', head: 'App stopped', tail: entry.appName };
+      return { kind: 'appCrashed', head: 'App crashed', tail: entry.appName };
     case 'app.reloaded':
       // Not-attached and unsupported mean nothing was reloaded, so nothing failed.
       if (entry.result.ok || entry.result.reason === 'not-attached') return undefined;
