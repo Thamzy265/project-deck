@@ -2,6 +2,12 @@
 
 Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
 
+## 2026-10-15 — Masking follow-ups (`fix/mcp-masking-followups`) — ready to merge
+
+- Changed: auth codes in twice- and three-times-encoded VM service/DTD URIs, lenient decoding of broken escapes, fail-closed masking for URLs over 8 kB, fewer false positives on ordinary links, a single full stop in config warnings.
+- Gates: developer pass · tester pass (47 tests, MF-T1–T3 fixed) · reviewer block (R1, a regression from the 8 kB cap) → approve with notes · QA 32/32 ([qa/M2.md](qa/M2.md)).
+- Open findings (Low): N1 slower lenient decoding on long broken-escape runs (still linear), N2 short unpadded VM code (pre-existing), one rare nested bare shape — dated task in PLAN.md M2 (due 2026-10-20).
+
 ## 2026-10-15 — M2 batch 3 (`feat/mcp`) — merged
 
 - Changed: PR #24 merged after two Windows-only CI fixes found by CI: a long-form Windows path leaked into a tool error (scrub now covers both realpath forms) and renames over `runtime.json` failed with EPERM while a reader had it open (bounded busy retry in core). Both reviewed. GitHub push protection rejected fake provider-shaped test tokens; the unpushed history was rewritten to build them at runtime (no bypass).

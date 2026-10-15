@@ -56,26 +56,83 @@ function isPathLike(candidate: string, before: string, after: string): boolean {
 const LOOPBACK = /^(?:127\.0\.0\.1|localhost|\[::1\])(?::\d+)?$/i;
 
 /**
+ * Longest URL path or query looked at for auth codes. Each level of decoding and nesting
+ * walks it again, so the cap keeps the work per URL small. A longer one is treated as
+ * holding an auth code (fails closed), since the part past the cap is never read.
+ */
+const MAX_URL_PART = 8192;
+
+const SEPARATORS = /[/?#&]/;
+
+/**
+ * Every path segment and query value, as written and after each of up to
+ * DECODE_ROUNDS rounds of decoding: a URI encoded inside another encoded value (%253A,
+ * or %3Furi%3D…) hides its separators and padding otherwise.
+ *
+ * `own` holds the segments and their query values themselves, where padded base64 is an
+ * auth code. `nested` adds the pieces of a decoded value split again (decoding may have
+ * turned %3F, %3D and %26 into separators); they only count as a URL to look inside, as
+ * `section==` in an ordinary encoded link `%2Fpage%2Fsection%3D%3D` is not a code.
+ */
+function urlParts(path: string): { own: string[]; nested: string[] } {
+  const own = new Set<string>();
+  const nested = new Set<string>();
+  const add = (set: Set<string>, piece: string) => {
+    if (piece === '') return;
+    const eq = piece.indexOf('=');
+    set.add(uncut(piece));
+    if (eq > 0 && eq < piece.length - 1) set.add(uncut(piece.slice(eq + 1)));
+  };
+  for (const segment of path.split(SEPARATORS)) {
+    if (segment === '') continue;
+    for (const text of decodings(segment)) {
+      add(own, text);
+      for (const piece of [...text.split(/[?#&]/), ...text.split(SEPARATORS)]) add(nested, piece);
+    }
+  }
+  return { own: [...own], nested: [...own, ...nested] };
+}
+
+/**
+ * Rounds of percent-decoding tried, in URLs and in bare encoded URIs alike; the bare
+ * pattern allows the matching number of %25 prefixes (DECODE_ROUNDS - 1).
+ */
+const DECODE_ROUNDS = 3;
+
+/** The text and up to DECODE_ROUNDS rounds of percent-decoding it. */
+function decodings(text: string): string[] {
+  const out = [text];
+  let current = text;
+  for (let round = 0; round < DECODE_ROUNDS && /%[0-9a-f]{2}/i.test(current); round++) {
+    const next = decode(current);
+    if (next === current) break;
+    out.push(next);
+    current = next;
+  }
+  return out;
+}
+
+const INNER_URL = /^(?:https?|wss?):\/\/(?:[^/?#@]*@)?([^/?#]+)(.*)$/is;
+
+/**
  * A path segment that is an auth code: base64 with padding (VM service, DTD), or on a
  * loopback host any random-looking first segment (a DTD secret without padding).
  */
 function hasAuthCode(host: string, path: string, depth = 0): boolean {
-  const segments = path.split(/[/?#&]/).filter((s) => s !== '');
-  // Each path segment and query value, decoded: %3D hides the padding otherwise.
-  const candidates = segments.flatMap((s) => {
-    const eq = s.indexOf('=');
-    const value = eq > 0 && eq < s.length - 1 ? [s.slice(eq + 1)] : [];
-    return [s, ...value].map(decode);
-  });
-  if (candidates.some((s) => /^[A-Za-z0-9+_-]{6,}={1,2}$/.test(s))) return true;
+  if (path.length > MAX_URL_PART) return true;
+  const { own, nested } = urlParts(path);
+  if (own.some((s) => /^[A-Za-z0-9+_-]{6,}={1,2}$/.test(s))) return true;
   // A URL passed as a value, such as DevTools' ?uri=<VM service URI>: look inside it too.
   if (depth < 2) {
-    for (const candidate of candidates) {
-      const inner = /^(?:https?|wss?):\/\/(?:[^/?#@]*@)?([^/?#]+)(.*)$/i.exec(candidate);
+    for (const candidate of nested) {
+      const inner = INNER_URL.exec(candidate);
       if (inner !== null && hasAuthCode(inner[1] ?? '', inner[2] ?? '', depth + 1)) return true;
     }
   }
-  const first = segments[0];
+  const first = path
+    .split(SEPARATORS)
+    .map(uncut)
+    .find((s) => s !== '');
   return (
     LOOPBACK.test(host) &&
     first !== undefined &&
@@ -84,12 +141,54 @@ function hasAuthCode(host: string, path: string, depth = 0): boolean {
   );
 }
 
+/** Without an escape cut short at the end (`%`, `%2`), as when a logger cuts the line. */
+function uncut(text: string): string {
+  return text.replace(/%[0-9A-Fa-f]?$/, '');
+}
+
+const ESCAPE_RUN = /(?:%[0-9A-Fa-f]{2})+/g;
+
+/**
+ * Percent-decoding that keeps an invalid or cut escape as written. decodeURIComponent
+ * gives up on the whole text for one bad escape (a line cut inside one, a Latin-1 %E9),
+ * which would leave every other escape, and any auth code behind them, unread.
+ */
 function decode(text: string): string {
-  try {
-    return decodeURIComponent(text);
-  } catch {
-    return text;
+  return text.replace(ESCAPE_RUN, (run) => {
+    try {
+      return decodeURIComponent(run);
+    } catch {
+      return decodeBytes(run);
+    }
+  });
+}
+
+/** Decodes each valid UTF-8 sequence in a run of escapes, one escape at a time otherwise. */
+function decodeBytes(run: string): string {
+  let out = '';
+  let i = 0;
+  while (i < run.length) {
+    const lead = parseInt(run.slice(i + 1, i + 3), 16);
+    const size =
+      lead < 0x80 ? 1 : lead < 0xc2 ? 0 : lead < 0xe0 ? 2 : lead < 0xf0 ? 3 : lead < 0xf5 ? 4 : 0;
+    const sequence = run.slice(i, i + size * 3);
+    let decoded: string | undefined;
+    if (size > 0 && sequence.length === size * 3) {
+      try {
+        decoded = decodeURIComponent(sequence);
+      } catch {
+        // Not valid UTF-8 (a bad continuation byte or a surrogate): kept as written.
+      }
+    }
+    if (decoded === undefined) {
+      out += run.slice(i, i + 3);
+      i += 3;
+    } else {
+      out += decoded;
+      i += sequence.length;
+    }
   }
+  return out;
 }
 
 /**
@@ -106,13 +205,12 @@ function maskUrl(match: string, groups: (string | undefined)[]): string {
 
 /**
  * A percent-encoded URL with no URL around it, such as a logged query value
- * `uri=http%3A%2F%2F127.0.0.1%3A50123%2FAb3dE_fGh1I%3D%2F`, once or twice encoded.
+ * `uri=http%3A%2F%2F127.0.0.1%3A50123%2FAb3dE_fGh1I%3D%2F`, encoded up to DECODE_ROUNDS times.
  * Masked whole when the decoded URL carries an auth code.
  */
 function maskEncodedUrl(match: string): string {
-  let text = match;
-  for (let round = 0; round < 2 && /%[0-9a-f]{2}/i.test(text); round++) text = decode(text);
-  const url = /^(?:https?|wss?):\/\/(?:[^/?#@]*@)?([^/?#]+)(.*)$/i.exec(text);
+  if (match.length > MAX_URL_PART) return AUTH_CODE;
+  const url = INNER_URL.exec(decodings(match).at(-1) ?? match);
   return url !== null && hasAuthCode(url[1] ?? '', url[2] ?? '') ? AUTH_CODE : match;
 }
 
@@ -123,8 +221,10 @@ const PATTERNS: Pattern[] = [
     replace: maskUrl,
   },
   {
-    // The scheme and an encoded :// anchor every match; the value is bounded.
-    re: /\b(?:https?|wss?)%(?:25)?3A%(?:25)?2F%(?:25)?2F[A-Za-z0-9%._~+=-]{1,2048}/gi,
+    // The scheme and an encoded :// anchor every match. The scheme may follow an escape
+    // such as %3D, as in an encoded query holding an encoded URI. The value takes the
+    // whole run, with nothing after it to backtrack into; a long one fails closed.
+    re: /(?:(?<=%[0-9A-Fa-f]{2})|(?<![A-Za-z0-9_]))(?:https?|wss?)%(?:25){0,2}3A%(?:25){0,2}2F%(?:25){0,2}2F[A-Za-z0-9%._~+=-]+/gi,
     replace: maskEncodedUrl,
   },
   {

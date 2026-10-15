@@ -216,6 +216,11 @@ describe('built-in masking', () => {
     'f0',
     'http%3A%2F%2F',
     'ws%253A%252F%252Fa%2F',
+    '%3Dws%253A%252F%252Fa%253D',
+    'http://a/?u=http%3A%2F%2Fa%2F',
+    'http://a/u%3Dhttp%253A%252F%252Fa%252F%2526',
+    'ws%25253A%25252F%25252Fa%25253D',
+    '%3Dhttp%25253A%25252F%25252Fa%25252F%252526',
   ])('runs every built-in in linear time on 64 kB of %j', (unit) => {
     // Compared with 8 kB of the same text, not with the clock, so a busy machine doesn't
     // fail it: linear work grows 8x, quadratic work 64x. The best of three runs drops
@@ -233,6 +238,34 @@ describe('built-in masking', () => {
     const small = time(8_192);
     const large = time(65_536);
     // A floor on the small time, so timer resolution can't make the ratio meaningless.
+    expect(large / Math.max(small, 0.5)).toBeLessThan(24);
+    expect(large).toBeLessThan(2000);
+  });
+});
+
+describe('nested encoded URLs below the part cap', () => {
+  // Above 8 kB a URL fails closed without being read, so the 8 kB vs 64 kB check above
+  // can't see the nested decoding work. This one stays below the cap: 1 kB vs 8 kB.
+  it.each([
+    'http://a/?u=http%3A%2F%2Fa%2F',
+    'http://a/u%3Dhttp%253A%252F%252Fa%252F%2526',
+    'http://127.0.0.1:1/?u=http%253A%252F%252Fa%253Fu%253D',
+    'http://a/x%25253Fu%25253Dhttp%2525253A%2525252F',
+    '%3Dhttp%25253A%25252F%25252Fa%25252F%252526',
+  ])('reads nested %j in linear time', (unit) => {
+    const time = (size: number) => {
+      const text = unit.repeat(Math.ceil(size / unit.length)).slice(0, size);
+      let best = Number.POSITIVE_INFINITY;
+      for (let run = 0; run < 3; run++) {
+        const start = performance.now();
+        // Several calls per run, so the 1 kB time is above the timer's resolution.
+        for (let call = 0; call < 20; call++) maskBuiltIn(text);
+        best = Math.min(best, performance.now() - start);
+      }
+      return best;
+    };
+    const small = time(1_024);
+    const large = time(8_000);
     expect(large / Math.max(small, 0.5)).toBeLessThan(24);
     expect(large).toBeLessThan(2000);
   });
@@ -332,5 +365,96 @@ describe('encoded URLs with no URL around them', () => {
   it('leaves an encoded link to an ordinary page alone', () => {
     const text = 'next=https%3A%2F%2Fexample.com%2Fdocs%2Fintro';
     expect(maskBuiltIn(text)).toBe(text);
+  });
+});
+
+describe('auth codes in twice-encoded URIs', () => {
+  // Built at runtime so no auth-code-shaped literal sits in the source.
+  const code = ['Ab3dE', '_fGh1I'].join('');
+  const vmUri = `http://127.0.0.1:50123/${code}=/`;
+  const dtdUri = `ws://127.0.0.1:50124/${code}Xy9`;
+  const enc = encodeURIComponent;
+  const MASKED = '[auth code masked]';
+
+  it.each([
+    [
+      'VM service URI, standalone',
+      `GET /devtools?uri=${enc(enc(vmUri))}`,
+      `GET /devtools?uri=${MASKED}`,
+    ],
+    [
+      'VM service URI, in a full URL',
+      `http://127.0.0.1:9100/devtools?uri=${enc(enc(vmUri))}&x=1`,
+      `http://127.0.0.1:9100/${MASKED}`,
+    ],
+    ['DTD URI, standalone', `GET /devtools?dtd=${enc(enc(dtdUri))}`, `GET /devtools?dtd=${MASKED}`],
+    [
+      'DTD URI, in a full URL',
+      `http://localhost:9100/?dtd=${enc(enc(dtdUri))}`,
+      `http://localhost:9100/${MASKED}`,
+    ],
+    [
+      'encoded query in a query value',
+      `GET /login?next=${enc(`/devtools?uri=${enc(vmUri)}`)}`,
+      `GET /login?next=%2Fdevtools%3Furi%3D${MASKED}`,
+    ],
+    [
+      'encoded query, DTD',
+      `GET /x?q=${enc(`a=1&uri=${enc(dtdUri)}`)}`,
+      `GET /x?q=a%3D1%26uri%3D${MASKED}`,
+    ],
+    [
+      'encoded query in a full URL',
+      `http://localhost:9100/login?next=${enc(`/devtools?uri=${enc(vmUri)}`)}`,
+      `http://localhost:9100/${MASKED}`,
+    ],
+    [
+      'encoded query, DTD, in a full URL',
+      `http://localhost:9100/login?next=${enc(`/devtools?uri=${enc(dtdUri)}`)}`,
+      `http://localhost:9100/${MASKED}`,
+    ],
+    [
+      'encoded query in a URL path',
+      `http://localhost:9100/${enc(`devtools?uri=${enc(vmUri)}`)}`,
+      `http://localhost:9100/${MASKED}`,
+    ],
+  ])('masks the auth code of a %s', (_name, input, expected) => {
+    expect(maskBuiltIn(input)).toBe(expected);
+  });
+
+  it('masks a URL whose path and query are longer than the part it reads (R1)', () => {
+    // An 8.4 kB JWT-shaped state value pushes the VM service URI past the cap.
+    const part = (length: number) => `eyJ${'a'.repeat(length)}`;
+    const jwt = [part(4_200), part(4_200), 'sig'].join('.');
+    const text = `http://localhost:9100/cb?state=${jwt}&uri=${vmUri}`;
+    expect(maskBuiltIn(text)).toBe(`http://localhost:9100/${MASKED}`);
+  });
+
+  it('masks a bare encoded URI longer than the part it reads (R1)', () => {
+    const text = `uri=${enc(`http://127.0.0.1:50123/?j=${'a'.repeat(9_000)}&c=${code}=`)} end`;
+    const out = maskBuiltIn(text);
+    expect(out).toBe(`uri=${MASKED} end`);
+  });
+
+  it.each([
+    `https://shop.example.com/cart?return=${enc('/checkout?step=review&note=thanks=')}`,
+    `https://example.com/go?to=${enc('/page/section==')}`,
+    `https://example.com/go?to=${enc('/a?x=1&flag=enabled=')}`,
+    // The reviewer's three (R2).
+    `https://example.com/search?q=${enc('/items/abcdef=')}`,
+    `https://example.com/r?next=${enc('/page?id=abcdefgh==')}`,
+    `http://localhost:9100/login?next=${enc('/devtools?page=abcdef=')}`,
+  ])('leaves an ordinary link with = signs in an encoded value alone (R2): %s', (text) => {
+    expect(maskBuiltIn(text)).toBe(text);
+  });
+
+  it('leaves a twice-encoded link to an ordinary page alone', () => {
+    const page = 'https://example.com/docs/intro';
+    for (const text of [
+      `next=${enc(`/devtools?page=${enc(page)}`)}`,
+      `http://localhost:9100/login?next=${enc(`/devtools?page=${enc(page)}`)}`,
+    ]) {
+      expect(maskBuiltIn(text)).toBe(text);
+    }
   });
 });
