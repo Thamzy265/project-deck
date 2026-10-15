@@ -4,7 +4,7 @@
  * daemon on the port must say it serves this project). Nothing here signals a process.
  */
 import type { DaemonClientOptions } from '@project-deck/mcp';
-import { DaemonClient, DaemonError } from '@project-deck/mcp';
+import { DaemonClient, DaemonError, ForeignDaemonError } from '@project-deck/mcp';
 import { DECK_VERSION } from '@project-deck/core';
 import { isDashboardUrl } from './browser.js';
 import type { Io } from './io.js';
@@ -81,7 +81,20 @@ export function runStart(opts: DaemonCommandOptions): Promise<number> {
 
 export function runStop(opts: DaemonCommandOptions): Promise<number> {
   return guarded(opts.io, async () => {
-    const stopped = await clientFor(opts).shutdown();
+    let stopped: boolean;
+    try {
+      stopped = await clientFor(opts).shutdown();
+    } catch (err) {
+      // `stop` can't help here, so say what can. FlutterDeck never kills a process itself:
+      // the pid in runtime.json may belong to another program by now.
+      if (err instanceof ForeignDaemonError) {
+        opts.io.err(
+          `The program on port ${err.port} doesn't accept this project's key, so \`${CLI_NAME} stop\` can't stop it. Stop it by quitting the process that runs packages/daemon/dist/main.js (port ${err.port}), or delete .flutterdeck/runtime.json if no FlutterDeck runs.`,
+        );
+        return 1;
+      }
+      throw err;
+    }
     opts.io.out(stopped ? 'FlutterDeck stopped.' : "FlutterDeck isn't running for this project.");
     return 0;
   });

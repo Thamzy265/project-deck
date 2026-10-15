@@ -41,6 +41,19 @@ const MAX_REASON = 300;
 /** A message that is safe to show to Claude: it never holds the token. */
 export class DaemonError extends Error {}
 
+/**
+ * The program on the port can't be stopped through the API: it refused the token, or it
+ * didn't say which project it serves (so it never got the token).
+ */
+export class ForeignDaemonError extends DaemonError {
+  constructor(
+    message: string,
+    readonly port: number,
+  ) {
+    super(message);
+  }
+}
+
 /** No daemon answered: nothing listens, or it isn't a FlutterDeck. */
 class Unreachable extends Error {}
 
@@ -221,8 +234,9 @@ export class DaemonClient {
     const ours = await this.ownProjectId();
     if (ours !== undefined && health.projectId === undefined) {
       // Can't tell it is ours, so it doesn't get the token.
-      throw new DaemonError(
+      throw new ForeignDaemonError(
         `The program on port ${info.port} didn't say which project it serves, so FlutterDeck didn't send it the token. Run \`flutterdeck stop\` and try again.`,
+        info.port,
       );
     }
     if (ours !== undefined && health.projectId !== undefined && health.projectId !== ours) {
@@ -329,7 +343,7 @@ export class DaemonClient {
       }
       throw new Unreachable();
     }
-    if (res.status === 401) throw new DaemonError(TOKEN_REJECTED);
+    if (res.status === 401) throw new ForeignDaemonError(TOKEN_REJECTED, conn.port);
     if (!res.ok) {
       const error = ErrorResponse.safeParse(body);
       const reason = error.success ? error.data.error : 'no reason given';
