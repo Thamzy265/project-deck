@@ -1,0 +1,9 @@
+{
+  "name": "flutterdeck",
+  "displayName": "FlutterDeck",
+  "version": "0.0.0",
+  "description": "Flutter dashboard next to Claude: the Dart MCP server for reloads and runtime errors, FlutterDeck's MCP server for logs, and hooks that show Claude's progress in the dashboard.",
+  "author": { "name": "FlutterDeck contributors" },
+  "license": "MIT",
+  "keywords": ["flutter", "dart", "drift", "logs", "dashboard"]
+}

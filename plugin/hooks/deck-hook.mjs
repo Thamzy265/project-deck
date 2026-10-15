@@ -1,0 +1,365 @@
+#!/usr/bin/env node
+// @ts-check
+/**
+ * FlutterDeck's Claude Code hook: tells the project's local daemon when Claude finishes,
+ * waits for the developer, or reloads the app through the Dart MCP server. It reads the
+ * hook's JSON from stdin and POSTs a small event to http://127.0.0.1:<port>/api/events,
+ * with the port and token from `.flutterdeck/runtime.json`.
+ *
+ * Rules (docs/design/m2-dashboard.md, "Failure plan" and "Privacy"):
+ * - It never blocks Claude: everything ends within 2 s, the exit code is always 0 and
+ *   nothing is printed, whatever goes wrong.
+ * - It sends only what the design allows: the event type, the session id, Claude Code's
+ *   waiting message, and a reload's outcome with a short error cut and stripped of paths.
+ *   Never `last_assistant_message`, `transcript_path`, `cwd` or the tool's input (whose
+ *   app URI holds a VM service auth code).
+ * - The project folder may come from a cloned repository, so it never follows a link in
+ *   `.flutterdeck/` and does nothing unless the folder was set up by `flutterdeck init`.
+ *
+ * Standalone on purpose: no dependencies and no build, so it works wherever the plugin is.
+ */
+import { constants, lstatSync, realpathSync } from 'node:fs';
+import { open } from 'node:fs/promises';
+import { request } from 'node:http';
+import { isAbsolute, join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+
+/** Same limits as the daemon's HookEventInput (packages/core). */
+export const MAX_WAITING_MESSAGE = 2000;
+export const MAX_RELOAD_MESSAGE = 300;
+export const MAX_SESSION_ID = 128;
+export const TOKEN_HEADER = 'x-deck-token';
+
+export const DEADLINE_MS = 2000;
+/** Stop's input holds Claude's last message, which can be long; beyond this, give up. */
+export const MAX_STDIN_BYTES = 4 * 1024 * 1024;
+const MAX_RUNTIME_BYTES = 65_536;
+
+/** Claude Code notifications that mean "Claude is waiting for you". */
+const WAITING_TYPES = new Set(['permission_prompt', 'idle_prompt']);
+/** The Dart MCP server's reload tools, under any server name that says dart. */
+const RELOAD_TOOL = /^mcp__(.*dart.*)__hot_(reload|restart)$/i;
+
+/**
+ * @typedef {{ type: 'claude.done', sessionId?: string }
+ *   | { type: 'claude.waiting', sessionId?: string, message?: string }
+ *   | { type: 'claude.reload', sessionId?: string, ok: boolean,
+ *       kind: 'hot-reload' | 'hot-restart', message?: string }} DeckEvent
+ */
+
+/**
+ * @param {unknown} value
+ * @returns {value is Record<string, unknown>}
+ */
+const isObject = (value) => typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/**
+ * Cuts to `max` characters, marking the cut.
+ * @param {string} text
+ * @param {number} max
+ */
+function cut(text, max) {
+  const chars = Array.from(text);
+  return chars.length <= max ? text : `${chars.slice(0, max - 1).join('')}…`;
+}
+
+/**
+ * A reload error for the Activity feed: no addresses (VM service URIs carry auth codes),
+ * no absolute paths (they name the user and the project), one line, short.
+ * @param {string} text
+ */
+export function scrubReloadMessage(text) {
+  const flat = text
+    .replace(/\b[a-z][a-z0-9+.-]*:\/\/[^\s"'<>]*/gi, '[address]')
+    .replace(
+      /\b(?:localhost|\d{1,3}(?:\.\d{1,3}){3}|\[[0-9a-f:]+\]):\d+(?:\/[^\s"'<>]*)?/gi,
+      '[address]',
+    )
+    .replace(/\b[A-Za-z]:[\\/][^\s"'<>]*/g, '[path]')
+    .replace(/\\\\[^\s"'<>]+/g, '[path]')
+    .replace(/(^|[\s"'(=:,])~?\/[^\s"'<>]*/g, '$1[path]')
+    .replace(/\p{Cc}/gu, ' ')
+    .replace(/\p{Cf}/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return cut(flat, MAX_RELOAD_MESSAGE);
+}
+
+/**
+ * The text of an MCP tool result as Claude Code passes it: a string, a list of content
+ * blocks, or an object holding `content`.
+ * @param {unknown} response
+ * @returns {{ text: string, isError: boolean }}
+ */
+function toolResult(response) {
+  if (typeof response === 'string') return { text: response, isError: false };
+  const blocks = Array.isArray(response)
+    ? response
+    : isObject(response) && Array.isArray(response.content)
+      ? response.content
+      : [];
+  const text = blocks
+    .map((b) => (isObject(b) && typeof b.text === 'string' ? b.text : ''))
+    .filter((t) => t !== '')
+    .join(' ');
+  return { text, isError: isObject(response) && response.isError === true };
+}
+
+/**
+ * Turns a hook's input into the event the daemon accepts, or undefined to send nothing.
+ * Built field by field, so nothing else in the input can reach the daemon.
+ * @param {unknown} input
+ * @returns {DeckEvent | undefined}
+ */
+export function toDeckEvent(input) {
+  if (!isObject(input)) return undefined;
+  const sid = input.session_id;
+  const session =
+    typeof sid === 'string' && sid.length <= MAX_SESSION_ID && /^[\w.-]+$/.test(sid)
+      ? { sessionId: sid }
+      : {};
+  switch (input.hook_event_name) {
+    case 'Stop':
+    case 'SubagentStop':
+      return { type: 'claude.done', ...session };
+    case 'Notification': {
+      if (typeof input.notification_type !== 'string') return undefined;
+      if (!WAITING_TYPES.has(input.notification_type)) return undefined;
+      const message =
+        typeof input.message === 'string' && input.message.trim() !== ''
+          ? { message: cut(input.message, MAX_WAITING_MESSAGE) }
+          : {};
+      return { type: 'claude.waiting', ...session, ...message };
+    }
+    case 'PostToolUse':
+    case 'PostToolUseFailure': {
+      const match = typeof input.tool_name === 'string' ? RELOAD_TOOL.exec(input.tool_name) : null;
+      if (match === null) return undefined;
+      // A cancelled call says nothing about the app.
+      if (input.is_interrupt === true) return undefined;
+      const kind = match[2]?.toLowerCase() === 'restart' ? 'hot-restart' : 'hot-reload';
+      let ok;
+      let detail;
+      if (input.hook_event_name === 'PostToolUseFailure') {
+        ok = false;
+        detail = typeof input.error === 'string' ? input.error : '';
+      } else {
+        const result = toolResult(input.tool_response);
+        // The Dart MCP server answers "Hot reload failed." with isError; older Claude Code
+        // versions may still report that as PostToolUse.
+        ok = !result.isError && !/\bfailed\b/i.test(result.text);
+        detail = result.text;
+      }
+      const message = ok ? '' : scrubReloadMessage(detail);
+      return {
+        type: 'claude.reload',
+        ...session,
+        ok,
+        kind,
+        ...(message === '' ? {} : { message }),
+      };
+    }
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * The project folder: Claude Code's project root, or else the hook's working folder.
+ * @param {Record<string, string | undefined>} env
+ * @param {unknown} input
+ */
+export function projectDirOf(env, input) {
+  const fromEnv = env.CLAUDE_PROJECT_DIR;
+  if (typeof fromEnv === 'string' && isAbsolute(fromEnv)) return fromEnv;
+  const cwd = isObject(input) ? input.cwd : undefined;
+  return typeof cwd === 'string' && isAbsolute(cwd) ? cwd : undefined;
+}
+
+/**
+ * A plain file only: lstat must say "file", and O_NOFOLLOW refuses a link that appears in
+ * between (Windows has no O_NOFOLLOW; there the lstat is the check).
+ * @param {string} path
+ * @param {number} maxBytes
+ */
+async function readPlainFile(path, maxBytes) {
+  if (!lstatSync(path).isFile()) return undefined;
+  const nofollow = /** @type {{ O_NOFOLLOW?: number }} */ (constants).O_NOFOLLOW ?? 0;
+  const handle = await open(path, constants.O_RDONLY | nofollow);
+  try {
+    const stat = await handle.stat();
+    if (!stat.isFile() || stat.size > maxBytes) return undefined;
+    const buffer = Buffer.alloc(stat.size);
+    const { bytesRead } = await handle.read(buffer, 0, stat.size, 0);
+    return buffer.subarray(0, bytesRead).toString('utf8');
+  } finally {
+    await handle.close();
+  }
+}
+
+/**
+ * Port and token of the project's daemon, or undefined if the folder isn't set up, the
+ * daemon isn't running, or anything there is a link or looks wrong.
+ * @param {string} projectDir
+ * @returns {Promise<{ port: number, token: string } | undefined>}
+ */
+export async function readDaemonAddress(projectDir) {
+  const stateDir = join(projectDir, '.flutterdeck');
+  const dir = lstatSync(stateDir, { throwIfNoEntry: false });
+  if (dir === undefined || dir.isSymbolicLink() || !dir.isDirectory()) return undefined;
+  // `flutterdeck init` writes config.json; without it the folder isn't set up.
+  const config = lstatSync(join(stateDir, 'config.json'), { throwIfNoEntry: false });
+  if (config === undefined || !config.isFile()) return undefined;
+  const text = await readPlainFile(join(stateDir, 'runtime.json'), MAX_RUNTIME_BYTES);
+  if (text === undefined) return undefined;
+  /** @type {unknown} */
+  const runtime = JSON.parse(text);
+  if (!isObject(runtime)) return undefined;
+  const { port, token } = runtime;
+  if (typeof port !== 'number' || !Number.isInteger(port) || port < 1 || port > 65535) {
+    return undefined;
+  }
+  // Header-safe and the length the daemon makes.
+  if (typeof token !== 'string' || !/^[\x21-\x7e]{32,512}$/.test(token)) return undefined;
+  return { port, token };
+}
+
+/**
+ * One request to the daemon on 127.0.0.1. Resolves with the status and body, or undefined
+ * on any error or after `timeoutMs`.
+ * @param {{ port: number, method: string, path: string, headers?: Record<string, string>,
+ *   body?: string, timeoutMs: number }} opts
+ * @returns {Promise<{ status: number, body: string } | undefined>}
+ */
+function call(opts) {
+  return new Promise((resolve) => {
+    const req = request(
+      {
+        host: '127.0.0.1',
+        port: opts.port,
+        method: opts.method,
+        path: opts.path,
+        headers: opts.headers,
+        timeout: opts.timeoutMs,
+      },
+      (res) => {
+        /** @type {Buffer[]} */
+        const chunks = [];
+        let size = 0;
+        res.on('data', (/** @type {Buffer} */ chunk) => {
+          size += chunk.length;
+          if (size <= 65_536) chunks.push(chunk);
+        });
+        res.on('end', () =>
+          resolve({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString('utf8') }),
+        );
+        res.on('error', () => resolve(undefined));
+      },
+    );
+    req.on('timeout', () => req.destroy());
+    req.on('error', () => resolve(undefined));
+    req.end(opts.body);
+  });
+}
+
+/**
+ * Sends the event if the daemon on the port is FlutterDeck's. The health check comes
+ * first, so the token is never handed to another program that took a stale port.
+ * @param {{ port: number, token: string }} daemon
+ * @param {DeckEvent} event
+ * @param {number} deadline epoch ms
+ */
+export async function send(daemon, event, deadline) {
+  const left = () => Math.max(1, deadline - Date.now());
+  const health = await call({
+    port: daemon.port,
+    method: 'GET',
+    path: '/api/health',
+    timeoutMs: left(),
+  });
+  if (health === undefined || health.status !== 200) return false;
+  /** @type {unknown} */
+  let parsed;
+  try {
+    parsed = JSON.parse(health.body);
+  } catch {
+    return false;
+  }
+  if (!isObject(parsed) || parsed.name !== 'project-deck') return false;
+  const body = JSON.stringify(event);
+  const res = await call({
+    port: daemon.port,
+    method: 'POST',
+    path: '/api/events',
+    headers: {
+      'content-type': 'application/json',
+      'content-length': String(Buffer.byteLength(body)),
+      [TOKEN_HEADER]: daemon.token,
+    },
+    body,
+    timeoutMs: left(),
+  });
+  return res?.status === 200;
+}
+
+/**
+ * Reads stdin up to MAX_STDIN_BYTES; undefined if it is larger or fails.
+ * @param {NodeJS.ReadableStream & { destroy?: () => void }} stdin
+ * @returns {Promise<string | undefined>}
+ */
+function readStdin(stdin) {
+  return new Promise((resolve) => {
+    /** @type {Buffer[]} */
+    const chunks = [];
+    let size = 0;
+    stdin.on('data', (/** @type {Buffer} */ chunk) => {
+      size += chunk.length;
+      if (size > MAX_STDIN_BYTES) {
+        stdin.destroy?.();
+        resolve(undefined);
+        return;
+      }
+      chunks.push(chunk);
+    });
+    stdin.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    stdin.on('error', () => resolve(undefined));
+  });
+}
+
+/** Runs the hook. Never throws. */
+export async function main() {
+  const deadline = Date.now() + DEADLINE_MS;
+  try {
+    const text = await readStdin(process.stdin);
+    if (text === undefined) return;
+    /** @type {unknown} */
+    const input = JSON.parse(text);
+    const event = toDeckEvent(input);
+    if (event === undefined) return;
+    const projectDir = projectDirOf(process.env, input);
+    if (projectDir === undefined) return;
+    const daemon = await readDaemonAddress(projectDir);
+    if (daemon === undefined) return;
+    await send(daemon, event, deadline);
+  } catch {
+    // Anything at all: say nothing and let Claude carry on.
+  }
+}
+
+function isEntryPoint() {
+  try {
+    const script = process.argv[1];
+    return script !== undefined && pathToFileURL(realpathSync(script)).href === import.meta.url;
+  } catch {
+    return false;
+  }
+}
+
+if (isEntryPoint()) {
+  // Nothing may reach Claude: no output, exit 0, and never longer than the deadline.
+  process.exitCode = 0;
+  process.on('uncaughtException', () => process.exit(0));
+  process.on('unhandledRejection', () => process.exit(0));
+  setTimeout(() => process.exit(0), DEADLINE_MS).unref();
+  void main().finally(() => process.exit(0));
+}

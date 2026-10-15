@@ -4,6 +4,11 @@
       "type": "stdio",
       "command": "dart",
       "args": ["mcp-server"]
+    },
+    "flutterdeck": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/../packages/cli/dist/main.js", "mcp"]
     }
   }
 }
