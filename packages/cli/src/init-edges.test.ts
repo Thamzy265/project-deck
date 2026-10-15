@@ -309,11 +309,26 @@ describe('init: launch.json variants', () => {
 
   // BUG-CLI-T5: with two "configurations" keys, JSON readers use the last one, but init
   // edits the first and reports success.
-  it.fails('BUG-CLI-T5: refuses a launch.json with two "configurations" keys', async () => {
-    await writeLaunch(
+  it.each([
+    [
+      'two "configurations" keys',
       '{"configurations":[],"configurations":[{"name":"FlutterDeck","url":"http://example.invalid"}]}',
-    );
+    ],
+    ['two "version" keys', '{"version":"0.0.1","version":"9","configurations":[]}'],
+    [
+      'two "url" keys in the FlutterDeck entry',
+      '{"configurations":[{"name":"FlutterDeck","url":"http://127.0.0.1:9147","port":9147,"url":"http://example.invalid"}]}',
+    ],
+    [
+      'two "name" keys in one entry',
+      '{"configurations":[{"name":"FlutterDeck","name":"web","url":"http://localhost:3000"}]}',
+    ],
+  ])('BUG-CLI-T5: refuses a launch.json with %s and writes nothing', async (_label, text) => {
+    await writeLaunch(text);
+    const before = await snapshot();
     expect(await init()).toBe(1);
+    expect(errors.join('\n')).toContain('twice');
+    expect(await snapshot()).toEqual(before);
   });
 
   // BUG-CLI-T6: Windows editors save JSON with a byte order mark; config.json accepts it.

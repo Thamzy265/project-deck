@@ -42,6 +42,8 @@ function parse(text: string): Parsed | string {
     return 'is not valid JSON (comments are allowed)';
   }
   if (root.type !== 'object') return 'is not a JSON object';
+  const duplicate = duplicateKey(root);
+  if (duplicate !== undefined) return duplicate;
   const list = root.children?.find((prop) => prop.children?.[0]?.value === 'configurations')
     ?.children?.[1];
   if (list === undefined) return { root, configurations: [], ours: -1 };
@@ -52,6 +54,34 @@ function parse(text: string): Parsed | string {
     return `has ${matches.length} "${LAUNCH_ENTRY_NAME}" configurations; keep one`;
   }
   return { root, configurations, ours: matches[0] ?? -1 };
+}
+
+/** Keys FlutterDeck reads or writes; only these are named in a message. */
+const KNOWN_KEYS = new Set(['version', 'configurations', 'name', 'url', 'port']);
+
+/**
+ * A key that appears twice in one object, anywhere in the file. JSON readers keep the
+ * last one while an edit would change the first, so init would report a change that
+ * Claude Desktop never sees.
+ */
+function duplicateKey(node: Node): string | undefined {
+  if (node.type === 'object') {
+    const seen = new Set<unknown>();
+    for (const prop of node.children ?? []) {
+      const key: unknown = prop.children?.[0]?.value;
+      if (seen.has(key)) {
+        return typeof key === 'string' && KNOWN_KEYS.has(key)
+          ? `has the key "${key}" twice in one object; keep one`
+          : 'has a key twice in one object; keep one';
+      }
+      seen.add(key);
+    }
+  }
+  for (const child of node.children ?? []) {
+    const found = duplicateKey(child);
+    if (found !== undefined) return found;
+  }
+  return undefined;
 }
 
 function isOurs(value: unknown): boolean {

@@ -109,4 +109,11 @@ describe('mergeLaunchJson', () => {
     expect(result.kind).toBe('refused');
     if (result.kind === 'refused') expect(result.reason).not.toContain(text);
   });
+
+  it('refuses a duplicate key deep inside another entry without naming an unknown key', () => {
+    const key = ['private', 'setting'].join('_');
+    const text = `{"configurations":[{"name":"web","env":{"${key}":"a","${key}":"b"}}]}`;
+    const result = mergeLaunchJson(text, 9147);
+    expect(result).toEqual({ kind: 'refused', reason: 'has a key twice in one object; keep one' });
+  });
 });
