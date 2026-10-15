@@ -80,7 +80,7 @@ describe('runTool', () => {
   // BUG-CLI-T11: runTool passes any arguments to cmd.exe on Windows. Today only fixed
   // constants reach it, but nothing stops a later caller; CLAUDE.md asks for arguments
   // validated against strict patterns.
-  it.fails('BUG-CLI-T11: refuses arguments other than the fixed version flags', async () => {
+  it('BUG-CLI-T11: refuses arguments other than the fixed version flags', async () => {
     setPlatform('win32');
     const injected = ['--version', '&', 'calc'].join(' ');
     await expect(runTool('dart', [injected])).rejects.toThrow();

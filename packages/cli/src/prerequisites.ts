@@ -21,11 +21,32 @@ export interface Prerequisite {
 /** The Dart MCP server needs Dart 3.9 or newer. */
 const MIN_DART: readonly [number, number] = [3, 9];
 
+/**
+ * The only commands `runTool` runs. On Windows dart and flutter go through cmd.exe, so
+ * nothing but these fixed arguments may ever reach it.
+ */
+export const ALLOWED_COMMANDS: Readonly<Record<Tool, readonly string[]>> = {
+  dart: ['--version'],
+  flutter: ['--version'],
+  adb: ['version'],
+};
+
 const CHECKS: readonly { tool: Tool; args: readonly string[]; version: RegExp }[] = [
-  { tool: 'dart', args: ['--version'], version: /Dart SDK version:\s*(\d+\.\d+\.\d+)/ },
-  { tool: 'flutter', args: ['--version'], version: /^Flutter\s+(\d+\.\d+\.\d+)/m },
-  { tool: 'adb', args: ['version'], version: /Android Debug Bridge version\s+(\d+\.\d+\.\d+)/ },
+  { tool: 'dart', args: ALLOWED_COMMANDS.dart, version: /Dart SDK version:\s*(\d+\.\d+\.\d+)/ },
+  { tool: 'flutter', args: ALLOWED_COMMANDS.flutter, version: /^Flutter\s+(\d+\.\d+\.\d+)/m },
+  {
+    tool: 'adb',
+    args: ALLOWED_COMMANDS.adb,
+    version: /Android Debug Bridge version\s+(\d+\.\d+\.\d+)/,
+  },
 ];
+
+/** Exactly one of the allowed (command, arguments) pairs. */
+export function isAllowedCommand(tool: string, args: readonly string[]): tool is Tool {
+  if (!Object.hasOwn(ALLOWED_COMMANDS, tool)) return false;
+  const allowed = ALLOWED_COMMANDS[tool as Tool];
+  return args.length === allowed.length && args.every((arg, i) => arg === allowed[i]);
+}
 
 const MISSING_NOTE: Record<Tool, string> = {
   dart: 'needed for the Dart MCP server (hot reload for Claude)',
@@ -71,9 +92,12 @@ const TIMEOUT_MS: Record<Tool, number> = { dart: 15_000, flutter: 60_000, adb: 1
  * The real tools, run from the home folder so a `dart.bat` planted in a cloned project
  * can't stand in for the SDK (cmd.exe looks in the current folder first). `dart` and
  * `flutter` are .bat files on Windows, which only start through a shell; the arguments
- * are fixed constants, as in connector-dart. adb is found the way the daemon finds it.
+ * must be one of ALLOWED_COMMANDS, checked before anything starts. adb is found the way the daemon finds it.
  */
 export const runTool: RunTool = (tool, args) => {
+  if (!isAllowedCommand(tool, args)) {
+    return Promise.reject(new Error('Refused: not one of the fixed prerequisite commands'));
+  }
   const file = tool === 'adb' ? resolveAdbPath() : tool;
   if (file === undefined) return Promise.reject(new Error('adb not found'));
   return new Promise((resolve, reject) => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RunTool, Tool } from './prerequisites.js';
-import { checkPrerequisites, formatPrerequisites } from './prerequisites.js';
+import { checkPrerequisites, formatPrerequisites, isAllowedCommand } from './prerequisites.js';
 
 function runner(outputs: Partial<Record<Tool, string | Error>>): {
   run: RunTool;
@@ -69,5 +69,24 @@ describe('checkPrerequisites', () => {
     });
     const lines = formatPrerequisites(await checkPrerequisites(run)).join('\n');
     expect(lines).not.toContain('rm -rf');
+  });
+});
+
+describe('isAllowedCommand', () => {
+  it('accepts only the three fixed pairs', () => {
+    expect(isAllowedCommand('dart', ['--version'])).toBe(true);
+    expect(isAllowedCommand('flutter', ['--version'])).toBe(true);
+    expect(isAllowedCommand('adb', ['version'])).toBe(true);
+  });
+
+  it.each([
+    ['sh', ['-c', 'id']],
+    ['dart', []],
+    ['dart', ['--version', '--verbose']],
+    ['adb', ['--version']],
+    ['constructor', []],
+    ['toString', []],
+  ])('refuses %s %j', (tool, args) => {
+    expect(isAllowedCommand(tool, args)).toBe(false);
   });
 });
