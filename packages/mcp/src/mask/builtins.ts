@@ -59,7 +59,7 @@ const LOOPBACK = /^(?:127\.0\.0\.1|localhost|\[::1\])(?::\d+)?$/i;
  * A path segment that is an auth code: base64 with padding (VM service, DTD), or on a
  * loopback host any random-looking first segment (a DTD secret without padding).
  */
-function hasAuthCode(host: string, path: string): boolean {
+function hasAuthCode(host: string, path: string, depth = 0): boolean {
   const segments = path.split(/[/?#&]/).filter((s) => s !== '');
   // Each path segment and query value, decoded: %3D hides the padding otherwise.
   const candidates = segments.flatMap((s) => {
@@ -68,6 +68,13 @@ function hasAuthCode(host: string, path: string): boolean {
     return [s, ...value].map(decode);
   });
   if (candidates.some((s) => /^[A-Za-z0-9+_-]{6,}={1,2}$/.test(s))) return true;
+  // A URL passed as a value, such as DevTools' ?uri=<VM service URI>: look inside it too.
+  if (depth < 2) {
+    for (const candidate of candidates) {
+      const inner = /^(?:https?|wss?):\/\/(?:[^/?#@]*@)?([^/?#]+)(.*)$/i.exec(candidate);
+      if (inner !== null && hasAuthCode(inner[1] ?? '', inner[2] ?? '', depth + 1)) return true;
+    }
+  }
   const first = segments[0];
   return (
     LOOPBACK.test(host) &&

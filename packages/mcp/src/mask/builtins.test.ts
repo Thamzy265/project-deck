@@ -274,3 +274,25 @@ describe('auth codes in encoded URLs', () => {
     expect(maskBuiltIn('http://127.0.0.1:1/a%E0%A4%A/b')).toBe('http://127.0.0.1:1/a%E0%A4%A/b');
   });
 });
+
+describe('auth codes in URLs inside URLs', () => {
+  it.each([
+    [
+      'DevTools link to a VM service',
+      'Open http://127.0.0.1:9100/?uri=http%3A%2F%2F127.0.0.1%3A50123%2FAb3dE_fGh1I%3D%2F now',
+      'Open http://127.0.0.1:9100/[auth code masked] now',
+    ],
+    [
+      'DevTools link to a DTD WebSocket',
+      'http://127.0.0.1:9100/?dtd=ws%3A%2F%2F127.0.0.1%3A53211%2Fq8ZtYb2Wd4Kx',
+      'http://127.0.0.1:9100/[auth code masked]',
+    ],
+  ])('masks a %s', (_name, input, expected) => {
+    expect(maskBuiltIn(input)).toBe(expected);
+  });
+
+  it('leaves a link to an ordinary page alone', () => {
+    const text = 'http://127.0.0.1:9100/?page=http%3A%2F%2Fexample.com%2Fdocs%2Fintro';
+    expect(maskBuiltIn(text)).toBe(text);
+  });
+});
