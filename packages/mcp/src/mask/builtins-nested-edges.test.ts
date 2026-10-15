@@ -105,8 +105,8 @@ describe('the 8 kB cap on URL parts', () => {
 
 describe('encodings the fix does not claim', () => {
   // MF-T3 (low): three rounds of encoding are found inside a full URL but not in a
-  // bare value, where the encoded-URL pattern allows only one %25 per escape.
-  it.fails.each([
+  // bare value, where the encoded-URL pattern allowed only one %25 per escape.
+  it.each([
     ['VM service URI', `GET /?uri=${enc(enc(enc(vmUri)))}`],
     ['DTD URI', `GET /?dtd=${enc(enc(enc(dtdUri)))}`],
     [

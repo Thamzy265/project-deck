@@ -219,6 +219,8 @@ describe('built-in masking', () => {
     '%3Dws%253A%252F%252Fa%253D',
     'http://a/?u=http%3A%2F%2Fa%2F',
     'http://a/u%3Dhttp%253A%252F%252Fa%252F%2526',
+    'ws%25253A%25252F%25252Fa%25253D',
+    '%3Dhttp%25253A%25252F%25252Fa%25252F%252526',
   ])('runs every built-in in linear time on 64 kB of %j', (unit) => {
     // Compared with 8 kB of the same text, not with the clock, so a busy machine doesn't
     // fail it: linear work grows 8x, quadratic work 64x. The best of three runs drops

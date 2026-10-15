@@ -65,8 +65,9 @@ const MAX_URL_PART = 8192;
 const SEPARATORS = /[/?#&]/;
 
 /**
- * Every path segment and query value, decoded up to twice: a URI encoded inside another
- * encoded value (%253A, or %3Furi%3D…) hides its separators and padding otherwise.
+ * Every path segment and query value, as written and after each of up to
+ * DECODE_ROUNDS rounds of decoding: a URI encoded inside another encoded value (%253A,
+ * or %3Furi%3D…) hides its separators and padding otherwise.
  */
 function urlParts(path: string): string[] {
   const parts = new Set<string>();
@@ -77,19 +78,25 @@ function urlParts(path: string): string[] {
       for (const piece of [text, ...text.split(/[?#&]/), ...text.split(SEPARATORS)]) {
         if (piece === '') continue;
         const eq = piece.indexOf('=');
-        parts.add(uncut(decode(piece)));
-        if (eq > 0 && eq < piece.length - 1) parts.add(uncut(decode(piece.slice(eq + 1))));
+        parts.add(uncut(piece));
+        if (eq > 0 && eq < piece.length - 1) parts.add(uncut(piece.slice(eq + 1)));
       }
     }
   }
   return [...parts];
 }
 
-/** The text and up to two rounds of percent-decoding it. */
+/**
+ * Rounds of percent-decoding tried, in URLs and in bare encoded URIs alike; the bare
+ * pattern allows the matching number of %25 prefixes (DECODE_ROUNDS - 1).
+ */
+const DECODE_ROUNDS = 3;
+
+/** The text and up to DECODE_ROUNDS rounds of percent-decoding it. */
 function decodings(text: string): string[] {
   const out = [text];
   let current = text;
-  for (let round = 0; round < 2 && /%[0-9a-f]{2}/i.test(current); round++) {
+  for (let round = 0; round < DECODE_ROUNDS && /%[0-9a-f]{2}/i.test(current); round++) {
     const next = decode(current);
     if (next === current) break;
     out.push(next);
@@ -191,7 +198,7 @@ function maskUrl(match: string, groups: (string | undefined)[]): string {
 
 /**
  * A percent-encoded URL with no URL around it, such as a logged query value
- * `uri=http%3A%2F%2F127.0.0.1%3A50123%2FAb3dE_fGh1I%3D%2F`, once or twice encoded.
+ * `uri=http%3A%2F%2F127.0.0.1%3A50123%2FAb3dE_fGh1I%3D%2F`, encoded up to DECODE_ROUNDS times.
  * Masked whole when the decoded URL carries an auth code.
  */
 function maskEncodedUrl(match: string): string {
@@ -210,7 +217,7 @@ const PATTERNS: Pattern[] = [
     // The scheme and an encoded :// anchor every match. The scheme may follow an escape
     // such as %3D, as in an encoded query holding an encoded URI. The value takes the
     // whole run, with nothing after it to backtrack into; a long one fails closed.
-    re: /(?:(?<=%[0-9A-Fa-f]{2})|(?<![A-Za-z0-9_]))(?:https?|wss?)%(?:25)?3A%(?:25)?2F%(?:25)?2F[A-Za-z0-9%._~+=-]+/gi,
+    re: /(?:(?<=%[0-9A-Fa-f]{2})|(?<![A-Za-z0-9_]))(?:https?|wss?)%(?:25){0,2}3A%(?:25){0,2}2F%(?:25){0,2}2F[A-Za-z0-9%._~+=-]+/gi,
     replace: maskEncodedUrl,
   },
   {
