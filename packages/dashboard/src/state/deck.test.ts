@@ -180,6 +180,39 @@ describe('deckReducer', () => {
     expect(s.activity.items).toEqual([hook]);
   });
 
+  it("C1 puts Claude's reload result in the header chip", () => {
+    const failed: ActivityEntry = {
+      id: 7,
+      ts: 5000,
+      kind: 'claude.reload',
+      ok: false,
+      reload: 'hot-restart',
+      message: 'Unable to restart',
+    };
+    expect(run({ type: 'activity-add', entry: failed }).lastResult).toMatchObject({
+      ok: false,
+      kind: 'restart',
+      external: true,
+      message: 'Unable to restart',
+      startedAt: 5000,
+    });
+    const ok: ActivityEntry = {
+      id: 8,
+      ts: 6000,
+      kind: 'claude.reload',
+      ok: true,
+      reload: 'hot-reload',
+    };
+    const s = run({ type: 'activity-add', entry: failed }, { type: 'activity-add', entry: ok });
+    expect(s.lastResult).toMatchObject({ ok: true, kind: 'reload', external: true });
+    expect(s.lastResult).not.toHaveProperty('message');
+  });
+
+  it('C1 leaves the header chip alone for other Activity entries', () => {
+    const s = run({ type: 'activity-add', entry: { id: 1, ts: 1, kind: 'claude.done' } });
+    expect(s.lastResult).toBeNull();
+  });
+
   it('empties the list and notes it in Activity when logs are cleared', () => {
     const s = run(
       {
