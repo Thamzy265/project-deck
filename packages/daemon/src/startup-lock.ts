@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
-import { link, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { link, lstat, mkdir, readdir, rename, rm, writeFile } from 'node:fs/promises';
+import { readRegularFile } from '@project-deck/core/node';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { z } from 'zod';
@@ -110,6 +111,7 @@ export async function acquireFileLock(
     ...(opts.dirMode === undefined ? {} : { mode: opts.dirMode }),
   });
   const deadline = Date.now() + waitMs;
+  let linksRemoved = 0;
   for (;;) {
     // The nonce tells apart two holders in one process created in the same millisecond,
     // so one never releases the other's lock.
@@ -125,6 +127,13 @@ export async function acquireFileLock(
     } catch (err) {
       const code = (err as NodeJS.ErrnoException).code;
       if (code === undefined || !HELD_CODES.has(code)) throw err;
+    }
+    // A link is never a FlutterDeck lock: a cloned repository planted it. Remove the link
+    // itself (never what it points at) and try again.
+    if (linksRemoved < 3 && (await lstat(path).catch(() => undefined))?.isSymbolicLink() === true) {
+      linksRemoved++;
+      await rm(path, { force: true });
+      continue;
     }
     const held = await readLock(path);
     if (held !== undefined && (await isStale(path, held, staleMs))) {
@@ -145,7 +154,7 @@ interface HeldLock {
 
 async function readLock(path: string): Promise<HeldLock | undefined> {
   try {
-    const raw = await readFile(path, 'utf8');
+    const raw = await readRegularFile(path);
     let parsed: unknown;
     try {
       parsed = JSON.parse(raw);
@@ -167,7 +176,7 @@ async function isStale(path: string, held: HeldLock, staleMs: number): Promise<b
   }
   // Unreadable: maybe still being written, so judge it by age only.
   try {
-    return Date.now() - (await stat(path)).mtimeMs > staleMs;
+    return Date.now() - (await lstat(path)).mtimeMs > staleMs;
   } catch {
     return false;
   }
@@ -193,7 +202,7 @@ async function removeStale(path: string, staleRaw: string): Promise<boolean> {
   }
   let moved: string | undefined;
   try {
-    moved = await readFile(aside, 'utf8');
+    moved = await readRegularFile(aside);
   } catch {
     moved = undefined;
   }
@@ -221,7 +230,7 @@ async function sweepLeftovers(dir: string, fileName: string, staleMs: number): P
       if (!name.startsWith(prefix) || !name.endsWith('.stale')) continue;
       const file = join(dir, name);
       try {
-        if (Date.now() - (await stat(file)).mtimeMs > staleMs) await rm(file, { force: true });
+        if (Date.now() - (await lstat(file)).mtimeMs > staleMs) await rm(file, { force: true });
       } catch {
         // Removed by another daemon, or not ours to remove: leave it.
       }
@@ -238,7 +247,7 @@ async function staleIn(
 ): Promise<number | undefined> {
   if (held?.lock !== undefined) return held.lock.createdAt + staleMs - Date.now();
   try {
-    return (await stat(path)).mtimeMs + staleMs - Date.now();
+    return (await lstat(path)).mtimeMs + staleMs - Date.now();
   } catch {
     return undefined;
   }
@@ -246,7 +255,7 @@ async function staleIn(
 
 async function releaseIfOurs(path: string, content: string): Promise<void> {
   try {
-    if ((await readFile(path, 'utf8')) === content) await rm(path, { force: true });
+    if ((await readRegularFile(path)) === content) await rm(path, { force: true });
   } catch {
     // Already gone (treated as stale and removed by another daemon): nothing to release.
   }

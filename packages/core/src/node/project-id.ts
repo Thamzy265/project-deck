@@ -3,11 +3,12 @@
  * as clients read it. Only the daemon and `init` write it (daemon/src/port-registry.ts).
  */
 import { createHash } from 'node:crypto';
-import { readFile, realpath } from 'node:fs/promises';
+import { realpath } from 'node:fs/promises';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { z } from 'zod';
+import { NotRegularFileError, readRegularFile } from './safe-file.js';
 
 export const REGISTRY_DIR = '.flutterdeck';
 export const REGISTRY_FILE = 'ports.json';
@@ -58,8 +59,10 @@ export async function readRegistry(homeDir: string, waitMs = 200): Promise<Regis
   for (;;) {
     let text: string;
     try {
-      text = await readFile(registryPath(homeDir), 'utf8');
+      // Never through a link; written only by rename or link, never in place.
+      text = await readRegularFile(registryPath(homeDir), { maxBytes: 8_388_608 });
     } catch (err) {
+      if (err instanceof NotRegularFileError) return { state: 'unreadable', code: err.code };
       const code = (err as NodeJS.ErrnoException).code ?? 'unknown';
       return code === 'ENOENT' ? { state: 'missing' } : { state: 'unreadable', code };
     }

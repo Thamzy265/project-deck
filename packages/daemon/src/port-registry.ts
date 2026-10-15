@@ -173,7 +173,11 @@ async function load(homeDir: string): Promise<PortRegistry> {
   if (read.state === 'ok') return read.registry;
   if (read.state === 'missing') return create(homeDir);
   if (read.state === 'unreadable') {
-    throw new PortRegistryError(`${path} can't be read (${read.code})`);
+    throw new PortRegistryError(
+      read.code === 'ENOTREG'
+        ? `${path} is not a regular file (a link or a folder). FlutterDeck doesn't follow links there.`
+        : `${path} can't be read (${read.code})`,
+    );
   }
   // Replacing it would change every project id and forget every port, so leave it be.
   throw new PortRegistryError(
