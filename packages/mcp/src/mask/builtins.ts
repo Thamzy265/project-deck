@@ -129,58 +129,30 @@ function hasAuthCode(host: string, path: string, depth = 0): boolean {
       if (inner !== null && hasAuthCode(inner[1] ?? '', inner[2] ?? '', depth + 1)) return true;
     }
   }
-  const first = path
-    .split(SEPARATORS)
-    .map(uncut)
-    .find((s) => s !== '');
-  if (!LOOPBACK.test(host) || first === undefined || !/^[A-Za-z0-9+_-]{8,}$/.test(first)) {
-    return false;
-  }
-  return isSecretLike(first) || (LOOPBACK_PORT.test(host) && isRandomSegment(first));
+  const first = FIRST_SEGMENT.exec(path)?.[1];
+  if (!LOOPBACK.test(host) || first === undefined) return false;
+  const segment = uncut(first);
+  if (!/^[A-Za-z0-9+_-]{8,}$/.test(segment)) return false;
+  return isSecretLike(segment) || (LOOPBACK_PORT.test(host) && isUnpaddedCode(segment));
 }
+
+/** The first path segment or query piece, after any leading separators. */
+const FIRST_SEGMENT = /^[/?#&]*([^/?#&]+)/;
 
 const LOOPBACK_PORT = /:\d+$/;
 
 /**
- * Parts of a route that are words even though they hold digits or capitals: version
- * tags and common abbreviations. Matched against a whole part between `-`, `_` or `+`.
+ * Review N2: a VM service, DDS or DTD auth code written without its `=` padding. All
+ * three make it the same way, base64url of 8 random bytes (docs/notes/dtd.md): 12
+ * characters with one `=`, so 11 without. The 11th character holds the last 4 bits
+ * only, so it is one of 16 (A, E, I, … w, 0, 4, 8). Mixed case or a digit, as nearly
+ * every random code has, keeps plain words (`healthcheck`) out. An 11-character route
+ * with mixed case or a digit (`iPhone15Pro`) is masked too: a known over-mask, accepted
+ * as failing closed. Names with a `.` never get here.
  */
-const ROUTE_WORDS =
-  /^(?:v\d{1,3}|i18n|l10n|a11y|utf8|md5|sha\d{1,3}|base64|x64|x86|arm64|oauth2|http2|h2|[23]d|mp[34]|h26[45])$/i;
-
-/**
- * Humps of a camelCase or snake_case word: an acronym, a word with an optional capital,
- * or a digit run. Each alternative is greedy with one fixed lookahead, so it is linear.
- */
-const HUMP = /[A-Z]+(?![a-z])|[A-Z]?[a-z]+|\d+/g;
-
-/**
- * Review N2: a VM service or DTD code on a loopback port without padding and with few
- * digits, such as `Ab3dE_fGh1I`. The first path segment (8+ base64url characters, as
- * checked by the caller) is random-looking when:
- * - it has both upper and lower case letters, or a digit; and
- * - some part between `-`, `_` or `+` is not word-shaped. A part is word-shaped when it
- *   is all digits (an id), is in ROUTE_WORDS, or splits into humps where every letter
- *   hump is at least 3 characters (2 for the first one, as in `myRoute`), every acronym
- *   at least 2, and digit runs of at most 2 follow a word (`oauth2callback`).
- * So `/api/status`, `/devtools/`, `/DevTools`, `/getUserProfile`, `/12345678` stay as
- * they are; anything with a `.` (`main.dart.js`) never gets here.
- */
-function isRandomSegment(segment: string): boolean {
-  const mixedCase = /[A-Z]/.test(segment) && /[a-z]/.test(segment);
-  if (!mixedCase && !/\d/.test(segment)) return false;
-  return segment.split(/[-_+]/).some((part) => part !== '' && !isWordShaped(part));
-}
-
-function isWordShaped(part: string): boolean {
-  if (/^\d+$/.test(part) || ROUTE_WORDS.test(part)) return true;
-  const humps = part.match(HUMP) ?? [];
-  return humps.every((hump, index) => {
-    if (/^\d/.test(hump))
-      return index > 0 && hump.length <= 2 && !/^\d/.test(humps[index - 1] ?? '');
-    if (/^[A-Z]+$/.test(hump)) return hump.length >= 2;
-    return hump.length >= (index === 0 ? 2 : 3);
-  });
+function isUnpaddedCode(segment: string): boolean {
+  if (!/^[A-Za-z0-9_-]{10}[AEIMQUYcgkosw048]$/.test(segment)) return false;
+  return (/[A-Z]/.test(segment) && /[a-z]/.test(segment)) || /\d/.test(segment);
 }
 
 /** Without an escape cut short at the end (`%`, `%2`), as when a logger cuts the line. */
@@ -269,7 +241,8 @@ function maskUrl(match: string, groups: (string | undefined)[]): string {
 
 /**
  * A percent-encoded URL with no URL around it, such as a logged query value
- * `uri=http%3A%2F%2F127.0.0.1%3A50123%2FAb3dE_fGh1I%3D%2F`, encoded up to DECODE_ROUNDS times.
+ * `uri=http%3A%2F%2F127.0.0.1%3A50123%2F<code>%3D%2F` (an 11-character base64url code),
+ * encoded up to DECODE_ROUNDS times.
  * Masked whole when the decoded URL carries an auth code.
  */
 function maskEncodedUrl(match: string): string {

@@ -149,8 +149,8 @@ describe('unpadded auth codes on a loopback port (N2)', () => {
     expect(missed).toEqual([]);
   });
 
-  // N2-U1: about 1 in 27 unpadded 8-byte codes is read as word-shaped and leaks.
-  it.fails('N2-U1: masks every unpadded 8-byte code', () => {
+  // N2-U1: about 1 in 27 unpadded 8-byte codes used to be read as word-shaped and leak.
+  it('N2-U1: masks every unpadded 8-byte code', () => {
     const missed = unpaddedCodes(2000, 1).filter((c) => {
       const text = `ws://127.0.0.1:50123/${c}/ws`;
       return maskBuiltIn(text).includes(c);
@@ -158,7 +158,7 @@ describe('unpadded auth codes on a loopback port (N2)', () => {
     expect(missed).toEqual([]);
   });
 
-  it.fails.each([
+  it.each([
     ['no digits', ['Phcpaen', 'ppMQ']],
     ['one digit inside the humps', ['MuRMQ3E', 'gqh0']],
     ['humps split by _', ['dxurYJK', '_auk']],
@@ -219,12 +219,20 @@ describe('real local routes stay as they are (N2)', () => {
     expect(maskBuiltIn(text)).toBe(text);
   });
 
-  // N2-O1: a word with a 3+ digit run, or an acronym that starts lower case, reads as random.
-  it.fails.each(['order12345', 'index2024', 'README2024', 'iOSSimulator', 'iPhone15Pro'])(
+  // N2-O1: these used to read as random. Only 11-character segments can be codes now.
+  it.each(['order12345', 'index2024', 'README2024', 'iOSSimulator'])(
     'N2-O1: leaves http://127.0.0.1:8080/%s alone',
     (route) => {
       const text = `http://127.0.0.1:8080/${route}`;
       expect(maskBuiltIn(text)).toBe(text);
     },
   );
+
+  // N2-O1, known over-mask accepted by the lead (15 Oct 2026) as failing closed: an
+  // 11-character route with mixed case or a digit has the shape of an unpadded code.
+  it('N2-O1: masks http://127.0.0.1:8080/iPhone15Pro (known over-mask)', () => {
+    expect(maskBuiltIn('http://127.0.0.1:8080/iPhone15Pro')).toBe(
+      `http://127.0.0.1:8080/${MASKED}`,
+    );
+  });
 });

@@ -299,10 +299,11 @@ describe('nested encoded URLs below the part cap', () => {
 });
 
 describe('unpadded auth codes on a loopback port (N2)', () => {
-  // Built at runtime so no auth-code-shaped literal sits in the source. Each has fewer
-  // than 3 digits and no = padding, which the old rule needed.
+  // Built at runtime so no auth-code-shaped literal sits in the source. Each is an
+  // 11-character base64url code (8 bytes, as DDS, the VM service and DTD make them) with
+  // fewer than 3 digits and no = padding, which the old rule needed.
   const code = ['Ab3dE', '_fGh1I'].join('');
-  const noDigits = ['QwErT', 'yUiOp'].join('');
+  const noDigits = ['QwErT', 'yUiOpA'].join('');
   const MASKED = '[auth code masked]';
 
   it.each([
@@ -331,13 +332,29 @@ describe('unpadded auth codes on a loopback port (N2)', () => {
     'http://localhost:8080/12345678',
     'http://localhost:8080/my-route-name',
     'http://localhost:8080/ABCDEFGHIJ',
+    // 11 characters, but one case and no digit.
+    'http://localhost:8080/healthcheck',
+    'http://localhost:8080/HEALTHCHECK',
+    // 11 characters with a dot: a file name.
+    'http://localhost:8080/main.dart.js',
     'http%3A%2F%2F127.0.0.1%3A9100%2Fdevtools%2F',
+    // One character short or long of an unpadded 8-byte code.
+    `http://127.0.0.1:50123/${code.slice(0, 10)}`,
+    `http://127.0.0.1:50123/${code}x`,
+    // An 11th character 8 bytes can't end in (it holds only 4 bits).
+    `http://127.0.0.1:50123/${code.slice(0, 10)}J`,
     // Without a port the stricter old rule applies.
     `http://localhost/${code}`,
     // Not loopback.
     `https://example.com/${code}`,
   ])('leaves the ordinary URL %j alone', (text) => {
     expect(maskBuiltIn(text)).toBe(text);
+  });
+
+  // Known over-masks, accepted by the lead (15 Oct 2026) as failing closed: an
+  // 11-character route with mixed case or a digit can't be told apart from a code.
+  it.each(['iPhone15Pro', 'getVMStatus'])('masks the 11-character route /%s (known)', (route) => {
+    expect(maskBuiltIn(`http://localhost:8080/${route}`)).toBe(`http://localhost:8080/${MASKED}`);
   });
 });
 
