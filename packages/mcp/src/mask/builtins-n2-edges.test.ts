@@ -9,6 +9,7 @@
  * padding it is 11 base64url characters.
  */
 import { describe, expect, it } from 'vitest';
+import { growth } from '../testing/timing.js';
 import { maskBuiltIn } from './builtins.js';
 
 // Built at runtime so no auth-code-shaped literal sits in the source.
@@ -93,17 +94,7 @@ describe('broken UTF-8 next to an auth code (N1)', () => {
     'http://127.0.0.1:1/?u=' + '%25ED%25A0'.repeat(40) + ' ',
   ])('stays linear on 64 kB of %j', (unit) => {
     // 8x the text should cost about 8x; quadratic work would be 64x.
-    const time = (size: number) => {
-      const text = unit.repeat(Math.ceil(size / unit.length)).slice(0, size);
-      let best = Number.POSITIVE_INFINITY;
-      for (let run = 0; run < 3; run++) {
-        const start = performance.now();
-        maskBuiltIn(text);
-        best = Math.min(best, performance.now() - start);
-      }
-      return best;
-    };
-    expect(time(65_536) / Math.max(time(8_192), 0.5)).toBeLessThan(24);
+    expect(growth(maskBuiltIn, unit, 8_192, 65_536).ratio).toBeLessThan(24);
   });
 });
 

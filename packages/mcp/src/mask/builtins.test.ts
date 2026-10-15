@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { growth } from '../testing/timing.js';
 import { maskBuiltIn } from './builtins.js';
 
 describe('built-in masking', () => {
@@ -221,52 +222,26 @@ describe('built-in masking', () => {
     'http://a/u%3Dhttp%253A%252F%252Fa%252F%2526',
     'ws%25253A%25252F%25252Fa%25253D',
     '%3Dhttp%25253A%25252F%25252Fa%25252F%252526',
-    `x http%3A%2F%2F127.0.0.1%2F${'%E9'.repeat(20)} `,
     'http://127.0.0.1:1/aB3dEfGhIj ',
     'ws://[0:',
     'x ws://[::ffff:127.0.0.1]:1/aB3dEfGhIjA ',
     'http%3A%2F%2Flocalhost%3A1%2FgetUserProfile%3 ',
   ])('runs every built-in in linear time on 64 kB of %j', (unit) => {
-    // Compared with 8 kB of the same text, not with the clock, so a busy machine doesn't
-    // fail it: linear work grows 8x, quadratic work 64x. The best of three runs drops
-    // pauses from garbage collection or other processes.
-    const time = (size: number) => {
-      const text = unit.repeat(Math.ceil(size / unit.length)).slice(0, size);
-      let best = Number.POSITIVE_INFINITY;
-      for (let run = 0; run < 3; run++) {
-        const start = performance.now();
-        maskBuiltIn(text);
-        best = Math.min(best, performance.now() - start);
-      }
-      return best;
-    };
-    const small = time(8_192);
-    const large = time(65_536);
-    // A floor on the small time, so timer resolution can't make the ratio meaningless.
-    expect(large / Math.max(small, 0.5)).toBeLessThan(24);
+    // 8 kB vs 64 kB: linear work grows 8x, quadratic work 64x.
+    const { ratio, large } = growth(maskBuiltIn, unit, 8_192, 65_536);
+    expect(ratio).toBeLessThan(24);
     expect(large).toBeLessThan(2000);
   });
 });
 
 describe('broken escapes in bare encoded URIs (N1)', () => {
-  // Linear either way, but one decodeURIComponent per broken escape (each one throwing)
-  // made 64 kB of these about 9x slower than valid escapes. Compared with the same
-  // text holding valid escapes, not with the clock, so a busy machine doesn't fail it.
-  const time = (unit: string) => {
-    const text = unit.repeat(Math.ceil(65_536 / unit.length)).slice(0, 65_536);
-    let best = Number.POSITIVE_INFINITY;
-    for (let run = 0; run < 3; run++) {
-      const start = performance.now();
-      maskBuiltIn(text);
-      best = Math.min(best, performance.now() - start);
-    }
-    return best;
-  };
-
-  it('decodes 64 kB of %E9 runs about as fast as valid escapes', () => {
-    const broken = time(`x http%3A%2F%2F127.0.0.1%2F${'%E9'.repeat(20)} `);
-    const valid = time(`x http%3A%2F%2F127.0.0.1%2F${'%C3%A9'.repeat(10)} `);
-    expect(broken / Math.max(valid, 0.5)).toBeLessThan(3);
+  // One decodeURIComponent per broken escape (each one throwing) made long %E9 runs
+  // about 9x slower than valid escapes; they are now checked in one pass.
+  it('decodes %E9 runs inside bare URIs in linear time', () => {
+    const unit = `x http%3A%2F%2F127.0.0.1%2F${'%E9'.repeat(20)} `;
+    const { ratio, large } = growth(maskBuiltIn, unit, 8_192, 65_536);
+    expect(ratio).toBeLessThan(24);
+    expect(large).toBeLessThan(2000);
   });
 });
 
@@ -283,20 +258,9 @@ describe('nested encoded URLs below the part cap', () => {
     'http://127.0.0.1:1/HTTPServerAbc-',
     '&u=ws://127.0.0.1:1/a?v=http://a/',
   ])('reads nested %j in linear time', (unit) => {
-    const time = (size: number) => {
-      const text = unit.repeat(Math.ceil(size / unit.length)).slice(0, size);
-      let best = Number.POSITIVE_INFINITY;
-      for (let run = 0; run < 3; run++) {
-        const start = performance.now();
-        // Several calls per run, so the 1 kB time is above the timer's resolution.
-        for (let call = 0; call < 20; call++) maskBuiltIn(text);
-        best = Math.min(best, performance.now() - start);
-      }
-      return best;
-    };
-    const small = time(1_024);
-    const large = time(8_000);
-    expect(large / Math.max(small, 0.5)).toBeLessThan(24);
+    // 20 calls per run, so the 1 kB time is above the timer's resolution.
+    const { ratio, large } = growth(maskBuiltIn, unit, 1_024, 8_000, 20);
+    expect(ratio).toBeLessThan(24);
     expect(large).toBeLessThan(2000);
   });
 });

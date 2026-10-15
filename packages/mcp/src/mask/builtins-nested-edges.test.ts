@@ -5,6 +5,7 @@
  * URI shapes follow DevTools' `?uri=` and `?dtd=` query values.
  */
 import { describe, expect, it } from 'vitest';
+import { growth } from '../testing/timing.js';
 import { maskBuiltIn } from './builtins.js';
 
 // Built at runtime so no auth-code-shaped literal sits in the source.
@@ -210,20 +211,9 @@ describe('long escape runs', () => {
     'http%2525252525',
     '%25253D%253D%3Dhttp%253A%252F%252F127.0.0.1%253A1%252F ',
   ])('stays linear on 64 kB of %j', (unit) => {
-    // Same method as the built-in linear-time test: 8x the text should cost about 8x.
-    const time = (size: number) => {
-      const text = unit.repeat(Math.ceil(size / unit.length)).slice(0, size);
-      let best = Number.POSITIVE_INFINITY;
-      for (let run = 0; run < 3; run++) {
-        const start = performance.now();
-        maskBuiltIn(text);
-        best = Math.min(best, performance.now() - start);
-      }
-      return best;
-    };
-    const small = time(8_192);
-    const large = time(65_536);
-    expect(large / Math.max(small, 0.5)).toBeLessThan(24);
+    // 8x the text should cost about 8x.
+    const { ratio, large } = growth(maskBuiltIn, unit, 8_192, 65_536);
+    expect(ratio).toBeLessThan(24);
     expect(large).toBeLessThan(2000);
   });
 });
