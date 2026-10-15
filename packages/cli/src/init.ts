@@ -212,8 +212,8 @@ async function checkWritable(dir: string, shown: string): Promise<void> {
 
 /** Reads and checks every file init may change, before anything is written. */
 async function inspect(projectDir: string): Promise<Plan> {
-  // A linked .flutterdeck is refused before anything inside it is looked at.
-  await checkStateDir(projectDir);
+  // withInitLock has already refused a linked .flutterdeck, checked that it can write
+  // there, and made the folder.
   const configState = await inspectFile(configPath(projectDir), CONFIG_SHOWN);
   let settings: DeckConfig | undefined;
   if (configState.kind === 'file') {
@@ -238,15 +238,13 @@ async function inspect(projectDir: string): Promise<Plan> {
     if (check.kind === 'refused') throw new Refused(`${LAUNCH_SHOWN} ${check.reason}.`);
   }
 
-  // Every folder a write may go to. .claude is checked whenever it exists, since the
-  // entry's port isn't known yet.
-  const stateDir = await inspectDir(join(projectDir, STATE_DIR), STATE_DIR);
+  // Every other folder a write may go to. .claude is checked whenever it exists, since
+  // the entry's port isn't known yet.
   const ignoreChanges =
     addIgnoreBlock(gitignore.kind === 'file' ? gitignore.text : undefined) !== undefined;
-  if (stateDir === 'missing' || claudeDir === 'missing' || ignoreChanges) {
+  if (claudeDir === 'missing' || ignoreChanges) {
     await checkWritable(projectDir, 'the project folder');
   }
-  if (stateDir === 'dir') await checkWritable(join(projectDir, STATE_DIR), STATE_DIR);
   if (claudeDir === 'dir') await checkWritable(join(projectDir, CLAUDE_DIR), CLAUDE_DIR);
   return { config: { state: configState, settings }, gitignore, claudeDir, launch };
 }
@@ -286,7 +284,6 @@ async function apply(
   const changes: [string, Outcome, string][] = [];
 
   const config = plan.config.state;
-  await mkdir(join(projectDir, STATE_DIR), { recursive: true });
   if (config.kind === 'missing') {
     await writeAtomic(configPath(projectDir), newConfigText(port), NEW_FILE_MODE);
     changes.push([CONFIG_SHOWN, 'created', `version 1, port ${port}`]);
