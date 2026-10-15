@@ -443,6 +443,19 @@ describe('init: concurrency and partial failures', () => {
     ]);
   });
 
+  it('says another init is running when its lock folder vanished (review C3)', async () => {
+    // A concurrent run that refused removed the .flutterdeck it had made, between this
+    // run's mkdir and its lock create.
+    const gone = Object.assign(new Error(`ENOENT: no such file or directory, open '${project}'`), {
+      code: 'ENOENT',
+    });
+    const before = await snapshot();
+    expect(await init({ acquireLock: () => Promise.reject(gone) })).toBe(1);
+    expect(errors.join('\n')).toContain('Another `flutterdeck init` is running in this project');
+    expect(errors.join('\n')).not.toContain(base);
+    expect(await snapshot()).toEqual(before);
+  });
+
   it('BUG-CLI-T1: a refused init removes the .flutterdeck folder it made for its lock', async () => {
     await writeLaunch('{ "configurations": [');
     const before = await snapshot();

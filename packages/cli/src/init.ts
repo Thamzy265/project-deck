@@ -44,6 +44,8 @@ export interface InitOptions {
   mcpMainPath: string;
   /** Test seam: whether nothing listens on a port. */
   isFree?: (port: number) => Promise<boolean>;
+  /** Test seam: the cross-process lock (the daemon's acquireFileLock). */
+  acquireLock?: typeof acquireFileLock;
   io: Io;
 }
 
@@ -79,12 +81,16 @@ export async function runInit(opts: InitOptions): Promise<number> {
   try {
     // Under the lock, another init can't change the files between this run's read and
     // its write, so two runs at once end with one block and one entry.
-    const { plan, port, changes } = await withInitLock(projectDir, async () => {
-      const plan = await inspect(projectDir);
-      const port = await choosePort(opts, plan.config.settings);
-      const changes = await apply(projectDir, plan, port.port);
-      return { plan, port, changes };
-    });
+    const { plan, port, changes } = await withInitLock(
+      projectDir,
+      async () => {
+        const plan = await inspect(projectDir);
+        const port = await choosePort(opts, plan.config.settings);
+        const changes = await apply(projectDir, plan, port.port);
+        return { plan, port, changes };
+      },
+      opts.acquireLock ?? acquireFileLock,
+    );
 
     io.out(`FlutterDeck init in ${projectDir}`);
     const name = project.name ?? 'this app';
@@ -135,7 +141,13 @@ const INIT_LOCK = 'init.lock';
  * missing, and removed again (only if still empty) when `fn` fails, so a refused init
  * leaves the project as it was.
  */
-async function withInitLock<T>(projectDir: string, fn: () => Promise<T>): Promise<T> {
+const ANOTHER_INIT = `Another \`${CLI_NAME} init\` is running in this project; try again.`;
+
+async function withInitLock<T>(
+  projectDir: string,
+  fn: () => Promise<T>,
+  acquire: typeof acquireFileLock,
+): Promise<T> {
   // A linked .flutterdeck is refused before the lock goes into it.
   await checkStateDir(projectDir);
   const stateDir = join(projectDir, STATE_DIR);
@@ -154,12 +166,19 @@ async function withInitLock<T>(projectDir: string, fn: () => Promise<T>): Promis
   }
   let release: (() => Promise<void>) | undefined;
   try {
-    release = await acquireFileLock(
-      stateDir,
-      INIT_LOCK,
-      { staleMs: INIT_LOCK_STALE_MS, retryMs: 20 },
-      () => new Refused(`Another \`${CLI_NAME} init\` is running in this project; try again.`),
-    );
+    try {
+      release = await acquire(
+        stateDir,
+        INIT_LOCK,
+        { staleMs: INIT_LOCK_STALE_MS, retryMs: 20 },
+        () => new Refused(ANOTHER_INIT),
+      );
+    } catch (err) {
+      // A concurrent run that refused removed the .flutterdeck it made, between the
+      // folder's creation and this lock's.
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') throw new Refused(ANOTHER_INIT);
+      throw err;
+    }
     return await fn();
   } catch (err) {
     await release?.();
