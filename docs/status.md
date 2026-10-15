@@ -2,6 +2,15 @@
 
 Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
 
+## 2026-10-15 — Masking hardening (`fix/masking-hardening`) — ready to merge
+
+- Changed: one-pass decoding of broken escapes; unpadded auth codes found by their exact shape (VM service, DDS and DTD all use 8 random bytes in base64url: 11 characters, or 12 with `=`) on any loopback host form with a port; raw `?uri=ws://…` values; decoded first segments; encodings deeper than 3 levels fail closed.
+- Gates: developer pass · tester pass (114 tests; N2-U1, N2-U2, I3-1, N2-O1 fixed) · reviewer block (R1, R2/R6) → approve with notes · QA 32/32 and 49 masking rows ([qa/M2.md](qa/M2.md)). Dated PLAN.md task ticked.
+- Open findings (Low): L1 about 0.02% of unpadded codes (one letter case, no digit) are not masked, by design; L2 contrived host forms (`127.1`, decimal IPs, `[::1%25lo0]`) and a `%3F` before the code; L3 the N1 constant-factor lock is now a scaling test only.
+- Lead decision: an 11-character mixed-case route on a local port such as `iPhone15Pro` is masked (fail closed); raised with the PM on 15 Oct.
+- Process: removing a worktree deletes its `qa-artifacts/`; the lead now copies them to the main checkout's `qa-artifacts/` before removal. The batch 3 and 4 raw outputs were lost this way; the committed QA records keep the results.
+- Blockers: Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead none.
+
 ## 2026-10-15 — M2 batch 4 (`feat/cli`) — ready to merge
 
 - Changed: `packages/cli` (`flutterdeck init|start|stop|open|mcp`): init detects a Flutter app (YAML parsed safely), checks dart/flutter/adb through an allow-list, allocates the port, writes config.json, a marked .gitignore block and an attach-only `.claude/launch.json` entry under an init lock, inspects every file before writing and never follows links; start/stop/open reuse the MCP client (no auto-start in open, stop never kills a process); `pathScrubber` moved to core/node.

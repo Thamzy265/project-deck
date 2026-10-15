@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { growth } from '../testing/timing.js';
 import { maskBuiltIn } from './builtins.js';
 
 describe('built-in masking', () => {
@@ -221,24 +222,25 @@ describe('built-in masking', () => {
     'http://a/u%3Dhttp%253A%252F%252Fa%252F%2526',
     'ws%25253A%25252F%25252Fa%25253D',
     '%3Dhttp%25253A%25252F%25252Fa%25252F%252526',
+    'http://127.0.0.1:1/aB3dEfGhIj ',
+    'ws://[0:',
+    'x ws://[::ffff:127.0.0.1]:1/aB3dEfGhIjA ',
+    'http%3A%2F%2Flocalhost%3A1%2FgetUserProfile%3 ',
   ])('runs every built-in in linear time on 64 kB of %j', (unit) => {
-    // Compared with 8 kB of the same text, not with the clock, so a busy machine doesn't
-    // fail it: linear work grows 8x, quadratic work 64x. The best of three runs drops
-    // pauses from garbage collection or other processes.
-    const time = (size: number) => {
-      const text = unit.repeat(Math.ceil(size / unit.length)).slice(0, size);
-      let best = Number.POSITIVE_INFINITY;
-      for (let run = 0; run < 3; run++) {
-        const start = performance.now();
-        maskBuiltIn(text);
-        best = Math.min(best, performance.now() - start);
-      }
-      return best;
-    };
-    const small = time(8_192);
-    const large = time(65_536);
-    // A floor on the small time, so timer resolution can't make the ratio meaningless.
-    expect(large / Math.max(small, 0.5)).toBeLessThan(24);
+    // 8 kB vs 64 kB: linear work grows 8x, quadratic work 64x.
+    const { ratio, large } = growth(maskBuiltIn, unit, 8_192, 65_536);
+    expect(ratio).toBeLessThan(24);
+    expect(large).toBeLessThan(2000);
+  });
+});
+
+describe('broken escapes in bare encoded URIs (N1)', () => {
+  // One decodeURIComponent per broken escape (each one throwing) made long %E9 runs
+  // about 9x slower than valid escapes; they are now checked in one pass.
+  it('decodes %E9 runs inside bare URIs in linear time', () => {
+    const unit = `x http%3A%2F%2F127.0.0.1%2F${'%E9'.repeat(20)} `;
+    const { ratio, large } = growth(maskBuiltIn, unit, 8_192, 65_536);
+    expect(ratio).toBeLessThan(24);
     expect(large).toBeLessThan(2000);
   });
 });
@@ -252,22 +254,133 @@ describe('nested encoded URLs below the part cap', () => {
     'http://127.0.0.1:1/?u=http%253A%252F%252Fa%253Fu%253D',
     'http://a/x%25253Fu%25253Dhttp%2525253A%2525252F',
     '%3Dhttp%25253A%25252F%25252Fa%25252F%252526',
+    'http://127.0.0.1:1/aBcDeFgH1_',
+    'http://127.0.0.1:1/HTTPServerAbc-',
+    '&u=ws://127.0.0.1:1/a?v=http://a/',
   ])('reads nested %j in linear time', (unit) => {
-    const time = (size: number) => {
-      const text = unit.repeat(Math.ceil(size / unit.length)).slice(0, size);
-      let best = Number.POSITIVE_INFINITY;
-      for (let run = 0; run < 3; run++) {
-        const start = performance.now();
-        // Several calls per run, so the 1 kB time is above the timer's resolution.
-        for (let call = 0; call < 20; call++) maskBuiltIn(text);
-        best = Math.min(best, performance.now() - start);
-      }
-      return best;
-    };
-    const small = time(1_024);
-    const large = time(8_000);
-    expect(large / Math.max(small, 0.5)).toBeLessThan(24);
+    // 20 calls per run, so the 1 kB time is above the timer's resolution.
+    const { ratio, large } = growth(maskBuiltIn, unit, 1_024, 8_000, 20);
+    expect(ratio).toBeLessThan(24);
     expect(large).toBeLessThan(2000);
+  });
+});
+
+describe('unpadded auth codes on a loopback port (N2)', () => {
+  // Built at runtime so no auth-code-shaped literal sits in the source. Each is an
+  // 11-character base64url code (8 bytes, as DDS, the VM service and DTD make them) with
+  // fewer than 3 digits and no = padding, which the old rule needed.
+  const code = ['Ab3dE', '_fGh1I'].join('');
+  const noDigits = ['QwErT', 'yUiOpA'].join('');
+  const MASKED = '[auth code masked]';
+
+  it.each([
+    [`http://127.0.0.1:50123/${code}`, `http://127.0.0.1:50123/${MASKED}`],
+    [`http://127.0.0.1:50123/${code}/`, `http://127.0.0.1:50123/${MASKED}`],
+    [`ws://localhost:50123/${code}/ws`, `ws://localhost:50123/${MASKED}`],
+    [`ws://[::1]:50123/${noDigits}/ws`, `ws://[::1]:50123/${MASKED}`],
+    [`x http%3A%2F%2F127.0.0.1%3A50123%2F${code}%3`, `x ${MASKED}`],
+    [`GET /?uri=http%3A%2F%2F127.0.0.1%3A50123%2F${code}%2F`, `GET /?uri=${MASKED}`],
+  ])('masks %j', (input, expected) => {
+    expect(maskBuiltIn(input)).toBe(expected);
+  });
+
+  it.each([
+    'http://127.0.0.1:50123/api/status',
+    'http://127.0.0.1:9100/devtools/',
+    'http://localhost:8080/assets/main.dart.js',
+    'http://localhost:8080/flutter_service_worker.js',
+    'http://localhost:8080/flutter_bootstrap.js',
+    'http://localhost:8080/canvaskit/canvaskit.wasm',
+    'http://localhost:8080/DevTools/',
+    'http://localhost:8080/getUserProfile',
+    'http://localhost:8080/HTTPServer',
+    'http://localhost:8080/oauth2callback',
+    'http://localhost:8080/api_v2_status',
+    'http://localhost:8080/12345678',
+    'http://localhost:8080/my-route-name',
+    'http://localhost:8080/ABCDEFGHIJ',
+    // 11 characters, but one case and no digit.
+    'http://localhost:8080/healthcheck',
+    'http://localhost:8080/HEALTHCHECK',
+    // 11 characters with a dot: a file name.
+    'http://localhost:8080/main.dart.js',
+    'http%3A%2F%2F127.0.0.1%3A9100%2Fdevtools%2F',
+    // One character short or long of an unpadded 8-byte code.
+    `http://127.0.0.1:50123/${code.slice(0, 10)}`,
+    `http://127.0.0.1:50123/${code}x`,
+    // An 11th character 8 bytes can't end in (it holds only 4 bits).
+    `http://127.0.0.1:50123/${code.slice(0, 10)}J`,
+    // Without a port the stricter old rule applies.
+    `http://localhost/${code}`,
+    // Not loopback.
+    `https://example.com/${code}`,
+  ])('leaves the ordinary URL %j alone', (text) => {
+    expect(maskBuiltIn(text)).toBe(text);
+  });
+
+  // R3: the segment is checked as written and after each round of decoding.
+  it.each([
+    ['an encoded _', code.replace('_', '%5F')],
+    ['an encoded first letter', `%41${code.slice(1)}`],
+    ['a twice-encoded _', code.replace('_', '%255F')],
+    ['lower-case hex', code.replace('_', '%5f')],
+  ])('masks a code written with %s', (_name, written) => {
+    expect(maskBuiltIn(`ws://127.0.0.1:50123/${written}/ws`)).toBe(
+      `ws://127.0.0.1:50123/${MASKED}`,
+    );
+  });
+
+  // R1: a query value holding a URL as written, slashes and all.
+  it.each([
+    [`http://127.0.0.1:9100/?uri=ws://127.0.0.1:50123/${code}/ws`, 'http://127.0.0.1:9100/'],
+    [`http://127.0.0.1:9100/?uri=http://127.0.0.1:50123/${code}/`, 'http://127.0.0.1:9100/'],
+    [
+      `http://localhost:9100/devtools/?a=1&dtd=ws://localhost:50124/${code}`,
+      'http://localhost:9100/',
+    ],
+    [`http://localhost:9100/#/?uri=ws://[::1]:50123/${code}/ws`, 'http://localhost:9100/'],
+  ])('masks an unpadded code in the raw URL value of %j', (input, prefix) => {
+    expect(maskBuiltIn(input)).toBe(`${prefix}${MASKED}`);
+  });
+
+  it('leaves a raw link to an ordinary local page in a query value alone', () => {
+    const text = 'http://127.0.0.1:9100/?page=http://localhost:8080/api/status';
+    expect(maskBuiltIn(text)).toBe(text);
+  });
+
+  // N2-U2: every way of writing a loopback host.
+  it.each([
+    '127.255.0.9',
+    '0.0.0.0',
+    'localhost.',
+    'LOCALHOST',
+    '[0:0:0:0:0:0:0:1]',
+    '[0000:0000::0001]',
+    '[::ffff:127.0.0.1]',
+    '[::FFFF:127.1.2.3]',
+    '[0:0:0:0:0:ffff:127.0.0.1]',
+    '[::ffff:7f00:1]',
+  ])('masks a code on the loopback host %s', (host) => {
+    expect(maskBuiltIn(`ws://${host}:50123/${code}/ws`)).toBe(`ws://${host}:50123/${MASKED}`);
+  });
+
+  it.each([
+    '128.0.0.1',
+    '127.0.0.1.example.com',
+    'localhost.example.com',
+    'mylocalhost',
+    '[::2]',
+    '[::ffff:10.0.0.1]',
+    '1270.0.0.1',
+  ])('leaves a code-shaped segment on the other host %s alone', (host) => {
+    const text = `ws://${host}:50123/${code}/ws`;
+    expect(maskBuiltIn(text)).toBe(text);
+  });
+
+  // Known over-masks, accepted by the lead (15 Oct 2026) as failing closed: an
+  // 11-character route with mixed case or a digit can't be told apart from a code.
+  it.each(['iPhone15Pro', 'getVMStatus'])('masks the 11-character route /%s (known)', (route) => {
+    expect(maskBuiltIn(`http://localhost:8080/${route}`)).toBe(`http://localhost:8080/${MASKED}`);
   });
 });
 

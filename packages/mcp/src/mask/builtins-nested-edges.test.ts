@@ -5,6 +5,7 @@
  * URI shapes follow DevTools' `?uri=` and `?dtd=` query values.
  */
 import { describe, expect, it } from 'vitest';
+import { growth } from '../testing/timing.js';
 import { maskBuiltIn } from './builtins.js';
 
 // Built at runtime so no auth-code-shaped literal sits in the source.
@@ -116,6 +117,51 @@ describe('encodings the fix does not claim', () => {
   ])('MF-T3: masks a three-times-encoded %s in a bare value', (_name, text) => {
     hidesCode(text);
   });
+
+  // QA, 15 Oct 2026: a twice-encoded `/?uri=` wrapper puts %253D, not %3D, right before
+  // the three-times-encoded scheme, so the bare pattern never started there.
+  it.each([
+    ['VM service URI', `next=${enc(enc(`/?uri=${enc(vmUri)}`))}`],
+    ['DTD URI', `next=${enc(enc(`/?dtd=${enc(dtdUri)}`))}`],
+    [
+      'VM service URI, in a full URL',
+      `http://localhost:9100/?next=${enc(enc(`/?uri=${enc(vmUri)}`))}`,
+    ],
+  ])('masks a twice-encoded /?uri= wrapper holding a %s', (_name, text) => {
+    hidesCode(text);
+  });
+
+  it('leaves a twice-encoded /?page= wrapper holding an ordinary link alone', () => {
+    const text = `next=${enc(enc(`/?page=${enc('https://example.com/docs/intro')}`))}`;
+    expect(maskBuiltIn(text)).toBe(text);
+  });
+
+  it('masks the exact QA string', () => {
+    const text = `next=%252F%253Furi%253Dhttp%25253A%25252F%25252F127.0.0.1%25253A50123%25252F${code}%25253D%25252F`;
+    expect(maskBuiltIn(text)).toBe(`next=%252F%253Furi%253D${MASKED}`);
+  });
+});
+
+describe('encodings deeper than DECODE_ROUNDS fail closed (I3-1)', () => {
+  const enc4 = (text: string) => enc(enc(enc(enc(text))));
+
+  it.each([
+    ['a four-times-encoded VM service URI', `x ${enc4(vmUri)} end`, `x ${MASKED} end`],
+    ['a four-times-encoded DTD URI', `dtd=${enc4(dtdUri)}`, `dtd=${MASKED}`],
+    ['a five-times-encoded VM service URI', `x ${enc(enc4(vmUri))} end`, `x ${MASKED} end`],
+    // It can't be read, so even an ordinary link is masked.
+    [
+      'a four-times-encoded ordinary link',
+      `next=${enc4('https://example.com/docs')}`,
+      `next=${MASKED}`,
+    ],
+  ])('masks %s', (_name, text, expected) => {
+    expect(maskBuiltIn(text)).toBe(expected);
+  });
+
+  it('masks it inside a full URL', () => {
+    hidesCode(`http://localhost:9100/?uri=${enc4(vmUri)}`);
+  });
 });
 
 describe('ordinary nested links stay as they are', () => {
@@ -158,21 +204,16 @@ describe('long escape runs', () => {
     '/%253Furi%253Dhttp%25253A%25252F%25252Fa',
     'http://127.0.0.1:1/?u=http%253A%252F%252Fa%253Fu%253D',
     '%253D%2526',
+    '%253Dhttp%25253A%25252F%25252Fa%25252F ',
+    '%25252525http',
+    'https',
+    '%2525252525253Dhttp%252525253A%252525252F%252525252Fa ',
+    'http%2525252525',
+    '%25253D%253D%3Dhttp%253A%252F%252F127.0.0.1%253A1%252F ',
   ])('stays linear on 64 kB of %j', (unit) => {
-    // Same method as the built-in linear-time test: 8x the text should cost about 8x.
-    const time = (size: number) => {
-      const text = unit.repeat(Math.ceil(size / unit.length)).slice(0, size);
-      let best = Number.POSITIVE_INFINITY;
-      for (let run = 0; run < 3; run++) {
-        const start = performance.now();
-        maskBuiltIn(text);
-        best = Math.min(best, performance.now() - start);
-      }
-      return best;
-    };
-    const small = time(8_192);
-    const large = time(65_536);
-    expect(large / Math.max(small, 0.5)).toBeLessThan(24);
+    // 8x the text should cost about 8x.
+    const { ratio, large } = growth(maskBuiltIn, unit, 8_192, 65_536);
+    expect(ratio).toBeLessThan(24);
     expect(large).toBeLessThan(2000);
   });
 });

@@ -37,6 +37,17 @@ Every DTD on Dart 3.12+ writes a pid file at `<DartDataHome>/dtd/<pid>`, contain
 - `dart tooling-daemon --list --machine` prints the same entries as JSON.
 - Manual options: "Dart: Copy DTD URI to Clipboard" in VS Code, "Copy DTD URI" action in Android Studio, `flutter --print-dtd run` (hidden flag).
 
+## Auth codes
+
+Checked against source on 15 Oct 2026: dart-lang/sdk main (`sdk/lib/vmservice/vmservice.dart`, `pkg/dtd_impl/lib/src/dart_tooling_daemon.dart`) and `dds` 5.3.0 from pub.dev (`lib/src/dds_impl.dart`).
+
+- All three make their code the same way: 8 bytes from `Random.secure()`, then `base64Url.encode`.
+  - VM service: `serviceAuthToken` (`kTokenByteSize = 8`).
+  - DDS: `_makeAuthToken()` (`kTokenByteSize = 8`).
+  - DTD: `_generateSecret()` (`kTokenByteSize = 8`, falls back to `Random()` where secure randomness isn't supported). It makes both the URI auth code and the trusted-client secret.
+- So a code is 12 characters: 11 base64url characters and one `=`. Logged URIs show it padded, but a log or a tool that strips the `=` leaves 11 characters. The 11th character carries only 4 bits, so it is one of `A E I M Q U Y c g k o s w 0 4 8`.
+- FlutterDeck's masking uses this shape for unpadded codes on a loopback port (design D4).
+
 ## Reload and restart
 
 - flutter_tools registers the services `reloadSources` and `hotRestart` on the app's VM service. DDS namespaces them as `s<N>.<name>`.
