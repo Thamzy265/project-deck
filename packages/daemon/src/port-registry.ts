@@ -16,6 +16,7 @@ import {
   projectKey,
   readRegistry,
   registryPath,
+  retryWhileBusy,
 } from '@project-deck/core/node';
 import { acquireFileLock } from './startup-lock.js';
 
@@ -201,7 +202,8 @@ async function create(homeDir: string): Promise<PortRegistry> {
   const tmp = `${registryPath(homeDir)}.${randomBytes(6).toString('hex')}.tmp`;
   try {
     await writeFile(tmp, serialise(registry), { mode: 0o600, flag: 'wx' });
-    await link(tmp, registryPath(homeDir));
+    // EEXIST (another start won) passes straight through; only busy codes are retried.
+    await retryWhileBusy(() => link(tmp, registryPath(homeDir)));
     return registry;
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'EEXIST') return await load(homeDir);
@@ -217,7 +219,8 @@ async function save(homeDir: string, registry: PortRegistry): Promise<void> {
   const tmp = `${path}.${randomBytes(6).toString('hex')}.tmp`;
   try {
     await writeFile(tmp, serialise(registry), { mode: 0o600, flag: 'wx' });
-    await rename(tmp, path);
+    // Windows refuses while a client is reading the old file; that takes a moment only.
+    await retryWhileBusy(() => rename(tmp, path));
   } catch (err) {
     await rm(tmp, { force: true });
     throw err;

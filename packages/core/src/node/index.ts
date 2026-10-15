@@ -4,6 +4,7 @@
  * `node:` modules through the main one.
  */
 export * from './budgeted-worker.js';
+export * from './fs-retry.js';
 export * from './config-file.js';
 export * from './project-id.js';
 export * from './runtime.js';

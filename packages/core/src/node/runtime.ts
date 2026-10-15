@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { z } from 'zod';
+import { retryWhileBusy } from './fs-retry.js';
 import { STATE_DIR, readRegularFile } from './safe-file.js';
 
 /** Per-project state folder. Name still open (see the plan's naming decision). */
@@ -26,13 +27,24 @@ export function runtimePath(projectDir: string): string {
  * 0600 temp file that is renamed into place, so it is never readable through an
  * older file with wider permissions.
  */
-export async function writeRuntime(projectDir: string, info: RuntimeInfo): Promise<void> {
+export interface WriteRuntimeOptions {
+  /** Test seam: the rename that puts the file in place. */
+  rename?: (from: string, to: string) => Promise<void>;
+}
+
+export async function writeRuntime(
+  projectDir: string,
+  info: RuntimeInfo,
+  opts: WriteRuntimeOptions = {},
+): Promise<void> {
+  const move = opts.rename ?? rename;
   const path = runtimePath(projectDir);
   await mkdir(join(projectDir, STATE_DIR), { recursive: true });
   const tmp = `${path}.${randomBytes(6).toString('hex')}.tmp`;
   try {
     await writeFile(tmp, JSON.stringify(info, null, 2) + '\n', { mode: 0o600, flag: 'wx' });
-    await rename(tmp, path);
+    // Windows refuses while a client is reading the old file; that takes a moment only.
+    await retryWhileBusy(() => move(tmp, path));
   } catch (err) {
     await rm(tmp, { force: true });
     throw err;
@@ -54,5 +66,6 @@ export async function readRuntime(projectDir: string): Promise<RuntimeInfo | und
 /** Removes the file only if it still belongs to this daemon. */
 export async function removeRuntime(projectDir: string, token: string): Promise<void> {
   const current = await readRuntime(projectDir);
-  if (current?.token === token) await rm(runtimePath(projectDir), { force: true });
+  if (current?.token === token)
+    await retryWhileBusy(() => rm(runtimePath(projectDir), { force: true }));
 }
