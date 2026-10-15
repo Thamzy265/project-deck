@@ -14,10 +14,19 @@ export const PROBE_TIMEOUT_MS = 2000;
  * this project's token, since after a reboot the pid can be reused and every project
  * defaults to the same port.
  */
-export async function findRunningDaemon(projectDir: string): Promise<number | undefined> {
+export interface FindRunningOptions {
+  /** Ends the probe; defaults to a PROBE_TIMEOUT_MS timeout. Tests abort it themselves. */
+  probeSignal?: () => AbortSignal;
+}
+
+export async function findRunningDaemon(
+  projectDir: string,
+  opts: FindRunningOptions = {},
+): Promise<number | undefined> {
   const info = await readRuntime(projectDir);
   if (info === undefined || !isAlive(info.pid)) return undefined;
-  return (await acceptsToken(info.port, info.token)) ? info.port : undefined;
+  const signal = opts.probeSignal?.() ?? AbortSignal.timeout(PROBE_TIMEOUT_MS);
+  return (await acceptsToken(info.port, info.token, signal)) ? info.port : undefined;
 }
 
 export function isAlive(pid: number): boolean {
@@ -36,12 +45,12 @@ export function isAlive(pid: number): boolean {
  * Redirects are never followed: fetch would forward the token header to wherever a
  * listener on the recorded port points it, so a 3xx just means not running.
  */
-async function acceptsToken(port: number, token: string): Promise<boolean> {
+async function acceptsToken(port: number, token: string, signal: AbortSignal): Promise<boolean> {
   try {
     const res = await fetch(`http://127.0.0.1:${port}/api/status`, {
       headers: { [TOKEN_HEADER]: token },
       redirect: 'manual',
-      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+      signal,
     });
     if (res.status !== 200) {
       await res.body?.cancel();
