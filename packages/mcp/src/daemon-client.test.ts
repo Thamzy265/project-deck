@@ -274,6 +274,42 @@ describe('DaemonClient when the daemon is down', () => {
     expect(Date.now() - start).toBeLessThan(2000);
   });
 
+  it('starts a new daemon when the one it started stopped normally, and keeps its lines', async () => {
+    let spawned = 0;
+    const c = client({
+      readyTimeoutMs: 5000,
+      spawnDaemon: (_dir, onExit) => {
+        spawned++;
+        if (spawned === 1) {
+          // Up, then stopped (exit 0) before this call saw it: gone, not a failure.
+          void writeFile(
+            join(projectDir, '.flutterdeck', 'daemon.log'),
+            `Token in ${projectDir}/.flutterdeck/runtime.json\n`,
+          ).then(() => onExit(0));
+        } else {
+          void fake();
+        }
+      },
+    });
+    const answer = await c.status();
+    expect(answer.value.projectName).toBe('shop_app');
+    expect(spawned).toBe(2);
+  });
+
+  it('counts a daemon that died without an error line as gone', async () => {
+    let spawned = 0;
+    const c = client({
+      readyTimeoutMs: 5000,
+      spawnDaemon: (_dir, onExit) => {
+        spawned++;
+        if (spawned === 1) onExit(null);
+        else void fake();
+      },
+    });
+    expect((await c.status()).value.projectName).toBe('shop_app');
+    expect(spawned).toBe(2);
+  });
+
   it('starts it once more when it stops again right after starting', async () => {
     let spawned = 0;
     const c = client({

@@ -41,7 +41,7 @@ describe('spawnDaemon', () => {
     expect(errors).toHaveLength(1);
   });
 
-  it('sends the daemon output to a private .flutterdeck/daemon.log, new at each start', async () => {
+  it('sends the daemon errors to a private .flutterdeck/daemon.log, new at each start', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'deck-spawn-'));
     try {
       await mkdir(join(dir, '.flutterdeck'));
@@ -58,8 +58,9 @@ describe('spawnDaemon', () => {
       expect(Array.isArray(stdio)).toBe(true);
       const [stdin, stdout, stderr] = stdio as unknown[];
       expect(stdin).toBe('ignore');
-      expect(typeof stdout).toBe('number');
-      expect(stderr).toBe(stdout);
+      // Only errors: the daemon's stdout (its address, where the token file is) is dropped.
+      expect(stdout).toBe('ignore');
+      expect(typeof stderr).toBe('number');
       expect(await readFile(log, 'utf8')).toBe('');
       if (process.platform !== 'win32') expect((await stat(log)).mode & 0o777).toBe(0o600);
       child.emit('exit', 3);

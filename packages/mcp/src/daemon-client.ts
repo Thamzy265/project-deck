@@ -53,6 +53,8 @@ export interface Answer<T> {
   warnings: string[];
 }
 
+type StartResult = { kind: 'up' } | { kind: 'gone' } | { kind: 'failed'; reason: string };
+
 interface Connection {
   port: number;
   token: string;
@@ -64,7 +66,7 @@ export class DaemonClient {
   private readonly readyTimeoutMs: number;
   private readonly pollMs: number;
   private ownId: string | undefined;
-  private starting: Promise<true | string> | undefined;
+  private starting: Promise<StartResult> | undefined;
 
   constructor(private readonly opts: DaemonClientOptions) {
     this.timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -113,7 +115,8 @@ export class DaemonClient {
       // between its start (perhaps one another call was waiting for) and this call.
       if (starts >= MAX_STARTS) throw new DaemonError(NOT_RUNNING);
       const started = await this.start();
-      if (started !== true) throw new DaemonError(started);
+      // 'gone': it came up and stopped again, so this counts as a start and we look again.
+      if (started.kind === 'failed') throw new DaemonError(started.reason);
     }
   }
 
@@ -175,27 +178,32 @@ export class DaemonClient {
    * Starts the daemon once for any number of waiting calls. True once it answers;
    * otherwise why not, with the daemon's own last message when it exited.
    */
-  private start(): Promise<true | string> {
-    this.starting ??= (async (): Promise<true | string> => {
-      const child = { exited: false };
+  private start(): Promise<StartResult> {
+    this.starting ??= (async (): Promise<StartResult> => {
+      const child: { exitCode?: number | null } = {};
       try {
-        this.opts.spawnDaemon(this.opts.projectDir, () => {
-          child.exited = true;
+        this.opts.spawnDaemon(this.opts.projectDir, (code) => {
+          child.exitCode = code;
         });
       } catch {
-        return NOT_RUNNING;
+        return { kind: 'failed', reason: NOT_RUNNING };
       }
       const deadline = Date.now() + this.readyTimeoutMs;
       while (Date.now() < deadline) {
         await sleep(this.pollMs);
         // Throws at once when the daemon that answers belongs to another project.
-        if ((await this.connect()) !== undefined) return true;
+        if ((await this.connect()) !== undefined) return { kind: 'up' };
         // Another daemon for this project may have won the start: the check above saw it.
-        if (child.exited) break;
+        if ('exitCode' in child) break;
       }
-      if (!child.exited) return NOT_RUNNING;
+      if (!('exitCode' in child)) return { kind: 'failed', reason: NOT_RUNNING };
+      // A start-up failure exits 1 after writing its reason to stderr. Exit 0 (stopped)
+      // or a crash without a reason means it was up and has gone again.
+      if (child.exitCode === 0) return { kind: 'gone' };
       const line = await lastLogLine(daemonLogPath(this.opts.projectDir));
-      return line === undefined ? NOT_RUNNING : `FlutterDeck daemon couldn't start: ${line}`;
+      return line === undefined
+        ? { kind: 'gone' }
+        : { kind: 'failed', reason: `FlutterDeck daemon couldn't start: ${line}` };
     })().finally(() => (this.starting = undefined));
     return this.starting;
   }

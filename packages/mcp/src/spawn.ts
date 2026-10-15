@@ -9,7 +9,7 @@ import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { STATE_DIR } from '@project-deck/core/node';
 
-/** The daemon's own start-up messages (never log lines or tokens), new at each start. */
+/** The daemon's stderr: its errors and warnings, never log lines or tokens. New at each start. */
 export const DAEMON_LOG = 'daemon.log';
 
 interface Child {
@@ -24,7 +24,7 @@ export type SpawnFn = (
   options: {
     detached: true;
     windowsHide: true;
-    stdio: 'ignore' | ['ignore', number, number];
+    stdio: 'ignore' | ['ignore', 'ignore', number];
     shell: false;
   },
 ) => Child;
@@ -40,7 +40,7 @@ export function daemonLogPath(projectDir: string): string {
   return join(projectDir, STATE_DIR, DAEMON_LOG);
 }
 
-/** A fresh, private log file for the daemon's stdout and stderr, or undefined. */
+/** A fresh, private log file for the daemon's stderr, or undefined. */
 function openLog(projectDir: string): number | undefined {
   try {
     const fd = openSync(daemonLogPath(projectDir), 'w', 0o600);
@@ -68,7 +68,9 @@ export function spawnDaemon(projectDir: string, opts: SpawnOptions = {}): void {
     const child = spawn(process.execPath, [daemonMainPath(), '--project', projectDir], {
       detached: true,
       windowsHide: true,
-      stdio: log === undefined ? 'ignore' : ['ignore', log, log],
+      // Errors only: stdout has the address and the token file's path, which Claude
+      // must never see through a start-up failure message.
+      stdio: log === undefined ? 'ignore' : ['ignore', 'ignore', log],
       shell: false,
     });
     // Without a listener a failed spawn (EACCES, ENOENT) would crash the server.
