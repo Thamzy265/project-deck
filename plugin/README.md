@@ -83,7 +83,7 @@ The Dart MCP server answers a failed reload with an error result, which Claude C
 What the hook does:
 
 - Reads the hook's JSON from stdin, finds the project from `CLAUDE_PROJECT_DIR` (or the hook's `cwd`), and reads the port and token from `.flutterdeck/runtime.json`. It never follows a link in `.flutterdeck/`.
-- Checks `GET /api/health` on `127.0.0.1:<port>` first, so the token goes only to a FlutterDeck daemon, then sends `POST /api/events` with the token header.
+- Checks `GET /api/health` on `127.0.0.1:<port>` first, so the token goes only to a FlutterDeck daemon, and, when the daemon shows a project id, only to this project's (worked out read-only from `~/.flutterdeck/ports.json`; if it can't be worked out, nothing is sent), then sends `POST /api/events` with the token header.
 - Sends only the fields above. Never `last_assistant_message`, `transcript_path`, `cwd` or the tool's input (whose app URI holds a VM service auth code). A reload error is first cut to 1024 characters; only its first line is kept (the rest is a stack trace), without a leading "Hot reload failed:" or "Hot restart failed:", since the row already says it; control and invisible characters go; `%XX` escapes are decoded up to three times; addresses (with or without a scheme, IPv6 and any `host:port/…` included) become `[address]`; an absolute path, from its start to the end of the line or a quote (spaces included), becomes `[path]`; then the text is cut to 300 characters. Every pattern is linear, so a long error can't hold the hook past its deadline.
 - Runs in the background (`async`), gives up after 2 seconds, prints nothing and always exits with code 0, so it never holds up or interrupts Claude. It does nothing when the folder isn't set up or the daemon isn't running.
 

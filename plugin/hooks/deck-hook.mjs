@@ -18,10 +18,12 @@
  *
  * Standalone on purpose: no dependencies and no build, so it works wherever the plugin is.
  */
+import { createHash } from 'node:crypto';
 import { constants, lstatSync, realpathSync } from 'node:fs';
 import { open } from 'node:fs/promises';
 import { request } from 'node:http';
-import { isAbsolute, join } from 'node:path';
+import { homedir } from 'node:os';
+import { isAbsolute, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 /** Same limits as the daemon's HookEventInput (packages/core). */
@@ -338,13 +340,48 @@ function call(opts) {
 }
 
 /**
- * Sends the event if the daemon on the port is FlutterDeck's. The health check comes
- * first, so the token is never handed to another program that took a stale port.
+ * This project's id as its daemon shows it on /api/health: the first 12 hex characters of
+ * SHA-256(salt + project path), the salt from the user's `~/.flutterdeck/ports.json`. The
+ * same as core's readProjectIdentity, kept here so the hook needs no build. Read only;
+ * undefined when the registry is missing, a link or damaged.
+ * @param {string} projectDir
+ */
+export async function ownProjectId(projectDir) {
+  try {
+    const text = await readPlainFile(join(homedir(), '.flutterdeck', 'ports.json'), 8_388_608);
+    if (text === undefined) return undefined;
+    /** @type {unknown} */
+    const registry = JSON.parse(text);
+    if (!isObject(registry) || typeof registry.salt !== 'string' || registry.salt.length < 32) {
+      return undefined;
+    }
+    let key = resolve(projectDir);
+    try {
+      key = realpathSync(key);
+    } catch {
+      // A folder that is gone keeps its resolved path, as in core.
+    }
+    if (process.platform === 'win32') key = key.toLowerCase();
+    return createHash('sha256')
+      .update(registry.salt + key)
+      .digest('hex')
+      .slice(0, 12);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Sends the event if the daemon on the port is this project's FlutterDeck. The health
+ * check comes first, so the token is never handed to another program that took a stale
+ * port, or to another project's daemon (a project id that isn't ours, or one we can't work
+ * out, means no send).
  * @param {{ port: number, token: string }} daemon
  * @param {DeckEvent} event
  * @param {number} deadline epoch ms
+ * @param {string} projectDir
  */
-export async function send(daemon, event, deadline) {
+export async function send(daemon, event, deadline, projectDir) {
   const left = () => Math.max(1, deadline - Date.now());
   const health = await call({
     port: daemon.port,
@@ -361,6 +398,9 @@ export async function send(daemon, event, deadline) {
     return false;
   }
   if (!isObject(parsed) || parsed.name !== 'project-deck') return false;
+  if (parsed.projectId !== undefined && parsed.projectId !== (await ownProjectId(projectDir))) {
+    return false;
+  }
   const body = JSON.stringify(event);
   const res = await call({
     port: daemon.port,
@@ -415,7 +455,7 @@ export async function main() {
     if (projectDir === undefined) return;
     const daemon = await readDaemonAddress(projectDir);
     if (daemon === undefined) return;
-    await send(daemon, event, deadline);
+    await send(daemon, event, deadline, projectDir);
   } catch {
     // Anything at all: say nothing and let Claude carry on.
   }

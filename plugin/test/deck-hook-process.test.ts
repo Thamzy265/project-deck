@@ -3,14 +3,17 @@
  * socket, and checks what reaches the daemon, the exit code and that nothing is printed.
  */
 import { spawn } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import type { IncomingHttpHeaders, Server, ServerResponse } from 'node:http';
 import { createServer } from 'node:http';
 import type { Socket } from 'node:net';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { projectIdFor, projectKey, readProjectIdentity } from '@project-deck/core/node';
+import { ownProjectId } from '../hooks/deck-hook.mjs';
 import * as fx from './fixtures.js';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'hooks', 'deck-hook.mjs');
@@ -32,7 +35,7 @@ interface FakeDaemon {
   close(): Promise<void>;
 }
 
-async function fakeDaemon(mode: Mode = 'ok'): Promise<FakeDaemon> {
+async function fakeDaemon(mode: Mode = 'ok', projectId?: string): Promise<FakeDaemon> {
   const received: Received[] = [];
   const sockets = new Set<Socket>();
   const answer = (res: ServerResponse, status: number, body: unknown) => {
@@ -52,7 +55,12 @@ async function fakeDaemon(mode: Mode = 'ok'): Promise<FakeDaemon> {
           200,
           mode === 'other-program'
             ? { hello: 'world' }
-            : { ok: true, name: 'project-deck', version: '0.0.0' },
+            : {
+                ok: true,
+                name: 'project-deck',
+                version: '0.0.0',
+                ...(projectId === undefined ? {} : { projectId }),
+              },
         );
         return;
       }
@@ -351,5 +359,77 @@ describe('the hook process', () => {
     const r = await runHook(huge, { CLAUDE_PROJECT_DIR: projectDir });
     expectSilentSuccess(r);
     expect(daemon.received).toEqual([]);
+  });
+});
+
+describe('the hook process: project id (S2)', () => {
+  // The hook runs with the test's scratch HOME (vitest.global-setup.ts).
+  const registryDir = () => join(homedir(), '.flutterdeck');
+  const salt = () => randomBytes(32).toString('base64url');
+
+  async function writeRegistry(text: string): Promise<void> {
+    await mkdir(registryDir(), { recursive: true });
+    await writeFile(join(registryDir(), 'ports.json'), text, { mode: 0o600 });
+  }
+
+  afterEach(async () => {
+    await rm(registryDir(), { recursive: true, force: true });
+  });
+
+  it("sends when /api/health names this project's id", async () => {
+    const s = salt();
+    await writeRegistry(JSON.stringify({ version: 1, salt: s, projects: {} }));
+    daemon = await fakeDaemon('ok', projectIdFor(s, await projectKey(projectDir)));
+    await initProject(daemon.port);
+    expectSilentSuccess(await runHook(JSON.stringify(fx.stop), { CLAUDE_PROJECT_DIR: projectDir }));
+    expect(events(daemon)).toHaveLength(1);
+  });
+
+  it("never sends the token to another project's daemon on the port", async () => {
+    const s = salt();
+    await writeRegistry(JSON.stringify({ version: 1, salt: s, projects: {} }));
+    daemon = await fakeDaemon('ok', projectIdFor(s, '/some/other/project'));
+    await initProject(daemon.port);
+    expectSilentSuccess(await runHook(JSON.stringify(fx.stop), { CLAUDE_PROJECT_DIR: projectDir }));
+    expect(daemon.received.map((r) => r.url)).toEqual(['/api/health']);
+    expect(daemon.received.every((r) => r.headers['x-deck-token'] === undefined)).toBe(true);
+  });
+
+  it.each([
+    ['there is no registry', undefined],
+    ['the registry is not JSON', '{ nope'],
+    ['the registry has no salt', JSON.stringify({ version: 1, projects: {} })],
+  ])('sends nothing when it cannot work out its own id: %s', async (_, text) => {
+    if (text !== undefined) await writeRegistry(text);
+    daemon = await fakeDaemon('ok', 'a1b2c3d4e5f6');
+    await initProject(daemon.port);
+    expectSilentSuccess(await runHook(JSON.stringify(fx.stop), { CLAUDE_PROJECT_DIR: projectDir }));
+    expect(events(daemon)).toEqual([]);
+  });
+
+  links('never follows a link at ports.json', async () => {
+    const s = salt();
+    const real = join(projectDir, 'ports-real.json');
+    await writeFile(real, JSON.stringify({ version: 1, salt: s, projects: {} }));
+    await mkdir(registryDir(), { recursive: true });
+    await symlink(real, join(registryDir(), 'ports.json'));
+    daemon = await fakeDaemon('ok', projectIdFor(s, await projectKey(projectDir)));
+    await initProject(daemon.port);
+    expectSilentSuccess(await runHook(JSON.stringify(fx.stop), { CLAUDE_PROJECT_DIR: projectDir }));
+    expect(events(daemon)).toEqual([]);
+  });
+
+  it("works out the same id as core's readProjectIdentity", async () => {
+    await writeRegistry(JSON.stringify({ version: 1, salt: salt(), projects: {} }));
+    const id = await ownProjectId(projectDir);
+    expect(id).toMatch(/^[0-9a-f]{12}$/);
+    expect(id).toBe(await readProjectIdentity(projectDir, { homeDir: homedir() }));
+  });
+
+  it('still sends when the daemon shows no project id (no registry on its side)', async () => {
+    daemon = await fakeDaemon('ok');
+    await initProject(daemon.port);
+    expectSilentSuccess(await runHook(JSON.stringify(fx.stop), { CLAUDE_PROJECT_DIR: projectDir }));
+    expect(events(daemon)).toHaveLength(1);
   });
 });
