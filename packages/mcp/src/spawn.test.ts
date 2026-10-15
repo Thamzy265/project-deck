@@ -1,9 +1,19 @@
 import { EventEmitter } from 'node:events';
 import { existsSync } from 'node:fs';
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import {
+  access,
+  lstat,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, sep } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { SpawnFn } from './spawn.js';
 import { daemonMainPath, spawnDaemon } from './spawn.js';
 
@@ -68,5 +78,58 @@ describe('spawnDaemon', () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  });
+
+  describe('a daemon.log planted by a cloned repository', () => {
+    const links = process.platform === 'win32' ? it.skip : it;
+    let dir: string;
+    let log: string;
+
+    beforeEach(async () => {
+      dir = await mkdtemp(join(tmpdir(), 'deck-spawn-link-'));
+      await mkdir(join(dir, '.flutterdeck'));
+      log = join(dir, '.flutterdeck', 'daemon.log');
+    });
+
+    afterEach(async () => {
+      await rm(dir, { recursive: true, force: true });
+    });
+
+    function start(): unknown {
+      let stdio: unknown;
+      const child = Object.assign(new EventEmitter(), { unref: () => undefined });
+      spawnDaemon(dir, {
+        spawn: (_command, _args, options) => {
+          stdio = options.stdio;
+          return child;
+        },
+      });
+      return stdio;
+    }
+
+    links('is replaced, never followed: the linked file keeps its content and mode', async () => {
+      const target = join(dir, 'users-file');
+      await writeFile(target, 'precious\n', { mode: 0o644 });
+      await symlink(target, log);
+      const stdio = start();
+      expect(await readFile(target, 'utf8')).toBe('precious\n');
+      expect((await stat(target)).mode & 0o777).toBe(0o644);
+      expect((await lstat(log)).isFile()).toBe(true);
+      expect(Array.isArray(stdio)).toBe(true);
+    });
+
+    links('is replaced when it is a dangling link, which is never created', async () => {
+      const target = join(dir, 'not-there');
+      await symlink(target, log);
+      start();
+      await expect(access(target)).rejects.toThrow();
+      expect((await lstat(log)).isFile()).toBe(true);
+    });
+
+    it('is left alone when it is a folder, and the daemon still starts', async () => {
+      await mkdir(log);
+      expect(start()).toBe('ignore');
+      expect((await lstat(log)).isDirectory()).toBe(true);
+    });
   });
 });

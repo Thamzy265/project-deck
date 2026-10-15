@@ -4,7 +4,7 @@
  * in the project folder. The daemon's startup lock stops a second one.
  */
 import { spawn as nodeSpawn } from 'node:child_process';
-import { closeSync, fchmodSync, openSync } from 'node:fs';
+import { closeSync, openSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { STATE_DIR } from '@project-deck/core/node';
@@ -40,13 +40,17 @@ export function daemonLogPath(projectDir: string): string {
   return join(projectDir, STATE_DIR, DAEMON_LOG);
 }
 
-/** A fresh, private log file for the daemon's stderr, or undefined. */
+/**
+ * A fresh, private log file for the daemon's stderr, or undefined. A cloned repository
+ * may have planted a symlink here: it is removed (never followed) and the new file is
+ * created exclusively, which also refuses any link that appears in between.
+ */
 function openLog(projectDir: string): number | undefined {
+  const path = daemonLogPath(projectDir);
   try {
-    const fd = openSync(daemonLogPath(projectDir), 'w', 0o600);
-    // 'w' keeps the mode of an existing file; make it private either way.
-    if (process.platform !== 'win32') fchmodSync(fd, 0o600);
-    return fd;
+    // Removes a file or a link itself; a folder makes this throw, and then no log.
+    rmSync(path, { force: true });
+    return openSync(path, 'wx', 0o600);
   } catch {
     return undefined;
   }

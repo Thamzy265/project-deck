@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -295,6 +295,26 @@ describe('DaemonClient when the daemon is down', () => {
     expect(answer.value.projectName).toBe('shop_app');
     expect(spawned).toBe(2);
   });
+
+  it.skipIf(process.platform === 'win32')(
+    'never reads a daemon.log that is a link to another file',
+    async () => {
+      const secret = join(projectDir, 'users-secret.txt');
+      await writeFile(secret, 'SECRET-VALUE in the last line\n');
+      const c = client({
+        readyTimeoutMs: 5000,
+        spawnDaemon: (_dir, onExit) => {
+          const log = join(projectDir, '.flutterdeck', 'daemon.log');
+          void rm(log, { force: true })
+            .then(() => symlink(secret, log))
+            .then(() => onExit(1));
+        },
+      });
+      const err = await rejection(c.status());
+      expect(err.message).not.toContain('SECRET');
+      expect(err.message).toBe(NOT_RUNNING);
+    },
+  );
 
   it('counts a daemon that died without an error line as gone', async () => {
     let spawned = 0;

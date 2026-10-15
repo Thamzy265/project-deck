@@ -12,8 +12,13 @@ import {
   StatusResponse,
   TOKEN_HEADER,
 } from '@project-deck/core';
-import { configPath, readProjectIdentity, readRuntime } from '@project-deck/core/node';
-import { access, readFile } from 'node:fs/promises';
+import {
+  configPath,
+  readProjectIdentity,
+  readRegularFile,
+  readRuntime,
+} from '@project-deck/core/node';
+import { access } from 'node:fs/promises';
 import { daemonLogPath } from './spawn.js';
 import { setTimeout as sleep } from 'node:timers/promises';
 import type { z } from 'zod';
@@ -264,12 +269,12 @@ function withWarnings(err: unknown, warnings: string[]): DaemonError {
 async function lastLogLine(path: string): Promise<string | undefined> {
   let text: string;
   try {
-    text = await readFile(path, 'utf8');
+    // Never through a link: it could point at one of the user's files.
+    text = await readRegularFile(path, { maxBytes: 16_384, tail: true });
   } catch {
     return undefined;
   }
   const line = text
-    .slice(-16_384)
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter((l) => l !== '')
