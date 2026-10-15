@@ -131,7 +131,11 @@ export function scrubReloadMessage(text) {
   const raw = Array.from(text.slice(0, 2 * MAX_RAW_RELOAD_MESSAGE))
     .slice(0, MAX_RAW_RELOAD_MESSAGE)
     .join('');
-  return cut(scrubText(raw), MAX_RELOAD_MESSAGE);
+  // The first line says what failed; the rest is a flutter_tools stack trace (QA F-B5-1).
+  // The Activity row already says "Reload failed", so the tool's own prefix goes.
+  const first = raw.split(/\r\n?|\n/).find((line) => line.trim() !== '') ?? '';
+  const reason = first.replace(/^\s*hot (?:reload|restart) failed(?:\s*[:.]\s*|\s*$)/i, '');
+  return cut(scrubText(reason), MAX_RELOAD_MESSAGE);
 }
 
 /**

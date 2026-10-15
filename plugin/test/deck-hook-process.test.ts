@@ -175,8 +175,7 @@ describe('the hook process', () => {
         sessionId: 'abc123',
         ok: false,
         kind: 'hot-reload',
-        message:
-          'Hot reload failed: RPCError: connection to [address] closed while compiling [path]',
+        message: 'RPCError: connection to [address] closed while compiling [path]',
       },
     ],
   ])('sends %s to the daemon with the token header, and nothing else', async (_, input, body) => {

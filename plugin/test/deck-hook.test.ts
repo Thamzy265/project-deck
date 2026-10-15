@@ -66,18 +66,48 @@ describe('toDeckEvent', () => {
       sessionId: 'abc123',
       ok: false,
       kind: 'hot-reload',
-      message: 'Hot reload failed: RPCError: connection to [address] closed while compiling [path]',
+      message: 'RPCError: connection to [address] closed while compiling [path]',
     });
+    // "Hot restart failed." says nothing the Activity row doesn't: no message.
     expect(toDeckEvent(fx.restartFailedOtherPlugin)).toEqual({
       type: 'claude.reload',
       sessionId: 'abc123',
       ok: false,
       kind: 'hot-restart',
-      message: 'Hot restart failed.',
     });
-    expect(toDeckEvent(fx.reloadFailedAsPostToolUse)).toMatchObject({
+    expect(toDeckEvent(fx.reloadFailedAsPostToolUse)).toEqual({
+      type: 'claude.reload',
+      sessionId: 'abc123',
       ok: false,
-      message: 'Hot reload failed.',
+      kind: 'hot-reload',
+    });
+  });
+
+  it('QA F-B5-1 keeps the first line of a real Dart MCP error, without "Hot reload failed:"', () => {
+    expect(toDeckEvent(fx.reloadRejected)).toEqual({
+      type: 'claude.reload',
+      sessionId: 'abc123',
+      ok: false,
+      kind: 'hot-reload',
+      message: 's1.reloadSources: (-32000) Unable to reload sources: (-32603)',
+    });
+  });
+
+  it.each([
+    ['Hot reload failed: x', 'x'],
+    ['hot RESTART failed - y', 'hot RESTART failed - y'],
+    ['Hot restart failed:   y\nz', 'y'],
+    ['\n\nHot reload failed: first real line\nsecond', 'first real line'],
+    ['Hot reload failed.\r\nmore', undefined],
+    ['Error: Hot reload failed: x', 'Error: Hot reload failed: x'],
+  ])('QA F-B5-1 reads %j as %j', (error, message) => {
+    const event = toDeckEvent({ ...fx.reloadFailed, error });
+    expect(event).toEqual({
+      type: 'claude.reload',
+      sessionId: 'abc123',
+      ok: false,
+      kind: 'hot-reload',
+      ...(message === undefined ? {} : { message }),
     });
   });
 
@@ -148,7 +178,8 @@ describe('scrubReloadMessage', () => {
     ['file:///Users/dev/app/main.dart', '[address]'],
     ['package:shop/main.dart stays', 'package:shop/main.dart stays'],
     ['lib/main.dart:3 stays', 'lib/main.dart:3 stays'],
-    ['two\nlines\tand\u0000nul\u202e', 'two lines and nul'],
+    ['tabs\tand\u0000nul\u202e', 'tabs and nul'],
+    ['first line\nsecond line', 'first line'],
   ])('scrubs %j', (input, output) => {
     expect(scrubReloadMessage(input)).toBe(output);
   });

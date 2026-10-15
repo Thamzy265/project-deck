@@ -106,6 +106,25 @@ export const reloadFailed = {
   duration_ms: 4187,
 };
 
+/**
+ * The error shape QA saw from a real compile error or VM rejection (docs/qa/M2.md,
+ * F-B5-1, 15 Oct 2026): one line, then a flutter_tools stack trace.
+ */
+export const reloadRejected = {
+  ...common,
+  hook_event_name: 'PostToolUseFailure',
+  tool_name: PLUGIN_RELOAD_TOOL,
+  tool_input: {},
+  tool_use_id: 'toolu_01ABC125',
+  error: [
+    'Hot reload failed: s1.reloadSources: (-32000) Unable to reload sources: (-32603)',
+    '#0      new _RemoteException (package:flutter_tools/src/vmservice.dart:120:5)',
+    '#1      ResidentRunner.reloadSources (/Users/dev/flutter/packages/flutter_tools/lib/src/run_hot.dart:812:7)',
+  ].join('\n'),
+  is_interrupt: false,
+  duration_ms: 1520,
+};
+
 export const restartFailedOtherPlugin = {
   ...reloadFailed,
   tool_name: 'mcp__plugin_dart-flutter_dart-mcp-server__hot_restart',
