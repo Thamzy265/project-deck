@@ -227,10 +227,33 @@ describe('the hooks.json matcher and the script agree on tool names', () => {
   // T-P5-5: the script matches /dart/i but the matcher is case-sensitive, so a server the
   // user named "Dart" or "DartMCP" never triggers the hook although the notes say any
   // server whose name contains dart does.
-  it.fails('T-P5-5 for a server name with capitals', () => {
+  it('T-P5-5 for a server name with capitals', () => {
     for (const tool of ['mcp__Dart__hot_reload', 'mcp__DartMCP__hot_restart']) {
       expect(scriptSends(tool)).toBe(true);
       expect(runsHook(tool)).toBe(scriptSends(tool));
+    }
+  });
+  it('T-P5-5 agree on a table of names, with the same pattern in both', () => {
+    expect(matcher).toBe(hook.RELOAD_TOOL_PATTERN);
+    const table: [string, boolean][] = [
+      ['mcp__dart__hot_reload', true],
+      ['mcp__Dart__hot_reload', true],
+      ['mcp__DART__hot_restart', true],
+      ['mcp__DartMCP__hot_restart', true],
+      ['mcp__plugin_flutterdeck_dart__hot_reload', true],
+      ['mcp__plugin_dart-flutter_dart-mcp-server__hot_restart', true],
+      ['mcp__dartboard__hot_reload', true],
+      ['mcp__vite__hot_reload', false],
+      ['mcp__dart__hot_reloads', false],
+      ['mcp__dart__HOT_RELOAD', false],
+      ['MCP__dart__hot_reload', false],
+      ['mcp__dart__get_runtime_errors', false],
+      ['xmcp__dart__hot_reload', false],
+      ['Bash', false],
+    ];
+    for (const [tool, expected] of table) {
+      expect(runsHook(tool), tool).toBe(expected);
+      expect(scriptSends(tool), tool).toBe(expected);
     }
   });
 });

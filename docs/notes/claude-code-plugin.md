@@ -30,7 +30,7 @@ Date: 2026-10-15. Sources: code.claude.com/docs/en/plugins-reference (manifest),
 
 ## MCP tool names
 
-- Plugin MCP servers are named `mcp__plugin_<plugin>_<server>__<tool>`. The plugin's Dart server's tools are `mcp__plugin_flutterdeck_dart__hot_reload` and `…__hot_restart`. A project `.mcp.json` entry `dart` gives `mcp__dart__hot_reload`; the Dart team's `dart-flutter` plugin gives `mcp__plugin_dart-flutter_dart-mcp-server__hot_reload`. The hook matcher accepts any server whose name contains `dart`.
+- Plugin MCP servers are named `mcp__plugin_<plugin>_<server>__<tool>`. The plugin's Dart server's tools are `mcp__plugin_flutterdeck_dart__hot_reload` and `…__hot_restart`. A project `.mcp.json` entry `dart` gives `mcp__dart__hot_reload`; the Dart team's `dart-flutter` plugin gives `mcp__plugin_dart-flutter_dart-mcp-server__hot_reload`. The hook matcher accepts any server whose name contains `dart` in any case (`[Dd][Aa][Rr][Tt]`, since matchers take no flags); the script uses the same pattern.
 - Tool names `hot_reload` and `hot_restart` are confirmed in the Dart MCP server source and in the `tools/list` check of 13 Oct 2026 (plugin/README.md).
 - Results: success is `Hot reload succeeded.` / `Hot restart succeeded.`; failure is `isError: true` with `Hot reload failed.` or, when the call threw, `Hot reload failed: <error>`. That error text can hold the VM service URI with its auth code, so the hook replaces addresses and absolute paths before it sends a message.
 

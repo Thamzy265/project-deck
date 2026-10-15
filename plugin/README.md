@@ -78,7 +78,7 @@ To use the Dart MCP server without the plugin, copy the `dart` entry into your F
 | `Notification` (`permission_prompt`, `idle_prompt`, `elicitation_dialog`, `agent_needs_input`) | `claude.waiting` with Claude Code's message                            | Activity "Claude is waiting: …" and an OS notification                                                    |
 | `PostToolUse` / `PostToolUseFailure` on the Dart server's `hot_reload` or `hot_restart`        | `claude.reload` with `ok`, the kind and, when it failed, a short error | Activity "Reloaded (from Claude or the IDE)" or "Reload failed: …", and an OS notification when it failed |
 
-The Dart MCP server answers a failed reload with an error result, which Claude Code reports as `PostToolUseFailure`, so both events are hooked. The hook matches any MCP server whose name contains `dart`, so it also works with a project `.mcp.json` entry or the Dart team's own plugin.
+The Dart MCP server answers a failed reload with an error result, which Claude Code reports as `PostToolUseFailure`, so both events are hooked. The hook matches any MCP server whose name contains `dart` in any case, so it also works with a project `.mcp.json` entry or the Dart team's own plugin.
 
 What the hook does:
 

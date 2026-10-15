@@ -46,8 +46,13 @@ const WAITING_TYPES = new Set([
   'elicitation_dialog',
   'agent_needs_input',
 ]);
-/** The Dart MCP server's reload tools, under any server name that says dart. */
-const RELOAD_TOOL = /^mcp__(.*dart.*)__hot_(reload|restart)$/i;
+/**
+ * The Dart MCP server's reload tools, under any server name that says dart in any case.
+ * The same text is the PostToolUse matcher in hooks.json (a test keeps them equal); Claude
+ * Code's matchers have no flags, hence the character classes.
+ */
+export const RELOAD_TOOL_PATTERN = '^mcp__.*[Dd][Aa][Rr][Tt].*__hot_re(load|start)$';
+const RELOAD_TOOL = new RegExp(RELOAD_TOOL_PATTERN);
 
 /**
  * @typedef {{ type: 'claude.done', sessionId?: string }
@@ -181,7 +186,7 @@ export function toDeckEvent(input) {
       if (match === null) return undefined;
       // A cancelled call says nothing about the app.
       if (input.is_interrupt === true) return undefined;
-      const kind = match[2]?.toLowerCase() === 'restart' ? 'hot-restart' : 'hot-reload';
+      const kind = match[1] === 'start' ? 'hot-restart' : 'hot-reload';
       let ok;
       let detail;
       if (input.hook_event_name === 'PostToolUseFailure') {

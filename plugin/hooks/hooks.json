@@ -43,7 +43,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "^mcp__.*dart.*__hot_re(load|start)$",
+        "matcher": "^mcp__.*[Dd][Aa][Rr][Tt].*__hot_re(load|start)$",
         "hooks": [
           {
             "type": "command",
@@ -57,7 +57,7 @@
     ],
     "PostToolUseFailure": [
       {
-        "matcher": "^mcp__.*dart.*__hot_re(load|start)$",
+        "matcher": "^mcp__.*[Dd][Aa][Rr][Tt].*__hot_re(load|start)$",
         "hooks": [
           {
             "type": "command",
