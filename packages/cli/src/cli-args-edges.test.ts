@@ -117,7 +117,13 @@ describe('runCli argument edges', () => {
   );
 
   // BUG-CLI-T10: `<command> --help` is the usual way to ask for help.
-  it.fails('BUG-CLI-T10: prints usage with exit 0 for `init --help`', async () => {
-    expect(await runCli(['init', '--help'], deps())).toBe(0);
-  });
+  it.each([[['init', '--help']], [['stop', '-h']], [['open', '--project', '.', '--help']]])(
+    'BUG-CLI-T10: prints usage with exit 0 for %j',
+    async (argv) => {
+      expect(await runCli(argv, deps())).toBe(0);
+      expect(out[0]).toContain('Usage:');
+      expect(served).toEqual([]);
+      expect(spawned).toBe(0);
+    },
+  );
 });

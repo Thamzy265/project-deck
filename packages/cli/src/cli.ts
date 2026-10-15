@@ -63,6 +63,12 @@ export async function runCli(argv: readonly string[], deps: CliDeps): Promise<nu
     return 2;
   }
 
+  // `<command> --help` asks for help, whatever else is on the line.
+  if (rest.includes('--help') || rest.includes('-h')) {
+    for (const line of USAGE) io.out(line);
+    return 0;
+  }
+
   let values: { project?: string | undefined; browser?: boolean | undefined };
   try {
     ({ values } = parseArgs({
