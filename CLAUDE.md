@@ -107,7 +107,7 @@ Project rules set paths, commands and formats, and add rules. They never relax a
 - Check command: `pnpm check`.
 - Run command: `pnpm build`, then `node packages/daemon/dist/main.js` (fake mode: add `--fake`).
 - End-to-end tools: Playwright for the dashboard (M2, web). For app flows, the existing scripted checks: `scripts/qa/android-sample-app.sh up|down` and `node scripts/qa/check-android-logs.mjs`. Maestro only if a later item needs it.
-- Approved tools: Playwright Chromium — `pnpm exec playwright install chromium` (into `~/Library/Caches/ms-playwright`) — approved 2026-10-14. Standing approval (PM, 2026-10-14): the team may delete temporary local branches it created (for example `*-tmp`, `worktree-agent-*`) when their commits are already on another branch; each deletion is logged in `docs/status.md`.
+- Approved tools: Playwright Chromium — `pnpm exec playwright install chromium` (into `~/Library/Caches/ms-playwright`) — approved 2026-10-14. Standing approvals (PM): 2026-10-14, the team may delete temporary local branches it created (for example `*-tmp`, `worktree-agent-*`) when their commits are already on another branch; 2026-10-15, the team may delete files and folders it created, switch branches, and run commands in this project folder without asking. Each deletion is logged in `docs/status.md`. Everything else on the Host safety list still needs the PM.
 - Project phase: `MVP` (until the M5 release).
 - Privacy regions: UK + EU. App logs and Drift databases may hold the personal data of the app's end users. Treat them as personal data, and never log or return them beyond what the feature needs.
 
@@ -205,4 +205,4 @@ Follows [GitHub flow](https://docs.github.com/en/get-started/using-github/github
 ## Current status
 
 - **M1 done** (14 Oct 2026): scaffold, `core`, daemon, `connector-dart`, `logs-android`, `.mcp.json` example, sample app, acceptance check.
-- **M2 in progress.** Plan of record: `docs/design/m2-dashboard.md`, `docs/ui/m2-dashboard.md`, ADRs 0001–0003. Done: batch 1 (PR #20), batch 2 dashboard (PR #22). Next: batch 3 `feat/mcp`, batch 4 `feat/cli`, batch 5 `feat/plugin-hooks`, then the M2 acceptance check.
+- **M2 in progress.** Plan of record: `docs/design/m2-dashboard.md`, `docs/ui/m2-dashboard.md`, ADRs 0001–0003, `docs/notes/untrusted-project-files.md`. Done: batch 1 (PR #20), batch 2 dashboard (PR #22), batch 3 MCP server (PR #24). Next: batch 4 `feat/cli`, a masking follow-up, batch 5 `feat/plugin-hooks`, then the M2 acceptance check.

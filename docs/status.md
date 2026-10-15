@@ -2,6 +2,14 @@
 
 Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
 
+## 2026-10-15 — M2 batch 3 (`feat/mcp`) — merged
+
+- Changed: PR #24 merged after two Windows-only CI fixes found by CI: a long-form Windows path leaked into a tool error (scrub now covers both realpath forms) and renames over `runtime.json` failed with EPERM while a reader had it open (bounded busy retry in core). Both reviewed. GitHub push protection rejected fake provider-shaped test tokens; the unpushed history was rewritten to build them at runtime (no bypass).
+- Gates: as in the "ready to merge" entry, plus reviewer approval of 33b0127 and edd358b · CI 8/8.
+- Open findings (Low): double-encoded VM service/DTD URIs and a double full stop in warnings — on `fix/mcp-masking-followups`.
+- Decisions: PM, 2026-10-15: "you have permission to delete folders or files you have created, and you can switch between branches without my approval and run commands to this trusted folder". Deleted: the PM's `~/.flutterdeck` (created by the developer's manual run on 14 Oct; held only a salt and an empty project list), worktree `agent-a8f6500aab145bd92` and branch `worktree-agent-a8f6500aab145bd92`.
+- Blockers: Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead none.
+
 ## 2026-10-15 — M2 batch 3 (`feat/mcp`) — ready to merge
 
 - Changed: `packages/mcp` (stdio MCP server: `deck_status`, `get_logs`; best-effort masking at the output layer with built-ins and user rules in a budgeted worker; health-before-token; project id check; auto-start only in folders with `.flutterdeck/config.json`; daemon.log for start failures), core `@project-deck/core/node` (runtime/config/project id, safe file reads, budgeted worker), daemon regex queries in a worker with a 200 ms budget, every `.flutterdeck` file read and written without following links.
