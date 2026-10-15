@@ -1,5 +1,5 @@
 import { mkdtemp, readdir, rm, symlink, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { DaemonClientOptions } from './daemon-client.js';
@@ -315,6 +315,22 @@ describe('DaemonClient when the daemon is down', () => {
       expect(err.message).toBe(NOT_RUNNING);
     },
   );
+
+  it('hides the home folder in a start failure even where the line is cut', async () => {
+    const line = `${'E'.repeat(290)} ${homedir()}/.flutterdeck/ports.json is damaged`;
+    const c = client({
+      readyTimeoutMs: 5000,
+      spawnDaemon: (_dir, onExit) => {
+        void writeFile(join(projectDir, '.flutterdeck', 'daemon.log'), `${line}\n`).then(() =>
+          onExit(1),
+        );
+      },
+    });
+    const err = await rejection(c.status());
+    expect(err.message.startsWith("FlutterDeck daemon couldn't start: EEE")).toBe(true);
+    expect(err.message).toContain(' ~/.flu');
+    expect(err.message).not.toContain(homedir().slice(0, 8));
+  });
 
   it('counts a daemon that died without an error line as gone', async () => {
     let spawned = 0;

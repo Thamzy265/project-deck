@@ -21,6 +21,7 @@ import {
   readRuntime,
 } from '@project-deck/core/node';
 import { access } from 'node:fs/promises';
+import { pathScrubber } from './paths.js';
 import { daemonLogPath } from './spawn.js';
 import { setTimeout as sleep } from 'node:timers/promises';
 import type { z } from 'zod';
@@ -75,7 +76,10 @@ export class DaemonClient {
   private ownId: string | undefined;
   private starting: Promise<StartResult> | undefined;
 
+  private readonly scrub: (text: string) => string;
+
   constructor(private readonly opts: DaemonClientOptions) {
+    this.scrub = pathScrubber(opts.projectDir);
     this.timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.readyTimeoutMs = opts.readyTimeoutMs ?? DEFAULT_READY_TIMEOUT_MS;
     this.pollMs = opts.pollMs ?? 100;
@@ -214,7 +218,7 @@ export class DaemonClient {
       // A start-up failure exits 1 after writing its reason to stderr. Exit 0 (stopped)
       // or a crash without a reason means it was up and has gone again.
       if (child.exitCode === 0) return { kind: 'gone' };
-      const line = await lastLogLine(daemonLogPath(this.opts.projectDir));
+      const line = await lastLogLine(daemonLogPath(this.opts.projectDir), this.scrub);
       return line === undefined
         ? { kind: 'gone' }
         : { kind: 'failed', reason: `FlutterDeck daemon couldn't start: ${line}` };
@@ -275,7 +279,11 @@ function withWarnings(err: unknown, warnings: string[]): DaemonError {
 }
 
 /** The last non-empty line of the daemon's start-up log: its reason for stopping. */
-async function lastLogLine(path: string): Promise<string | undefined> {
+/** Paths are hidden before the line is cut, so no part of one is left to slip through. */
+async function lastLogLine(
+  path: string,
+  scrub: (text: string) => string,
+): Promise<string | undefined> {
   let text: string;
   try {
     // Never through a link: it could point at one of the user's files.
@@ -288,5 +296,5 @@ async function lastLogLine(path: string): Promise<string | undefined> {
     .map((l) => l.trim())
     .filter((l) => l !== '')
     .at(-1);
-  return line === undefined ? undefined : line.slice(0, MAX_REASON);
+  return line === undefined ? undefined : scrub(line).slice(0, MAX_REASON);
 }
