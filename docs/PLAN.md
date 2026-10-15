@@ -384,6 +384,7 @@ Five milestones, each ending in something usable. Claude should not start the ne
 - [ ] Hooks plus OS notifications
 - [ ] FlutterDeck MCP server with `deck_status` and `get_logs`
 - Plan of record (14 Oct 2026): [design note](design/m2-dashboard.md), [UI spec](ui/m2-dashboard.md), [deck](slides/m2-dashboard.html). PM decisions D1–D4: cookie login ([ADR 0001](adr/0001-dashboard-login-cookie.md)), a fixed port per project with an attach-only `launch.json` entry ([ADR 0002](adr/0002-fixed-dashboard-port.md)), three fixed OS notifier commands for app crashed, reload failed and Claude waiting ("Claude finished" stays with Desktop's own notification), and log masking on by default for Claude. M2 runs from the local build; `npx flutterdeck` comes with the M5 release.
+- [ ] Masking hardening (owner: developer, due 2026-10-20, before the M2 acceptance check): faster lenient decoding for long runs of broken escapes (review N1); mask a loopback VM service code without padding and with few digits (review N2, also on main before batch 3); mask a twice-encoded `/?uri=` wrapper holding a three-times-encoded URI as a bare value (QA, 15 Oct).
 - [ ] Accept: in Claude Desktop the dashboard sits next to chat and diff; Claude reloads through the Dart MCP server and the dashboard shows the reload; a notification appears when Claude finishes
 
 ### M3 — Drift inspector (headline feature)
