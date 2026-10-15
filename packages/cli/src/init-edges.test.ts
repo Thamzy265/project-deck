@@ -345,10 +345,17 @@ describe('init: launch.json variants', () => {
   });
 
   // BUG-CLI-T7: an empty launch.json (from `touch`) holds no settings to protect.
-  it.fails('BUG-CLI-T7: treats an empty launch.json like a missing one', async () => {
-    await writeLaunch('');
-    expect(await init()).toBe(0);
-  });
+  it.each([[''], [' \n\t\r\n'], ['﻿']])(
+    'BUG-CLI-T7: fills an empty or blank launch.json (%j) with a fresh file',
+    async (text) => {
+      await writeLaunch(text);
+      expect(await init()).toBe(0);
+      expect(JSON.parse(await read('.claude', 'launch.json'))).toEqual({
+        version: '0.0.1',
+        configurations: [launchEntry(9147)],
+      });
+    },
+  );
 });
 
 describe('init: config.json variants', () => {

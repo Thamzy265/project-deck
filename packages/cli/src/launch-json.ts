@@ -107,7 +107,9 @@ function sameEntry(value: unknown, entry: LaunchEntry): boolean {
  */
 export function mergeLaunchJson(text: string | undefined, port: number): LaunchMerge {
   const entry = launchEntry(port);
-  if (text === undefined) {
+  // Lead decision 15 Oct 2026: an empty or blank file (say, from `touch`) holds no
+  // settings to keep, so it gets a fresh file like a missing one.
+  if (text === undefined || text.replace(/^\uFEFF/, '').trim() === '') {
     const file = { version: LAUNCH_VERSION, configurations: [entry] };
     return { kind: 'changed', text: JSON.stringify(file, null, 2) + '\n' };
   }
