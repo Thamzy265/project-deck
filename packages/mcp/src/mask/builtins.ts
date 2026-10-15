@@ -56,26 +56,64 @@ function isPathLike(candidate: string, before: string, after: string): boolean {
 const LOOPBACK = /^(?:127\.0\.0\.1|localhost|\[::1\])(?::\d+)?$/i;
 
 /**
+ * Longest URL path or query looked at for auth codes. Each level of decoding and nesting
+ * walks it again, so the cap keeps the work per URL small.
+ */
+const MAX_URL_PART = 8192;
+
+const SEPARATORS = /[/?#&]/;
+
+/**
+ * Every path segment and query value, decoded up to twice: a URI encoded inside another
+ * encoded value (%253A, or %3Furi%3D…) hides its separators and padding otherwise.
+ */
+function urlParts(path: string): string[] {
+  const parts = new Set<string>();
+  for (const segment of path.slice(0, MAX_URL_PART).split(SEPARATORS)) {
+    if (segment === '') continue;
+    for (const text of decodings(segment)) {
+      // Split again: decoding may have turned %3F, %3D and %26 into separators.
+      for (const piece of [text, ...text.split(/[?#&]/), ...text.split(SEPARATORS)]) {
+        if (piece === '') continue;
+        const eq = piece.indexOf('=');
+        parts.add(decode(piece));
+        if (eq > 0 && eq < piece.length - 1) parts.add(decode(piece.slice(eq + 1)));
+      }
+    }
+  }
+  return [...parts];
+}
+
+/** The text and up to two rounds of percent-decoding it. */
+function decodings(text: string): string[] {
+  const out = [text];
+  let current = text;
+  for (let round = 0; round < 2 && /%[0-9a-f]{2}/i.test(current); round++) {
+    const next = decode(current);
+    if (next === current) break;
+    out.push(next);
+    current = next;
+  }
+  return out;
+}
+
+const INNER_URL = /^(?:https?|wss?):\/\/(?:[^/?#@]*@)?([^/?#]+)(.*)$/is;
+
+/**
  * A path segment that is an auth code: base64 with padding (VM service, DTD), or on a
  * loopback host any random-looking first segment (a DTD secret without padding).
  */
 function hasAuthCode(host: string, path: string, depth = 0): boolean {
-  const segments = path.split(/[/?#&]/).filter((s) => s !== '');
-  // Each path segment and query value, decoded: %3D hides the padding otherwise.
-  const candidates = segments.flatMap((s) => {
-    const eq = s.indexOf('=');
-    const value = eq > 0 && eq < s.length - 1 ? [s.slice(eq + 1)] : [];
-    return [s, ...value].map(decode);
-  });
+  const candidates = urlParts(path);
   if (candidates.some((s) => /^[A-Za-z0-9+_-]{6,}={1,2}$/.test(s))) return true;
   // A URL passed as a value, such as DevTools' ?uri=<VM service URI>: look inside it too.
   if (depth < 2) {
     for (const candidate of candidates) {
-      const inner = /^(?:https?|wss?):\/\/(?:[^/?#@]*@)?([^/?#]+)(.*)$/i.exec(candidate);
+      const inner = INNER_URL.exec(candidate);
       if (inner !== null && hasAuthCode(inner[1] ?? '', inner[2] ?? '', depth + 1)) return true;
     }
   }
-  const first = segments[0];
+  const first = path.split(SEPARATORS).find((s) => s !== '');
   return (
     LOOPBACK.test(host) &&
     first !== undefined &&
@@ -110,9 +148,7 @@ function maskUrl(match: string, groups: (string | undefined)[]): string {
  * Masked whole when the decoded URL carries an auth code.
  */
 function maskEncodedUrl(match: string): string {
-  let text = match;
-  for (let round = 0; round < 2 && /%[0-9a-f]{2}/i.test(text); round++) text = decode(text);
-  const url = /^(?:https?|wss?):\/\/(?:[^/?#@]*@)?([^/?#]+)(.*)$/i.exec(text);
+  const url = INNER_URL.exec(decodings(match).at(-1) ?? match);
   return url !== null && hasAuthCode(url[1] ?? '', url[2] ?? '') ? AUTH_CODE : match;
 }
 
@@ -123,8 +159,9 @@ const PATTERNS: Pattern[] = [
     replace: maskUrl,
   },
   {
-    // The scheme and an encoded :// anchor every match; the value is bounded.
-    re: /\b(?:https?|wss?)%(?:25)?3A%(?:25)?2F%(?:25)?2F[A-Za-z0-9%._~+=-]{1,2048}/gi,
+    // The scheme and an encoded :// anchor every match; the value is bounded. The scheme
+    // may follow an escape such as %3D, as in an encoded query holding an encoded URI.
+    re: /(?:(?<=%[0-9A-Fa-f]{2})|(?<![A-Za-z0-9_]))(?:https?|wss?)%(?:25)?3A%(?:25)?2F%(?:25)?2F[A-Za-z0-9%._~+=-]{1,2048}/gi,
     replace: maskEncodedUrl,
   },
   {

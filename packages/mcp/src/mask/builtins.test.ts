@@ -216,6 +216,9 @@ describe('built-in masking', () => {
     'f0',
     'http%3A%2F%2F',
     'ws%253A%252F%252Fa%2F',
+    '%3Dws%253A%252F%252Fa%253D',
+    'http://a/?u=http%3A%2F%2Fa%2F',
+    'http://a/u%3Dhttp%253A%252F%252Fa%252F%2526',
   ])('runs every built-in in linear time on 64 kB of %j', (unit) => {
     // Compared with 8 kB of the same text, not with the clock, so a busy machine doesn't
     // fail it: linear work grows 8x, quadratic work 64x. The best of three runs drops
@@ -332,5 +335,70 @@ describe('encoded URLs with no URL around them', () => {
   it('leaves an encoded link to an ordinary page alone', () => {
     const text = 'next=https%3A%2F%2Fexample.com%2Fdocs%2Fintro';
     expect(maskBuiltIn(text)).toBe(text);
+  });
+});
+
+describe('auth codes in twice-encoded URIs', () => {
+  // Built at runtime so no auth-code-shaped literal sits in the source.
+  const code = ['Ab3dE', '_fGh1I'].join('');
+  const vmUri = `http://127.0.0.1:50123/${code}=/`;
+  const dtdUri = `ws://127.0.0.1:50124/${code}Xy9`;
+  const enc = encodeURIComponent;
+  const MASKED = '[auth code masked]';
+
+  it.each([
+    [
+      'VM service URI, standalone',
+      `GET /devtools?uri=${enc(enc(vmUri))}`,
+      `GET /devtools?uri=${MASKED}`,
+    ],
+    [
+      'VM service URI, in a full URL',
+      `http://127.0.0.1:9100/devtools?uri=${enc(enc(vmUri))}&x=1`,
+      `http://127.0.0.1:9100/${MASKED}`,
+    ],
+    ['DTD URI, standalone', `GET /devtools?dtd=${enc(enc(dtdUri))}`, `GET /devtools?dtd=${MASKED}`],
+    [
+      'DTD URI, in a full URL',
+      `http://localhost:9100/?dtd=${enc(enc(dtdUri))}`,
+      `http://localhost:9100/${MASKED}`,
+    ],
+    [
+      'encoded query in a query value',
+      `GET /login?next=${enc(`/devtools?uri=${enc(vmUri)}`)}`,
+      `GET /login?next=%2Fdevtools%3Furi%3D${MASKED}`,
+    ],
+    [
+      'encoded query, DTD',
+      `GET /x?q=${enc(`a=1&uri=${enc(dtdUri)}`)}`,
+      `GET /x?q=a%3D1%26uri%3D${MASKED}`,
+    ],
+    [
+      'encoded query in a full URL',
+      `http://localhost:9100/login?next=${enc(`/devtools?uri=${enc(vmUri)}`)}`,
+      `http://localhost:9100/${MASKED}`,
+    ],
+    [
+      'encoded query, DTD, in a full URL',
+      `http://localhost:9100/login?next=${enc(`/devtools?uri=${enc(dtdUri)}`)}`,
+      `http://localhost:9100/${MASKED}`,
+    ],
+    [
+      'encoded query in a URL path',
+      `http://localhost:9100/${enc(`devtools?uri=${enc(vmUri)}`)}`,
+      `http://localhost:9100/${MASKED}`,
+    ],
+  ])('masks the auth code of a %s', (_name, input, expected) => {
+    expect(maskBuiltIn(input)).toBe(expected);
+  });
+
+  it('leaves a twice-encoded link to an ordinary page alone', () => {
+    const page = 'https://example.com/docs/intro';
+    for (const text of [
+      `next=${enc(`/devtools?page=${enc(page)}`)}`,
+      `http://localhost:9100/login?next=${enc(`/devtools?page=${enc(page)}`)}`,
+    ]) {
+      expect(maskBuiltIn(text)).toBe(text);
+    }
   });
 });
