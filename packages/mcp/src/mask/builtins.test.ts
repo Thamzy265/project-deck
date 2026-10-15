@@ -392,6 +392,20 @@ describe('auth codes in twice-encoded URIs', () => {
     expect(maskBuiltIn(input)).toBe(expected);
   });
 
+  it('masks a URL whose path and query are longer than the part it reads (R1)', () => {
+    // An 8.4 kB JWT-shaped state value pushes the VM service URI past the cap.
+    const part = (length: number) => `eyJ${'a'.repeat(length)}`;
+    const jwt = [part(4_200), part(4_200), 'sig'].join('.');
+    const text = `http://localhost:9100/cb?state=${jwt}&uri=${vmUri}`;
+    expect(maskBuiltIn(text)).toBe(`http://localhost:9100/${MASKED}`);
+  });
+
+  it('masks a bare encoded URI longer than the part it reads (R1)', () => {
+    const text = `uri=${enc(`http://127.0.0.1:50123/?j=${'a'.repeat(9_000)}&c=${code}=`)} end`;
+    const out = maskBuiltIn(text);
+    expect(out).toBe(`uri=${MASKED} end`);
+  });
+
   it('leaves a twice-encoded link to an ordinary page alone', () => {
     const page = 'https://example.com/docs/intro';
     for (const text of [

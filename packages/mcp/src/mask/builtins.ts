@@ -57,7 +57,8 @@ const LOOPBACK = /^(?:127\.0\.0\.1|localhost|\[::1\])(?::\d+)?$/i;
 
 /**
  * Longest URL path or query looked at for auth codes. Each level of decoding and nesting
- * walks it again, so the cap keeps the work per URL small.
+ * walks it again, so the cap keeps the work per URL small. A longer one is treated as
+ * holding an auth code (fails closed), since the part past the cap is never read.
  */
 const MAX_URL_PART = 8192;
 
@@ -69,7 +70,7 @@ const SEPARATORS = /[/?#&]/;
  */
 function urlParts(path: string): string[] {
   const parts = new Set<string>();
-  for (const segment of path.slice(0, MAX_URL_PART).split(SEPARATORS)) {
+  for (const segment of path.split(SEPARATORS)) {
     if (segment === '') continue;
     for (const text of decodings(segment)) {
       // Split again: decoding may have turned %3F, %3D and %26 into separators.
@@ -104,6 +105,7 @@ const INNER_URL = /^(?:https?|wss?):\/\/(?:[^/?#@]*@)?([^/?#]+)(.*)$/is;
  * loopback host any random-looking first segment (a DTD secret without padding).
  */
 function hasAuthCode(host: string, path: string, depth = 0): boolean {
+  if (path.length > MAX_URL_PART) return true;
   const candidates = urlParts(path);
   if (candidates.some((s) => /^[A-Za-z0-9+_-]{6,}={1,2}$/.test(s))) return true;
   // A URL passed as a value, such as DevTools' ?uri=<VM service URI>: look inside it too.
@@ -148,6 +150,7 @@ function maskUrl(match: string, groups: (string | undefined)[]): string {
  * Masked whole when the decoded URL carries an auth code.
  */
 function maskEncodedUrl(match: string): string {
+  if (match.length > MAX_URL_PART) return AUTH_CODE;
   const url = INNER_URL.exec(decodings(match).at(-1) ?? match);
   return url !== null && hasAuthCode(url[1] ?? '', url[2] ?? '') ? AUTH_CODE : match;
 }
@@ -159,9 +162,10 @@ const PATTERNS: Pattern[] = [
     replace: maskUrl,
   },
   {
-    // The scheme and an encoded :// anchor every match; the value is bounded. The scheme
-    // may follow an escape such as %3D, as in an encoded query holding an encoded URI.
-    re: /(?:(?<=%[0-9A-Fa-f]{2})|(?<![A-Za-z0-9_]))(?:https?|wss?)%(?:25)?3A%(?:25)?2F%(?:25)?2F[A-Za-z0-9%._~+=-]{1,2048}/gi,
+    // The scheme and an encoded :// anchor every match. The scheme may follow an escape
+    // such as %3D, as in an encoded query holding an encoded URI. The value takes the
+    // whole run, with nothing after it to backtrack into; a long one fails closed.
+    re: /(?:(?<=%[0-9A-Fa-f]{2})|(?<![A-Za-z0-9_]))(?:https?|wss?)%(?:25)?3A%(?:25)?2F%(?:25)?2F[A-Za-z0-9%._~+=-]+/gi,
     replace: maskEncodedUrl,
   },
   {

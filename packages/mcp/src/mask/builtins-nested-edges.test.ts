@@ -94,8 +94,8 @@ describe('the 8 kB cap on URL parts', () => {
   );
 
   // MF-T2: a regression. Before the cap, a plain VM service URI anywhere in a long URL
-  // was masked; now a code that starts past 8 kB of path and query is not looked at.
-  it.fails.each([
+  // was masked; a URL longer than the cap is now masked whole (fails closed).
+  it.each([
     ['in the path', `http://127.0.0.1:50123/${filler(8_200)}/${code}=/`],
     ['as a ?uri= value', `http://127.0.0.1:9100/?j=${filler(8_150)}&uri=${vmUri}`],
   ])('MF-T2: masks a code that starts past 8 kB %s', (_name, text) => {
