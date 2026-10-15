@@ -14,6 +14,7 @@ import type { Masker } from './mask/masker.js';
 import { MASKING_OFF } from './mask/masker.js';
 import { MaskerCache } from './mask/masker-cache.js';
 import { MAX_OUTPUT_ENTRIES, fitLogs, fitStatus } from './output.js';
+import { pathScrubber } from './paths.js';
 import type { LoadedSettings } from './settings.js';
 import { readMaskSettings } from './settings.js';
 import { DECK_STATUS_DESCRIPTION, GET_LOGS_DESCRIPTION } from './tool-text.js';
@@ -38,6 +39,7 @@ export interface DeckServer {
 export function createDeckServer(opts: DeckServerOptions): DeckServer {
   const readSettings = opts.readSettings ?? readMaskSettings;
   const maskers = new MaskerCache();
+  const scrub = pathScrubber(opts.projectDir);
   const server = new McpServer({ name: 'flutterdeck', version: DECK_VERSION });
   const annotations = { readOnlyHint: true, openWorldHint: false };
   /** Holds the masker for the whole call, so a config change can't close it underneath. */
@@ -58,10 +60,17 @@ export function createDeckServer(opts: DeckServerOptions): DeckServer {
       let body: { [key: string]: JsonValue };
       try {
         const { value, warnings } = await opts.daemon.status();
-        body = { ...describeStatus(value), warnings: [...settings.warnings, ...warnings] };
+        body = {
+          ...describeStatus(value),
+          warnings: [...settings.warnings, ...warnings].map(scrub),
+        };
       } catch (err) {
         // deck_status always answers, so Claude learns why the other tools fail.
-        body = { daemon: 'unavailable', problem: errorText(err), warnings: settings.warnings };
+        body = {
+          daemon: 'unavailable',
+          problem: scrub(errorText(err)),
+          warnings: settings.warnings.map(scrub),
+        };
       }
       const masked = await withMasker(settings.mask, (m) => m.mask(body));
       return json(
@@ -87,12 +96,12 @@ export function createDeckServer(opts: DeckServerOptions): DeckServer {
       try {
         answer = await opts.daemon.logs({ ...query, limit });
       } catch (err) {
-        const masked = await withMasker(settings.mask, (m) => m.mask(errorText(err)));
+        const masked = await withMasker(settings.mask, (m) => m.mask(scrub(errorText(err))));
         return { isError: true, content: [{ type: 'text', text: masked.value }] };
       }
       const warnings = [
-        ...settings.warnings,
-        ...answer.warnings,
+        ...settings.warnings.map(scrub),
+        ...answer.warnings.map(scrub),
         ...(requested > limit ? [LIMIT_CAPPED] : []),
       ];
       // Masked before it is cut to size, so the cut never splits a value it should hide.

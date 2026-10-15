@@ -1,5 +1,5 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
@@ -331,6 +331,22 @@ describe('get_logs', () => {
     expect(out.isError).toBe(true);
     expect(out.text).toContain('[email masked] broke');
     expect(out.text).toContain('differs from this MCP server');
+  });
+
+  it('never shows the project folder or the home folder in an error', async () => {
+    const f = await fake();
+    const real = await realpath(projectDir);
+    const reason = `can't read ${projectDir}/.flutterdeck/a, ${real}/b or ${homedir()}/.flutterdeck/c`;
+    f.route('GET', '/api/logs', () => ({ status: 500, body: { error: reason } }));
+    f.route('GET', '/api/status', () => ({ status: 500, body: { error: reason } }));
+    const client = await connect();
+    for (const out of [await call(client, 'get_logs'), await call(client, 'deck_status')]) {
+      expect(out.text).toContain(
+        "can't read <project>/.flutterdeck/a, <project>/b or ~/.flutterdeck/c",
+      );
+      expect(out.text).not.toContain(projectDir);
+      expect(out.text).not.toContain(homedir());
+    }
   });
 
   it("says the daemon isn't running when it can't be started", async () => {
