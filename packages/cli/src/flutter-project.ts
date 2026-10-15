@@ -5,10 +5,9 @@
  */
 import { lstat } from 'node:fs/promises';
 import { join } from 'node:path';
-import { NotRegularFileError, readRegularFile } from '@project-deck/core/node';
 import { parseDocument } from 'yaml';
+import { MAX_FILE_BYTES, readProjectFile } from './project-files.js';
 
-const MAX_FILE_BYTES = 1_048_576;
 /** Dart package names: lower-case letters, digits and underscores. */
 const PACKAGE_NAME = /^[a-z_][a-z0-9_]*$/;
 /** An Android application id: dotted segments of letters, digits and underscores. */
@@ -16,32 +15,6 @@ const APPLICATION_ID =
   /^\s*applicationId\s*=?\s*["']([A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+)["']\s*$/m;
 
 export type Detection = { ok: true; name?: string } | { ok: false; reason: string };
-
-type SmallFile =
-  { kind: 'text'; text: string } | { kind: 'missing' } | { kind: 'too-large' } | { kind: 'link' };
-
-/**
- * A small text file's contents, never through a link: a cloned repository could link
- * pubspec.yaml to one of the user's own files (docs/notes/untrusted-project-files.md).
- * A folder or other non-file counts as missing.
- */
-async function readSmall(path: string): Promise<SmallFile> {
-  let info;
-  try {
-    info = await lstat(path);
-  } catch {
-    return { kind: 'missing' };
-  }
-  if (info.isSymbolicLink()) return { kind: 'link' };
-  if (!info.isFile()) return { kind: 'missing' };
-  if (info.size > MAX_FILE_BYTES) return { kind: 'too-large' };
-  try {
-    return { kind: 'text', text: await readRegularFile(path, { maxBytes: MAX_FILE_BYTES }) };
-  } catch (err) {
-    // A link that appeared since the lstat.
-    return err instanceof NotRegularFileError ? { kind: 'link' } : { kind: 'missing' };
-  }
-}
 
 /** Far more than a real pubspec uses; beyond it, alias expansion is an attack. */
 const MAX_ALIASES = 50;
@@ -76,7 +49,13 @@ export function hasFlutterDependency(pubspec: string): boolean {
 }
 
 export async function detectFlutterProject(projectDir: string): Promise<Detection> {
-  const file = await readSmall(join(projectDir, 'pubspec.yaml'));
+  let file;
+  try {
+    file = await readProjectFile(join(projectDir, 'pubspec.yaml'));
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code ?? 'unknown error';
+    return { ok: false, reason: `pubspec.yaml can't be read (${code}).` };
+  }
   if (file.kind === 'too-large') {
     return {
       ok: false,
@@ -90,7 +69,7 @@ export async function detectFlutterProject(projectDir: string): Promise<Detectio
         "pubspec.yaml is a link. FlutterDeck doesn't follow links in a project; run init where the real file is.",
     };
   }
-  if (file.kind === 'missing') {
+  if (file.kind !== 'file') {
     return {
       ok: false,
       reason:
@@ -126,8 +105,11 @@ export async function readApplicationId(projectDir: string): Promise<string | un
     if (!(await isRealFolder(dir))) return undefined;
   }
   for (const file of ['build.gradle.kts', 'build.gradle']) {
-    const found = await readSmall(join(projectDir, 'android', 'app', file));
-    if (found.kind !== 'text') continue;
+    // The id is only shown, so a file that can't be read is skipped.
+    const found = await readProjectFile(join(projectDir, 'android', 'app', file)).catch(
+      () => undefined,
+    );
+    if (found?.kind !== 'file') continue;
     return APPLICATION_ID.exec(found.text)?.[1];
   }
   return undefined;

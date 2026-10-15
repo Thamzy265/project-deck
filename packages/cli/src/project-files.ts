@@ -10,8 +10,8 @@ import { randomBytes } from 'node:crypto';
 import { chmod, lstat, rename, rm, writeFile } from 'node:fs/promises';
 import { NotRegularFileError, readRegularFile, retryWhileBusy } from '@project-deck/core/node';
 
-/** Far more than any real .gitignore or launch.json. */
-const MAX_FILE_BYTES = 1_048_576;
+/** Far more than any real pubspec.yaml, .gitignore or launch.json. */
+export const MAX_FILE_BYTES = 1_048_576;
 
 /** A file or folder `init` won't touch. The message names it by its project path only. */
 export class UnsafeFileError extends Error {}
@@ -24,8 +24,19 @@ function linkRefused(shown: string): UnsafeFileError {
   );
 }
 
-/** A regular file's text and mode, or missing. Refuses a link, a folder or a huge file. */
-export async function inspectFile(path: string, shown: string): Promise<FileState> {
+/** What a project path holds, read without ever following a link. */
+export type ProjectFile =
+  | { kind: 'missing' }
+  | { kind: 'link' }
+  | { kind: 'not-file' }
+  | { kind: 'too-large' }
+  | { kind: 'file'; text: string; mode: number };
+
+/**
+ * Reads a small regular file in the project: lstat first, then readRegularFile
+ * (O_NOFOLLOW, or lstat on Windows), so a link is reported, never followed.
+ */
+export async function readProjectFile(path: string): Promise<ProjectFile> {
   let info;
   try {
     info = await lstat(path);
@@ -33,22 +44,34 @@ export async function inspectFile(path: string, shown: string): Promise<FileStat
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') return { kind: 'missing' };
     throw err;
   }
-  if (info.isSymbolicLink()) throw linkRefused(shown);
-  if (!info.isFile()) {
-    throw new UnsafeFileError(`${shown} is a folder or a special file, not a regular file.`);
-  }
-  if (info.size > MAX_FILE_BYTES) {
-    throw new UnsafeFileError(
-      `${shown} is larger than ${MAX_FILE_BYTES} bytes; init left it alone.`,
-    );
-  }
+  if (info.isSymbolicLink()) return { kind: 'link' };
+  if (!info.isFile()) return { kind: 'not-file' };
+  if (info.size > MAX_FILE_BYTES) return { kind: 'too-large' };
   try {
     // Never through a link, even one that appeared since the lstat.
     const text = await readRegularFile(path, { maxBytes: MAX_FILE_BYTES });
     return { kind: 'file', text, mode: info.mode & 0o777 };
   } catch (err) {
-    if (err instanceof NotRegularFileError) throw linkRefused(shown);
+    if (err instanceof NotRegularFileError) return { kind: 'link' };
     throw err;
+  }
+}
+
+/** A regular file's text and mode, or missing. Refuses a link, a folder or a huge file. */
+export async function inspectFile(path: string, shown: string): Promise<FileState> {
+  const found = await readProjectFile(path);
+  switch (found.kind) {
+    case 'missing':
+    case 'file':
+      return found;
+    case 'link':
+      throw linkRefused(shown);
+    case 'not-file':
+      throw new UnsafeFileError(`${shown} is a folder or a special file, not a regular file.`);
+    case 'too-large':
+      throw new UnsafeFileError(
+        `${shown} is larger than ${MAX_FILE_BYTES} bytes; init left it alone.`,
+      );
   }
 }
 

@@ -174,6 +174,18 @@ describe('init: pubspec.yaml variants', () => {
     },
   );
 
+  posix('says a pubspec.yaml it may not read can’t be read, and writes nothing', async () => {
+    if (process.getuid?.() === 0) return;
+    await chmod(join(project, 'pubspec.yaml'), 0o000);
+    try {
+      expect(await init()).toBe(1);
+      expect(errors.join('\n')).toContain("pubspec.yaml can't be read (EACCES)");
+      expect(await readdir(project)).toEqual(['pubspec.yaml']);
+    } finally {
+      await chmod(join(project, 'pubspec.yaml'), 0o644);
+    }
+  });
+
   posix.each([['android'], ['android/app']])(
     'never reads the Android application id through a linked %s folder (review S1)',
     async (linked) => {
