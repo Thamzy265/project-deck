@@ -125,13 +125,37 @@ describe('init: pubspec.yaml variants', () => {
   });
 
   // BUG-CLI-T8: valid YAML that Flutter accepts is refused as "not a Flutter app".
-  it.fails.each([
+  it.each([
     ['an anchor on dependencies', 'name: a\ndependencies: &deps\n  flutter:\n    sdk: flutter\n'],
     ['a quoted key', 'name: a\ndependencies:\n  "flutter":\n    sdk: flutter\n'],
     ['a byte order mark', '﻿dependencies:\n  flutter:\n    sdk: flutter\nname: a\n'],
   ])('BUG-CLI-T8: accepts a pubspec with %s', async (_label, text) => {
     await writeFile(join(project, 'pubspec.yaml'), text);
     expect(await init()).toBe(0);
+  });
+
+  it('BUG-CLI-T8: refuses a pubspec that expands aliases without bound (billion laughs)', async () => {
+    const rows = ['a: &a [x, x, x, x, x, x, x, x, x]'];
+    for (let i = 1; i < 12; i++) {
+      const prev = String.fromCharCode(96 + i);
+      const next = String.fromCharCode(97 + i);
+      rows.push(`${next}: &${next} [${Array(9).fill(`*${prev}`).join(', ')}]`);
+    }
+    const text = `name: a\n${rows.join('\n')}\ndependencies:\n  flutter:\n    sdk: flutter\n`;
+    await writeFile(join(project, 'pubspec.yaml'), text);
+    const started = Date.now();
+    expect(await init()).toBe(1);
+    expect(Date.now() - started).toBeLessThan(2000);
+    expect(errors.join('\n')).toContain('pubspec.yaml');
+    expect(await readdir(project)).toEqual(['pubspec.yaml']);
+  });
+
+  it('BUG-CLI-T8: refuses invalid YAML without quoting it', async () => {
+    const marker = ['odd', 'text'].join('-');
+    await writeFile(join(project, 'pubspec.yaml'), `name: a\ndependencies: [${marker}\n`);
+    expect(await init()).toBe(1);
+    expect(errors.join('\n')).toContain('not valid YAML');
+    expect(errors.join('\n')).not.toContain(marker);
   });
 
   // BUG-CLI-T4: pubspec.yaml is read through a link, and a line of the target is printed.

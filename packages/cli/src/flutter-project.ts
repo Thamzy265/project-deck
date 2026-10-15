@@ -1,15 +1,16 @@
 /**
  * Is this folder a Flutter app? `pubspec.yaml` with `flutter` under `dependencies`.
- * A line-based check of the top two levels, not a YAML parser: enough to tell a Flutter
- * app from a Dart package, and nothing from the file is repeated except a checked name.
+ * Parsed with the `yaml` package (core schema, no custom tags, aliases capped against
+ * "billion laughs" expansion); nothing from the file is repeated except a checked name.
  */
 import { lstat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { NotRegularFileError, readRegularFile } from '@project-deck/core/node';
+import { parseDocument } from 'yaml';
 
 const MAX_FILE_BYTES = 1_048_576;
 /** Dart package names: lower-case letters, digits and underscores. */
-const PACKAGE_NAME = /^name:\s*["']?([a-z_][a-z0-9_]*)["']?\s*(#.*)?$/m;
+const PACKAGE_NAME = /^[a-z_][a-z0-9_]*$/;
 /** An Android application id: dotted segments of letters, digits and underscores. */
 const APPLICATION_ID =
   /^\s*applicationId\s*=?\s*["']([A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+)["']\s*$/m;
@@ -42,23 +43,36 @@ async function readSmall(path: string): Promise<SmallFile> {
   }
 }
 
-export function hasFlutterDependency(pubspec: string): boolean {
-  let inDependencies = false;
-  let childIndent: number | undefined;
-  for (const raw of pubspec.split(/\r?\n/)) {
-    const line = raw.replace(/\s+#.*$/, '');
-    if (line.trim() === '' || line.trimStart().startsWith('#')) continue;
-    const indent = line.length - line.trimStart().length;
-    if (indent === 0) {
-      inDependencies = /^dependencies:\s*$/.test(line);
-      childIndent = undefined;
-      continue;
-    }
-    if (!inDependencies) continue;
-    childIndent ??= indent;
-    if (indent === childIndent && /^\s*flutter:/.test(line)) return true;
+/** Far more than a real pubspec uses; beyond it, alias expansion is an attack. */
+const MAX_ALIASES = 50;
+
+type Pubspec = { valid: false } | { valid: true; flutter: boolean; name?: string };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+export function parsePubspec(text: string): Pubspec {
+  let doc: unknown;
+  try {
+    // parseDocument collects errors instead of logging them (with parts of the file).
+    const parsed = parseDocument(text, { schema: 'core', uniqueKeys: true });
+    if (parsed.errors.length > 0) return { valid: false };
+    doc = parsed.toJS({ maxAliasCount: MAX_ALIASES });
+  } catch {
+    // Too many aliases. The message quotes the file; it is never shown.
+    return { valid: false };
   }
-  return false;
+  if (!isRecord(doc)) return { valid: true, flutter: false };
+  const deps = doc.dependencies;
+  const flutter = isRecord(deps) && Object.hasOwn(deps, 'flutter');
+  const name = typeof doc.name === 'string' && PACKAGE_NAME.test(doc.name) ? doc.name : undefined;
+  return name === undefined ? { valid: true, flutter } : { valid: true, flutter, name };
+}
+
+export function hasFlutterDependency(pubspec: string): boolean {
+  const parsed = parsePubspec(pubspec);
+  return parsed.valid && parsed.flutter;
 }
 
 export async function detectFlutterProject(projectDir: string): Promise<Detection> {
@@ -82,15 +96,17 @@ export async function detectFlutterProject(projectDir: string): Promise<Detectio
       reason: `No pubspec.yaml in ${projectDir}. Run init in a Flutter app's folder, or pass --project <folder>.`,
     };
   }
-  const pubspec = file.text;
-  if (!hasFlutterDependency(pubspec)) {
+  const pubspec = parsePubspec(file.text);
+  if (!pubspec.valid) {
+    return { ok: false, reason: 'pubspec.yaml is not valid YAML. Fix it, then run init again.' };
+  }
+  if (!pubspec.flutter) {
     return {
       ok: false,
       reason: `pubspec.yaml in ${projectDir} has no flutter dependency. FlutterDeck works with Flutter apps.`,
     };
   }
-  const name = PACKAGE_NAME.exec(pubspec)?.[1];
-  return name === undefined ? { ok: true } : { ok: true, name };
+  return pubspec.name === undefined ? { ok: true } : { ok: true, name: pubspec.name };
 }
 
 /** The Android applicationId when it is a plain literal; undefined otherwise. */

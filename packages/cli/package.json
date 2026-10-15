@@ -26,7 +26,8 @@
     "@project-deck/daemon": "workspace:*",
     "@project-deck/logs-android": "workspace:*",
     "@project-deck/mcp": "workspace:*",
-    "jsonc-parser": "3.3.1"
+    "jsonc-parser": "3.3.1",
+    "yaml": "2.9.1"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "1.32.1"
