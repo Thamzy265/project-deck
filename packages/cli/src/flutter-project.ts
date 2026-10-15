@@ -93,7 +93,8 @@ export async function detectFlutterProject(projectDir: string): Promise<Detectio
   if (file.kind === 'missing') {
     return {
       ok: false,
-      reason: `No pubspec.yaml in ${projectDir}. Run init in a Flutter app's folder, or pass --project <folder>.`,
+      reason:
+        "No pubspec.yaml in the project folder. Run init in a Flutter app's folder, or pass --project <folder>.",
     };
   }
   const pubspec = parsePubspec(file.text);
@@ -103,7 +104,7 @@ export async function detectFlutterProject(projectDir: string): Promise<Detectio
   if (!pubspec.flutter) {
     return {
       ok: false,
-      reason: `pubspec.yaml in ${projectDir} has no flutter dependency. FlutterDeck works with Flutter apps.`,
+      reason: 'pubspec.yaml has no flutter dependency. FlutterDeck works with Flutter apps.',
     };
   }
   return pubspec.name === undefined ? { ok: true } : { ok: true, name: pubspec.name };

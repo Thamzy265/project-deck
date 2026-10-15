@@ -15,7 +15,8 @@ import {
   readConfig,
 } from '@project-deck/core/node';
 import { FIRST_PORT, PortRegistryError, allocatePort, claimConfigPort } from '@project-deck/daemon';
-import { mkdir } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { access, mkdir } from 'node:fs/promises';
 import { newConfigText, withPort } from './config-merge.js';
 import { detectFlutterProject, readApplicationId } from './flutter-project.js';
 import { addIgnoreBlock } from './gitignore.js';
@@ -104,12 +105,40 @@ export async function runInit(opts: InitOptions): Promise<number> {
       err instanceof ConfigError ||
       err instanceof PortRegistryError
     ) {
-      io.err(err.message);
+      io.err(hidePaths(err.message, projectDir, opts.homeDir));
       io.err('init changed nothing in the project.');
       return 1;
     }
-    io.err(`init failed: ${messageOf(err)}`);
+    // fs errors name absolute paths; only project-relative ones are shown.
+    io.err(`init failed: ${hidePaths(messageOf(err), projectDir, opts.homeDir)}`);
     return 1;
+  }
+}
+
+/** The project folder becomes `<project>` and the home folder `~`, longest first. */
+export function hidePaths(text: string, projectDir: string, homeDir: string): string {
+  const names: [string, string][] = [
+    [projectDir, '<project>'],
+    [homeDir, '~'],
+  ];
+  names.sort((a, b) => b[0].length - a[0].length);
+  let out = text;
+  for (const [path, name] of names) if (path !== '') out = out.split(path).join(name);
+  return out;
+}
+
+/**
+ * Refuses a folder init would write into but can't, before anything is written, so a
+ * read-only folder never leaves the project half set up.
+ */
+async function checkWritable(dir: string, shown: string): Promise<void> {
+  try {
+    await access(dir, constants.W_OK);
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code ?? 'unknown error';
+    throw new Refused(
+      `init can't write to ${shown} (${code === 'EACCES' || code === 'EPERM' ? 'permission denied' : code}).`,
+    );
   }
 }
 
@@ -140,6 +169,17 @@ async function inspect(projectDir: string): Promise<Plan> {
     const check = mergeLaunchJson(launch.text, FIRST_PORT);
     if (check.kind === 'refused') throw new Refused(`${LAUNCH_SHOWN} ${check.reason}.`);
   }
+
+  // Every folder a write may go to. .claude is checked whenever it exists, since the
+  // entry's port isn't known yet.
+  const stateDir = await inspectDir(join(projectDir, STATE_DIR), STATE_DIR);
+  const ignoreChanges =
+    addIgnoreBlock(gitignore.kind === 'file' ? gitignore.text : undefined) !== undefined;
+  if (stateDir === 'missing' || claudeDir === 'missing' || ignoreChanges) {
+    await checkWritable(projectDir, 'the project folder');
+  }
+  if (stateDir === 'dir') await checkWritable(join(projectDir, STATE_DIR), STATE_DIR);
+  if (claudeDir === 'dir') await checkWritable(join(projectDir, CLAUDE_DIR), CLAUDE_DIR);
   return { config: { state: configState, settings }, gitignore, claudeDir, launch };
 }
 

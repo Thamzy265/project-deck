@@ -24,7 +24,6 @@ import { runInit } from './init.js';
 import { launchEntry } from './launch-json.js';
 
 const posix = process.platform === 'win32' ? it.skip : it;
-const posixFails = process.platform === 'win32' ? it.skip : it.fails;
 
 const PUBSPEC = 'name: shop_app\ndependencies:\n  flutter:\n    sdk: flutter\n';
 
@@ -439,12 +438,47 @@ describe('init: concurrency and partial failures', () => {
 
   // BUG-CLI-T2: a .claude folder init can't write to is found only after config.json
   // and .gitignore are already written.
-  posixFails('BUG-CLI-T2: a read-only .claude folder leaves the project unchanged', async () => {
-    if (process.getuid?.() === 0) throw new Error('root can write anywhere');
-    await mkdir(join(project, '.claude'));
-    await chmod(join(project, '.claude'), 0o555);
-    const before = await snapshot();
+  posix.each([['.claude'], ['.flutterdeck'], ['.']])(
+    'BUG-CLI-T2: a read-only %s folder leaves the project and the registry unchanged',
+    async (name) => {
+      if (process.getuid?.() === 0) throw new Error('root can write anywhere');
+      const dir = join(project, name);
+      await mkdir(dir, { recursive: true });
+      await chmod(dir, 0o555);
+      try {
+        const before = await snapshot();
+        expect(await init()).toBe(1);
+        expect(await snapshot()).toEqual(before);
+        expect(await readdir(home)).toEqual([]);
+        const shown = name === '.' ? 'the project folder' : name;
+        expect(errors.join('\n')).toContain(`can't write to ${shown}`);
+        // Project-relative names only, never an absolute path.
+        expect(errors.join('\n')).not.toContain(base);
+      } finally {
+        await chmod(dir, 0o755);
+      }
+    },
+  );
+
+  it('BUG-CLI-T2: names a damaged registry by ~, never by its absolute path', async () => {
+    await mkdir(join(home, '.flutterdeck'));
+    await writeFile(join(home, '.flutterdeck', 'ports.json'), '{ damaged');
     expect(await init()).toBe(1);
-    expect(await snapshot()).toEqual(before);
+    expect(errors.join('\n')).toContain(join('~', '.flutterdeck', 'ports.json'));
+    expect(errors.join('\n')).not.toContain(base);
+  });
+
+  it('BUG-CLI-T2: names no absolute path when there is no Flutter app', async () => {
+    await rm(join(project, 'pubspec.yaml'));
+    expect(await init()).toBe(1);
+    expect(errors.join('\n')).not.toContain(base);
+  });
+
+  it('BUG-CLI-T2: shows no absolute path in an unexpected error', async () => {
+    // ~/.flutterdeck is a file, so the registry can't be created: the fs error names
+    // absolute paths.
+    await writeFile(join(home, '.flutterdeck'), 'not a folder');
+    expect(await init()).toBe(1);
+    expect(errors.join('\n')).not.toContain(base);
   });
 });
