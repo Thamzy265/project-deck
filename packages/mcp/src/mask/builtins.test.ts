@@ -215,10 +215,24 @@ describe('built-in masking', () => {
     'aB3/',
     'f0',
   ])('runs every built-in in linear time on 64 kB of %j', (unit) => {
-    const text = unit.repeat(Math.ceil(65_536 / unit.length)).slice(0, 65_536);
-    const start = performance.now();
-    maskBuiltIn(text);
-    expect(performance.now() - start).toBeLessThan(100);
+    // Compared with 8 kB of the same text, not with the clock, so a busy machine doesn't
+    // fail it: linear work grows 8x, quadratic work 64x. The best of three runs drops
+    // pauses from garbage collection or other processes.
+    const time = (size: number) => {
+      const text = unit.repeat(Math.ceil(size / unit.length)).slice(0, size);
+      let best = Number.POSITIVE_INFINITY;
+      for (let run = 0; run < 3; run++) {
+        const start = performance.now();
+        maskBuiltIn(text);
+        best = Math.min(best, performance.now() - start);
+      }
+      return best;
+    };
+    const small = time(8_192);
+    const large = time(65_536);
+    // A floor on the small time, so timer resolution can't make the ratio meaningless.
+    expect(large / Math.max(small, 0.5)).toBeLessThan(24);
+    expect(large).toBeLessThan(2000);
   });
 });
 
