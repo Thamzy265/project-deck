@@ -1,8 +1,8 @@
 import { randomBytes } from 'node:crypto';
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { z } from 'zod';
-import { STATE_DIR } from './safe-file.js';
+import { STATE_DIR, readRegularFile } from './safe-file.js';
 
 /** Per-project state folder. Name still open (see the plan's naming decision). */
 export { STATE_DIR };
@@ -41,7 +41,9 @@ export async function writeRuntime(projectDir: string, info: RuntimeInfo): Promi
 
 export async function readRuntime(projectDir: string): Promise<RuntimeInfo | undefined> {
   try {
-    const raw: unknown = JSON.parse(await readFile(runtimePath(projectDir), 'utf8'));
+    // Never through a link: a cloned repo could commit one pointing anywhere.
+    const text = await readRegularFile(runtimePath(projectDir), { maxBytes: 65_536 });
+    const raw: unknown = JSON.parse(text);
     const parsed = RuntimeInfoSchema.safeParse(raw);
     return parsed.success ? parsed.data : undefined;
   } catch {
