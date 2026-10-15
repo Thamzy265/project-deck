@@ -3,8 +3,9 @@
  * A line-based check of the top two levels, not a YAML parser: enough to tell a Flutter
  * app from a Dart package, and nothing from the file is repeated except a checked name.
  */
-import { readFile, stat } from 'node:fs/promises';
+import { lstat } from 'node:fs/promises';
 import { join } from 'node:path';
+import { NotRegularFileError, readRegularFile } from '@project-deck/core/node';
 
 const MAX_FILE_BYTES = 1_048_576;
 /** Dart package names: lower-case letters, digits and underscores. */
@@ -15,17 +16,29 @@ const APPLICATION_ID =
 
 export type Detection = { ok: true; name?: string } | { ok: false; reason: string };
 
-type SmallFile = { kind: 'text'; text: string } | { kind: 'missing' } | { kind: 'too-large' };
+type SmallFile =
+  { kind: 'text'; text: string } | { kind: 'missing' } | { kind: 'too-large' } | { kind: 'link' };
 
-/** A small text file's contents; a missing or non-file path counts as missing. */
+/**
+ * A small text file's contents, never through a link: a cloned repository could link
+ * pubspec.yaml to one of the user's own files (docs/notes/untrusted-project-files.md).
+ * A folder or other non-file counts as missing.
+ */
 async function readSmall(path: string): Promise<SmallFile> {
+  let info;
   try {
-    const info = await stat(path);
-    if (!info.isFile()) return { kind: 'missing' };
-    if (info.size > MAX_FILE_BYTES) return { kind: 'too-large' };
-    return { kind: 'text', text: await readFile(path, 'utf8') };
+    info = await lstat(path);
   } catch {
     return { kind: 'missing' };
+  }
+  if (info.isSymbolicLink()) return { kind: 'link' };
+  if (!info.isFile()) return { kind: 'missing' };
+  if (info.size > MAX_FILE_BYTES) return { kind: 'too-large' };
+  try {
+    return { kind: 'text', text: await readRegularFile(path, { maxBytes: MAX_FILE_BYTES }) };
+  } catch (err) {
+    // A link that appeared since the lstat.
+    return err instanceof NotRegularFileError ? { kind: 'link' } : { kind: 'missing' };
   }
 }
 
@@ -54,6 +67,13 @@ export async function detectFlutterProject(projectDir: string): Promise<Detectio
     return {
       ok: false,
       reason: `pubspec.yaml is too large to read (over ${MAX_FILE_BYTES} bytes).`,
+    };
+  }
+  if (file.kind === 'link') {
+    return {
+      ok: false,
+      reason:
+        "pubspec.yaml is a link. FlutterDeck doesn't follow links in a project; run init where the real file is.",
     };
   }
   if (file.kind === 'missing') {

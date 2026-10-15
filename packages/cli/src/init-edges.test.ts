@@ -135,7 +135,7 @@ describe('init: pubspec.yaml variants', () => {
   });
 
   // BUG-CLI-T4: pubspec.yaml is read through a link, and a line of the target is printed.
-  posixFails(
+  posix(
     'BUG-CLI-T4: never reads pubspec.yaml through a link to a file outside the project',
     async () => {
       const target = join(outside, 'notes.yaml');
@@ -143,10 +143,22 @@ describe('init: pubspec.yaml variants', () => {
       await writeFile(target, `name: ${secret}\ndependencies:\n  flutter:\n    sdk: flutter\n`);
       await rm(join(project, 'pubspec.yaml'));
       await symlink(target, join(project, 'pubspec.yaml'));
-      await init();
+      expect(await init()).toBe(1);
       expect([...lines, ...errors].join('\n')).not.toContain(secret);
+      expect(errors.join('\n')).toContain('pubspec.yaml is a link');
+      expect(await readdir(project)).toEqual(['pubspec.yaml']);
     },
   );
+
+  posix('BUG-CLI-T4: never reads the Android application id through a link', async () => {
+    const target = join(outside, 'build.gradle.kts');
+    const secret = ['org', 'private', 'outside'].join('.');
+    await writeFile(target, `applicationId = "${secret}"\n`);
+    await mkdir(join(project, 'android', 'app'), { recursive: true });
+    await symlink(target, join(project, 'android', 'app', 'build.gradle.kts'));
+    expect(await init()).toBe(0);
+    expect(lines.join('\n')).not.toContain(secret);
+  });
 });
 
 describe('init: .gitignore variants', () => {
