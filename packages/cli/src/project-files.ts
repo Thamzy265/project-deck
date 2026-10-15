@@ -94,7 +94,8 @@ export interface WriteAtomicOptions {
   /**
    * Where the temp file goes. init passes `.flutterdeck`, whose `*.tmp` files are
    * git-ignored, so a crash never leaves a stray temp file git would pick up next to
-   * `.gitignore` or `launch.json`. Defaults to the target's own folder.
+   * `.gitignore` or `launch.json`. Defaults to the target's own folder, which is also
+   * tried once when the rename from `tmpDir` fails with EXDEV (another mount).
    */
   tmpDir?: string;
   /** Test seam: the rename that puts the file in place. */
@@ -113,8 +114,25 @@ export async function writeAtomic(
   opts: WriteAtomicOptions = {},
 ): Promise<void> {
   const move = opts.rename ?? rename;
-  const name = `${basename(path)}.${randomBytes(6).toString('hex')}.tmp`;
-  const tmp = join(opts.tmpDir ?? dirname(path), name);
+  const tmpDir = opts.tmpDir ?? dirname(path);
+  try {
+    await writeVia(tmpDir, path, text, mode, move);
+  } catch (err) {
+    // `.flutterdeck` may be a mount of its own (a bind mount, a synced folder). A rename
+    // can't cross mounts, so try once more with the temp file next to the target.
+    if ((err as NodeJS.ErrnoException).code !== 'EXDEV' || tmpDir === dirname(path)) throw err;
+    await writeVia(dirname(path), path, text, mode, move);
+  }
+}
+
+async function writeVia(
+  tmpDir: string,
+  path: string,
+  text: string,
+  mode: number,
+  move: (from: string, to: string) => Promise<void>,
+): Promise<void> {
+  const tmp = join(tmpDir, `${basename(path)}.${randomBytes(6).toString('hex')}.tmp`);
   try {
     await writeFile(tmp, text, { mode, flag: 'wx' });
     // The umask may have narrowed the mode.
