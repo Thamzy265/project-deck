@@ -12,6 +12,24 @@ export interface ScrubOptions {
   home?: string;
   /** Defaults to this system; tests pass 'win32' to check Windows rules anywhere. */
   platform?: NodeJS.Platform;
+  /** Test seam: the other names the system has for a folder. */
+  realPaths?: (dir: string) => string[];
+}
+
+/**
+ * Both realpath flavours: on Windows the JavaScript one keeps a short 8.3 name such as
+ * RUNNER~1 while the native one expands it, and a path may reach us in either form.
+ */
+function systemRealPaths(dir: string): string[] {
+  const out: string[] = [];
+  for (const real of [realpathSync, realpathSync.native]) {
+    try {
+      out.push(real(dir));
+    } catch {
+      // Gone, unreadable or not a path on this system: the path as given is all there is.
+    }
+  }
+  return out;
 }
 
 function escape(text: string): string {
@@ -23,14 +41,10 @@ export function pathScrubber(
   opts: ScrubOptions = {},
 ): (text: string) => string {
   const windows = (opts.platform ?? process.platform) === 'win32';
+  const realPaths = opts.realPaths ?? systemRealPaths;
   const path = windows ? win32 : posix;
   const forms = (dir: string): string[] => {
-    const out = [path.resolve(dir)];
-    try {
-      out.push(realpathSync(dir));
-    } catch {
-      // Gone, unreadable or not a path on this system: the path as given is all there is.
-    }
+    const out = [path.resolve(dir), ...realPaths(dir)];
     // Windows paths also appear with forward slashes, in URLs and in Dart output.
     if (windows) out.push(...out.map((p) => p.replace(/\\/g, '/')));
     return [...new Set(out)];

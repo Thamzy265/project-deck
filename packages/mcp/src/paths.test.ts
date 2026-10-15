@@ -22,4 +22,19 @@ describe('pathScrubber', () => {
     const scrub = pathScrubber('/home/jo/shop', { home: '/home/jo', platform: 'linux' });
     expect(scrub('/HOME/JO/shop')).toBe('/HOME/JO/shop');
   });
+
+  it('on Windows also hides the long form of a short (8.3) folder name', () => {
+    // os.tmpdir() can give C:\Users\RUNNER~1\…, while the native realpath (and a
+    // daemon resolving the folder) gives C:\Users\runneradmin\…: both are the same folder.
+    const short = 'C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\deck-x';
+    const long = 'C:\\Users\\runneradmin\\AppData\\Local\\Temp\\deck-x';
+    const scrub = pathScrubber(short, {
+      home: 'C:\\Users\\RUNNER~1',
+      platform: 'win32',
+      realPaths: (dir) => [dir.replace('RUNNER~1', 'runneradmin')],
+    });
+    expect(scrub(`${short}\\a, ${long}\\b and C:\\Users\\runneradmin\\c`)).toBe(
+      '<project>\\a, <project>\\b and ~\\c',
+    );
+  });
 });
