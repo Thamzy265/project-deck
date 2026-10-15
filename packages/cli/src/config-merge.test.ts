@@ -16,8 +16,8 @@ describe('withPort', () => {
   });
 
   it('keeps a byte order mark', () => {
-    const out = withPort('﻿{"version":1}', 9150);
-    expect(out.startsWith('﻿')).toBe(true);
+    const out = withPort('\uFEFF{"version":1}', 9150);
+    expect(out.startsWith('\uFEFF')).toBe(true);
     expect(JSON.parse(out.slice(1))).toEqual({ version: 1, port: 9150 });
   });
 });

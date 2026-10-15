@@ -12,6 +12,6 @@ export function newConfigText(port: number): string {
 /** `text` must already be a valid config (readConfig accepted it). */
 export function withPort(text: string, port: number): string {
   // readConfig accepts a byte order mark; keep it where it was.
-  const bom = text.startsWith('﻿') ? '﻿' : '';
+  const bom = text.startsWith('\uFEFF') ? '\uFEFF' : '';
   return bom + setJsonValue(text.slice(bom.length), ['port'], port);
 }

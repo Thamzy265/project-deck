@@ -8,7 +8,7 @@ import {
 } from './launch-json.js';
 
 describe('launchJsonProblem', () => {
-  it.each([[''], ['  \n'], ['﻿{"configurations":[]}'], ['{"version":"0.0.1"}']])(
+  it.each([[''], ['  \n'], ['\uFEFF{"configurations":[]}'], ['{"version":"0.0.1"}']])(
     'finds nothing wrong with %j',
     (text) => {
       expect(launchJsonProblem(text)).toBeUndefined();

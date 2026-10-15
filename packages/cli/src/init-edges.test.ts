@@ -128,7 +128,7 @@ describe('init: pubspec.yaml variants', () => {
   it.each([
     ['an anchor on dependencies', 'name: a\ndependencies: &deps\n  flutter:\n    sdk: flutter\n'],
     ['a quoted key', 'name: a\ndependencies:\n  "flutter":\n    sdk: flutter\n'],
-    ['a byte order mark', '﻿dependencies:\n  flutter:\n    sdk: flutter\nname: a\n'],
+    ['a byte order mark', '\uFEFFdependencies:\n  flutter:\n    sdk: flutter\nname: a\n'],
   ])('BUG-CLI-T8: accepts a pubspec with %s', async (_label, text) => {
     await writeFile(join(project, 'pubspec.yaml'), text);
     expect(await init()).toBe(0);
@@ -360,10 +360,10 @@ describe('init: launch.json variants', () => {
 
   // BUG-CLI-T6: Windows editors save JSON with a byte order mark; config.json accepts it.
   it('BUG-CLI-T6: accepts a launch.json that starts with a byte order mark, and keeps it', async () => {
-    await writeLaunch('﻿{"configurations":[]}');
+    await writeLaunch('\uFEFF{"configurations":[]}');
     expect(await init()).toBe(0);
     const text = await read('.claude', 'launch.json');
-    expect(text.startsWith('﻿{')).toBe(true);
+    expect(text.startsWith('\uFEFF{')).toBe(true);
     expect(parse(text.slice(1))).toEqual({ configurations: [launchEntry(9147)] });
     // Already right the second time, BOM and all.
     lines = [];
@@ -372,7 +372,7 @@ describe('init: launch.json variants', () => {
   });
 
   // BUG-CLI-T7: an empty launch.json (from `touch`) holds no settings to protect.
-  it.each([[''], [' \n\t\r\n'], ['﻿']])(
+  it.each([[''], [' \n\t\r\n'], ['\uFEFF']])(
     'BUG-CLI-T7: fills an empty or blank launch.json (%j) with a fresh file',
     async (text) => {
       await writeLaunch(text);
@@ -397,10 +397,10 @@ describe('init: config.json variants', () => {
   });
 
   it('adds the port to a CRLF config with a byte order mark, keeping both', async () => {
-    await writeConfig('﻿{\r\n  "version": 1,\r\n  "logs": { "redact": true }\r\n}\r\n');
+    await writeConfig('\uFEFF{\r\n  "version": 1,\r\n  "logs": { "redact": true }\r\n}\r\n');
     expect(await init()).toBe(0);
     const text = await read('.flutterdeck', 'config.json');
-    expect(text.startsWith('﻿{\r\n')).toBe(true);
+    expect(text.startsWith('\uFEFF{\r\n')).toBe(true);
     expect(text.replace(/\r\n/g, '')).not.toContain('\n');
     expect(JSON.parse(text.slice(1))).toEqual({ version: 1, logs: { redact: true }, port: 9147 });
   });
