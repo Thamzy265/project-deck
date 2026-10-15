@@ -279,6 +279,7 @@ describe('nested encoded URLs below the part cap', () => {
     '%3Dhttp%25253A%25252F%25252Fa%25252F%252526',
     'http://127.0.0.1:1/aBcDeFgH1_',
     'http://127.0.0.1:1/HTTPServerAbc-',
+    '&u=ws://127.0.0.1:1/a?v=http://a/',
   ])('reads nested %j in linear time', (unit) => {
     const time = (size: number) => {
       const text = unit.repeat(Math.ceil(size / unit.length)).slice(0, size);
@@ -361,6 +362,24 @@ describe('unpadded auth codes on a loopback port (N2)', () => {
     expect(maskBuiltIn(`ws://127.0.0.1:50123/${written}/ws`)).toBe(
       `ws://127.0.0.1:50123/${MASKED}`,
     );
+  });
+
+  // R1: a query value holding a URL as written, slashes and all.
+  it.each([
+    [`http://127.0.0.1:9100/?uri=ws://127.0.0.1:50123/${code}/ws`, 'http://127.0.0.1:9100/'],
+    [`http://127.0.0.1:9100/?uri=http://127.0.0.1:50123/${code}/`, 'http://127.0.0.1:9100/'],
+    [
+      `http://localhost:9100/devtools/?a=1&dtd=ws://localhost:50124/${code}`,
+      'http://localhost:9100/',
+    ],
+    [`http://localhost:9100/#/?uri=ws://[::1]:50123/${code}/ws`, 'http://localhost:9100/'],
+  ])('masks an unpadded code in the raw URL value of %j', (input, prefix) => {
+    expect(maskBuiltIn(input)).toBe(`${prefix}${MASKED}`);
+  });
+
+  it('leaves a raw link to an ordinary local page in a query value alone', () => {
+    const text = 'http://127.0.0.1:9100/?page=http://localhost:8080/api/status';
+    expect(maskBuiltIn(text)).toBe(text);
   });
 
   // Known over-masks, accepted by the lead (15 Oct 2026) as failing closed: an

@@ -73,6 +73,8 @@ const SEPARATORS = /[/?#&]/;
  * auth code. `nested` adds the pieces of a decoded value split again (decoding may have
  * turned %3F, %3D and %26 into separators); they only count as a URL to look inside, as
  * `section==` in an ordinary encoded link `%2Fpage%2Fsection%3D%3D` is not a code.
+ * `nested` also holds the query values split on `?`, `#` and `&` only, so a URL written
+ * as a value with its slashes (`?uri=ws://127.0.0.1:<port>/<code>/ws`) is read whole (R1).
  */
 function urlParts(path: string): { own: string[]; nested: string[] } {
   const own = new Set<string>();
@@ -90,6 +92,7 @@ function urlParts(path: string): { own: string[]; nested: string[] } {
       for (const piece of [...text.split(/[?#&]/), ...text.split(SEPARATORS)]) add(nested, piece);
     }
   }
+  for (const piece of path.split(/[?#&]/)) add(nested, piece);
   return { own: [...own], nested: [...own, ...nested] };
 }
 
