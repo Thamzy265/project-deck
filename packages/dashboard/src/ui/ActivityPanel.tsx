@@ -13,6 +13,7 @@ const ICON: Record<string, string> = {
   'app.attached': '↗',
   'app.detached': '↙',
   'app.reloaded': '⟳',
+  'claude.reload': '⟳',
   'app.stopped': '■',
   'app.crashed': '⚠',
   'claude.done': '✓',
@@ -24,7 +25,11 @@ function text(item: ActivityItem): string {
 }
 
 function isFailure(item: ActivityItem): boolean {
-  return item.kind === 'app.crashed' || (item.kind === 'app.reloaded' && !item.result.ok);
+  return (
+    item.kind === 'app.crashed' ||
+    (item.kind === 'app.reloaded' && !item.result.ok) ||
+    (item.kind === 'claude.reload' && !item.ok)
+  );
 }
 
 function Row({ item }: { item: ActivityItem }) {

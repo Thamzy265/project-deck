@@ -1,6 +1,15 @@
 import type { ActivityEntry, EventBus } from '@project-deck/core';
 import { ACTIVITY_CAPACITY } from '@project-deck/core';
 
+/**
+ * A hook result this close to a VM "success" for the same kind is the same reload. The VM
+ * says "success" even when it rejected the reload, and says nothing when the code didn't
+ * compile, so the hook's result (which knows the tool's outcome) wins.
+ */
+export const RELOAD_MERGE_WINDOW_MS = 3000;
+
+type ReloadKind = 'hot-reload' | 'hot-restart';
+
 export interface ActivityFeedOptions {
   capacity?: number;
   now?: () => number;
@@ -27,6 +36,8 @@ export class ActivityFeed {
    */
   private listed = new Map<string, string>();
   private attached: { id: string; name: string } | undefined;
+  /** Recent hook results not yet paired with a VM event that may still come. */
+  private unpairedHooks: { ts: number; kind: ReloadKind }[] = [];
   private nextId = 0;
   private readonly capacity: number;
   private readonly now: () => number;
@@ -54,7 +65,20 @@ export class ActivityFeed {
         this.forgetAttached(appId);
       }),
       this.bus.on('app.reloaded', ({ appId, result }) => {
+        if (result.ok && result.source === 'external' && this.pairWithHook(result.kind)) return;
         this.add({ kind: 'app.reloaded', ...this.app(appId), result });
+      }),
+      this.bus.on('claude.reload', ({ sessionId, ok, kind, message }) => {
+        this.claudeReload({
+          kind: 'claude.reload',
+          ...(sessionId === undefined ? {} : { sessionId }),
+          ok,
+          reload: kind,
+          ...(message === undefined ? {} : { message }),
+          ...(this.attached === undefined
+            ? {}
+            : { appId: this.attached.id, appName: this.attached.name }),
+        });
       }),
       this.bus.on('app.exit', ({ appId, code, crashed }) => {
         this.add({
@@ -92,6 +116,44 @@ export class ActivityFeed {
 
   private forgetAttached(appId: string): void {
     if (this.attached?.id === appId) this.attached = undefined;
+  }
+
+  /** Replaces the VM's report of the same reload, if one came just before. */
+  private claudeReload(fields: Extract<NewEntry, { kind: 'claude.reload' }>): void {
+    const now = this.now();
+    const at = this.entries.findLastIndex(
+      (e) =>
+        now - e.ts <= RELOAD_MERGE_WINDOW_MS &&
+        e.kind === 'app.reloaded' &&
+        e.result.ok &&
+        e.result.source === 'external' &&
+        e.result.kind === fields.reload,
+    );
+    const old = this.entries[at];
+    if (old === undefined) {
+      this.unpairedHooks = [
+        ...this.unpairedHooks.filter((h) => now - h.ts <= RELOAD_MERGE_WINDOW_MS),
+        { ts: now, kind: fields.reload },
+      ];
+      this.add(fields);
+      return;
+    }
+    // Same id and time: dashboards replace the row in place.
+    const entry = { id: old.id, ts: old.ts, ...fields };
+    this.entries[at] = entry;
+    queueMicrotask(() => this.bus.emit('activity', entry));
+  }
+
+  /** True when a hook result just came for this reload, so the VM's report is dropped. */
+  private pairWithHook(kind: string): boolean {
+    if (this.unpairedHooks.length === 0) return false;
+    const now = this.now();
+    const at = this.unpairedHooks.findIndex(
+      (h) => h.kind === kind && now - h.ts <= RELOAD_MERGE_WINDOW_MS,
+    );
+    if (at === -1) return false;
+    this.unpairedHooks.splice(at, 1);
+    return true;
   }
 
   private add(fields: NewEntry): void {

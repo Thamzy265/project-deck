@@ -1,0 +1,162 @@
+import type { ActivityEntry, DeckEvents } from '@project-deck/core';
+import { ActivityEntrySchema, EventBus } from '@project-deck/core';
+import { fakeApp } from '@project-deck/core/testing';
+import { describe, expect, it } from 'vitest';
+import { ActivityFeed, RELOAD_MERGE_WINDOW_MS } from './activity.js';
+
+function setup() {
+  const bus = new EventBus<DeckEvents>();
+  const clock = { now: 10_000 };
+  const feed = new ActivityFeed(bus, { now: () => clock.now });
+  const pushed: ActivityEntry[] = [];
+  bus.on('activity', (entry) => pushed.push(entry));
+  feed.start();
+  const app = fakeApp();
+  bus.emit('app.attached', { app });
+  const vmSuccess = (kind: 'hot-reload' | 'hot-restart' = 'hot-reload') =>
+    bus.emit('app.reloaded', { appId: app.id, result: { ok: true, kind, source: 'external' } });
+  const flush = () => new Promise<void>((resolve) => queueMicrotask(resolve));
+  return { bus, feed, clock, pushed, app, vmSuccess, flush };
+}
+
+const reloads = (feed: ActivityFeed) => feed.list().filter((e) => e.kind !== 'app.attached');
+
+describe('ActivityFeed and the reload hook', () => {
+  it("records Claude's reload result with the attached app", () => {
+    const { bus, feed, app } = setup();
+    bus.emit('claude.reload', {
+      sessionId: 's1',
+      ok: false,
+      kind: 'hot-reload',
+      message: 'Hot reload failed.',
+    });
+    const [entry] = reloads(feed);
+    expect(entry).toEqual({
+      id: 1,
+      ts: 10_000,
+      kind: 'claude.reload',
+      sessionId: 's1',
+      ok: false,
+      reload: 'hot-reload',
+      message: 'Hot reload failed.',
+      appId: app.id,
+      appName: app.name,
+    });
+    expect(ActivityEntrySchema.parse(entry)).toEqual(entry);
+  });
+
+  it('leaves the app out when none is attached', () => {
+    const { bus, feed, app } = setup();
+    bus.emit('app.detached', { appId: app.id });
+    bus.emit('claude.reload', { ok: true, kind: 'hot-restart' });
+    expect(feed.list().at(-1)).toEqual({
+      id: 2,
+      ts: 10_000,
+      kind: 'claude.reload',
+      ok: true,
+      reload: 'hot-restart',
+    });
+  });
+
+  it('replaces a VM "success" that came up to 3 s before, keeping its id and time', async () => {
+    const { bus, feed, clock, pushed, vmSuccess, flush } = setup();
+    vmSuccess();
+    const vm = feed.list().at(-1);
+    clock.now += RELOAD_MERGE_WINDOW_MS;
+    bus.emit('claude.reload', { ok: false, kind: 'hot-reload', message: 'Hot reload failed.' });
+    await flush();
+
+    const list = reloads(feed);
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({
+      id: vm?.id,
+      ts: vm?.ts,
+      kind: 'claude.reload',
+      ok: false,
+      reload: 'hot-reload',
+    });
+    // Announced again under the same id, so open dashboards replace the row.
+    const announced = pushed.filter((e) => e.id === vm?.id);
+    expect(announced.map((e) => e.kind)).toEqual(['app.reloaded', 'claude.reload']);
+  });
+
+  it('keeps both when the hook comes more than 3 s after the VM event', () => {
+    const { bus, feed, clock, vmSuccess } = setup();
+    vmSuccess();
+    clock.now += RELOAD_MERGE_WINDOW_MS + 1;
+    bus.emit('claude.reload', { ok: true, kind: 'hot-reload' });
+    expect(reloads(feed).map((e) => e.kind)).toEqual(['app.reloaded', 'claude.reload']);
+  });
+
+  it('drops a VM "success" that comes up to 3 s after the hook result', () => {
+    const { bus, feed, clock, vmSuccess } = setup();
+    bus.emit('claude.reload', { ok: false, kind: 'hot-reload', message: 'Hot reload failed.' });
+    clock.now += RELOAD_MERGE_WINDOW_MS;
+    vmSuccess();
+    expect(reloads(feed).map((e) => e.kind)).toEqual(['claude.reload']);
+    // A second VM event is another reload (the IDE's), so it shows.
+    vmSuccess();
+    expect(reloads(feed).map((e) => e.kind)).toEqual(['claude.reload', 'app.reloaded']);
+  });
+
+  it('keeps a VM "success" that comes more than 3 s after the hook result', () => {
+    const { bus, feed, clock, vmSuccess } = setup();
+    bus.emit('claude.reload', { ok: true, kind: 'hot-reload' });
+    clock.now += RELOAD_MERGE_WINDOW_MS + 1;
+    vmSuccess();
+    expect(reloads(feed).map((e) => e.kind)).toEqual(['claude.reload', 'app.reloaded']);
+  });
+
+  it('only pairs a reload with a reload and a restart with a restart', () => {
+    const { bus, feed, vmSuccess } = setup();
+    vmSuccess('hot-restart');
+    bus.emit('claude.reload', { ok: true, kind: 'hot-reload' });
+    bus.emit('claude.reload', { ok: true, kind: 'hot-restart' });
+    expect(reloads(feed).map((e) => (e.kind === 'claude.reload' ? e.reload : e.kind))).toEqual([
+      'hot-restart',
+      'hot-reload',
+    ]);
+  });
+
+  it("never merges FlutterDeck's own reloads or failures", () => {
+    const { bus, feed, app } = setup();
+    bus.emit('app.reloaded', {
+      appId: app.id,
+      result: { ok: true, kind: 'hot-reload', durationMs: 12 },
+    });
+    bus.emit('app.reloaded', {
+      appId: app.id,
+      result: { ok: false, reason: 'compile-error', message: 'x', source: 'external' },
+    });
+    bus.emit('claude.reload', { ok: true, kind: 'hot-reload' });
+    expect(reloads(feed).map((e) => e.kind)).toEqual([
+      'app.reloaded',
+      'app.reloaded',
+      'claude.reload',
+    ]);
+  });
+
+  it('pairs one VM event with one hook result only', () => {
+    const { bus, feed, vmSuccess } = setup();
+    vmSuccess();
+    bus.emit('claude.reload', { ok: true, kind: 'hot-reload' });
+    bus.emit('claude.reload', { ok: false, kind: 'hot-reload' });
+    expect(reloads(feed).map((e) => e.kind)).toEqual(['claude.reload', 'claude.reload']);
+    expect(reloads(feed).map((e) => (e.kind === 'claude.reload' ? e.ok : undefined))).toEqual([
+      true,
+      false,
+    ]);
+  });
+
+  it('replaces the newest matching VM event, not an older one', () => {
+    const { bus, feed, clock, vmSuccess } = setup();
+    vmSuccess();
+    clock.now += 1000;
+    vmSuccess();
+    const newest = feed.list().at(-1);
+    bus.emit('claude.reload', { ok: false, kind: 'hot-reload' });
+    const list = reloads(feed);
+    expect(list.map((e) => e.kind)).toEqual(['app.reloaded', 'claude.reload']);
+    expect(list[1]?.id).toBe(newest?.id);
+  });
+});

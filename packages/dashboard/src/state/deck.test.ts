@@ -160,6 +160,26 @@ describe('deckReducer', () => {
     expect(s.activity.load).toEqual({ status: 'ready' });
   });
 
+  it("replaces an entry the daemon announces again under the same id (Claude's reload result)", () => {
+    const vm: ActivityEntry = {
+      id: 4,
+      ts: 10,
+      kind: 'app.reloaded',
+      appId: 'a',
+      appName: 'shop',
+      result: { ok: true, kind: 'hot-reload', source: 'external' },
+    };
+    const hook: ActivityEntry = {
+      id: 4,
+      ts: 10,
+      kind: 'claude.reload',
+      ok: false,
+      reload: 'hot-reload',
+    };
+    const s = run({ type: 'activity-add', entry: vm }, { type: 'activity-add', entry: hook });
+    expect(s.activity.items).toEqual([hook]);
+  });
+
   it('empties the list and notes it in Activity when logs are cleared', () => {
     const s = run(
       {

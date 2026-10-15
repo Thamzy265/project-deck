@@ -39,6 +39,20 @@ export const ActivityEntrySchema = z.discriminatedUnion('kind', [
     sessionId: z.string().optional(),
     message: z.string().max(MAX_WAITING_MESSAGE).optional(),
   }),
+  /**
+   * Claude's hot_reload or hot_restart through the Dart MCP server, as its hook reported
+   * it. The app is the one attached when the result arrived, if any.
+   */
+  z.object({
+    ...Base,
+    kind: z.literal('claude.reload'),
+    sessionId: z.string().max(MAX_SESSION_ID).optional(),
+    ok: z.boolean(),
+    reload: z.enum(['hot-reload', 'hot-restart']),
+    message: z.string().max(MAX_RELOAD_MESSAGE).optional(),
+    appId: z.string().optional(),
+    appName: z.string().optional(),
+  }),
 ]);
 export type ActivityEntry = z.infer<typeof ActivityEntrySchema>;
 

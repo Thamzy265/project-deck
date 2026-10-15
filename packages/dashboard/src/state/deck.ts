@@ -339,10 +339,15 @@ export function deckReducer(state: DeckState, action: DeckAction): DeckState {
         activity: { ...state.activity, load: { status: 'error', error: action.error } },
       };
     case 'activity-add': {
-      const exists = state.activity.items.some(
+      const at = state.activity.items.findIndex(
         (i) => i.kind !== 'local' && i.id === action.entry.id,
       );
-      if (exists) return state;
+      if (at !== -1) {
+        // The daemon announces an entry again when Claude's reload result replaces the
+        // VM's report of the same reload; same id and time, so the order holds.
+        const items = state.activity.items.with(at, action.entry);
+        return { ...state, activity: { ...state.activity, items } };
+      }
       return {
         ...state,
         activity: { ...state.activity, items: timeline([...state.activity.items, action.entry]) },
