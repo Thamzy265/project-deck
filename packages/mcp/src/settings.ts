@@ -21,9 +21,11 @@ export async function readMaskSettings(projectDir: string): Promise<LoadedSettin
       err instanceof ConfigError || err instanceof StateDirError
         ? err.message
         : '.flutterdeck/config.json failed';
+    // The error messages are sentences already; one full stop, not two.
+    const sentence = reason.replace(/\.+$/, '');
     return {
       mask: { redact: true, rules: [] },
-      warnings: [`${reason}. Masking uses the built-in patterns only until it is fixed.`],
+      warnings: [`${sentence}. Masking uses the built-in patterns only until it is fixed.`],
     };
   }
 }
