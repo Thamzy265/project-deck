@@ -71,8 +71,8 @@ describe('malformed percent escapes', () => {
 
   // MF-T1: one malformed escape anywhere in the value (a logger cutting the line inside
   // an escape, or a Latin-1 %E9) makes decodeURIComponent throw, so the whole value is
-  // never decoded and the code stays readable.
-  it.fails.each([
+  // never decoded and the code stays readable. Each valid escape is now decoded on its own.
+  it.each([
     ['cut after %', `GET /?uri=${enc(vmUri)}%`],
     ['cut inside %25', `GET /?uri=${enc(enc(vmUri)).slice(0, -3)}`],
     ['cut inside %2', `GET /?dtd=${enc(enc(dtdUri))}%2`],

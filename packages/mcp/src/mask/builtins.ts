@@ -77,8 +77,8 @@ function urlParts(path: string): string[] {
       for (const piece of [text, ...text.split(/[?#&]/), ...text.split(SEPARATORS)]) {
         if (piece === '') continue;
         const eq = piece.indexOf('=');
-        parts.add(decode(piece));
-        if (eq > 0 && eq < piece.length - 1) parts.add(decode(piece.slice(eq + 1)));
+        parts.add(uncut(decode(piece)));
+        if (eq > 0 && eq < piece.length - 1) parts.add(uncut(decode(piece.slice(eq + 1))));
       }
     }
   }
@@ -115,7 +115,10 @@ function hasAuthCode(host: string, path: string, depth = 0): boolean {
       if (inner !== null && hasAuthCode(inner[1] ?? '', inner[2] ?? '', depth + 1)) return true;
     }
   }
-  const first = path.split(SEPARATORS).find((s) => s !== '');
+  const first = path
+    .split(SEPARATORS)
+    .map(uncut)
+    .find((s) => s !== '');
   return (
     LOOPBACK.test(host) &&
     first !== undefined &&
@@ -124,12 +127,54 @@ function hasAuthCode(host: string, path: string, depth = 0): boolean {
   );
 }
 
+/** Without an escape cut short at the end (`%`, `%2`), as when a logger cuts the line. */
+function uncut(text: string): string {
+  return text.replace(/%[0-9A-Fa-f]?$/, '');
+}
+
+const ESCAPE_RUN = /(?:%[0-9A-Fa-f]{2})+/g;
+
+/**
+ * Percent-decoding that keeps an invalid or cut escape as written. decodeURIComponent
+ * gives up on the whole text for one bad escape (a line cut inside one, a Latin-1 %E9),
+ * which would leave every other escape, and any auth code behind them, unread.
+ */
 function decode(text: string): string {
-  try {
-    return decodeURIComponent(text);
-  } catch {
-    return text;
+  return text.replace(ESCAPE_RUN, (run) => {
+    try {
+      return decodeURIComponent(run);
+    } catch {
+      return decodeBytes(run);
+    }
+  });
+}
+
+/** Decodes each valid UTF-8 sequence in a run of escapes, one escape at a time otherwise. */
+function decodeBytes(run: string): string {
+  let out = '';
+  let i = 0;
+  while (i < run.length) {
+    const lead = parseInt(run.slice(i + 1, i + 3), 16);
+    const size =
+      lead < 0x80 ? 1 : lead < 0xc2 ? 0 : lead < 0xe0 ? 2 : lead < 0xf0 ? 3 : lead < 0xf5 ? 4 : 0;
+    const sequence = run.slice(i, i + size * 3);
+    let decoded: string | undefined;
+    if (size > 0 && sequence.length === size * 3) {
+      try {
+        decoded = decodeURIComponent(sequence);
+      } catch {
+        // Not valid UTF-8 (a bad continuation byte or a surrogate): kept as written.
+      }
+    }
+    if (decoded === undefined) {
+      out += run.slice(i, i + 3);
+      i += 3;
+    } else {
+      out += decoded;
+      i += sequence.length;
+    }
   }
+  return out;
 }
 
 /**
