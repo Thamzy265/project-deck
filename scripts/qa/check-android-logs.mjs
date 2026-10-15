@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { scratchHomeEnv } from './scratch-home.mjs';
 
 const { fetch } = globalThis;
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -57,6 +58,8 @@ function pgrepLogcat() {
 }
 
 const project = await mkdtemp(join(tmpdir(), 'deck-qa-android-'));
+// The daemon's port registry goes to a scratch home, never the user's ~/.flutterdeck.
+const scratchHome = await scratchHomeEnv();
 let daemon;
 let token = '';
 // The token and auth codes in VM service / DTD URIs both grant access.
@@ -72,6 +75,7 @@ try {
   const port = await freePort();
   daemon = spawn(process.execPath, [DAEMON, '--project', project, '--port', String(port)], {
     stdio: ['ignore', 'pipe', 'pipe'],
+    env: scratchHome.env,
   });
   const exited = new Promise((resolve) =>
     daemon.once('exit', (code, signal) => resolve({ code, signal })),
@@ -189,6 +193,7 @@ try {
   if (daemon !== undefined && daemon.exitCode === null && daemon.signalCode === null)
     daemon.kill('SIGKILL');
   await rm(project, { recursive: true, force: true });
+  await scratchHome.cleanup();
 }
 
 const width = Math.max(...results.map((r) => r.name.length));
