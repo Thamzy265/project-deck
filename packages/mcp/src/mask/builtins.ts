@@ -104,11 +104,28 @@ function maskUrl(match: string, groups: (string | undefined)[]): string {
   return userinfo === undefined ? match : `${scheme}://${who}${host}${path}`;
 }
 
+/**
+ * A percent-encoded URL with no URL around it, such as a logged query value
+ * `uri=http%3A%2F%2F127.0.0.1%3A50123%2FAb3dE_fGh1I%3D%2F`, once or twice encoded.
+ * Masked whole when the decoded URL carries an auth code.
+ */
+function maskEncodedUrl(match: string): string {
+  let text = match;
+  for (let round = 0; round < 2 && /%[0-9a-f]{2}/i.test(text); round++) text = decode(text);
+  const url = /^(?:https?|wss?):\/\/(?:[^/?#@]*@)?([^/?#]+)(.*)$/i.exec(text);
+  return url !== null && hasAuthCode(url[1] ?? '', url[2] ?? '') ? AUTH_CODE : match;
+}
+
 const PATTERNS: Pattern[] = [
   {
     // Before the email rule, which would take user:pass@host for an address.
     re: /\b(?:https?|wss?):\/\/([^\s/?#"'<>@]*@)?([^\s/?#"'<>]+)([^\s"'<>]*)/gi,
     replace: maskUrl,
+  },
+  {
+    // The scheme and an encoded :// anchor every match; the value is bounded.
+    re: /\b(?:https?|wss?)%(?:25)?3A%(?:25)?2F%(?:25)?2F[A-Za-z0-9%._~+=-]{1,2048}/gi,
+    replace: maskEncodedUrl,
   },
   {
     re: /\bbearer\s+[A-Za-z0-9._~+/=-]{8,}/gi,

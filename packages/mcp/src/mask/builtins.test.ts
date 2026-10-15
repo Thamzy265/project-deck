@@ -214,6 +214,8 @@ describe('built-in masking', () => {
     'Bearer ',
     'aB3/',
     'f0',
+    'http%3A%2F%2F',
+    'ws%253A%252F%252Fa%2F',
   ])('runs every built-in in linear time on 64 kB of %j', (unit) => {
     // Compared with 8 kB of the same text, not with the clock, so a busy machine doesn't
     // fail it: linear work grows 8x, quadratic work 64x. The best of three runs drops
@@ -307,6 +309,28 @@ describe('auth codes in URLs inside URLs', () => {
 
   it('leaves a link to an ordinary page alone', () => {
     const text = 'http://127.0.0.1:9100/?page=http%3A%2F%2Fexample.com%2Fdocs%2Fintro';
+    expect(maskBuiltIn(text)).toBe(text);
+  });
+});
+
+describe('encoded URLs with no URL around them', () => {
+  it.each([
+    ['dtd=ws%3A%2F%2F127.0.0.1%3A61234%2FAb3dE_fGh1I%3D%2Fws', 'dtd=[auth code masked]'],
+    [
+      'GET /devtools?uri=http%3A%2F%2F127.0.0.1%3A50123%2FAb3dE_fGh1I%3D%2F',
+      'GET /devtools?uri=[auth code masked]',
+    ],
+    [
+      'uri=http%253A%252F%252F127.0.0.1%253A50123%252FAb3dE_fGh1I%253D%252F&x=1',
+      'uri=[auth code masked]&x=1',
+    ],
+    ['WSS%3a%2f%2f127.0.0.1%3a1%2fq8ZtYb2Wd4Kx end', '[auth code masked] end'],
+  ])('masks the encoded VM service or DTD URI in %j', (input, expected) => {
+    expect(maskBuiltIn(input)).toBe(expected);
+  });
+
+  it('leaves an encoded link to an ordinary page alone', () => {
+    const text = 'next=https%3A%2F%2Fexample.com%2Fdocs%2Fintro';
     expect(maskBuiltIn(text)).toBe(text);
   });
 });
