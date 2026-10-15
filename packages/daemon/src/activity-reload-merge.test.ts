@@ -180,15 +180,32 @@ describe('ActivityFeed and the reload hook', () => {
     expect(reloads(feed).map((e) => e.kind)).toEqual(['app.reloaded', 'claude.reload']);
   });
 
-  it('replaces the newest matching VM event, not an older one', () => {
+  it('C4 replaces the oldest unpaired VM event in the window, not a newer one', () => {
+    const { bus, feed, clock, vmSuccess } = setup();
+    // Claude's reload, then an IDE reload lands before Claude's hook result arrives.
+    vmSuccess();
+    const claudes = feed.list().at(-1);
+    clock.now += 1000;
+    vmSuccess();
+    clock.now += 500;
+    bus.emit('claude.reload', { ok: false, kind: 'hot-reload' });
+    const list = reloads(feed);
+    expect(list.map((e) => e.kind)).toEqual(['claude.reload', 'app.reloaded']);
+    expect(list[0]?.id).toBe(claudes?.id);
+  });
+
+  it('C4 a successful hook result pairs with the oldest one too, leaving the IDE reload free', () => {
     const { bus, feed, clock, vmSuccess } = setup();
     vmSuccess();
     clock.now += 1000;
     vmSuccess();
-    const newest = feed.list().at(-1);
+    const ide = feed.list().at(-1);
+    clock.now += 500;
+    bus.emit('claude.reload', { ok: true, kind: 'hot-reload' });
+    // A failure for the IDE's reload now finds the IDE row free.
     bus.emit('claude.reload', { ok: false, kind: 'hot-reload' });
     const list = reloads(feed);
     expect(list.map((e) => e.kind)).toEqual(['app.reloaded', 'claude.reload']);
-    expect(list[1]?.id).toBe(newest?.id);
+    expect(list[1]?.id).toBe(ide?.id);
   });
 });

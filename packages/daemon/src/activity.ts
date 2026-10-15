@@ -132,7 +132,8 @@ export class ActivityFeed {
   private claudeReload(fields: Extract<NewEntry, { kind: 'claude.reload' }>): void {
     const now = this.now();
     this.pairedVmRows = this.pairedVmRows.filter((p) => now - p.ts <= RELOAD_MERGE_WINDOW_MS);
-    const at = this.entries.findLastIndex(
+    // The oldest free one: hook results arrive in the order of their reloads (C4).
+    const at = this.entries.findIndex(
       (e) =>
         now - e.ts <= RELOAD_MERGE_WINDOW_MS &&
         e.kind === 'app.reloaded' &&
