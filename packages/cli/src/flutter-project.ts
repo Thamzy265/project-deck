@@ -15,14 +15,17 @@ const APPLICATION_ID =
 
 export type Detection = { ok: true; name?: string } | { ok: false; reason: string };
 
-/** A small text file's contents, or undefined when it is missing, too big or not a file. */
-async function readSmall(path: string): Promise<string | undefined> {
+type SmallFile = { kind: 'text'; text: string } | { kind: 'missing' } | { kind: 'too-large' };
+
+/** A small text file's contents; a missing or non-file path counts as missing. */
+async function readSmall(path: string): Promise<SmallFile> {
   try {
     const info = await stat(path);
-    if (!info.isFile() || info.size > MAX_FILE_BYTES) return undefined;
-    return await readFile(path, 'utf8');
+    if (!info.isFile()) return { kind: 'missing' };
+    if (info.size > MAX_FILE_BYTES) return { kind: 'too-large' };
+    return { kind: 'text', text: await readFile(path, 'utf8') };
   } catch {
-    return undefined;
+    return { kind: 'missing' };
   }
 }
 
@@ -46,13 +49,20 @@ export function hasFlutterDependency(pubspec: string): boolean {
 }
 
 export async function detectFlutterProject(projectDir: string): Promise<Detection> {
-  const pubspec = await readSmall(join(projectDir, 'pubspec.yaml'));
-  if (pubspec === undefined) {
+  const file = await readSmall(join(projectDir, 'pubspec.yaml'));
+  if (file.kind === 'too-large') {
+    return {
+      ok: false,
+      reason: `pubspec.yaml is too large to read (over ${MAX_FILE_BYTES} bytes).`,
+    };
+  }
+  if (file.kind === 'missing') {
     return {
       ok: false,
       reason: `No pubspec.yaml in ${projectDir}. Run init in a Flutter app's folder, or pass --project <folder>.`,
     };
   }
+  const pubspec = file.text;
   if (!hasFlutterDependency(pubspec)) {
     return {
       ok: false,
@@ -66,9 +76,9 @@ export async function detectFlutterProject(projectDir: string): Promise<Detectio
 /** The Android applicationId when it is a plain literal; undefined otherwise. */
 export async function readApplicationId(projectDir: string): Promise<string | undefined> {
   for (const file of ['build.gradle.kts', 'build.gradle']) {
-    const text = await readSmall(join(projectDir, 'android', 'app', file));
-    if (text === undefined) continue;
-    return APPLICATION_ID.exec(text)?.[1];
+    const found = await readSmall(join(projectDir, 'android', 'app', file));
+    if (found.kind !== 'text') continue;
+    return APPLICATION_ID.exec(found.text)?.[1];
   }
   return undefined;
 }

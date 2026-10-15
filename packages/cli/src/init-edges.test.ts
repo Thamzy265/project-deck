@@ -116,14 +116,13 @@ describe('init: pubspec.yaml variants', () => {
   });
 
   // BUG-CLI-T3: a pubspec over 1 MB is reported as missing.
-  it.fails(
-    'BUG-CLI-T3: says a pubspec.yaml over 1 MB is too large, not that it is missing',
-    async () => {
-      await writeFile(join(project, 'pubspec.yaml'), PUBSPEC + `#${'x'.repeat(1_100_000)}\n`);
-      expect(await init()).toBe(1);
-      expect(errors.join('\n')).not.toContain('No pubspec.yaml');
-    },
-  );
+  it('BUG-CLI-T3: says a pubspec.yaml over 1 MB is too large, not that it is missing', async () => {
+    await writeFile(join(project, 'pubspec.yaml'), PUBSPEC + `#${'x'.repeat(1_100_000)}\n`);
+    expect(await init()).toBe(1);
+    expect(errors.join('\n')).not.toContain('No pubspec.yaml');
+    expect(errors.join('\n')).toContain('pubspec.yaml is too large to read');
+    expect(await readdir(project)).toEqual(['pubspec.yaml']);
+  });
 
   // BUG-CLI-T8: valid YAML that Flutter accepts is refused as "not a Flutter app".
   it.fails.each([
