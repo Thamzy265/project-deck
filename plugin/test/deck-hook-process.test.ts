@@ -3,16 +3,16 @@
  * socket, and checks what reaches the daemon, the exit code and that nothing is printed.
  */
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import type { IncomingHttpHeaders, Server, ServerResponse } from 'node:http';
 import { createServer } from 'node:http';
 import type { Socket } from 'node:net';
-import { homedir, tmpdir } from 'node:os';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { projectIdFor, projectKey, readProjectIdentity } from '@project-deck/core/node';
 import { ownProjectId } from '../hooks/deck-hook.mjs';
 import * as fx from './fixtures.js';
@@ -98,13 +98,23 @@ interface RunResult {
   ms: number;
 }
 
+const EMPTY_HOME = mkdtempSync(join(tmpdir(), 'deck-hook-empty-home-'));
+afterAll(() => rmSync(EMPTY_HOME, { recursive: true, force: true }));
+
 function runHook(
   stdin: string | Buffer | undefined,
   env: Record<string, string | undefined>,
   opts: { keepStdinOpen?: boolean; cwd?: string } = {},
 ): Promise<RunResult> {
   const started = Date.now();
-  const childEnv: Record<string, string | undefined> = { ...process.env, ...env };
+  // An empty home of this file's own unless a test gives one: other packages' tests put a
+  // port registry in the shared scratch HOME, which would give the hook a project id.
+  const childEnv: Record<string, string | undefined> = {
+    ...process.env,
+    HOME: EMPTY_HOME,
+    USERPROFILE: EMPTY_HOME,
+    ...env,
+  };
   if (!('CLAUDE_PROJECT_DIR' in env)) delete childEnv.CLAUDE_PROJECT_DIR;
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [SCRIPT], {
@@ -364,9 +374,21 @@ describe('the hook process', () => {
 });
 
 describe('the hook process: project id (S2)', () => {
-  // The hook runs with the test's scratch HOME (vitest.global-setup.ts).
-  const registryDir = () => join(homedir(), '.flutterdeck');
+  // A home folder per test, passed to the hook as HOME: test files run in parallel and
+  // share the global scratch HOME, where a registry would change other files' results.
+  let home: string;
+  const registryDir = () => join(home, '.flutterdeck');
   const salt = () => randomBytes(32).toString('base64url');
+  const run = (input: unknown) =>
+    runHook(JSON.stringify(input), {
+      CLAUDE_PROJECT_DIR: projectDir,
+      HOME: home,
+      USERPROFILE: home,
+    });
+
+  beforeEach(async () => {
+    home = await mkdtemp(join(tmpdir(), 'deck-hook-home-'));
+  });
 
   async function writeRegistry(text: string): Promise<void> {
     await mkdir(registryDir(), { recursive: true });
@@ -374,7 +396,7 @@ describe('the hook process: project id (S2)', () => {
   }
 
   afterEach(async () => {
-    await rm(registryDir(), { recursive: true, force: true });
+    await rm(home, { recursive: true, force: true });
   });
 
   it("sends when /api/health names this project's id", async () => {
@@ -382,7 +404,7 @@ describe('the hook process: project id (S2)', () => {
     await writeRegistry(JSON.stringify({ version: 1, salt: s, projects: {} }));
     daemon = await fakeDaemon('ok', projectIdFor(s, await projectKey(projectDir)));
     await initProject(daemon.port);
-    expectSilentSuccess(await runHook(JSON.stringify(fx.stop), { CLAUDE_PROJECT_DIR: projectDir }));
+    expectSilentSuccess(await run(fx.stop));
     expect(events(daemon)).toHaveLength(1);
   });
 
@@ -391,7 +413,7 @@ describe('the hook process: project id (S2)', () => {
     await writeRegistry(JSON.stringify({ version: 1, salt: s, projects: {} }));
     daemon = await fakeDaemon('ok', projectIdFor(s, '/some/other/project'));
     await initProject(daemon.port);
-    expectSilentSuccess(await runHook(JSON.stringify(fx.stop), { CLAUDE_PROJECT_DIR: projectDir }));
+    expectSilentSuccess(await run(fx.stop));
     expect(daemon.received.map((r) => r.url)).toEqual(['/api/health']);
     expect(daemon.received.every((r) => r.headers['x-deck-token'] === undefined)).toBe(true);
   });
@@ -404,7 +426,7 @@ describe('the hook process: project id (S2)', () => {
     if (text !== undefined) await writeRegistry(text);
     daemon = await fakeDaemon('ok', 'a1b2c3d4e5f6');
     await initProject(daemon.port);
-    expectSilentSuccess(await runHook(JSON.stringify(fx.stop), { CLAUDE_PROJECT_DIR: projectDir }));
+    expectSilentSuccess(await run(fx.stop));
     expect(events(daemon)).toEqual([]);
   });
 
@@ -416,15 +438,15 @@ describe('the hook process: project id (S2)', () => {
     await symlink(real, join(registryDir(), 'ports.json'));
     daemon = await fakeDaemon('ok', projectIdFor(s, await projectKey(projectDir)));
     await initProject(daemon.port);
-    expectSilentSuccess(await runHook(JSON.stringify(fx.stop), { CLAUDE_PROJECT_DIR: projectDir }));
+    expectSilentSuccess(await run(fx.stop));
     expect(events(daemon)).toEqual([]);
   });
 
   it("works out the same id as core's readProjectIdentity", async () => {
     await writeRegistry(JSON.stringify({ version: 1, salt: salt(), projects: {} }));
-    const id = await ownProjectId(projectDir);
+    const id = await ownProjectId(projectDir, home);
     expect(id).toMatch(/^[0-9a-f]{12}$/);
-    expect(id).toBe(await readProjectIdentity(projectDir, { homeDir: homedir() }));
+    expect(id).toBe(await readProjectIdentity(projectDir, { homeDir: home }));
   });
 
   it('R2-1 matches core for a project path spelled in another case than on disk', async (ctx) => {
@@ -434,15 +456,23 @@ describe('the hook process: project id (S2)', () => {
     // Only a case-insensitive file system (the macOS and Windows defaults) has this case.
     if (!existsSync(other)) ctx.skip();
     await writeRegistry(JSON.stringify({ version: 1, salt: salt(), projects: {} }));
-    expect(await ownProjectId(other)).toBe(
-      await readProjectIdentity(other, { homeDir: homedir() }),
+    expect(await ownProjectId(other, home)).toBe(
+      await readProjectIdentity(other, { homeDir: home }),
     );
+  });
+
+  it('R2-3 sends nothing when it knows its id but the daemon shows none', async () => {
+    await writeRegistry(JSON.stringify({ version: 1, salt: salt(), projects: {} }));
+    daemon = await fakeDaemon('ok');
+    await initProject(daemon.port);
+    expectSilentSuccess(await run(fx.stop));
+    expect(daemon.received.map((r) => r.url)).toEqual(['/api/health']);
   });
 
   it('still sends when the daemon shows no project id (no registry on its side)', async () => {
     daemon = await fakeDaemon('ok');
     await initProject(daemon.port);
-    expectSilentSuccess(await runHook(JSON.stringify(fx.stop), { CLAUDE_PROJECT_DIR: projectDir }));
+    expectSilentSuccess(await run(fx.stop));
     expect(events(daemon)).toHaveLength(1);
   });
 });

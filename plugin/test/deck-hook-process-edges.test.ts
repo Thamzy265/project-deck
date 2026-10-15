@@ -4,6 +4,7 @@
  * the script as Claude Code does (node, JSON on stdin) against local sockets only.
  */
 import { spawn } from 'node:child_process';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import type { IncomingMessage, Server, ServerResponse } from 'node:http';
@@ -12,7 +13,7 @@ import type { Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import * as fx from './fixtures.js';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'hooks', 'deck-hook.mjs');
@@ -92,13 +93,23 @@ interface Run {
   ms: number;
 }
 
+const EMPTY_HOME = mkdtempSync(join(tmpdir(), 'deck-hook-empty-home-'));
+afterAll(() => rmSync(EMPTY_HOME, { recursive: true, force: true }));
+
 function runHook(
   input: unknown,
   env: Record<string, string | undefined>,
   cwd?: string,
 ): Promise<Run> {
   const started = Date.now();
-  const childEnv: Record<string, string | undefined> = { ...process.env, ...env };
+  // An empty home of this file's own unless a test gives one: other packages' tests put a
+  // port registry in the shared scratch HOME, which would give the hook a project id.
+  const childEnv: Record<string, string | undefined> = {
+    ...process.env,
+    HOME: EMPTY_HOME,
+    USERPROFILE: EMPTY_HOME,
+    ...env,
+  };
   if (!('CLAUDE_PROJECT_DIR' in env)) delete childEnv.CLAUDE_PROJECT_DIR;
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [SCRIPT], {

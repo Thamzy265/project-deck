@@ -349,10 +349,11 @@ function call(opts) {
  * same as core's readProjectIdentity, kept here so the hook needs no build. Read only;
  * undefined when the registry is missing, a link or damaged.
  * @param {string} projectDir
+ * @param {string} [home] the user's home folder
  */
-export async function ownProjectId(projectDir) {
+export async function ownProjectId(projectDir, home = homedir()) {
   try {
-    const text = await readPlainFile(join(homedir(), '.flutterdeck', 'ports.json'), 8_388_608);
+    const text = await readPlainFile(join(home, '.flutterdeck', 'ports.json'), 8_388_608);
     if (text === undefined) return undefined;
     /** @type {unknown} */
     const registry = JSON.parse(text);
@@ -404,9 +405,9 @@ export async function send(daemon, event, deadline, projectDir) {
     return false;
   }
   if (!isObject(parsed) || parsed.name !== 'project-deck') return false;
-  if (parsed.projectId !== undefined && parsed.projectId !== (await ownProjectId(projectDir))) {
-    return false;
-  }
+  // Both sides must agree: an id only one of them knows is a mismatch too (R2-3). Neither
+  // knowing one (no port registry on this machine) still sends.
+  if (parsed.projectId !== (await ownProjectId(projectDir))) return false;
   const body = JSON.stringify(event);
   const res = await call({
     port: daemon.port,
