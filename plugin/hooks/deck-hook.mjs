@@ -120,8 +120,12 @@ function decodePercent(text) {
   for (let round = 0; round < DECODE_ROUNDS && /%[0-9A-Fa-f]{2}/.test(out); round++) {
     out = out.replace(/%([0-9A-Fa-f]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
   }
-  return out;
+  // Still encoded after the last round: the patterns can't see into it, so the whole word
+  // goes (fail closed, R2-2). Anchored at a word start, so it stays linear.
+  return out.replace(STILL_ENCODED, '[address]');
 }
+
+const STILL_ENCODED = /(?<![^\s"'`<>])[^\s"'`<>]*%[0-9A-Fa-f]{2}[^\s"'`<>]*/g;
 
 /**
  * Removes control and invisible format characters (a zero-width space could hide a path

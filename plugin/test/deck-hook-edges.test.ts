@@ -340,6 +340,20 @@ describe('scrubReloadMessage: more shapes', () => {
     }
   });
 
+  it('R2-2 masks what is still encoded after three rounds (fail closed)', () => {
+    const code = randomBytes(9).toString('base64url');
+    let encoded = `ws://127.0.0.1:50123/${code}=/ws`;
+    for (let times = 0; times < 5; times++) encoded = encodeURIComponent(encoded);
+    const out = scrubReloadMessage(`cannot reach uri=${encoded} now`);
+    expect(out).not.toContain(code);
+    expect(out).not.toMatch(/%[0-9A-Fa-f]{2}/);
+    expect(out).toBe('cannot reach [address] now');
+  });
+
+  it('R2-2 leaves text with no escapes left alone', () => {
+    expect(scrubReloadMessage('used 100%25 of the budget')).toBe('used 100% of the budget');
+  });
+
   it('S1 removes host:port/… addresses for any host name', () => {
     const code = randomBytes(9).toString('base64url');
     for (const host of [
