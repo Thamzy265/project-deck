@@ -2,6 +2,15 @@
 
 Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
 
+## 2026-10-15 — M2 batch 3 (`feat/mcp`) — ready to merge
+
+- Changed: `packages/mcp` (stdio MCP server: `deck_status`, `get_logs`; best-effort masking at the output layer with built-ins and user rules in a budgeted worker; health-before-token; project id check; auto-start only in folders with `.flutterdeck/config.json`; daemon.log for start failures), core `@project-deck/core/node` (runtime/config/project id, safe file reads, budgeted worker), daemon regex queries in a worker with a 200 ms budget, every `.flutterdeck` file read and written without following links.
+- Gates: developer pass · tester pass (116 tests, T1–T10 fixed) · reviewer: block (M1) → block (R1 High: symlinked daemon.log) → approve with notes (all findings fixed) · QA 30/30 fake mode, live app, planted-file checks ([qa/M2.md](qa/M2.md)).
+- Open findings (Low, follow-up branch): a double-encoded VM service/DTD URI (`%253A%252F%252F…`) keeps its auth code; double full stop in two warnings (C5). C4 (a 74-character commit subject) skipped by the lead.
+- Lead decisions: auto-start only in initialised folders; regex matched against message and stack separately; mcp depends on core only (daemon package used for path resolution).
+- Note: the PM's `~/.flutterdeck/ports.json` (empty, salt only) was created on 14 Oct by the developer's manual run with the real HOME; tests now fail if the real `~/.flutterdeck` changes. Deleting it waits for the PM.
+- Blockers: Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead none.
+
 ## 2026-10-14 — M2 batch 2 (`feat/dashboard`) — merged
 
 - Changed: PR #22 merged (CI 8/8 incl. the e2e job).
