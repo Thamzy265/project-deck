@@ -117,7 +117,13 @@ describe('init in a fresh Flutter project', () => {
   it('prints how to install the plugin from the checkout this CLI runs from', async () => {
     const checkout = join(outside, 'deck checkout');
     await mkdir(join(checkout, '.claude-plugin'), { recursive: true });
-    await writeFile(join(checkout, '.claude-plugin', 'marketplace.json'), '{}');
+    await writeFile(
+      join(checkout, '.claude-plugin', 'marketplace.json'),
+      JSON.stringify({
+        name: 'flutterdeck-dev',
+        plugins: [{ name: 'flutterdeck', source: './plugin' }],
+      }),
+    );
     await init({ cliMainPath: join(checkout, 'packages', 'cli', 'dist', 'main.js') });
     const text = lines.join('\n');
     expect(text).toContain(`claude plugin marketplace add "${checkout}"`);

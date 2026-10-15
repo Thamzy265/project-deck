@@ -21,7 +21,7 @@ import {
   allocatePort,
   claimConfigPort,
 } from '@project-deck/daemon';
-import { constants, existsSync } from 'node:fs';
+import { constants } from 'node:fs';
 import { access, mkdir, rmdir } from 'node:fs/promises';
 import { newConfigText, withPort } from './config-merge.js';
 import { detectFlutterProject, readApplicationId } from './flutter-project.js';
@@ -33,7 +33,13 @@ import { CLI_NAME } from './name.js';
 import type { RunTool } from './prerequisites.js';
 import { checkPrerequisites, formatPrerequisites } from './prerequisites.js';
 import type { FileState } from './project-files.js';
-import { UnsafeFileError, inspectDir, inspectFile, writeAtomic } from './project-files.js';
+import {
+  UnsafeFileError,
+  inspectDir,
+  inspectFile,
+  readProjectFile,
+  writeAtomic,
+} from './project-files.js';
 
 export interface InitOptions {
   projectDir: string;
@@ -112,7 +118,7 @@ export async function runInit(opts: InitOptions): Promise<number> {
       io.out(`  ${outcome.padEnd(10)}${file}${outcome === 'unchanged' ? '' : ` (${detail})`}`);
     }
     io.out('');
-    for (const line of nextSteps(opts.cliMainPath)) io.out(line);
+    for (const line of await nextSteps(opts.cliMainPath)) io.out(line);
     return 0;
   } catch (err) {
     // Every form of the project and home folders (Windows slashes, case, 8.3 names) is
@@ -352,17 +358,33 @@ async function apply(
 const DEV_MARKETPLACE = 'flutterdeck-dev';
 const PLUGIN_NAME = 'flutterdeck';
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
 /**
  * The checkout this CLI runs from (`<root>/packages/cli/dist/main.js`), if it holds the
- * plugin's development marketplace. Until the M5 release that is how the plugin loads.
+ * plugin's development marketplace: a regular file (never through a link) named
+ * `flutterdeck-dev` that lists the `flutterdeck` plugin. Any other marketplace there, such
+ * as a project's own when the CLI is installed inside it, isn't ours. Until the M5 release
+ * that marketplace is how the plugin loads.
  */
-function pluginCheckout(cliMainPath: string): string | undefined {
+async function pluginCheckout(cliMainPath: string): Promise<string | undefined> {
   const root = dirname(dirname(dirname(dirname(cliMainPath))));
-  return existsSync(join(root, '.claude-plugin', 'marketplace.json')) ? root : undefined;
+  try {
+    const file = await readProjectFile(join(root, '.claude-plugin', 'marketplace.json'));
+    if (file.kind !== 'file') return undefined;
+    const market: unknown = JSON.parse(file.text);
+    if (!isRecord(market) || market.name !== DEV_MARKETPLACE) return undefined;
+    const plugins = market.plugins;
+    if (!Array.isArray(plugins)) return undefined;
+    return plugins.some((p) => isRecord(p) && p.name === PLUGIN_NAME) ? root : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
-function nextSteps(cliMainPath: string): string[] {
-  const checkout = pluginCheckout(cliMainPath);
+async function nextSteps(cliMainPath: string): Promise<string[]> {
+  const checkout = await pluginCheckout(cliMainPath);
   const snippet = {
     mcpServers: {
       dart: { type: 'stdio', command: 'dart', args: ['mcp-server'] },
