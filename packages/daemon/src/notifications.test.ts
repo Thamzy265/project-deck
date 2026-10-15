@@ -96,6 +96,23 @@ describe('OS notifications', () => {
     expect(notify.mock.calls.at(-1)).toEqual(['FlutterDeck', 'Reload failed — shop_app']);
   });
 
+  it('R2-5 notifies once for a row that is replaced, and never counts it as held', async () => {
+    const { bus, notify, clock, app, failReload } = setup();
+    bus.emit('app.reloaded', {
+      appId: app.id,
+      result: { ok: false, reason: 'compile-error', message: 'x', source: 'external' },
+    });
+    clock.now += 500;
+    // Claude's result replaces that row under the same id: the same failure.
+    bus.emit('claude.reload', { ok: false, kind: 'hot-reload' });
+    await flush();
+    expect(notify).toHaveBeenCalledTimes(1);
+    clock.now += NOTIFY_RATE_WINDOW_MS;
+    failReload();
+    await flush();
+    expect(notify.mock.calls.at(-1)).toEqual(['FlutterDeck', 'Reload failed — shop_app']);
+  });
+
   it('C6 still counts held events in the next one within two windows', async () => {
     const { notify, failReload, clock } = setup();
     failReload();

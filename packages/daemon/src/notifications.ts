@@ -5,6 +5,7 @@
  * and they never hold log content: only the app's name or Claude Code's waiting message.
  */
 import type { ActivityEntry, DeckConfig, EventBus } from '@project-deck/core';
+import { ACTIVITY_CAPACITY } from '@project-deck/core';
 import { visibleText } from './notify-command.js';
 import type { Notifier } from './notify-run.js';
 
@@ -53,9 +54,21 @@ function message(entry: ActivityEntry): { kind: Kind; head: string; tail?: strin
 /** Subscribes to Activity entries. Returns a function that unsubscribes. */
 export function startNotifications(bus: EventBus, opts: NotificationsOptions): () => void {
   const sent = new Map<Kind, { at: number; held: number }>();
+  // Rows already notified or held. A row announced again (Claude's result replacing the
+  // VM's report of the same reload) is the same event: no second notification, no count
+  // (R2-5). Bounded like the feed itself.
+  const seen = new Set<number>();
   const off = bus.on('activity', (entry) => {
     const msg = message(entry);
     if (msg === undefined || !opts.settings[msg.kind]) return;
+    if (seen.has(entry.id)) return;
+    seen.add(entry.id);
+    if (seen.size > ACTIVITY_CAPACITY) {
+      for (const id of seen) {
+        seen.delete(id);
+        break;
+      }
+    }
     // The feed's time for the event, not the time this microtask runs.
     const t = entry.ts;
     const last = sent.get(msg.kind);
