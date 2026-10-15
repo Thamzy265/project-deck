@@ -154,41 +154,63 @@ const ESCAPE_RUN = /(?:%[0-9A-Fa-f]{2})+/g;
  * which would leave every other escape, and any auth code behind them, unread.
  */
 function decode(text: string): string {
-  return text.replace(ESCAPE_RUN, (run) => {
-    try {
-      return decodeURIComponent(run);
-    } catch {
-      return decodeBytes(run);
-    }
-  });
+  return text.replace(ESCAPE_RUN, decodeRun);
 }
 
-/** Decodes each valid UTF-8 sequence in a run of escapes, one escape at a time otherwise. */
-function decodeBytes(run: string): string {
+/**
+ * Decodes the valid UTF-8 in a run of escapes and keeps each invalid escape as written.
+ * The bytes are checked by hand in one pass, so decodeURIComponent only ever sees valid
+ * stretches and never throws: an exception per broken escape made long runs of them
+ * (%E9%E9…) many times slower than valid ones (review N1).
+ */
+function decodeRun(run: string): string {
+  const bytes: number[] = [];
+  for (let i = 0; i < run.length; i += 3) bytes.push(parseInt(run.slice(i + 1, i + 3), 16));
   let out = '';
+  let valid = 0; // first byte of the valid stretch not yet decoded
   let i = 0;
-  while (i < run.length) {
-    const lead = parseInt(run.slice(i + 1, i + 3), 16);
-    const size =
-      lead < 0x80 ? 1 : lead < 0xc2 ? 0 : lead < 0xe0 ? 2 : lead < 0xf0 ? 3 : lead < 0xf5 ? 4 : 0;
-    const sequence = run.slice(i, i + size * 3);
-    let decoded: string | undefined;
-    if (size > 0 && sequence.length === size * 3) {
-      try {
-        decoded = decodeURIComponent(sequence);
-      } catch {
-        // Not valid UTF-8 (a bad continuation byte or a surrogate): kept as written.
-      }
+  const flush = (end: number) => {
+    if (end > valid) out += decodeURIComponent(run.slice(valid * 3, end * 3));
+  };
+  while (i < bytes.length) {
+    const size = utf8Size(bytes, i);
+    if (size > 0) {
+      i += size;
+      continue;
     }
-    if (decoded === undefined) {
-      out += run.slice(i, i + 3);
-      i += 3;
-    } else {
-      out += decoded;
-      i += sequence.length;
+    flush(i);
+    out += run.slice(i * 3, i * 3 + 3);
+    i += 1;
+    valid = i;
+  }
+  flush(i);
+  return out;
+}
+
+/** The length of the valid UTF-8 sequence starting at `i`, or 0 (RFC 3629, table 3-7). */
+function utf8Size(bytes: number[], i: number): number {
+  const lead = bytes[i] ?? 0x100;
+  if (lead < 0x80) return 1;
+  let size: number;
+  let low = 0x80;
+  let high = 0xbf;
+  if (lead >= 0xc2 && lead <= 0xdf) size = 2;
+  else if (lead >= 0xe0 && lead <= 0xef) {
+    size = 3;
+    if (lead === 0xe0) low = 0xa0; // overlong
+    if (lead === 0xed) high = 0x9f; // surrogates
+  } else if (lead >= 0xf0 && lead <= 0xf4) {
+    size = 4;
+    if (lead === 0xf0) low = 0x90; // overlong
+    if (lead === 0xf4) high = 0x8f; // above U+10FFFF
+  } else return 0;
+  for (let k = 1; k < size; k++) {
+    const byte = bytes[i + k];
+    if (byte === undefined || byte < (k === 1 ? low : 0x80) || byte > (k === 1 ? high : 0xbf)) {
+      return 0;
     }
   }
-  return out;
+  return size;
 }
 
 /**

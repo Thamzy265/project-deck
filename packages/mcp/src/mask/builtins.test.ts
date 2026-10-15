@@ -221,6 +221,7 @@ describe('built-in masking', () => {
     'http://a/u%3Dhttp%253A%252F%252Fa%252F%2526',
     'ws%25253A%25252F%25252Fa%25253D',
     '%3Dhttp%25253A%25252F%25252Fa%25252F%252526',
+    `x http%3A%2F%2F127.0.0.1%2F${'%E9'.repeat(20)} `,
   ])('runs every built-in in linear time on 64 kB of %j', (unit) => {
     // Compared with 8 kB of the same text, not with the clock, so a busy machine doesn't
     // fail it: linear work grows 8x, quadratic work 64x. The best of three runs drops
@@ -240,6 +241,28 @@ describe('built-in masking', () => {
     // A floor on the small time, so timer resolution can't make the ratio meaningless.
     expect(large / Math.max(small, 0.5)).toBeLessThan(24);
     expect(large).toBeLessThan(2000);
+  });
+});
+
+describe('broken escapes in bare encoded URIs (N1)', () => {
+  // Linear either way, but one decodeURIComponent per broken escape (each one throwing)
+  // made 64 kB of these about 9x slower than valid escapes. Compared with the same
+  // text holding valid escapes, not with the clock, so a busy machine doesn't fail it.
+  const time = (unit: string) => {
+    const text = unit.repeat(Math.ceil(65_536 / unit.length)).slice(0, 65_536);
+    let best = Number.POSITIVE_INFINITY;
+    for (let run = 0; run < 3; run++) {
+      const start = performance.now();
+      maskBuiltIn(text);
+      best = Math.min(best, performance.now() - start);
+    }
+    return best;
+  };
+
+  it('decodes 64 kB of %E9 runs about as fast as valid escapes', () => {
+    const broken = time(`x http%3A%2F%2F127.0.0.1%2F${'%E9'.repeat(20)} `);
+    const valid = time(`x http%3A%2F%2F127.0.0.1%2F${'%C3%A9'.repeat(10)} `);
+    expect(broken / Math.max(valid, 0.5)).toBeLessThan(3);
   });
 });
 
