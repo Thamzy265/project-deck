@@ -2,9 +2,10 @@ import { randomBytes } from 'node:crypto';
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { z } from 'zod';
+import { STATE_DIR } from './safe-file.js';
 
 /** Per-project state folder. Name still open (see the plan's naming decision). */
-export const STATE_DIR = '.flutterdeck';
+export { STATE_DIR };
 export const RUNTIME_FILE = 'runtime.json';
 
 export const RuntimeInfoSchema = z.object({

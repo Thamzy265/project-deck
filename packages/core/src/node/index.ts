@@ -7,3 +7,4 @@ export * from './budgeted-worker.js';
 export * from './config-file.js';
 export * from './project-id.js';
 export * from './runtime.js';
+export { NotRegularFileError, StateDirError, checkStateDir, readRegularFile } from './safe-file.js';
