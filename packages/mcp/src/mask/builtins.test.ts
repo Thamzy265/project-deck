@@ -243,6 +243,34 @@ describe('built-in masking', () => {
   });
 });
 
+describe('nested encoded URLs below the part cap', () => {
+  // Above 8 kB a URL fails closed without being read, so the 8 kB vs 64 kB check above
+  // can't see the nested decoding work. This one stays below the cap: 1 kB vs 8 kB.
+  it.each([
+    'http://a/?u=http%3A%2F%2Fa%2F',
+    'http://a/u%3Dhttp%253A%252F%252Fa%252F%2526',
+    'http://127.0.0.1:1/?u=http%253A%252F%252Fa%253Fu%253D',
+    'http://a/x%25253Fu%25253Dhttp%2525253A%2525252F',
+    '%3Dhttp%25253A%25252F%25252Fa%25252F%252526',
+  ])('reads nested %j in linear time', (unit) => {
+    const time = (size: number) => {
+      const text = unit.repeat(Math.ceil(size / unit.length)).slice(0, size);
+      let best = Number.POSITIVE_INFINITY;
+      for (let run = 0; run < 3; run++) {
+        const start = performance.now();
+        // Several calls per run, so the 1 kB time is above the timer's resolution.
+        for (let call = 0; call < 20; call++) maskBuiltIn(text);
+        best = Math.min(best, performance.now() - start);
+      }
+      return best;
+    };
+    const small = time(1_024);
+    const large = time(8_000);
+    expect(large / Math.max(small, 0.5)).toBeLessThan(24);
+    expect(large).toBeLessThan(2000);
+  });
+});
+
 describe('credentials after a known header or key', () => {
   it.each([
     ['Authorization: Basic dXNlcjpwYXNz', 'Authorization: Basic [token masked]'],
