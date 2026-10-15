@@ -3,6 +3,7 @@ import { createServer } from 'node:http';
 import { basename } from 'node:path';
 import type { Registry } from '@project-deck/core';
 import { DECK_VERSION, EventBus } from '@project-deck/core';
+import { checkStateDir } from '@project-deck/core/node';
 import { getRequestListener } from '@hono/node-server';
 import { ActivityFeed } from './activity.js';
 import { createApi } from './api.js';
@@ -79,6 +80,9 @@ export class DaemonAlreadyRunningError extends Error {
 }
 
 export async function startDaemon(opts: DaemonOptions): Promise<Daemon> {
+  // Before anything is created in it: a linked .flutterdeck would send every write
+  // (runtime.json with the token, the lock) to wherever a cloned repo points it.
+  await checkStateDir(opts.projectDir);
   // Held from the "is one running?" check until runtime.json is written, so two daemons
   // started together for the same project can't both pass the check.
   let release: () => Promise<void>;

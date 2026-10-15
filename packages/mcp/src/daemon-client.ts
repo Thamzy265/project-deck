@@ -13,6 +13,8 @@ import {
   TOKEN_HEADER,
 } from '@project-deck/core';
 import {
+  StateDirError,
+  checkStateDir,
   configPath,
   readProjectIdentity,
   readRegularFile,
@@ -163,6 +165,13 @@ export class DaemonClient {
   }
 
   private async isSetUp(): Promise<boolean> {
+    try {
+      // A linked .flutterdeck is refused with its own message, before anything else.
+      await checkStateDir(this.opts.projectDir);
+    } catch (err) {
+      if (err instanceof StateDirError) throw new DaemonError(err.message);
+      throw err;
+    }
     try {
       await access(configPath(this.opts.projectDir));
       return true;

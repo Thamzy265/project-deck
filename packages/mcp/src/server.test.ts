@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -142,6 +142,36 @@ describe('a folder without FlutterDeck', () => {
     expect(logs.text).toBe(message);
     expect(spawned).toBe(0);
   });
+});
+
+describe('a .flutterdeck that is a link', () => {
+  it.skipIf(process.platform === 'win32')(
+    'is refused by both tools, and no daemon is started',
+    async () => {
+      const elsewhere = await mkdtemp(join(tmpdir(), 'deck-elsewhere-'));
+      try {
+        await writeFile(join(elsewhere, 'config.json'), '{"version":1}');
+        await rm(join(projectDir, '.flutterdeck'), { recursive: true, force: true });
+        await symlink(elsewhere, join(projectDir, '.flutterdeck'));
+        let spawned = 0;
+        const client = await connect({
+          spawnDaemon: () => {
+            spawned++;
+          },
+        });
+        const status = await call(client, 'deck_status');
+        const logs = await call(client, 'get_logs');
+        expect(String(status.json.problem)).toMatch(
+          /\.flutterdeck in this project is not a real folder/,
+        );
+        expect(logs.isError).toBe(true);
+        expect(logs.text).toMatch(/not a real folder/);
+        expect(spawned).toBe(0);
+      } finally {
+        await rm(elsewhere, { recursive: true, force: true });
+      }
+    },
+  );
 });
 
 describe('deck_status', () => {
