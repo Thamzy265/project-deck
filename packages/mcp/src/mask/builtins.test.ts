@@ -408,6 +408,14 @@ describe('auth codes in twice-encoded URIs', () => {
     expect(out).toBe(`uri=${MASKED} end`);
   });
 
+  it.each([
+    `https://shop.example.com/cart?return=${enc('/checkout?step=review&note=thanks=')}`,
+    `https://example.com/go?to=${enc('/page/section==')}`,
+    `https://example.com/go?to=${enc('/a?x=1&flag=enabled=')}`,
+  ])('leaves an ordinary link with = signs in an encoded value alone (R2): %s', (text) => {
+    expect(maskBuiltIn(text)).toBe(text);
+  });
+
   it('leaves a twice-encoded link to an ordinary page alone', () => {
     const page = 'https://example.com/docs/intro';
     for (const text of [

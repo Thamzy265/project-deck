@@ -68,22 +68,29 @@ const SEPARATORS = /[/?#&]/;
  * Every path segment and query value, as written and after each of up to
  * DECODE_ROUNDS rounds of decoding: a URI encoded inside another encoded value (%253A,
  * or %3Furi%3D…) hides its separators and padding otherwise.
+ *
+ * `own` holds the segments and their query values themselves, where padded base64 is an
+ * auth code. `nested` adds the pieces of a decoded value split again (decoding may have
+ * turned %3F, %3D and %26 into separators); they only count as a URL to look inside, as
+ * `section==` in an ordinary encoded link `%2Fpage%2Fsection%3D%3D` is not a code.
  */
-function urlParts(path: string): string[] {
-  const parts = new Set<string>();
+function urlParts(path: string): { own: string[]; nested: string[] } {
+  const own = new Set<string>();
+  const nested = new Set<string>();
+  const add = (set: Set<string>, piece: string) => {
+    if (piece === '') return;
+    const eq = piece.indexOf('=');
+    set.add(uncut(piece));
+    if (eq > 0 && eq < piece.length - 1) set.add(uncut(piece.slice(eq + 1)));
+  };
   for (const segment of path.split(SEPARATORS)) {
     if (segment === '') continue;
     for (const text of decodings(segment)) {
-      // Split again: decoding may have turned %3F, %3D and %26 into separators.
-      for (const piece of [text, ...text.split(/[?#&]/), ...text.split(SEPARATORS)]) {
-        if (piece === '') continue;
-        const eq = piece.indexOf('=');
-        parts.add(uncut(piece));
-        if (eq > 0 && eq < piece.length - 1) parts.add(uncut(piece.slice(eq + 1)));
-      }
+      add(own, text);
+      for (const piece of [...text.split(/[?#&]/), ...text.split(SEPARATORS)]) add(nested, piece);
     }
   }
-  return [...parts];
+  return { own: [...own], nested: [...own, ...nested] };
 }
 
 /**
@@ -113,11 +120,11 @@ const INNER_URL = /^(?:https?|wss?):\/\/(?:[^/?#@]*@)?([^/?#]+)(.*)$/is;
  */
 function hasAuthCode(host: string, path: string, depth = 0): boolean {
   if (path.length > MAX_URL_PART) return true;
-  const candidates = urlParts(path);
-  if (candidates.some((s) => /^[A-Za-z0-9+_-]{6,}={1,2}$/.test(s))) return true;
+  const { own, nested } = urlParts(path);
+  if (own.some((s) => /^[A-Za-z0-9+_-]{6,}={1,2}$/.test(s))) return true;
   // A URL passed as a value, such as DevTools' ?uri=<VM service URI>: look inside it too.
   if (depth < 2) {
-    for (const candidate of candidates) {
+    for (const candidate of nested) {
       const inner = INNER_URL.exec(candidate);
       if (inner !== null && hasAuthCode(inner[1] ?? '', inner[2] ?? '', depth + 1)) return true;
     }
