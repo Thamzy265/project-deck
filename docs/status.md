@@ -2,6 +2,14 @@
 
 Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
 
+## 2026-10-15 — M2 batch 4 (`feat/cli`) — ready to merge
+
+- Changed: `packages/cli` (`flutterdeck init|start|stop|open|mcp`): init detects a Flutter app (YAML parsed safely), checks dart/flutter/adb through an allow-list, allocates the port, writes config.json, a marked .gitignore block and an attach-only `.claude/launch.json` entry under an init lock, inspects every file before writing and never follows links; start/stop/open reuse the MCP client (no auto-start in open, stop never kills a process); `pathScrubber` moved to core/node.
+- Gates: developer pass · tester pass (77 tests, T1–T11 fixed) · reviewer approve with notes → re-review approve with notes (C1–C3, S1, S2, D1, D2, K1–K5 fixed) · QA 25/25, rerun 29/29 ([qa/M2.md](qa/M2.md)); live-app check skipped (emulator storage full; attach unchanged in this batch).
+- Open findings (Low): N1 EXDEV when `.flutterdeck` is on another mount — fixed in batch 5.
+- Lead decisions: `gh` is checked from M4; both the MCP server and `start` spawn the daemon entry (a CLI spawn would be a package cycle); an empty launch.json is treated as missing.
+- Blockers: Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead none. PM (later): space on the Pixel_9_Pro emulator for the live M2 acceptance run.
+
 ## 2026-10-15 — Masking follow-ups (`fix/mcp-masking-followups`) — ready to merge
 
 - Changed: auth codes in twice- and three-times-encoded VM service/DTD URIs, lenient decoding of broken escapes, fail-closed masking for URLs over 8 kB, fewer false positives on ordinary links, a single full stop in config warnings.

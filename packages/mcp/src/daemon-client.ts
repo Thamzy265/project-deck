@@ -1,5 +1,5 @@
 /**
- * The MCP server's view of the project's daemon: reads runtime.json, checks
+ * The MCP server's (and the CLI's) view of the project's daemon: reads runtime.json, checks
  * /api/health before it sends the token, and starts the daemon (then retries once) when
  * it isn't running. Loopback only; the token goes in a header, never a URL or cookie.
  */
@@ -9,6 +9,7 @@ import {
   HealthResponse,
   LoginWindowResponse,
   LogsResponse,
+  OkResponse,
   StatusResponse,
   TOKEN_HEADER,
 } from '@project-deck/core';
@@ -21,7 +22,7 @@ import {
   readRuntime,
 } from '@project-deck/core/node';
 import { access } from 'node:fs/promises';
-import { pathScrubber } from './paths.js';
+import { pathScrubber } from '@project-deck/core/node';
 import { daemonLogPath } from './spawn.js';
 import { setTimeout as sleep } from 'node:timers/promises';
 import type { z } from 'zod';
@@ -32,12 +33,26 @@ const TOKEN_REJECTED =
   'FlutterDeck daemon rejected the token in .flutterdeck/runtime.json. Run `flutterdeck stop`, then try again.';
 export const DEFAULT_TIMEOUT_MS = 5000;
 export const DEFAULT_READY_TIMEOUT_MS = 10_000;
+export const DEFAULT_STOP_TIMEOUT_MS = 10_000;
 const MAX_STARTS = 2;
 /** The daemon's message is repeated to Claude: keep it short. */
 const MAX_REASON = 300;
 
 /** A message that is safe to show to Claude: it never holds the token. */
 export class DaemonError extends Error {}
+
+/**
+ * The program on the port can't be stopped through the API: it refused the token, or it
+ * didn't say which project it serves (so it never got the token).
+ */
+export class ForeignDaemonError extends DaemonError {
+  constructor(
+    message: string,
+    readonly port: number,
+  ) {
+    super(message);
+  }
+}
 
 /** No daemon answered: nothing listens, or it isn't a FlutterDeck. */
 class Unreachable extends Error {}
@@ -52,6 +67,8 @@ export interface DaemonClientOptions {
   projectId?: () => Promise<string | undefined>;
   timeoutMs?: number;
   readyTimeoutMs?: number;
+  /** How long `shutdown` waits for runtime.json to go. */
+  stopTimeoutMs?: number;
   pollMs?: number;
 }
 
@@ -66,12 +83,14 @@ type StartResult = { kind: 'up' } | { kind: 'gone' } | { kind: 'failed'; reason:
 interface Connection {
   port: number;
   token: string;
+  pid: number;
   warnings: string[];
 }
 
 export class DaemonClient {
   private readonly timeoutMs: number;
   private readonly readyTimeoutMs: number;
+  private readonly stopTimeoutMs: number;
   private readonly pollMs: number;
   private ownId: string | undefined;
   private starting: Promise<StartResult> | undefined;
@@ -82,11 +101,14 @@ export class DaemonClient {
     this.scrub = pathScrubber(opts.projectDir);
     this.timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.readyTimeoutMs = opts.readyTimeoutMs ?? DEFAULT_READY_TIMEOUT_MS;
+    this.stopTimeoutMs = opts.stopTimeoutMs ?? DEFAULT_STOP_TIMEOUT_MS;
     this.pollMs = opts.pollMs ?? 100;
   }
 
-  status(): Promise<Answer<Status>> {
-    return this.withDaemon((c) => this.request(c, 'GET', '/api/status', StatusResponse));
+  /** `start: false` never starts a daemon: it fails with NOT_RUNNING instead. */
+  status(opts: { start?: boolean } = {}): Promise<Answer<Status>> {
+    const call = (c: Connection) => this.request(c, 'GET', '/api/status', StatusResponse);
+    return opts.start === false ? this.withRunning(call) : this.withDaemon(call);
   }
 
   logs(query: LogQuery): Promise<Answer<LogsResult>> {
@@ -102,11 +124,73 @@ export class DaemonClient {
    * Called when the server starts, which also starts the daemon if needed: the dashboard
    * should be up, and able to log in, by the time the Browser pane opens (ADR 0002, 0003).
    */
-  async openLoginWindow(): Promise<LoginWindowResult> {
-    const answer = await this.withDaemon((c) =>
-      this.request(c, 'POST', '/api/login-window', LoginWindowResponse),
+  async openLoginWindow(opts: { start?: boolean } = {}): Promise<LoginWindowResult> {
+    const call = (c: Connection) =>
+      this.request(c, 'POST', '/api/login-window', LoginWindowResponse);
+    const answer = opts.start === false ? this.withRunning(call) : this.withDaemon(call);
+    return (await answer).value;
+  }
+
+  /** Like withDaemon, but a daemon that isn't running is an error, never started. */
+  private async withRunning<T>(call: (c: Connection) => Promise<T>): Promise<Answer<T>> {
+    const conn = await this.connectChecked();
+    if (conn === undefined) throw new DaemonError(NOT_RUNNING);
+    try {
+      return { value: await call(conn), warnings: conn.warnings };
+    } catch (err) {
+      if (err instanceof Unreachable) throw new DaemonError(NOT_RUNNING);
+      throw withWarnings(err, conn.warnings);
+    }
+  }
+
+  /** Whether this project's daemon answers. Never starts one. */
+  async running(): Promise<boolean> {
+    return (await this.connectChecked()) !== undefined;
+  }
+
+  /**
+   * Asks this project's daemon to stop and waits until its runtime.json is gone or holds
+   * another daemon's details. False when none was running. Never starts one, and never
+   * signals a process: the pid in runtime.json may belong to another program by now.
+   */
+  async shutdown(): Promise<boolean> {
+    const conn = await this.connectChecked();
+    if (conn === undefined) return false;
+    try {
+      await this.request(conn, 'POST', '/api/shutdown', OkResponse);
+    } catch (err) {
+      // It went away between the health check and the call.
+      if (err instanceof Unreachable) return false;
+      throw err;
+    }
+    const deadline = Date.now() + this.stopTimeoutMs;
+    while (Date.now() < deadline) {
+      // Gone, or replaced by another daemon's (a new start): either way this one stopped.
+      const now = await readRuntime(this.opts.projectDir);
+      if (
+        now === undefined ||
+        now.token !== conn.token ||
+        now.pid !== conn.pid ||
+        now.port !== conn.port
+      ) {
+        return true;
+      }
+      await sleep(this.pollMs);
+    }
+    throw new DaemonError(
+      `FlutterDeck daemon on port ${conn.port} didn't stop within ${this.stopTimeoutMs / 1000} s.`,
     );
-    return answer.value;
+  }
+
+  /** `connect`, after refusing a linked `.flutterdeck` (its files would be read through it). */
+  private async connectChecked(): Promise<Connection | undefined> {
+    try {
+      await checkStateDir(this.opts.projectDir);
+    } catch (err) {
+      if (err instanceof StateDirError) throw new DaemonError(err.message);
+      throw err;
+    }
+    return this.connect();
   }
 
   private async withDaemon<T>(call: (c: Connection) => Promise<T>): Promise<Answer<T>> {
@@ -150,8 +234,9 @@ export class DaemonClient {
     const ours = await this.ownProjectId();
     if (ours !== undefined && health.projectId === undefined) {
       // Can't tell it is ours, so it doesn't get the token.
-      throw new DaemonError(
+      throw new ForeignDaemonError(
         `The program on port ${info.port} didn't say which project it serves, so FlutterDeck didn't send it the token. Run \`flutterdeck stop\` and try again.`,
+        info.port,
       );
     }
     if (ours !== undefined && health.projectId !== undefined && health.projectId !== ours) {
@@ -165,7 +250,7 @@ export class DaemonClient {
         : [
             `FlutterDeck daemon version ${health.version} differs from this MCP server (${this.opts.version}). Run \`flutterdeck stop\`; the next call starts the matching daemon.`,
           ];
-    return { port: info.port, token: info.token, warnings };
+    return { port: info.port, token: info.token, pid: info.pid, warnings };
   }
 
   private async isSetUp(): Promise<boolean> {
@@ -258,7 +343,7 @@ export class DaemonClient {
       }
       throw new Unreachable();
     }
-    if (res.status === 401) throw new DaemonError(TOKEN_REJECTED);
+    if (res.status === 401) throw new ForeignDaemonError(TOKEN_REJECTED, conn.port);
     if (!res.ok) {
       const error = ErrorResponse.safeParse(body);
       const reason = error.success ? error.data.error : 'no reason given';
