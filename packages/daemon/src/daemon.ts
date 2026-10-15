@@ -12,6 +12,8 @@ import { AppManager } from './app-manager.js';
 import { readConfig } from './config.js';
 import { listen, listenWithFallback } from './listen.js';
 import { LoginWindow } from './login-window.js';
+import { startNotifications } from './notifications.js';
+import type { Notifier } from './notify-run.js';
 import { identifyPortHolder } from './port-busy.js';
 import { claimConfigPort, projectIdentity } from './port-registry.js';
 import { findRunningDaemon } from './running.js';
@@ -51,6 +53,11 @@ export interface DaemonOptions {
    * package; without a build the daemon serves a plain placeholder page.
    */
   dashboardDir?: string;
+  /**
+   * Shows OS notifications (app crashed, reload failed, Claude waiting) as switched on in
+   * config. main.js passes the system notifier; without one nothing is shown.
+   */
+  notifier?: Notifier;
   /** Clock for the login window; tests pass a fake one. */
   now?: () => number;
   log?: (message: string, err?: unknown) => void;
@@ -126,6 +133,10 @@ async function startLocked(opts: DaemonOptions): Promise<Daemon> {
   const bus = new EventBus((err, event) => log(`Listener for ${event} threw`, err));
   const activity = new ActivityFeed(bus);
   const stopActivity = activity.start();
+  const stopNotifications =
+    opts.notifier === undefined
+      ? () => undefined
+      : startNotifications(bus, { settings: config.notifications, notify: opts.notifier });
   const manager = new AppManager(opts.registry, bus, {
     ...(opts.logCapacity === undefined ? {} : { logCapacity: opts.logCapacity }),
     onConnectorError: (id, err) => log(`Connector '${id}' failed to start`, err),
@@ -214,6 +225,7 @@ async function startLocked(opts: DaemonOptions): Promise<Daemon> {
         // or keep main.js waiting on `closed` for ever.
         await regexFilter.close();
         stopActivity();
+        stopNotifications();
         await removeRuntime(opts.projectDir, token).catch((err: unknown) =>
           log("Couldn't remove runtime.json", err),
         );
