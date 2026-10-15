@@ -222,6 +222,8 @@ describe('built-in masking', () => {
     'ws%25253A%25252F%25252Fa%25253D',
     '%3Dhttp%25253A%25252F%25252Fa%25252F%252526',
     `x http%3A%2F%2F127.0.0.1%2F${'%E9'.repeat(20)} `,
+    'http://127.0.0.1:1/aB3dEfGhIj ',
+    'http%3A%2F%2Flocalhost%3A1%2FgetUserProfile%3 ',
   ])('runs every built-in in linear time on 64 kB of %j', (unit) => {
     // Compared with 8 kB of the same text, not with the clock, so a busy machine doesn't
     // fail it: linear work grows 8x, quadratic work 64x. The best of three runs drops
@@ -275,6 +277,8 @@ describe('nested encoded URLs below the part cap', () => {
     'http://127.0.0.1:1/?u=http%253A%252F%252Fa%253Fu%253D',
     'http://a/x%25253Fu%25253Dhttp%2525253A%2525252F',
     '%3Dhttp%25253A%25252F%25252Fa%25252F%252526',
+    'http://127.0.0.1:1/aBcDeFgH1_',
+    'http://127.0.0.1:1/HTTPServerAbc-',
   ])('reads nested %j in linear time', (unit) => {
     const time = (size: number) => {
       const text = unit.repeat(Math.ceil(size / unit.length)).slice(0, size);
@@ -291,6 +295,49 @@ describe('nested encoded URLs below the part cap', () => {
     const large = time(8_000);
     expect(large / Math.max(small, 0.5)).toBeLessThan(24);
     expect(large).toBeLessThan(2000);
+  });
+});
+
+describe('unpadded auth codes on a loopback port (N2)', () => {
+  // Built at runtime so no auth-code-shaped literal sits in the source. Each has fewer
+  // than 3 digits and no = padding, which the old rule needed.
+  const code = ['Ab3dE', '_fGh1I'].join('');
+  const noDigits = ['QwErT', 'yUiOp'].join('');
+  const MASKED = '[auth code masked]';
+
+  it.each([
+    [`http://127.0.0.1:50123/${code}`, `http://127.0.0.1:50123/${MASKED}`],
+    [`http://127.0.0.1:50123/${code}/`, `http://127.0.0.1:50123/${MASKED}`],
+    [`ws://localhost:50123/${code}/ws`, `ws://localhost:50123/${MASKED}`],
+    [`ws://[::1]:50123/${noDigits}/ws`, `ws://[::1]:50123/${MASKED}`],
+    [`x http%3A%2F%2F127.0.0.1%3A50123%2F${code}%3`, `x ${MASKED}`],
+    [`GET /?uri=http%3A%2F%2F127.0.0.1%3A50123%2F${code}%2F`, `GET /?uri=${MASKED}`],
+  ])('masks %j', (input, expected) => {
+    expect(maskBuiltIn(input)).toBe(expected);
+  });
+
+  it.each([
+    'http://127.0.0.1:50123/api/status',
+    'http://127.0.0.1:9100/devtools/',
+    'http://localhost:8080/assets/main.dart.js',
+    'http://localhost:8080/flutter_service_worker.js',
+    'http://localhost:8080/flutter_bootstrap.js',
+    'http://localhost:8080/canvaskit/canvaskit.wasm',
+    'http://localhost:8080/DevTools/',
+    'http://localhost:8080/getUserProfile',
+    'http://localhost:8080/HTTPServer',
+    'http://localhost:8080/oauth2callback',
+    'http://localhost:8080/api_v2_status',
+    'http://localhost:8080/12345678',
+    'http://localhost:8080/my-route-name',
+    'http://localhost:8080/ABCDEFGHIJ',
+    'http%3A%2F%2F127.0.0.1%3A9100%2Fdevtools%2F',
+    // Without a port the stricter old rule applies.
+    `http://localhost/${code}`,
+    // Not loopback.
+    `https://example.com/${code}`,
+  ])('leaves the ordinary URL %j alone', (text) => {
+    expect(maskBuiltIn(text)).toBe(text);
   });
 });
 

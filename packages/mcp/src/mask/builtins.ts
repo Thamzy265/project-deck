@@ -133,12 +133,54 @@ function hasAuthCode(host: string, path: string, depth = 0): boolean {
     .split(SEPARATORS)
     .map(uncut)
     .find((s) => s !== '');
-  return (
-    LOOPBACK.test(host) &&
-    first !== undefined &&
-    /^[A-Za-z0-9+_-]{8,}$/.test(first) &&
-    isSecretLike(first)
-  );
+  if (!LOOPBACK.test(host) || first === undefined || !/^[A-Za-z0-9+_-]{8,}$/.test(first)) {
+    return false;
+  }
+  return isSecretLike(first) || (LOOPBACK_PORT.test(host) && isRandomSegment(first));
+}
+
+const LOOPBACK_PORT = /:\d+$/;
+
+/**
+ * Parts of a route that are words even though they hold digits or capitals: version
+ * tags and common abbreviations. Matched against a whole part between `-`, `_` or `+`.
+ */
+const ROUTE_WORDS =
+  /^(?:v\d{1,3}|i18n|l10n|a11y|utf8|md5|sha\d{1,3}|base64|x64|x86|arm64|oauth2|http2|h2|[23]d|mp[34]|h26[45])$/i;
+
+/**
+ * Humps of a camelCase or snake_case word: an acronym, a word with an optional capital,
+ * or a digit run. Each alternative is greedy with one fixed lookahead, so it is linear.
+ */
+const HUMP = /[A-Z]+(?![a-z])|[A-Z]?[a-z]+|\d+/g;
+
+/**
+ * Review N2: a VM service or DTD code on a loopback port without padding and with few
+ * digits, such as `Ab3dE_fGh1I`. The first path segment (8+ base64url characters, as
+ * checked by the caller) is random-looking when:
+ * - it has both upper and lower case letters, or a digit; and
+ * - some part between `-`, `_` or `+` is not word-shaped. A part is word-shaped when it
+ *   is all digits (an id), is in ROUTE_WORDS, or splits into humps where every letter
+ *   hump is at least 3 characters (2 for the first one, as in `myRoute`), every acronym
+ *   at least 2, and digit runs of at most 2 follow a word (`oauth2callback`).
+ * So `/api/status`, `/devtools/`, `/DevTools`, `/getUserProfile`, `/12345678` stay as
+ * they are; anything with a `.` (`main.dart.js`) never gets here.
+ */
+function isRandomSegment(segment: string): boolean {
+  const mixedCase = /[A-Z]/.test(segment) && /[a-z]/.test(segment);
+  if (!mixedCase && !/\d/.test(segment)) return false;
+  return segment.split(/[-_+]/).some((part) => part !== '' && !isWordShaped(part));
+}
+
+function isWordShaped(part: string): boolean {
+  if (/^\d+$/.test(part) || ROUTE_WORDS.test(part)) return true;
+  const humps = part.match(HUMP) ?? [];
+  return humps.every((hump, index) => {
+    if (/^\d/.test(hump))
+      return index > 0 && hump.length <= 2 && !/^\d/.test(humps[index - 1] ?? '');
+    if (/^[A-Z]+$/.test(hump)) return hump.length >= 2;
+    return hump.length >= (index === 0 ? 2 : 3);
+  });
 }
 
 /** Without an escape cut short at the end (`%`, `%2`), as when a logger cuts the line. */
