@@ -91,6 +91,14 @@ const URI = /(?<![A-Za-z0-9+.-])[A-Za-z][A-Za-z0-9+.-]{0,30}:\/\/[^\s"'`<>]*/g;
 /** `host:port[/…]` without a scheme: localhost, IPv4 or bracketed IPv6. */
 const BARE_ADDRESS =
   /(?<![A-Za-z0-9.:\]-])(?:localhost|\d{1,3}(?:\.\d{1,3}){3}|\[[0-9A-Fa-f:.]{2,45}\]):\d{1,5}(?:\/[^\s"'`<>]*)?/gi;
+/**
+ * `name:port/…` for any other host name (`my-mac.local:52345/<code>=/ws`). The path is
+ * required, so `main.dart:12:3` stays.
+ */
+const HOST_ADDRESS =
+  /(?<![A-Za-z0-9._:/\]-])[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*:\d{1,5}\/[^\s"'`<>]*/g;
+/** Percent-decoding rounds: a URI inside a query can be encoded once, twice or three times. */
+const DECODE_ROUNDS = 3;
 /** An absolute path runs to the end of the line or a quote, spaces included. */
 const PATH_TAIL = String.raw`[^\n"'` + '`' + ']*';
 /** Windows drive paths: `C:\…` or `C:/…`. */
@@ -101,18 +109,32 @@ const UNC_PATH = new RegExp(String.raw`(?<![A-Za-z0-9._~/\\-])\\\\` + PATH_TAIL,
 const POSIX_PATH = new RegExp(String.raw`(?<![A-Za-z0-9._~/\\-])~?/` + PATH_TAIL, 'g');
 
 /**
+ * Decodes `%XX` escapes up to DECODE_ROUNDS times, so an encoded URI (`ws%3A%2F%2F…`) meets
+ * the address patterns. Byte by byte: the text is only shown, never decoded further.
+ * @param {string} text
+ */
+function decodePercent(text) {
+  let out = text;
+  for (let round = 0; round < DECODE_ROUNDS && /%[0-9A-Fa-f]{2}/.test(out); round++) {
+    out = out.replace(/%([0-9A-Fa-f]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+  }
+  return out;
+}
+
+/**
  * Removes control and invisible format characters (a zero-width space could hide a path
  * from the patterns), then addresses and absolute paths, then squeezes white space. No cut:
  * scrubReloadMessage cuts before and after.
  * @param {string} text
  */
 export function scrubText(text) {
-  return text
+  return decodePercent(text)
     .replace(/\r\n?/g, '\n')
     .replace(/[^\P{Cc}\n]/gu, ' ')
     .replace(/\p{Cf}/gu, '')
     .replace(URI, '[address]')
     .replace(BARE_ADDRESS, '[address]')
+    .replace(HOST_ADDRESS, '[address]')
     .replace(DRIVE_PATH, '[path]')
     .replace(UNC_PATH, '[path]')
     .replace(POSIX_PATH, '[path]')

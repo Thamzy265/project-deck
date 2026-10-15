@@ -320,6 +320,45 @@ describe('scrubReloadMessage: more shapes', () => {
     expect(performance.now() - started).toBeLessThan(500);
   });
 
+  it('S1 removes percent-encoded URIs, once, twice or three times encoded', () => {
+    const code = randomBytes(9).toString('base64url');
+    const uri = `ws://127.0.0.1:50123/${code}=/ws`;
+    let encoded = uri;
+    for (let times = 1; times <= 3; times++) {
+      encoded = encodeURIComponent(encoded);
+      for (const text of [
+        `cannot reach uri=${encoded}`,
+        `GET /devtools?uri=${encoded} failed`,
+        `cannot reach ${encoded.toLowerCase()}`,
+      ]) {
+        const out = scrubReloadMessage(text);
+        expect(out, `${times}: ${text}`).not.toContain(code);
+        expect(out).not.toContain(code.toLowerCase());
+        // Masked as an address, or inside a path that goes as a whole.
+        expect(out).toMatch(/\[(address|path)\]/);
+      }
+    }
+  });
+
+  it('S1 removes host:port/… addresses for any host name', () => {
+    const code = randomBytes(9).toString('base64url');
+    for (const host of [
+      'my-mac.local',
+      'devbox',
+      'build-01.corp.example.com',
+      'Jane-MacBook-Pro.local',
+    ]) {
+      expect(scrubReloadMessage(`cannot reach ${host}:52345/${code}=/ws now`)).toBe(
+        'cannot reach [address] now',
+      );
+    }
+  });
+
+  it('S1 leaves file:line:column positions alone', () => {
+    expect(scrubReloadMessage('main.dart:12:3: Error: x')).toBe('main.dart:12:3: Error: x');
+    expect(scrubReloadMessage('lib/main.dart:12:3 x')).toBe('lib/main.dart:12:3 x');
+  });
+
   it('T-P5-1 removes addresses without a scheme, whole', () => {
     for (const [text, out] of [
       ['cannot reach [::1]:8181/AbC=/ws now', 'cannot reach [address] now'],
@@ -338,7 +377,18 @@ describe('scrubReloadMessage: more shapes', () => {
   });
 
   it('T-P5-2 scrubs a 4 MB error in well under the hook deadline', () => {
-    for (const unit of ['a.', 'a:', '/', 'a:/', '[::', '1.1.1.', 'C:\\', 'aa://']) {
+    for (const unit of [
+      'a.',
+      'a:',
+      '/',
+      'a:/',
+      '[::',
+      '1.1.1.',
+      'C:\\',
+      'aa://',
+      '%25',
+      'a.b:1/',
+    ]) {
       const started = performance.now();
       scrubReloadMessage(`Hot reload failed: ${unit.repeat(4_000_000 / unit.length)}`);
       expect(performance.now() - started, unit).toBeLessThan(500);
@@ -355,7 +405,21 @@ describe('scrubReloadMessage: more shapes', () => {
       }
       return Math.max(min, 0.05);
     };
-    for (const unit of ['a.', 'a:', '/', 'a:/', '[::', '1.1.1.', 'C:\\', 'aa://', 'x ']) {
+    for (const unit of [
+      'a.',
+      'a:',
+      '/',
+      'a:/',
+      '[::',
+      '1.1.1.',
+      'C:\\',
+      'aa://',
+      'x ',
+      '%25',
+      '%3A%2F',
+      'a.b:1/',
+      'a-',
+    ]) {
       const small = best(unit.repeat(20_000));
       const large = best(unit.repeat(160_000));
       // 8 times the text: linear is about 8, quadratic about 64.
