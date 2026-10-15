@@ -110,8 +110,21 @@ export async function detectFlutterProject(projectDir: string): Promise<Detectio
   return pubspec.name === undefined ? { ok: true } : { ok: true, name: pubspec.name };
 }
 
+async function isRealFolder(path: string): Promise<boolean> {
+  try {
+    return (await lstat(path)).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 /** The Android applicationId when it is a plain literal; undefined otherwise. */
 export async function readApplicationId(projectDir: string): Promise<string | undefined> {
+  // O_NOFOLLOW guards only the file itself: a linked `android` or `android/app` folder
+  // would still lead outside the project, so both must be real folders.
+  for (const dir of [join(projectDir, 'android'), join(projectDir, 'android', 'app')]) {
+    if (!(await isRealFolder(dir))) return undefined;
+  }
   for (const file of ['build.gradle.kts', 'build.gradle']) {
     const found = await readSmall(join(projectDir, 'android', 'app', file));
     if (found.kind !== 'text') continue;

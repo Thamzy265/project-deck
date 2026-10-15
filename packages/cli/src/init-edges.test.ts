@@ -173,6 +173,21 @@ describe('init: pubspec.yaml variants', () => {
     },
   );
 
+  posix.each([['android'], ['android/app']])(
+    'never reads the Android application id through a linked %s folder (review S1)',
+    async (linked) => {
+      const secret = ['org', 'linked', 'folder'].join('.');
+      const target = join(outside, 'real');
+      const appDir = linked === 'android' ? join(target, 'app') : target;
+      await mkdir(appDir, { recursive: true });
+      await writeFile(join(appDir, 'build.gradle.kts'), `applicationId = "${secret}"\n`);
+      if (linked === 'android/app') await mkdir(join(project, 'android'));
+      await symlink(target, join(project, ...linked.split('/')), 'dir');
+      expect(await init()).toBe(0);
+      expect(lines.join('\n')).not.toContain(secret);
+    },
+  );
+
   posix('BUG-CLI-T4: never reads the Android application id through a link', async () => {
     const target = join(outside, 'build.gradle.kts');
     const secret = ['org', 'private', 'outside'].join('.');
