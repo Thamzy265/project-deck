@@ -4,6 +4,8 @@ import { DEFAULT_QUERY_LIMIT } from '../db.js';
 export interface FakeTable {
   info: Omit<TableInfo, 'rowCount'>;
   rows: Cell[][];
+  /** Further schema SQL after the table's own, such as its indexes and triggers. */
+  extraSql?: string[];
 }
 
 export type FakeQueryHandler = (
@@ -61,6 +63,14 @@ export class FakeDbInspector implements DbInspector {
       truncated: result.rows.length > limit,
       durationMs: 1,
     };
+  }
+
+  async schemaSql(db: string): Promise<string[]> {
+    const tables = await this.tables(db);
+    return tables.flatMap((t) => [
+      ...(t.info.sql === undefined ? [] : [t.info.sql]),
+      ...(t.extraSql ?? []),
+    ]);
   }
 
   watch(db: string, table: string, cb: () => void): () => void {

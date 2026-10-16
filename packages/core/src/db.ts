@@ -33,10 +33,7 @@ export type IndexInfo = z.infer<typeof IndexInfoSchema>;
 export const TableInfoSchema = z.object({
   name: z.string(),
   kind: z.enum(['table', 'view']),
-  /**
-   * The CREATE statement from `sqlite_schema`. The read-only gate loads it into its
-   * scratch database, so backends should always fill it in when they can.
-   */
+  /** The CREATE statement from `sqlite_schema`. The gate uses `schemaSql()` instead. */
   sql: z.string().optional(),
   columns: z.array(ColumnInfoSchema),
   rowCount: z.number().int().nonnegative().optional(),
@@ -113,6 +110,12 @@ export interface DbInspector {
   readonly writable: boolean;
   listDatabases(): Promise<DbInfo[]>;
   schema(db: string): Promise<TableInfo[]>;
+  /**
+   * Every `sqlite_schema.sql` of the database, in schema order: tables, views, indexes
+   * and triggers. The read-only gate loads exactly this (ADR 0005); TableInfo alone
+   * can't give it indexes or triggers.
+   */
+  schemaSql(db: string): Promise<string[]>;
   /** Callers pass only SQL the read-only gate accepted. */
   query(
     db: string,

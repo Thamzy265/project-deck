@@ -93,6 +93,23 @@ describe('FakeDbInspector', () => {
     });
   });
 
+  it('serves the whole schema as sqlite_schema SQL, indexes and triggers included', async () => {
+    const orders = {
+      ...ordersTable(),
+      info: {
+        ...ordersTable().info,
+        sql: 'CREATE TABLE orders(id INTEGER PRIMARY KEY, status TEXT)',
+      },
+      extraSql: ['CREATE INDEX orders_status ON orders(status)'],
+    };
+    const db = new FakeDbInspector({ app: [orders] });
+    expect(await db.schemaSql('app')).toEqual([
+      'CREATE TABLE orders(id INTEGER PRIMARY KEY, status TEXT)',
+      'CREATE INDEX orders_status ON orders(status)',
+    ]);
+    await expect(db.schemaSql('missing')).rejects.toThrow(/No database/);
+  });
+
   it('notifies watchers on insert and uses the custom handler', async () => {
     const db = new FakeDbInspector({ app: [ordersTable()] }, (_db, sql) =>
       sql.includes('count') ? { columns: ['n'], rows: [[3]] } : undefined,
