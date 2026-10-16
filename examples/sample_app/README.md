@@ -1,12 +1,21 @@
 # FlutterDeck sample app
 
-A one-screen Flutter app for trying FlutterDeck by hand. It proves that a breakpoint set in your IDE still hits while the FlutterDeck daemon is attached to the app and reloading it. Later milestones add a Drift database to it and use it as the demo app.
+A one-screen Flutter app for trying FlutterDeck by hand. It proves that a breakpoint set in your IDE still hits while the FlutterDeck daemon is attached to the app and reloading it. It also keeps a list of orders in a Drift database, for trying FlutterDeck's database inspector.
 
 The screen has:
 
 - a line of text (`reloadMarker` in `lib/main.dart`) to edit and hot reload;
 - a tap counter;
-- a **Hit breakpoint** button. Each tap runs `onHitBreakpoint()` and writes three log lines: a `print`, a `developer.log` line named `flutterdeck.sample`, and an Android logcat line with the tag `FlutterDeckSample`.
+- a **Hit breakpoint** button. Each tap runs `onHitBreakpoint()` and writes three log lines: a `print`, a `developer.log` line named `flutterdeck.sample`, and an Android logcat line with the tag `FlutterDeckSample`;
+- an **Add order** button and the list of orders, newest first. Each tap adds a pending order (Coffee, Tea, Cake, Bagel, Juice in turn). Tap an order's status to move it to `shipped`, then `cancelled`, then `pending` again.
+
+## The orders database
+
+- `lib/database.dart` defines the Drift table `orders`: `id` (auto increment), `item`, `status` (`pending`, `shipped` or `cancelled`; `pending` by default) and `created_at`. `driftDatabase(name: 'sample')` stores it in `sample.sqlite` in the app's documents folder (on Android: `/data/data/dev.flutterdeck.flutterdeck_sample/app_flutter/sample.sqlite`).
+- `lib/database.g.dart` is generated and committed, so you need no code generation to run the app. After you change `lib/database.dart`, run `dart run build_runner build` in this folder and commit the new `lib/database.g.dart`.
+- `main()` in `lib/main.dart` calls `FlutterDeckDrift.register(db, name: 'sample');`. The package comes from `../../dart/flutterdeck_drift` (a path dependency). It does nothing in release builds. In a debug build it lets FlutterDeck read the database live; see [its README](../../dart/flutterdeck_drift/README.md).
+
+FlutterDeck's Database tab and its database tools for Claude come in later M3 batches. Their steps will be added here then.
 
 ## Open it in Android Studio
 
