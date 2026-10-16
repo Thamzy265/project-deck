@@ -7,6 +7,7 @@ import type {
 } from '../apps.js';
 import type { DbInspector } from '../db.js';
 import { EventBus } from '../events.js';
+import type { FakeAppExtensions } from './fake-extensions.js';
 import { RingBufferLogSource } from '../logs.js';
 
 const OK_RELOAD: ReloadResult = { ok: true, kind: 'hot-reload', durationMs: 120 };
@@ -19,6 +20,7 @@ const NOT_ATTACHED: ReloadResult = {
 
 export interface FakeAppSessionOptions {
   db?: DbInspector;
+  extensions?: FakeAppExtensions;
   logCapacity?: number;
 }
 
@@ -32,6 +34,7 @@ export class FakeAppSession implements AppSession {
   private readonly logSource: RingBufferLogSource;
   private readonly events = new EventBus<AppSessionEvents>();
   private readonly dbInspector: DbInspector | undefined;
+  readonly extensions?: FakeAppExtensions;
 
   constructor(
     readonly app: RunningApp,
@@ -39,6 +42,7 @@ export class FakeAppSession implements AppSession {
   ) {
     this.logSource = new RingBufferLogSource(opts.logCapacity);
     this.dbInspector = opts.db;
+    if (opts.extensions !== undefined) this.extensions = opts.extensions;
   }
 
   nextReload(...results: ReloadResult[]): this {
@@ -71,6 +75,7 @@ export class FakeAppSession implements AppSession {
 
   detach(): Promise<void> {
     this.detached = true;
+    if (this.extensions !== undefined) this.extensions.detached = true;
     return Promise.resolve();
   }
 
