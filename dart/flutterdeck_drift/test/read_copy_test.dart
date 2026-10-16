@@ -95,6 +95,37 @@ void main() {
     );
   });
 
+  test('a database that grows over the cap during a copy is too large (R3-4)', () {
+    app.execute(
+      'WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c '
+      "WHERE x < 1000) INSERT INTO orders (item) SELECT printf('%.500c', 'x') "
+      'FROM c',
+    );
+    final size = File(path).lengthSync();
+    ReadOps.copyCap = size + 64 * 1024;
+    var grown = false;
+    ReadOps.afterCopyStep = () {
+      if (grown) return;
+      grown = true;
+      // The app adds about 1 MB between two copy steps.
+      app.execute(
+        'WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c '
+        "WHERE x < 2000) INSERT INTO orders (item) SELECT printf('%.500c', 'y') "
+        'FROM c',
+      );
+    };
+    addTearDown(() => ReadOps.afterCopyStep = null);
+    expect(
+      () => ops.query('SELECT count(*) FROM orders', const [], 10),
+      throwsA(
+        isA<DriftDeckError>()
+            .having((e) => e.code, 'code', ErrorCode.tooLarge)
+            .having((e) => e.message, 'message', contains('WAL')),
+      ),
+    );
+    expect(grown, isTrue);
+  });
+
   test('a copy that runs out of time stops and holds no lock', () {
     app.execute(
       'WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c '

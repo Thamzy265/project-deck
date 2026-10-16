@@ -199,20 +199,14 @@ final class ReadOps {
   /// app's writes wait at most one short step. A write by the app between
   /// steps makes SQLite restart the copy, so it is always consistent.
   void _copyIn(Stopwatch spent) {
-    final size = _retryBusy(() {
-      final pages = file.select('PRAGMA page_count').first.values.first as int;
-      final pageSize =
-          file.select('PRAGMA page_size').first.values.first as int;
-      return pages * pageSize;
-    }, spent);
-    if (size > copyCap) {
-      throw DriftDeckError(
-        ErrorCode.tooLarge,
-        'This database is ${_megabytes(size)} MB. FlutterDeck reads a copy '
-        'of databases that do not use WAL, up to ${_megabytes(copyCap)} MB. '
-        'Turn on WAL (PRAGMA journal_mode = WAL) to read it live.',
-      );
-    }
+    final (pages, pageSize) = _retryBusy(
+      () => (
+        file.select('PRAGMA page_count').first.values.first as int,
+        file.select('PRAGMA page_size').first.values.first as int,
+      ),
+      spent,
+    );
+    _checkCap(pages * pageSize);
     final backup = NativeBackup.start(copy.handle, file.handle);
     if (backup == null) {
       throw const DriftDeckError(
@@ -224,6 +218,9 @@ final class ReadOps {
       while (true) {
         if (spent.elapsed >= copyBudget) throw _copyTooLong;
         final rc = backup.step(copyStepPages);
+        afterCopyStep?.call();
+        // The app may grow the database while it is copied (R3-4).
+        _checkCap(backup.pageCount * pageSize);
         if (rc == _done) break;
         if (rc == 0) continue;
         if (rc == _busy || rc == _locked) {
@@ -239,6 +236,19 @@ final class ReadOps {
       backup.finish();
     }
   }
+
+  void _checkCap(int size) {
+    if (size <= copyCap) return;
+    throw DriftDeckError(
+      ErrorCode.tooLarge,
+      'This database is ${_megabytes(size)} MB. FlutterDeck reads a copy '
+      'of databases that do not use WAL, up to ${_megabytes(copyCap)} MB. '
+      'Turn on WAL (PRAGMA journal_mode = WAL) to read it live.',
+    );
+  }
+
+  /// Test hook: runs after each copy step.
+  static void Function()? afterCopyStep;
 
   static String _megabytes(int bytes) =>
       (bytes / (1024 * 1024)).toStringAsFixed(bytes < 10 * 1024 * 1024 ? 1 : 0);
