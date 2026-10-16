@@ -4,7 +4,9 @@
  * or personal data. Re-recording with tool/record_fixtures.dart must keep it that way.
  */
 import { readFileSync } from 'node:fs';
+import { CellSchema, QueryResultSchema, TableInfoSchema } from '@project-deck/core';
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 
 const text = readFileSync(
   new URL('./fixtures/flutterdeck-drift-v1.recorded.json', import.meta.url),
@@ -12,8 +14,23 @@ const text = readFileSync(
 );
 const fixture = JSON.parse(text) as {
   _source?: unknown;
+  tablesEvent: { extensionData: unknown };
   exchanges: { label: string; request: { params?: Record<string, unknown> }; response: unknown }[];
 };
+
+/** The `result` of the exchange with this label. */
+function result(label: string): unknown {
+  const exchange = fixture.exchanges.find((e) => e.label === label);
+  expect(exchange, label).toBeDefined();
+  return (exchange?.response as { result?: unknown }).result;
+}
+
+const ProtocolError = z.object({
+  protocol: z.literal(1),
+  error: z.object({ code: z.string(), message: z.string() }),
+});
+/** A row key: one cell, or a JSON array of cells for a composite key. */
+const Key = z.union([CellSchema, z.array(CellSchema)]);
 
 /** Every string value in the fixture, with the path to it. */
 function strings(value: unknown, path = '$'): [string, string][] {
@@ -65,5 +82,91 @@ describe('flutterdeck_drift recorded fixture', () => {
       expect(s, path).not.toMatch(/[^\s@]+@[^\s@]+\.[a-z]{2,}/i);
       expect(s, path).not.toMatch(/\+?\d(?: ?\d){9,}/);
     }
+  });
+
+  // The TypeScript side will validate replies with core's schemas (D-3), so the Dart package
+  // must answer in exactly those shapes.
+  describe("matches core's db schemas", () => {
+    it('schema: every table entry is a TableInfo', () => {
+      const r = z
+        .object({ protocol: z.literal(1), tables: z.array(z.unknown()) })
+        .parse(result('schema'));
+      expect(r.tables.length).toBeGreaterThan(0);
+      for (const t of r.tables) {
+        const parsed = TableInfoSchema.strict().safeParse(t);
+        expect(parsed.success, JSON.stringify(parsed.error?.issues)).toBe(true);
+      }
+    });
+
+    it('query: the reply is a QueryResult', () => {
+      const parsed = QueryResultSchema.extend({ protocol: z.literal(1) })
+        .strict()
+        .safeParse(result('query'));
+      expect(parsed.success, JSON.stringify(parsed.error?.issues)).toBe(true);
+    });
+
+    it('snapshot: keys are cells and hashes are 16 hex digits', () => {
+      const Table = z.union([
+        z
+          .object({
+            name: z.string(),
+            columns: z.array(z.string()),
+            key: z.array(z.string()).min(1),
+            rowid: z.literal(true).optional(),
+            rows: z.array(z.tuple([Key, z.array(z.string().regex(/^[0-9a-f]{16}$/))])),
+          })
+          .strict(),
+        z
+          .object({ name: z.string(), error: z.object({ code: z.string(), message: z.string() }) })
+          .strict(),
+      ]);
+      const parsed = z
+        .object({ protocol: z.literal(1), takenAt: z.number().int(), tables: z.array(Table) })
+        .strict()
+        .safeParse(result('snapshot'));
+      expect(parsed.success, JSON.stringify(parsed.error?.issues)).toBe(true);
+    });
+
+    it('rows: every key and value is a cell', () => {
+      const parsed = z
+        .object({
+          protocol: z.literal(1),
+          columns: z.array(z.string()),
+          key: z.array(z.string()),
+          rowid: z.literal(true).optional(),
+          rows: z.array(z.tuple([Key, z.array(CellSchema)])),
+          missing: z.array(Key),
+          truncated: z.boolean(),
+        })
+        .strict()
+        .safeParse(result('rows'));
+      expect(parsed.success, JSON.stringify(parsed.error?.issues)).toBe(true);
+    });
+
+    it('errors are {protocol, error: {code, message}}', () => {
+      for (const label of [
+        'query refused (write)',
+        'query refused (ATTACH)',
+        'query unknown db',
+        'execute without token',
+        'query timeout',
+      ]) {
+        expect(ProtocolError.safeParse(result(label)).success, label).toBe(true);
+      }
+    });
+
+    it('the tables event names tables with a kind', () => {
+      const parsed = z
+        .object({
+          protocol: z.literal(1),
+          db: z.string(),
+          tables: z.array(
+            z.object({ name: z.string(), kind: z.enum(['insert', 'update', 'delete', 'unknown']) }),
+          ),
+        })
+        .strict()
+        .safeParse(fixture.tablesEvent.extensionData);
+      expect(parsed.success, JSON.stringify(parsed.error?.issues)).toBe(true);
+    });
   });
 });
