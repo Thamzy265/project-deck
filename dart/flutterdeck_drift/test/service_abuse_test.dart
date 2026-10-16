@@ -108,24 +108,18 @@ void main() {
     timeout: const Timeout(Duration(seconds: 30)),
   );
 
-  test(
-    'FD-11: the table event names the kind of the main statement',
-    () async {
-      final r = await call('execute', {
-        'db': 'app',
-        'sql': "WITH c AS (SELECT replace('a', 'a', 'b')) DELETE FROM orders",
-        'token': freshToken(),
-      });
-      expect(r['changes'], 1);
-      await Future<void>.delayed(eventDebounce * 3);
-      expect(events.last['tables'], [
-        {'name': 'orders', 'kind': 'delete'},
-      ]);
-    },
-    skip:
-        'FD-11 (known bug): the replace() function is read as REPLACE, '
-        'so the event says insert',
-  );
+  test('FD-11: the table event names the kind of the main statement', () async {
+    final r = await call('execute', {
+      'db': 'app',
+      'sql': "WITH c AS (SELECT replace('a', 'a', 'b')) DELETE FROM orders",
+      'token': freshToken(),
+    });
+    expect(r['changes'], 1);
+    await Future<void>.delayed(eventDebounce * 3);
+    expect(events.last['tables'], [
+      {'name': 'orders', 'kind': 'delete'},
+    ]);
+  });
 
   group('execute: locks', () {
     test('RETURNING runs and counts the change', () async {

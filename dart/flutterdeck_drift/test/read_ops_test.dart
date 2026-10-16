@@ -466,6 +466,7 @@ void main() {
     test('passes one edit on a known table', () {
       expect(ops.checkWrite("UPDATE orders SET status = 'x' WHERE id = 1"), {
         'table': 'orders',
+        'verb': 'UPDATE',
       });
     });
 

@@ -140,6 +140,22 @@ void main() {
       });
     }
 
+    test('names the verb at its position, not a function name', () {
+      expect(
+        writeTarget("UPDATE t SET a = replace(a, 'x', 'y')").verb,
+        'UPDATE',
+      );
+      expect(
+        writeTarget(
+          "WITH c AS (SELECT replace('a', 'a', 'b')) DELETE FROM t",
+        ).verb,
+        'DELETE',
+      );
+      expect(writeTarget('insert or replace into t values (1)').verb, 'INSERT');
+      expect(writeTarget('REPLACE INTO t VALUES (1)').verb, 'REPLACE');
+      expect(writeTarget('DROP TABLE t').verb, isNull);
+    });
+
     test('unquotes the target table name', () {
       expect(writeTarget('DELETE FROM "my ""t"""').table, 'my "t"');
       expect(writeTarget('DELETE FROM [my t]').table, 'my t');

@@ -174,10 +174,14 @@ String? readGuard(String sql) {
 
 /// The table a write changes, or why the write is refused.
 final class WriteTarget {
-  const WriteTarget.table(String this.table) : error = null;
-  const WriteTarget.refused(String this.error) : table = null;
+  const WriteTarget.table(String this.table, String this.verb) : error = null;
+  const WriteTarget.refused(String this.error) : table = null, verb = null;
 
   final String? table;
+
+  /// The statement's own verb: INSERT, REPLACE, UPDATE or DELETE, read at
+  /// its position, never from a function name such as replace() (FD-11).
+  final String? verb;
   final String? error;
 }
 
@@ -235,7 +239,7 @@ WriteTarget writeTarget(String sql) {
   }
   final name = unquoteIdent(tokens[nameAt].text);
   if (name == null) return const WriteTarget.refused(_onlyEdits);
-  return WriteTarget.table(name);
+  return WriteTarget.table(name, tokens[i].word);
 }
 
 /// The identifier a token names, or null if the token is not one.

@@ -602,7 +602,7 @@ final class ReadOps {
         );
       }
       stmt.close();
-      return {'table': table};
+      return {'table': table, 'verb': target.verb};
     });
   }
 }

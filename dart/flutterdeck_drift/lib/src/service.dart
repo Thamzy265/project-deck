@@ -9,7 +9,6 @@ import 'package:sqlite3/sqlite3.dart' show SqliteException;
 import 'cells.dart';
 import 'protocol.dart';
 import 'read_worker.dart';
-import 'sql_guard.dart';
 
 /// Posts a VM service event (`dart:developer` `postEvent` in the app).
 typedef EventPoster = void Function(String kind, Map<String, Object?> data);
@@ -260,12 +259,7 @@ final class DriftDeckService {
     final ready = await _ready(params);
     final checked = await ready.reader.call('checkWrite', {'sql': sql});
     final table = checked['table']! as String;
-    final kind = switch (tokenize(sql)
-        .map((t) => t.word)
-        .firstWhere(
-          (w) => const {'INSERT', 'REPLACE', 'UPDATE', 'DELETE'}.contains(w),
-          orElse: () => '',
-        )) {
+    final kind = switch (checked['verb']) {
       'UPDATE' => UpdateKind.update,
       'DELETE' => UpdateKind.delete,
       _ => UpdateKind.insert,
