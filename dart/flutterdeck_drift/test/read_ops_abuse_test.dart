@@ -1,6 +1,6 @@
 // Tester probes of the read connection (design note S2, S4, D5; ADR 0005).
-// Tests marked `skip: 'FD-n ...'` are known bugs: they fail today
-// (`dart test --run-skipped` shows it) and the skip goes when fixed.
+// Tests named FD-n are regression tests for the tester's findings, all fixed
+// on feat/flutterdeck-drift; the rest lock behaviour that already held.
 import 'dart:io';
 
 import 'package:flutterdeck_drift/src/protocol.dart';
@@ -71,11 +71,12 @@ void main() {
     });
 
     test('lock: a leading ";" before BEGIN never leaves a transaction', () {
-      // Passes today only because guarded() rolls back after every query.
+      // The guard refuses it (FD-1); guarded() also rolls back after every
+      // query, so either layer alone keeps autocommit.
       try {
         q(';BEGIN');
       } on DriftDeckError {
-        // Refusing it is the fix for FD-1.
+        // Expected: refused.
       }
       expect(ops.db.autocommit, isTrue);
     });
@@ -131,8 +132,8 @@ void main() {
     });
 
     test('non-finite doubles come back tagged', () {
-      // Cross-branch: core's CellSchema on feat/db-core accepts no
-      // {type: 'real'} cell, so the daemon will reject this reply (FD-10).
+      // The agreed shape: core's CellSchema has the same RealCellSchema
+      // variant (FD-10, closed by feat/db-core).
       expect(q('SELECT 1e999, -1e999')['rows'], [
         [
           {'type': 'real', 'value': 'Infinity'},

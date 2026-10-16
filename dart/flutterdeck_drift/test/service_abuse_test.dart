@@ -1,6 +1,6 @@
 // Tester probes of the extension handlers (design note S1, S2, D2, D5).
-// Tests marked `skip: 'FD-n ...'` are known bugs: they fail today
-// (`dart test --run-skipped` shows it) and the skip goes when fixed.
+// Tests named FD-n are regression tests for the tester's findings, all fixed
+// on feat/flutterdeck-drift; the rest lock behaviour that already held.
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';

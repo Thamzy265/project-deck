@@ -1,14 +1,15 @@
 // Tester probes of the token guard (design note "Trust boundaries and abuse
-// cases"; ADR 0005). Tests marked `skip: 'FD-n ...'` are known bugs: they fail
-// today (`dart test --run-skipped` shows it) and the skip goes when fixed.
+// cases"; ADR 0005).
+// Tests named FD-n are regression tests for the tester's findings, all fixed
+// on feat/flutterdeck-drift; the rest lock behaviour that already held.
 import 'package:flutterdeck_drift/src/sql_guard.dart';
 import 'package:test/test.dart';
 
 void main() {
   group('readGuard: empty statements before the real one', () {
     // SQLite skips empty statements (a lone `;`) when it prepares, so the
-    // statement that runs is the one after them. The guard reads only the
-    // first token, which is `;`, and lets these through (FD-1).
+    // statement that runs is the one after them. The guard used to read only
+    // the first token, `;`, and let these through (FD-1, fixed).
     for (final sql in [
       ";ATTACH 'other.sqlite' AS x",
       "; ATTACH 'other.sqlite' AS x",
