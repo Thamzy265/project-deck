@@ -126,6 +126,28 @@ void main() {
     expect(grown, isTrue);
   });
 
+  test('an app that writes all the time gets busy with a WAL hint (R3-3)', () {
+    app.execute(
+      'WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c '
+      "WHERE x < 1000) INSERT INTO orders (item) SELECT printf('%.500c', 'x') "
+      'FROM c',
+    );
+    ReadOps.copyBudget = const Duration(milliseconds: 300);
+    // A churning writer: the app commits between every two copy steps, so
+    // SQLite restarts the copy each time.
+    ReadOps.afterCopyStep = () =>
+        app.execute("UPDATE orders SET n = n + 1 WHERE id = 1");
+    addTearDown(() => ReadOps.afterCopyStep = null);
+    expect(
+      () => ops.query('SELECT 1', const [], 10),
+      throwsA(
+        isA<DriftDeckError>()
+            .having((e) => e.code, 'code', ErrorCode.busy)
+            .having((e) => e.message, 'message', contains('WAL')),
+      ),
+    );
+  });
+
   test('a copy that runs out of time stops and holds no lock', () {
     app.execute(
       'WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c '

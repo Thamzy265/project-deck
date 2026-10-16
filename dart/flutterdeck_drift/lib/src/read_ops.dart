@@ -190,6 +190,13 @@ final class ReadOps {
     }
   }
 
+  static const _copyChurn = DriftDeckError(
+    ErrorCode.busy,
+    'The app is writing all the time, so FlutterDeck could not copy the '
+    'database in time. Try again, or turn on WAL '
+    '(PRAGMA journal_mode = WAL) so FlutterDeck can read it live.',
+  );
+
   static const _copyTooLong = DriftDeckError(
     ErrorCode.timeout,
     'That query took too long and was stopped',
@@ -214,16 +221,30 @@ final class ReadOps {
         "Couldn't start copying the database",
       );
     }
+    // Whether the app wrote during the copy: SQLite then starts it over.
+    var restarted = false;
+    int? lastRemaining;
     try {
       while (true) {
-        if (spent.elapsed >= copyBudget) throw _copyTooLong;
+        if (spent.elapsed >= copyBudget) {
+          // An app that writes all the time keeps restarting the copy; say
+          // so, with the way out, rather than "took too long" (R3-3).
+          throw restarted ? _copyChurn : _copyTooLong;
+        }
         final rc = backup.step(copyStepPages);
+        final remaining = backup.remaining;
+        // A step that made no progress means SQLite started over.
+        if (lastRemaining != null && remaining >= lastRemaining) {
+          restarted = true;
+        }
+        lastRemaining = remaining;
         afterCopyStep?.call();
         // The app may grow the database while it is copied (R3-4).
         _checkCap(backup.pageCount * pageSize);
         if (rc == _done) break;
         if (rc == 0) continue;
         if (rc == _busy || rc == _locked) {
+          restarted = true;
           sleep(const Duration(milliseconds: 2));
           continue;
         }

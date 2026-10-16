@@ -96,6 +96,12 @@ external int _backupFinish(Pointer<Void> backup);
 )
 external int _backupPageCount(Pointer<Void> backup);
 
+@Native<Int Function(Pointer<Void>)>(
+  symbol: 'sqlite3_backup_remaining',
+  assetId: _asset,
+)
+external int _backupRemaining(Pointer<Void> backup);
+
 /// "main", the schema name of both ends of a copy. Allocated once and kept.
 final Pointer<Utf8> _main = 'main'.toNativeUtf8();
 
@@ -118,6 +124,10 @@ final class NativeBackup {
 
   /// Pages in the source database as of the last step.
   int get pageCount => _backupPageCount(_handle);
+
+  /// Pages still to copy as of the last step. It stops going down when
+  /// writes by another connection keep making SQLite restart the copy.
+  int get remaining => _backupRemaining(_handle);
 
   /// Ends the copy and frees it; returns SQLite's result code.
   int finish() => _backupFinish(_handle);
