@@ -6,6 +6,7 @@
 /// [readBudget] (see read_worker.dart).
 library;
 
+import 'dart:ffi';
 import 'dart:io' show sleep;
 
 import 'package:sqlite3/sqlite3.dart';
@@ -38,7 +39,11 @@ final class _Entity {
 }
 
 final class ReadOps {
-  ReadOps(this.file, this.copy) : _current = file;
+  ReadOps(this.file, this.copy, {this.control}) : _current = file;
+
+  /// Shared with the controlling isolate (see read_worker.dart): [0] asks a
+  /// copy to stop, [1] is 1 while a copy runs.
+  final Pointer<Int32>? control;
 
   /// The read-only connection to the app's database file.
   final Database file;
@@ -78,7 +83,7 @@ final class ReadOps {
 
   /// Opens [path] read-only, with no app functions, `query_only`, temp data
   /// in files, a small cache and a 16 MB value limit (design note S2).
-  static ReadOps open(String path) {
+  static ReadOps open(String path, {Pointer<Int32>? control}) {
     final Database db;
     try {
       db = sqlite3.open(path, mode: OpenMode.readOnly, mutex: true);
@@ -120,7 +125,7 @@ final class ReadOps {
       limitLength(copy.handle, readLengthLimit);
       copy.execute('PRAGMA temp_store = FILE');
       copy.execute('PRAGMA query_only = 1');
-      return ReadOps(db, copy);
+      return ReadOps(db, copy, control: control);
     } on Object {
       // Never leave the file connection (a descriptor on the app's
       // database) open behind a failed setup (R3-5).
@@ -191,6 +196,13 @@ final class ReadOps {
     }
   }
 
+  /// Same text as the controller's "reader stopped", for a copy that was
+  /// told to stop.
+  static const copyStopped = DriftDeckError(
+    ErrorCode.internal,
+    'The reader stopped',
+  );
+
   static const _copyChurn = DriftDeckError(
     ErrorCode.busy,
     'The app is writing all the time, so FlutterDeck could not copy the '
@@ -215,8 +227,11 @@ final class ReadOps {
       spent,
     );
     _checkCap(pages * pageSize);
+    final control = this.control;
+    control?[1] = 1;
     final backup = NativeBackup.start(copy.handle, file.handle);
     if (backup == null) {
+      control?[1] = 0;
       throw const DriftDeckError(
         ErrorCode.internal,
         "Couldn't start copying the database",
@@ -227,6 +242,9 @@ final class ReadOps {
     int? lastRemaining;
     try {
       while (true) {
+        // Asked to stop (the reader is closing): end here, finishing the
+        // backup below, so no unfinished backup outlives the copy (R3-1).
+        if (control != null && control[0] != 0) throw copyStopped;
         if (spent.elapsed >= copyBudget) {
           // An app that writes all the time keeps restarting the copy; say
           // so, with the way out, rather than "took too long" (R3-3).
@@ -264,6 +282,7 @@ final class ReadOps {
       }
     } finally {
       backup.finish();
+      control?[1] = 0;
     }
   }
 

@@ -9,7 +9,11 @@
 library;
 
 import 'dart:async';
+import 'dart:ffi';
+import 'dart:io' show sleep;
 import 'dart:isolate';
+
+import 'package:ffi/ffi.dart';
 
 import 'native.dart';
 import 'protocol.dart';
@@ -45,6 +49,15 @@ Map<String, Object?> runReadOp(
       return ops.rows(args['table']! as String, args['keys']! as List<Object?>);
     case 'checkWrite':
       return ops.checkWrite(args['sql']! as String);
+    case 'slowCopyForTest':
+      // Test hook: a query whose copy pauses 5 ms after every step, so a
+      // test can stop the isolate in the middle of a copy.
+      ReadOps.afterCopyStep = () => sleep(const Duration(milliseconds: 5));
+      try {
+        return ops.query('SELECT 1', const [], 1);
+      } finally {
+        ReadOps.afterCopyStep = null;
+      }
     case 'breakForTest':
       // Test hook: as if a statement had changed the connection itself.
       ops.broken = true;
@@ -63,9 +76,10 @@ Map<String, Object?> runReadOp(
 void _readerMain(List<Object?> args) {
   final toController = args[0]! as SendPort;
   final path = args[1]! as String;
+  final control = Pointer<Int32>.fromAddress(args[2]! as int);
   final ReadOps ops;
   try {
-    ops = ReadOps.open(path);
+    ops = ReadOps.open(path, control: control);
   } on DriftDeckError catch (e) {
     toController.send(['failed', e.code, e.message]);
     return;
@@ -135,7 +149,7 @@ final class ReadWorker {
 
   static Future<ReadWorker> spawn(String path) async {
     spawnCount++;
-    final ports = _Ports();
+    final ports = _Ports(calloc<Int32>(2));
     final first = Completer<List<Object?>>();
     ports.messages.listen((Object? m) {
       if (!first.isCompleted) {
@@ -144,17 +158,23 @@ final class ReadWorker {
         ports.onMessage?.call(m! as List<Object?>);
       }
     });
-    ports.exits.listen((_) {
+    void died() {
       if (!first.isCompleted) {
         first.complete(['failed', ErrorCode.internal, 'The reader stopped']);
       }
       ports.onExit?.call();
+    }
+
+    ports.errors.listen((_) => died());
+    ports.exits.listen((_) {
+      died();
+      ports.exited();
     });
     final isolate = await Isolate.spawn(
       _readerMain,
-      [ports.messages.sendPort, path],
+      [ports.messages.sendPort, path, ports.control.address],
       onExit: ports.exits.sendPort,
-      onError: ports.exits.sendPort,
+      onError: ports.errors.sendPort,
       debugName: 'flutterdeck_drift reader',
     );
     final hello = await first.future.timeout(
@@ -265,16 +285,33 @@ final class ReadWorker {
     _ports.close();
   }
 
-  /// Closes the connection in the isolate, then kills the isolate if it has
-  /// not exited after [interruptGrace].
+  /// Tells a copy in progress to stop, asks the isolate to close its
+  /// connections, and kills it if it has not exited after [interruptGrace].
+  ///
+  /// Killing an isolate in the middle of a copy would leave the
+  /// sqlite3_backup unfinished, and both connections would stay alive as
+  /// zombies with the app's data (R3-1). A finalizer can't fix that: SQLite
+  /// doesn't protect a backup's destination, so finishing the backup after
+  /// the destination's own finalizer has closed it crashes. So the copy
+  /// loop checks the stop flag after every step and finishes the backup
+  /// itself, and the isolate is never killed while it says it is copying.
   void _stop() {
     if (_dead) return;
     _dead = true;
+    _ports.stopCopy();
     _toWorker.send(['close']);
-    Timer(interruptGrace, () {
+    var waits = 0;
+    void killUnlessCopying() {
+      if (_ports.hasExited) return;
+      if (_ports.copying && waits++ < 10) {
+        Timer(interruptGrace, killUnlessCopying);
+        return;
+      }
       _isolate.kill(priority: Isolate.immediate);
       _ports.close();
-    });
+    }
+
+    Timer(interruptGrace, killUnlessCopying);
   }
 
   /// Stops the read isolate. Pending reads fail. A read still running is
@@ -290,14 +327,42 @@ final class ReadWorker {
 }
 
 final class _Ports {
+  _Ports(this.control);
+
   final messages = ReceivePort('flutterdeck_drift reader');
+  final errors = ReceivePort('flutterdeck_drift reader error');
   final exits = ReceivePort('flutterdeck_drift reader exit');
   void Function(List<Object?>)? onMessage;
   void Function()? onExit;
 
+  /// Shared with the read isolate: [0] is set to ask a copy to stop, [1] is
+  /// 1 while a copy runs. Freed only once the isolate has exited, so neither
+  /// side can touch freed memory.
+  final Pointer<Int32> control;
+  var hasExited = false;
+
+  bool get copying => !hasExited && control[1] == 1;
+
+  void stopCopy() {
+    if (!hasExited) control[0] = 1;
+  }
+
+  /// The isolate is gone: free the shared block.
+  void exited() {
+    if (hasExited) return;
+    hasExited = true;
+    calloc.free(control);
+    exits.close();
+  }
+
   void close() {
     messages.close();
-    exits.close();
+    errors.close();
+    // The exit message frees [control]; an isolate wedged in a native call
+    // may never send it, so stop waiting (and keep the 8 bytes) after 10 s.
+    Timer(const Duration(seconds: 10), () {
+      if (!hasExited) exits.close();
+    });
   }
 }
 
