@@ -10,26 +10,59 @@ import {
   MAX_WAITING_MESSAGE,
 } from './activity.js';
 import { ReloadResultSchema, RunningAppSchema } from './apps.js';
-import { MAX_QUERY_LIMIT } from './db.js';
+import {
+  CellSchema,
+  DASHBOARD_MAX_QUERY_LIMIT,
+  DbInfoSchema,
+  MAX_SQL_LENGTH,
+  MCP_MAX_QUERY_LIMIT,
+  QueryResultSchema,
+  TableInfoSchema,
+} from './db.js';
 import { LogEntrySchema, LogQuerySchema } from './logs.js';
 import { TaskStatusTypeSchema } from './tasks.js';
 
 const DbName = z.string().min(1).max(128);
-const Sql = z.string().min(1).max(100_000);
+const Sql = z.string().min(1).max(MAX_SQL_LENGTH);
 const SqlParams = z.array(z.union([z.string(), z.number(), z.boolean(), z.null()])).max(1000);
+const SnapshotId = z
+  .string()
+  .regex(/^[A-Za-z0-9_-]{1,64}$/)
+  .describe('Snapshot id from db_snapshot');
 const TaskKey = z.string().min(1).max(64);
 
 export const GetLogsInput = LogQuerySchema;
 
+/** `db_list` and `GET /api/db`: no arguments. */
+export const DbListInput = z.object({});
+
 export const DbSchemaInput = z.object({ db: DbName });
 
-export const DbQueryInput = z.object({
-  db: DbName,
-  sql: Sql,
-  params: SqlParams.optional(),
-  limit: z.number().int().positive().max(MAX_QUERY_LIMIT).optional(),
-});
+/**
+ * Builds the query input with its own row cap: the dashboard and Claude get different
+ * caps (DASHBOARD_MAX_QUERY_LIMIT, MCP_MAX_QUERY_LIMIT) over the same shape.
+ */
+export function makeDbQueryInput(maxLimit: number) {
+  if (!Number.isInteger(maxLimit) || maxLimit < 1 || maxLimit > DASHBOARD_MAX_QUERY_LIMIT) {
+    throw new RangeError(`Query limit cap must be 1 to ${DASHBOARD_MAX_QUERY_LIMIT}`);
+  }
+  return z.object({
+    db: DbName,
+    sql: Sql,
+    params: SqlParams.optional(),
+    limit: z.number().int().positive().max(maxLimit).optional(),
+  });
+}
 
+/** `POST /api/db/query` from the dashboard. */
+export const DbQueryInput = makeDbQueryInput(DASHBOARD_MAX_QUERY_LIMIT);
+/** The `db_query` MCP tool. */
+export const McpDbQueryInput = makeDbQueryInput(MCP_MAX_QUERY_LIMIT);
+
+/**
+ * `POST /api/db/execute`, dashboard edits only (PM decision, 16 Oct 2026: Claude never
+ * writes in M3, so there is no MCP tool for it). Needs `db.allowWrites` and a confirm.
+ */
 export const DbExecuteInput = z.object({
   db: DbName,
   sql: Sql,
@@ -43,9 +76,55 @@ export const DbSnapshotInput = z.object({
 
 export const DbDiffInput = z.object({
   db: DbName,
-  /** Snapshot to compare against the current state. */
-  snapshotId: z.string().min(1),
+  /** Snapshot to compare against the current state; the latest one when absent. */
+  snapshotId: SnapshotId.optional(),
 });
+
+/** Answer of `GET /api/db`. */
+export const DbListResponse = z.object({ databases: z.array(DbInfoSchema) });
+
+/** Answer of `GET /api/db/:db/schema`. */
+export const DbSchemaResponse = z.object({ db: z.string(), tables: z.array(TableInfoSchema) });
+
+/** Answer of `POST /api/db/query`. */
+export const DbQueryResponse = QueryResultSchema;
+
+/** Answer of `POST /api/db/execute`. */
+export const DbExecuteResponse = z.object({ changes: z.number().int().nonnegative() });
+
+/** Answer of `POST /api/db/snapshot`. */
+export const DbSnapshotResponse = z.object({
+  id: SnapshotId,
+  db: z.string(),
+  /** Epoch milliseconds. */
+  takenAt: z.number().int().nonnegative(),
+  label: z.string().max(128).optional(),
+});
+
+const Row = z.array(CellSchema);
+
+/** What changed in one table since a snapshot. Capped; `truncated` says when. */
+export const TableDiffSchema = z.object({
+  table: z.string(),
+  columns: z.array(z.string()),
+  added: z.array(Row),
+  removed: z.array(Row),
+  changed: z.array(z.object({ before: Row, after: Row, columns: z.array(z.string()) })),
+  truncated: z.boolean(),
+  /** The table was over the snapshot caps, so it wasn't compared. */
+  tooLarge: z.boolean().optional(),
+});
+export type TableDiff = z.infer<typeof TableDiffSchema>;
+
+/** Answer of `POST /api/db/diff`. */
+export const DbDiffResponse = z.object({
+  db: z.string(),
+  snapshotId: SnapshotId,
+  /** When the snapshot was taken (epoch milliseconds). */
+  takenAt: z.number().int().nonnegative(),
+  tables: z.array(TableDiffSchema),
+});
+export type DbDiff = z.infer<typeof DbDiffResponse>;
 
 export const TasksMineInput = z.object({
   status: z.array(TaskStatusTypeSchema).optional(),

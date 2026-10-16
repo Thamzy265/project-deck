@@ -68,11 +68,13 @@ describe('FakeDbInspector', () => {
   const ordersTable = () => ({
     info: {
       name: 'orders',
+      kind: 'table' as const,
       columns: [
-        { name: 'id', type: 'INTEGER', nullable: false, pk: true },
-        { name: 'status', type: 'TEXT', nullable: false, pk: false },
+        { name: 'id', type: 'INTEGER', nullable: false, pk: true, pkPosition: 1, default: null },
+        { name: 'status', type: 'TEXT', nullable: false, pk: false, default: null },
       ],
       foreignKeys: [],
+      indexes: [],
     },
     rows: [
       [1, 'pending'],
@@ -82,7 +84,7 @@ describe('FakeDbInspector', () => {
 
   it('serves schema with row counts and SELECT * with truncation', async () => {
     const db = new FakeDbInspector({ app: [ordersTable()] });
-    expect(await db.listDatabases()).toEqual([{ name: 'app' }]);
+    expect(await db.listDatabases()).toEqual([{ name: 'app', backend: 'live' }]);
     expect((await db.schema('app'))[0]?.rowCount).toBe(2);
     expect(await db.query('app', 'SELECT * FROM orders', [], { limit: 1 })).toMatchObject({
       columns: ['id', 'status'],
