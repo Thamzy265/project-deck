@@ -115,7 +115,11 @@ final class ReadWorker {
 
   bool get isDead => _dead;
 
+  /// Test hook: how many read isolates this process has started.
+  static int spawnCount = 0;
+
   static Future<ReadWorker> spawn(String path) async {
+    spawnCount++;
     final ports = _Ports();
     final first = Completer<List<Object?>>();
     ports.messages.listen((Object? m) {
@@ -300,23 +304,37 @@ final class DbReader {
     }
   }
 
+  /// The live read isolate. Starting one is single-flight: calls that find
+  /// the last isolate dead all wait for the same new one, and nothing starts
+  /// once [close] was called (CR-1).
   Future<ReadWorker> _live() async {
-    if (_closed) throw readerStopped;
-    final pending = _worker;
-    if (pending != null) {
-      final w = await pending;
+    while (true) {
+      if (_closed) throw readerStopped;
+      var pending = _worker;
+      if (pending == null) {
+        final spawned = ReadWorker.spawn(path);
+        _worker = pending = spawned;
+        // A failed start is tried again on the next call.
+        spawned.then<void>(
+          (_) {},
+          onError: (Object _) {
+            if (identical(_worker, spawned)) _worker = null;
+          },
+        );
+      }
+      final ReadWorker w;
+      try {
+        w = await pending;
+      } on DriftDeckError {
+        if (_closed) throw readerStopped;
+        rethrow;
+      }
+      if (_closed) throw readerStopped;
+      // Another call already replaced it while this one waited.
+      if (!identical(_worker, pending)) continue;
       if (!w.isDead) return w;
+      _worker = null;
     }
-    final spawned = ReadWorker.spawn(path);
-    _worker = spawned;
-    // A failed start is tried again on the next call.
-    spawned.then<void>(
-      (_) {},
-      onError: (Object _) {
-        if (identical(_worker, spawned)) _worker = null;
-      },
-    );
-    return spawned;
   }
 
   Future<void> close() async {

@@ -227,6 +227,62 @@ void main() {
     );
   });
 
+  group('DbReader starts one isolate at a time (CR-1)', () {
+    const quick = {
+      'sql': 'SELECT count(*) FROM orders',
+      'params': <Object?>[],
+      'limit': 10,
+    };
+
+    Future<DbReader> timedOutReader() async {
+      final reader = DbReader(path);
+      await expectLater(
+        reader.call('query', {
+          'sql': runaway,
+          'params': const <Object?>[],
+          'limit': 10,
+        }, budget: const Duration(milliseconds: 200)),
+        failsWith(ErrorCode.timeout),
+      );
+      return reader;
+    }
+
+    test('two calls after a timeout share one new isolate', () async {
+      final app = await openApp(wal: false);
+      addTearDown(app.close);
+      final reader = await timedOutReader();
+      addTearDown(reader.close);
+      final before = ReadWorker.spawnCount;
+      final results = await Future.wait([
+        reader.call('query', quick),
+        reader.call('query', quick),
+      ]);
+      expect(results.map((r) => r['rows']), [
+        [
+          [1],
+        ],
+        [
+          [1],
+        ],
+      ]);
+      expect(ReadWorker.spawnCount - before, 1);
+    });
+
+    test('a call waiting during close starts no isolate', () async {
+      final app = await openApp(wal: false);
+      addTearDown(app.close);
+      final reader = await timedOutReader();
+      final before = ReadWorker.spawnCount;
+      final waiting = expectLater(
+        reader.call('query', quick),
+        failsWith(ErrorCode.internal),
+      );
+      await reader.close();
+      await waiting;
+      expect(ReadWorker.spawnCount - before, 0);
+    });
+  });
+
   test('an unreadable file fails to start with unsupported', () async {
     File(path).writeAsStringSync('not a database at all' * 300);
     await expectLater(ReadWorker.spawn(path), failsWith(ErrorCode.unsupported));
