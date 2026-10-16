@@ -106,6 +106,13 @@ export function findHiddenRead(
   );
   const isHidden = (table: string, column: string) => hidden.get(table)?.has(column) === true;
   const cursors = new Map<number, Cursor>();
+  // Table → its INTEGER PRIMARY KEY column, looked up once rather than per opcode.
+  const rowidAliases = new Map<string, string>();
+  for (const tree of trees.values()) {
+    if (tree.kind === 'table' && tree.rowidAlias !== undefined) {
+      rowidAliases.set(tree.table, tree.rowidAlias);
+    }
+  }
 
   // An index (or a WITHOUT ROWID table, stored as one) that orders or holds a hidden
   // value. Expression and partial indexes on a table with hidden columns count, since
@@ -164,8 +171,7 @@ export function findHiddenRead(
       continue;
     }
     // An index cursor on a table whose rowid is hidden: every index entry ends with it.
-    const owner = [...trees.values()].find((t) => t.kind === 'table' && t.table === tree.table);
-    const alias = owner?.kind === 'table' ? owner.rowidAlias : undefined;
+    const alias = rowidAliases.get(tree.table);
     if (
       alias !== undefined &&
       isHidden(tree.table, alias) &&
