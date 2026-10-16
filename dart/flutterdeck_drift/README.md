@@ -32,7 +32,7 @@ In-memory and encrypted (SQLCipher) databases are not supported.
 
 ## Protocol
 
-Every reply holds `protocol: 1`. Errors are `{"protocol": 1, "error": {"code", "message"}}`. Codes: `bad-request`, `unknown-db`, `not-read-only`, `not-allowed`, `timeout`, `busy`, `too-large`, `unsupported`, `bad-token`, `sql-error`, `not-found`, `internal`. Recorded examples: [`packages/connector-dart/src/testing/fixtures/flutterdeck-drift-v1.recorded.json`](../../packages/connector-dart/src/testing/fixtures/flutterdeck-drift-v1.recorded.json).
+Every reply holds `protocol: 1`. Errors are `{"protocol": 1, "error": {"code", "message"}}`. Codes: `bad-request`, `unknown-db`, `not-read-only`, `not-allowed`, `timeout`, `busy`, `too-large`, `unsupported`, `bad-token`, `sql-error`, `not-found`, `internal`. In `schema` and `snapshot`, a table or view the read connection can't use (for example a view that calls one of your app's SQL functions) gets its own `error` entry, and the other tables still answer. Write tokens are single use per app isolate; the daemon enforces single use across hot restarts. Recorded examples: [`packages/connector-dart/src/testing/fixtures/flutterdeck-drift-v1.recorded.json`](../../packages/connector-dart/src/testing/fixtures/flutterdeck-drift-v1.recorded.json).
 
 ## Development
 
