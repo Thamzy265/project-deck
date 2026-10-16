@@ -40,7 +40,14 @@ describe('DartAppSession', () => {
     const streams = server.calls
       .filter((c) => c.method === 'streamListen')
       .map((c) => c.params?.streamId);
-    expect(streams.sort()).toEqual(['Isolate', 'Logging', 'Service', 'Stderr', 'Stdout']);
+    expect(streams.sort()).toEqual([
+      'Extension',
+      'Isolate',
+      'Logging',
+      'Service',
+      'Stderr',
+      'Stdout',
+    ]);
   });
 
   it('records the process id and the Android platform from getVM', async () => {

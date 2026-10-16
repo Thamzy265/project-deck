@@ -8,7 +8,7 @@ import type {
   ReloadResult,
   RunningApp,
 } from '@project-deck/core';
-import { EventBus, RingBufferLogSource } from '@project-deck/core';
+import { DEFAULT_EXTENSION_PREFIXES, EventBus, RingBufferLogSource } from '@project-deck/core';
 import { z } from 'zod';
 import type { JsonRpcClientOptions } from './json-rpc.js';
 import {
@@ -18,6 +18,7 @@ import {
   JsonRpcError,
 } from './json-rpc.js';
 import { OwnEvents } from './own-events.js';
+import { VmExtensions } from './vm-extensions.js';
 import { LineBuffer, entryFromLogRecord } from './vm-logs.js';
 
 /** Service names the Flutter tool registers on the app's VM service. */
@@ -93,6 +94,10 @@ const StreamNotifySchema = z.object({
         .catch(undefined),
       status: z.string().optional().catch(undefined),
       reloadFailureReason: z.string().optional().catch(undefined),
+      // ServiceExtensionAdded (Isolate stream) and Extension (Extension stream).
+      extensionRPC: z.string().optional().catch(undefined),
+      extensionKind: z.string().optional().catch(undefined),
+      extensionData: z.unknown().optional(),
     })
     .loose(),
 });
@@ -121,6 +126,11 @@ export interface DartAppSessionOptions extends JsonRpcClientOptions {
    * the event and the answer take different routes, so allow a little more.
    */
   ownReloadGraceMs?: number;
+  /**
+   * App extension prefixes that may be called (the registry's list). Read on every
+   * call, so prefixes a backend registers later apply at once.
+   */
+  extensionPrefixes?: () => readonly string[];
 }
 
 const DEFAULT_SERVICE_WAIT_MS = 2000;
@@ -158,6 +168,8 @@ export class DartAppSession implements AppSession {
   private readonly stdoutDecoder = new StringDecoder('utf8');
   private readonly stderrDecoder = new StringDecoder('utf8');
   private currentApp: RunningApp;
+  /** Calls into flutterdeck_drift and friends (ADR 0004). */
+  readonly extensions: VmExtensions;
 
   private constructor(
     app: RunningApp,
@@ -171,6 +183,15 @@ export class DartAppSession implements AppSession {
     this.logSource = new RingBufferLogSource(opts.logCapacity ?? DEFAULT_SESSION_LOG_CAPACITY);
     this.stdout = new LineBuffer((line, ts) => this.pushLine(line, ts, 'info', 'stdout'));
     this.stderr = new LineBuffer((line, ts) => this.pushLine(line, ts, 'error', 'stderr'));
+    this.extensions = new VmExtensions(
+      {
+        rpc,
+        mainIsolate: () => this.isolateId,
+        refreshMainIsolate: () => this.refreshIsolate(),
+      },
+      opts.extensionPrefixes ?? (() => DEFAULT_EXTENSION_PREFIXES),
+      (cause) => this.events.emit('error', { message: 'An app event listener failed', cause }),
+    );
   }
 
   static async attach(
@@ -197,13 +218,18 @@ export class DartAppSession implements AppSession {
     this.rpc.onClose(() => {
       // Wake reloads waiting for a service that can no longer be announced.
       for (const check of [...this.serviceWaiters]) check();
+      this.extensions.clear();
       this.disposeBuffers();
       this.events.emit('exit', {});
     });
     await Promise.all(
-      ['Service', 'Isolate', 'Stdout', 'Stderr', 'Logging'].map((id) => this.streamListen(id)),
+      ['Service', 'Isolate', 'Extension', 'Stdout', 'Stderr', 'Logging'].map((id) =>
+        this.streamListen(id),
+      ),
     );
     await this.refreshIsolate();
+    // Extensions registered before we subscribed are only on the Isolate object.
+    if (this.isolateId !== undefined) await this.extensions.load(this.isolateId);
   }
 
   /** Gains `pid` and, on Android, `device.platform` once the VM has been read during attach. */
@@ -467,10 +493,22 @@ export class DartAppSession implements AppSession {
         }
         return;
       case 'Isolate':
+        if (event.kind === 'ServiceExtensionAdded') {
+          if (event.extensionRPC !== undefined && event.isolate !== undefined) {
+            this.extensions.added(event.extensionRPC, event.isolate.id);
+          }
+          return;
+        }
+        if (event.kind === 'IsolateExit') this.extensions.dropIsolate(event.isolate?.id);
         if (event.kind === 'IsolateReload') this.onIsolateReload(event);
         else if (['IsolateStart', 'IsolateRunnable', 'IsolateExit'].includes(event.kind)) {
           this.followMainIsolate(event);
           void this.refreshIsolate().catch(() => undefined);
+        }
+        return;
+      case 'Extension':
+        if (event.kind === 'Extension' && event.extensionKind !== undefined) {
+          this.extensions.event(event.isolate?.id, event.extensionKind, event.extensionData);
         }
         return;
       case 'Stdout':

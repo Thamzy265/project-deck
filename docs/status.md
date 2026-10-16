@@ -2,6 +2,13 @@
 
 Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
 
+## 2026-10-16 — M3 batch 1 — db-core ready to merge
+
+- Changed: `feat/db-core` adds core DB shapes (incl. `DbInspector.schemaSql`, tagged non-finite reals), `AppSession.extensions` with registry prefix rules, connector-dart `VmExtensions`, and the new `packages/sql-guard` (ADR 0005). Tester findings SG-1..SG-8, EXT-1, EXT-2 fixed. Reviewer: three rounds; S1–S8, D1–D2, C1–C7, N1–N2 all fixed; verdict approve with notes, no open findings. QA: PASS (29/29 gate checks, daemon unaffected, 2861 tests), evidence in [qa/M3.md](qa/M3.md); new rerun script `scripts/qa/check-sql-guard.mjs`. CLAUDE.md gains the `sql-guard` package row and commit scope.
+- Notes for later batches: QA G1 — a view that selects a hidden column is refused whole (fails closed; batch 4 copy should say why). QA G2 — tables with triggers can't be edited, because a trigger counts as a second table (ADR 0005); batch 4 should explain this in the row editor. The gate only prepares statements; runtime limits for running queries belong to the backends (batch 3).
+- Batch 2 (`feat/flutterdeck-drift`): tester found FD-1..FD-12 (FD-1 High: a leading `;` bypasses the app's token guard); developer fixing. Open PM question: debug-only `busy_timeout=7000` on the app's own Drift connection when none is set.
+- Blockers: Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead none · PM: busy-timeout decision (not blocking batch 1).
+
 ## 2026-10-16 — M3 plan — design re-review fixes and PM decision on shell access
 
 - Changed: the re-review (R1–R5) is fixed: reads are stopped with `sqlite3_interrupt` after 5 s, diff snapshots return row hashes from one short transaction, ADR 0004 and ADR 0005 carry "Amended 16 Oct 2026" sections, `db.allowFunctions` is dropped, the SQL editor runs reads only (edits in the row-details editor), query exports cap at 5,000 rows, `ios/Runner.xcodeproj` reading rules are in docs/notes/untrusted-project-files.md, stale deck and design lines updated.

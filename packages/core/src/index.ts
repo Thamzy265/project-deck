@@ -5,6 +5,7 @@ export * from './config.js';
 export * from './constants.js';
 export * from './db.js';
 export * from './events.js';
+export * from './extensions.js';
 export * from './logs.js';
 export * from './registry.js';
 export * from './tasks.js';

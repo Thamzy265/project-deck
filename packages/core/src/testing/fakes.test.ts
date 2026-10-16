@@ -68,11 +68,13 @@ describe('FakeDbInspector', () => {
   const ordersTable = () => ({
     info: {
       name: 'orders',
+      kind: 'table' as const,
       columns: [
-        { name: 'id', type: 'INTEGER', nullable: false, pk: true },
-        { name: 'status', type: 'TEXT', nullable: false, pk: false },
+        { name: 'id', type: 'INTEGER', nullable: false, pk: true, pkPosition: 1, default: null },
+        { name: 'status', type: 'TEXT', nullable: false, pk: false, default: null },
       ],
       foreignKeys: [],
+      indexes: [],
     },
     rows: [
       [1, 'pending'],
@@ -82,13 +84,32 @@ describe('FakeDbInspector', () => {
 
   it('serves schema with row counts and SELECT * with truncation', async () => {
     const db = new FakeDbInspector({ app: [ordersTable()] });
-    expect(await db.listDatabases()).toEqual([{ name: 'app' }]);
+    expect(await db.listDatabases()).toEqual([{ name: 'app', backend: 'live' }]);
     expect((await db.schema('app'))[0]?.rowCount).toBe(2);
     expect(await db.query('app', 'SELECT * FROM orders', [], { limit: 1 })).toMatchObject({
       columns: ['id', 'status'],
       rows: [[1, 'pending']],
       truncated: true,
     });
+  });
+
+  it('serves the whole schema as sqlite_schema SQL, indexes and triggers included', async () => {
+    const orders = {
+      ...ordersTable(),
+      info: {
+        ...ordersTable().info,
+        sql: 'CREATE TABLE orders(id INTEGER PRIMARY KEY, status TEXT)',
+      },
+      extraSql: ['CREATE INDEX orders_status ON orders(status)'],
+    };
+    const db = new FakeDbInspector({ app: [orders] });
+    expect(await db.schemaSql('app')).toEqual([
+      'CREATE TABLE orders(id INTEGER PRIMARY KEY, status TEXT)',
+      'CREATE INDEX orders_status ON orders(status)',
+    ]);
+    await expect(db.schemaSql('missing')).rejects.toThrow(/No database/);
+    // A fresh array each time: a caller may change its copy.
+    expect(await db.schemaSql('app')).not.toBe(await db.schemaSql('app'));
   });
 
   it('notifies watchers on insert and uses the custom handler', async () => {

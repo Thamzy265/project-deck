@@ -1,5 +1,6 @@
 import type { AppConnector, RunningApp } from './apps.js';
 import type { DbInspector } from './db.js';
+import { DEFAULT_EXTENSION_PREFIXES, isValidExtensionPrefix } from './extensions.js';
 import type { LogEntry } from './logs.js';
 import type { TaskProvider } from './tasks.js';
 
@@ -74,4 +75,28 @@ export class Registry {
   readonly dbInspectors = new Catalog<DbInspectorFactory>('database inspector');
   readonly logFeeds = new Catalog<LogFeedFactory>('log feed');
   readonly taskProviders = new Catalog<TaskProvider>('task provider');
+  /** Prefixes backends added, with how many hold each (the defaults are always on). */
+  private readonly prefixHolds = new Map<string, number>();
+
+  /**
+   * App extension prefixes connectors may call (ADR 0004). Backends add the ones they
+   * use; Flutter's, Drift's and Dart's own extensions can never be added. Each call
+   * returns its own release: a prefix stays until every backend that added it releases.
+   */
+  allowExtensionPrefix(prefix: string): () => void {
+    if (!isValidExtensionPrefix(prefix)) throw new Error(`Invalid extension prefix '${prefix}'`);
+    this.prefixHolds.set(prefix, (this.prefixHolds.get(prefix) ?? 0) + 1);
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      const holds = (this.prefixHolds.get(prefix) ?? 1) - 1;
+      if (holds > 0) this.prefixHolds.set(prefix, holds);
+      else this.prefixHolds.delete(prefix);
+    };
+  }
+
+  extensionPrefixes(): string[] {
+    return [...new Set([...DEFAULT_EXTENSION_PREFIXES, ...this.prefixHolds.keys()])];
+  }
 }

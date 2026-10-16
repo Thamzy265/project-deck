@@ -266,3 +266,56 @@ export const vmServiceUnregistered = (uri: string) => ({
   eventData: { uri, exposedUri: uri, name: null },
   timestamp: 2,
 });
+
+/*
+ * App extension messages (ADR 0004). SPEC-BUILT from the VM service spec (service.md,
+ * protocol 4.x: Event.extensionRPC for ServiceExtensionAdded on the Isolate stream;
+ * Event.extensionKind/extensionData for Extension on the Extension stream;
+ * Isolate.extensionRPCs) and sdk/lib/vmservice/running_isolates.dart (an unknown
+ * isolateId answers a `Collected` Sentinel, not an error), checked 16 Oct 2026.
+ * Replace with a recorded flutterdeck_drift session in batch 2.
+ */
+const isolateRef = (id: string) => ({
+  type: '@Isolate',
+  id,
+  number: id.split('/')[1] ?? '1',
+  name: 'main',
+  isSystemIsolate: false,
+  isolateGroupId: RECORDED_GROUP,
+});
+
+export const isolateResponse = (id: string, extensionRPCs: string[]) => ({
+  ...isolateRef(id),
+  type: 'Isolate',
+  runnable: true,
+  extensionRPCs,
+});
+
+export const serviceExtensionAdded = (method: string, isolateId = 'isolates/1') => ({
+  streamId: 'Isolate',
+  event: {
+    type: 'Event',
+    kind: 'ServiceExtensionAdded',
+    timestamp: 5,
+    isolate: isolateRef(isolateId),
+    extensionRPC: method,
+  },
+});
+
+export const extensionEvent = (kind: string, data: unknown, isolateId = 'isolates/1') => ({
+  streamId: 'Extension',
+  event: {
+    type: 'Event',
+    kind: 'Extension',
+    timestamp: 6,
+    isolate: isolateRef(isolateId),
+    extensionKind: kind,
+    extensionData: data,
+  },
+});
+
+export const collectedSentinel = {
+  type: 'Sentinel',
+  kind: 'Collected',
+  valueAsString: '<collected>',
+};

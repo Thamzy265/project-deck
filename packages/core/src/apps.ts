@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { DbInspector } from './db.js';
+import type { AppExtensions } from './extensions.js';
 import type { LogSource } from './logs.js';
 
 export const DeviceInfoSchema = z.object({
@@ -80,6 +81,11 @@ export interface AppSession {
   logs(): LogSource;
   /** Undefined when no database backend is available for this app. */
   db(): DbInspector | undefined;
+  /**
+   * Calls into the app and events from it (ADR 0004). Absent when the connector has no
+   * such channel. Never exposed over HTTP or MCP directly, only through backends.
+   */
+  readonly extensions?: AppExtensions;
   /** Releases the connection. Must never stop the user's app. */
   detach(): Promise<void>;
   on<E extends keyof AppSessionEvents>(

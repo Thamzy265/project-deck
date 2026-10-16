@@ -217,6 +217,25 @@ describe('DartConnector', () => {
     await vi.waitFor(() => expect(vm.clientCount + d.clientCount).toBe(0));
     await expect(c.attach('dart-unknown')).rejects.toThrow(/No running Dart app/);
   });
+  it('hands its sessions the extension prefixes it is given, read on each call', async () => {
+    const vm = await vmService();
+    vm.handle('getIsolate', () => ({
+      type: 'Isolate',
+      id: 'isolates/1',
+      name: 'main',
+      runnable: true,
+      extensionRPCs: ['ext.flutterdeck.drift.v1.list'],
+    }));
+    const d = await dtd([{ uri: vm.uri, name: 'shop' }]);
+    const prefixes = ['ext.flutterdeck.other.'];
+    const c = make([{ wsUri: d.uri, source: 'manual' }], { extensionPrefixes: () => prefixes });
+    await c.start();
+    const session = await c.attach(appIdFor(vm.uri));
+    expect(session.extensions.has('ext.flutterdeck.drift.v1.list')).toBe(false);
+    prefixes.push('ext.flutterdeck.drift.');
+    expect(session.extensions.has('ext.flutterdeck.drift.v1.list')).toBe(true);
+  });
+
   it('runs the dart CLI fallback at most once a minute when there is no pid-file directory', async () => {
     let now = 1_000_000;
     vi.spyOn(Date, 'now').mockImplementation(() => now);

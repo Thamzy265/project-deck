@@ -28,6 +28,8 @@ export interface DartConnectorOptions {
   /** Replaces discovery entirely (tests). */
   discover?: () => Promise<DtdInfo[]>;
   session?: DartAppSessionOptions;
+  /** The app extension prefixes sessions may call: the registry's, read on every use. */
+  extensionPrefixes?: () => readonly string[];
   log?: (message: string, err?: unknown) => void;
 }
 
@@ -136,8 +138,10 @@ export class DartConnector implements AppConnector {
   async attach(appId: string): Promise<DartAppSession> {
     const known = [...this.known.values()].find((k) => k.app.id === appId);
     if (known === undefined) throw new Error(`No running Dart app with id '${appId}'`);
+    const prefixes = this.opts.extensionPrefixes;
     const session = await DartAppSession.attach(known.vmServiceUri, known.app, {
       onListenerError: (err) => this.opts.log?.('VM service listener failed', err),
+      ...(prefixes === undefined ? {} : { extensionPrefixes: prefixes }),
       ...this.opts.session,
     });
     // stop() ran while we were connecting and won't see this session, so it must not outlive it.

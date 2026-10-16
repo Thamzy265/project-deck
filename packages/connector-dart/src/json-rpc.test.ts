@@ -110,6 +110,17 @@ describe('JsonRpcClient', () => {
     rpc.close();
   });
 
+  it('takes a shorter timeout for one call', async () => {
+    server = (await FakeRpcServer.start()).handle('hang', () => new Promise(() => undefined));
+    const rpc = await JsonRpcClient.connect(server.uri, { timeoutMs: 60_000 });
+    const started = Date.now();
+    await expect(rpc.call('hang', {}, { timeoutMs: 30 })).rejects.toMatchObject({
+      timeoutMs: 30,
+    });
+    expect(Date.now() - started).toBeLessThan(5000);
+    rpc.close();
+  });
+
   it('fails to connect when the handshake is rejected', async () => {
     server = await FakeRpcServer.start('/right-code');
     await expect(JsonRpcClient.connect(server.uri.replace('right', 'wrong'))).rejects.toThrow(

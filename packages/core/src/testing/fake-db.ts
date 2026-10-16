@@ -1,16 +1,18 @@
-import type { DbInspector, QueryResult, TableInfo } from '../db.js';
+import type { Cell, DbInfo, DbInspector, QueryResult, TableInfo } from '../db.js';
 import { DEFAULT_QUERY_LIMIT } from '../db.js';
 
 export interface FakeTable {
   info: Omit<TableInfo, 'rowCount'>;
-  rows: unknown[][];
+  rows: Cell[][];
+  /** Further schema SQL after the table's own, such as its indexes and triggers. */
+  extraSql?: string[];
 }
 
 export type FakeQueryHandler = (
   db: string,
   sql: string,
   params: unknown[],
-) => { columns: string[]; rows: unknown[][] } | undefined;
+) => { columns: string[]; rows: Cell[][] } | undefined;
 
 const SELECT_ALL = /^\s*select\s+\*\s+from\s+["`]?(\w+)["`]?\s*;?\s*$/i;
 
@@ -29,8 +31,10 @@ export class FakeDbInspector implements DbInspector {
     private readonly handler?: FakeQueryHandler,
   ) {}
 
-  listDatabases(): Promise<{ name: string }[]> {
-    return Promise.resolve(Object.keys(this.databases).map((name) => ({ name })));
+  listDatabases(): Promise<DbInfo[]> {
+    return Promise.resolve(
+      Object.keys(this.databases).map((name) => ({ name, backend: 'live' as const })),
+    );
   }
 
   async schema(db: string): Promise<TableInfo[]> {
@@ -61,6 +65,14 @@ export class FakeDbInspector implements DbInspector {
     };
   }
 
+  async schemaSql(db: string): Promise<string[]> {
+    const tables = await this.tables(db);
+    return tables.flatMap((t) => [
+      ...(t.info.sql === undefined ? [] : [t.info.sql]),
+      ...(t.extraSql ?? []),
+    ]);
+  }
+
   watch(db: string, table: string, cb: () => void): () => void {
     const key = `${db}/${table}`;
     let set = this.watchers.get(key);
@@ -73,7 +85,7 @@ export class FakeDbInspector implements DbInspector {
   }
 
   /** Appends a row and notifies watchers, like the app inserting data. */
-  async insert(db: string, table: string, row: unknown[]): Promise<void> {
+  async insert(db: string, table: string, row: Cell[]): Promise<void> {
     const t = (await this.tables(db)).find((x) => x.info.name === table);
     if (t === undefined) throw new Error(`No table '${table}' in '${db}'`);
     t.rows.push(row);

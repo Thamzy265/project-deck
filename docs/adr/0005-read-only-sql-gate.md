@@ -40,3 +40,27 @@ These rules replace the matching parts above:
 - **Writes:** only the user's own dashboard edits; Claude never writes (PM decision, 16 Oct 2026).
 
 The Consequences line about a stub list growing from user reports no longer applies.
+
+## Amended 16 Oct 2026 (batch 1 tests, lead decisions)
+
+- **Hidden columns, second layer:** the authorizer misses reads that SQLite makes for itself: the comparison behind `JOIN … USING` and `NATURAL JOIN`, a VIRTUAL generated column computed from a hidden one, and the order of an index on a hidden column. After the authorizer passes a statement, the gate also lists the compiled program with `EXPLAIN` (which runs nothing). It maps each `OpenRead` cursor to its table or index through `sqlite_schema.rootpage`, then refuses the statement if any of these is true:
+  - a `Column` reads a hidden column's record slot on a table cursor;
+  - a cursor on an index, or on a WITHOUT ROWID table, whose key holds a hidden column is used for anything other than counting (expression and partial indexes on a table with hidden columns count as holding one);
+  - the rowid is read or sought on a table whose hidden column is its INTEGER PRIMARY KEY.
+
+  Generated columns computed from a hidden column are hidden too, read from the schema, so STORED ones are caught. Both layers run; the cursor of the row an edit rewrites is not checked.
+
+  The bytecode layer checks the gate's own query plan. The app's SQLite version or statistics may choose another index. That changes only the order of the rows, because every index that holds a hidden column is refused whenever the gate's plan uses it.
+
+- **Virtual tables:** a virtual table that holds a hidden column is hidden whole, with its shadow tables. FTS auxiliary functions and MATCH column filters read columns without `SQLITE_READ`. A schema loads only the fts3, fts4, fts5, rtree and rtree_i32 modules; any other module becomes a plain table. A schema that declares a `dbstat` or `sqlite_dbpage` table is refused.
+- **Edits:** write mode allows only INSERT, UPDATE and DELETE on one ordinary table. Triggers and foreign key actions count towards the one table. Virtual tables and their shadow tables can't be edited.
+- **Input:** SQL that contains a NUL character is refused. Names are compared the way SQLite compares them, folding ASCII letters only.
+- **Review fixes (16 Oct 2026):**
+  - The gate records every declared virtual table, including the ones it could not create. For a virtual table it created, the shadow tables are SQLite's own `shadow` marking plus the module's known suffixes. For a stand-in or a failed create, every `<vtab>_<suffix>` table counts as a shadow table.
+  - While any column is hidden, an FTS table is hidden whole unless its `content=` is an ordinary table free of hidden columns. A view, a virtual table or an unknown name fails closed. Contentless tables (`content=''`) stay readable.
+  - A table that stands in for a module outside the allowlist can't be read.
+  - `sqlite_sequence` is refused while any column is hidden.
+  - `sqlite_offset` is no longer allowed.
+  - An edit must write exactly one table.
+  - Backends give the gate the full `sqlite_schema` SQL through `DbInspector.schemaSql()`.
+- **Schema size:** loading a schema has its own 5 s budget. A schema with more than 2,000 statements or 4 MB is refused. A schema statement longer than 100 kB is skipped by design, and a query that needs it says so.
