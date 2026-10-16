@@ -176,3 +176,16 @@ export function findHiddenRead(
   }
   return undefined;
 }
+
+/** The main-schema tables any cursor in `ops` opens, directly or through an index. */
+export function tablesOpened(ops: readonly Op[], trees: ReadonlyMap<number, BTree>): Set<string> {
+  const tables = new Set<string>();
+  for (const op of ops) {
+    if (op.opcode !== 'OpenRead' && op.opcode !== 'OpenWrite' && op.opcode !== 'ReopenIdx') {
+      continue;
+    }
+    const tree = op.p3 === 0 ? trees.get(op.p2) : undefined;
+    if (tree !== undefined) tables.add(tree.table);
+  }
+  return tables;
+}

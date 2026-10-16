@@ -331,11 +331,12 @@ describe('schema loading (D3)', () => {
   it('replaces a virtual table whose module is missing with a plain table', () => {
     expect(check('SELECT subject, content FROM legacy')).toMatchObject({ ok: false });
     expect(check('SELECT subject FROM legacy')).toMatchObject({ ok: true });
+    // A module outside the allowlist stands in as a plain table that can't be read (S2).
     expect(
       check('SELECT a, b FROM r', {
         schemaSql: ['CREATE VIRTUAL TABLE r USING nosuchmodule(a, b)'],
       }),
-    ).toMatchObject({ ok: true });
+    ).toMatchObject({ ok: false, code: 'table' });
   });
 
   it('loads statements in any order', () => {

@@ -633,7 +633,8 @@ describe('schema loading: hostile statements', () => {
       'CREATE VIRTUAL TABLE r USING rtree(id, x0, x1)',
       'CREATE VIRTUAL TABLE n USING fts5(a, b)',
     ];
-    expect(read(schema, 'SELECT a, b FROM w')).toMatchObject({ ok: true });
+    // Unknown modules stand in as plain tables that can't be read (reviewer finding S2).
+    expect(read(schema, 'SELECT a, b FROM w')).toMatchObject({ ok: false, code: 'table' });
     expect(read(schema, 'SELECT x FROM w')).toMatchObject({ ok: false });
     expect(read(schema, 'SELECT id, x0 FROM r')).toMatchObject({ ok: true });
     expect(read(schema, 'SELECT a FROM n')).toMatchObject({ ok: true });
@@ -672,7 +673,7 @@ describe('schema loading: hostile statements', () => {
       ok: false,
       code: 'invalid-sql',
     });
-    expect(read(schema, 'SELECT n FROM v')).toMatchObject({ ok: true });
+    expect(read(schema, 'SELECT n FROM v')).toMatchObject({ ok: false, code: 'table' });
     expect(read(schema, 'SELECT id, x0 FROM r32')).toMatchObject({ ok: true });
   });
 

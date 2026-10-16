@@ -107,3 +107,28 @@ describe('S1: shadow tables of virtual tables the gate could not create', () => 
     ).toMatchObject({ ok: true });
   });
 });
+
+describe('S2: stand-ins for modules the gate never runs', () => {
+  const schema = [
+    'CREATE VIRTUAL TABLE notes USING fts5(title, body)',
+    'CREATE VIRTUAL TABLE vocab USING fts5vocab(notes, row)',
+    'CREATE VIRTUAL TABLE other USING whatever(a, b)',
+  ];
+
+  it.each([
+    'SELECT * FROM vocab',
+    'SELECT notes FROM vocab',
+    'SELECT count(*) FROM vocab',
+    'SELECT 1 FROM vocab',
+    'SELECT * FROM other',
+    'SELECT a FROM other',
+    'SELECT count(*) FROM other',
+  ])('refuses %s, with or without hidden columns', (sql) => {
+    expect(read(schema, sql)).toMatchObject({ ok: false, code: 'table' });
+    expect(read(schema, sql, [{ table: 'notes', column: 'body' }])).toMatchObject({ ok: false });
+  });
+
+  it('still reads the allowlisted fts5 table itself', () => {
+    expect(read(schema, 'SELECT title FROM notes')).toMatchObject({ ok: true });
+  });
+});

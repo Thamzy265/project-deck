@@ -22,7 +22,7 @@ import type {
 } from './types.js';
 import { MAX_SCHEMA_BYTES, MAX_SCHEMA_STATEMENTS, MAX_SQL_BYTES } from './types.js';
 import type { BTree, HiddenColumns, Op } from './bytecode.js';
-import { findHiddenRead } from './bytecode.js';
+import { findHiddenRead, tablesOpened } from './bytecode.js';
 import { generatedColumnRefs } from './generated.js';
 import { foldName } from './names.js';
 import { virtualTableColumns } from './vtab.js';
@@ -263,11 +263,15 @@ export class GuardEngine {
         );
       }
       const { hiddenTables } = this.checkPolicy();
-      if (mode === 'write' || hidden.size > 0 || hiddenTables.size > 0) {
+      const unchecked = this.uncheckedTables(scratch);
+      if (mode === 'write' || hidden.size > 0 || hiddenTables.size > 0 || unchecked.size > 0) {
         const ops = this.listProgram(stmt);
         if (ops === undefined) {
           return refuse('invalid-sql', 'SQLite could not list the compiled statement.');
         }
+        // A count or other read with no column names no SQLITE_READ; the cursor shows it.
+        const stood = [...tablesOpened(ops, scratch.trees)].find((t) => unchecked.has(t));
+        if (stood !== undefined) return this.uncheckedRefusal(scratch, stood);
         // VACUUM has no authorizer action; its opcode shows it.
         if (mode === 'write' && ops.some((op) => op.opcode === 'Vacuum')) {
           return refuse('vacuum', 'VACUUM is not allowed.');
@@ -363,6 +367,21 @@ export class GuardEngine {
     return refuse(
       'function',
       `The function ${name} is not allowed. Only SQLite's built-in functions can be used here.`,
+    );
+  }
+
+  /** Stand-ins for modules outside VTAB_MODULES: their real module could read anything. */
+  private uncheckedTables(scratch: Scratch): Set<string> {
+    return new Set(
+      [...scratch.virtualTables].filter(([, module]) => !VTAB_MODULES.has(module)).map(([t]) => t),
+    );
+  }
+
+  private uncheckedRefusal(scratch: Scratch, table: string): GuardRefusal {
+    const module = scratch.virtualTables.get(table) ?? 'an unknown module';
+    return refuse(
+      'table',
+      `${table} is a virtual table on ${module}, which the SQL gate can't check, so it can't be read.`,
     );
   }
 
@@ -504,6 +523,10 @@ export class GuardEngine {
     const scratch = this.current;
     if (!BUILTIN_READABLE.has(table) && !(scratch?.relations.has(table) ?? false)) {
       return refuse('table', `${table} is not a table or view of this database.`);
+    }
+    const module = scratch?.virtualTables.get(table);
+    if (scratch !== undefined && module !== undefined && !VTAB_MODULES.has(module)) {
+      return this.uncheckedRefusal(scratch, table);
     }
     policy.seen.tables.add(table);
     if (policy.hiddenTables.has(table)) {
