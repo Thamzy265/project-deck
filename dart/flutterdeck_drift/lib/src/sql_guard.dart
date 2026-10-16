@@ -108,6 +108,20 @@ const _readPragmas = {
   'FOREIGN_KEY_LIST',
 };
 
+/// Table-valued sources a read may not name: the database list holds the
+/// absolute file path, and dbstat and sqlite_dbpage expose raw pages.
+const _hiddenSources = {'pragma_database_list', 'dbstat', 'sqlite_dbpage'};
+
+/// Lower case for ASCII letters only, the way SQLite compares names.
+String _asciiLower(String s) {
+  final units = s.codeUnits.toList();
+  for (var i = 0; i < units.length; i++) {
+    final c = units[i];
+    if (c >= 0x41 && c <= 0x5a) units[i] = c + 0x20;
+  }
+  return String.fromCharCodes(units);
+}
+
 List<SqlToken> _skipEmptyStatements(List<SqlToken> tokens) {
   var i = 0;
   while (i < tokens.length && tokens[i].text == ';') {
@@ -132,6 +146,12 @@ String? readGuard(String sql) {
     }
     tokens = _skipEmptyStatements(tokens);
     if (tokens.isEmpty) return 'the query is empty';
+  }
+  for (final t in tokens) {
+    final name = t.text.startsWith("'") ? null : unquoteIdent(t.text);
+    if (name != null && _hiddenSources.contains(_asciiLower(name))) {
+      return 'it reads database files or raw pages';
+    }
   }
   final first = tokens.first.word;
   if (_transactionWords.contains(first)) {

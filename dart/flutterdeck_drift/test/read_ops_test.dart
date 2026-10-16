@@ -139,6 +139,20 @@ void main() {
       });
     });
 
+    test('the file path and raw pages are not readable', () {
+      for (final sql in [
+        'SELECT file FROM pragma_database_list',
+        'SELECT * FROM dbstat',
+        'SELECT * FROM sqlite_dbpage',
+      ]) {
+        expect(
+          () => ops.query(sql, const [], 10),
+          refusedWith(ErrorCode.notReadOnly),
+          reason: sql,
+        );
+      }
+    });
+
     test('a data-changing CTE is a syntax error, never a write', () {
       expect(
         () => ops.query(

@@ -81,6 +81,26 @@ void main() {
     });
   });
 
+  group('readGuard: file paths and raw pages', () {
+    for (final sql in [
+      'SELECT * FROM pragma_database_list',
+      'SELECT file FROM PRAGMA_DATABASE_LIST()',
+      'SELECT * FROM "pragma_database_list"',
+      'SELECT * FROM main.pragma_database_list',
+      'PRAGMA database_list',
+      'SELECT * FROM dbstat',
+      'SELECT * FROM [DBSTAT]',
+      'SELECT * FROM sqlite_dbpage',
+      'WITH x AS (SELECT * FROM dbstat) SELECT * FROM x',
+    ]) {
+      test('refuses: $sql', () => expect(readGuard(sql), isNotNull));
+    }
+
+    test('allows the words inside strings', () {
+      expect(readGuard("SELECT 'dbstat', 'pragma_database_list'"), isNull);
+    });
+  });
+
   group('writeGuard', () {
     for (final sql in [
       "INSERT INTO orders (item) VALUES ('x')",
