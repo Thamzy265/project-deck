@@ -405,11 +405,28 @@ describe('write mode: one table, rows only', () => {
 
   // SG-8: FTS5 special commands are INSERTs into the table's own hidden column; they
   // wipe or rebuild the index or change its config, which no row edit does.
-  it.fails('SG-8 refuses FTS5 commands such as delete-all as edits', () => {
+  it('SG-8 refuses FTS5 commands such as delete-all as edits', () => {
     expect(write("INSERT INTO notes(notes) VALUES ('delete-all')")).toMatchObject({ ok: false });
     expect(write("INSERT INTO notes(notes, rank) VALUES ('rank', 'bm25(10.0)')")).toMatchObject({
       ok: false,
     });
+  });
+
+  it('SG-8 refuses any edit of a virtual table, its shadow tables or a stand-in', () => {
+    const schema = [...SCHEMA, 'CREATE VIRTUAL TABLE legacy USING fts4(subject)'];
+    for (const sql of [
+      "INSERT INTO notes(title, body) VALUES ('a', 'b')",
+      "UPDATE notes SET title = 'x'",
+      'DELETE FROM notes',
+      'DELETE FROM notes_data',
+      "UPDATE notes_config SET v = 'x'",
+      "INSERT INTO legacy(subject) VALUES ('x')",
+    ]) {
+      const result = write(sql, schema);
+      expect(result, sql).toMatchObject({ ok: false, code: 'not-an-edit' });
+      expect(result.ok ? '' : result.reason, sql).toMatch(/virtual/);
+    }
+    expect(write("INSERT INTO audit(what) VALUES ('x')", schema)).toMatchObject({ ok: true });
   });
 });
 

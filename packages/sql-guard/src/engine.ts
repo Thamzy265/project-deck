@@ -108,6 +108,8 @@ interface Scratch {
   relations: ReadonlySet<string>;
   /** Virtual tables the schema declares (folded name → module), stand-ins included. */
   virtualTables: Map<string, string>;
+  /** Tables a virtual table keeps its data in (e.g. FTS5's notes_data), folded. */
+  shadowTables: ReadonlySet<string>;
   /** The schema could not be accepted; every check refuses with this. */
   refusal: GuardRefusal | undefined;
 }
@@ -416,6 +418,14 @@ export class GuardEngine {
         'Only INSERT, UPDATE and DELETE on rows are allowed for edits; the schema stays as it is.',
       );
     }
+    const scratch = this.current;
+    if (scratch?.virtualTables.has(table) === true || scratch?.shadowTables.has(table) === true) {
+      // FTS commands (delete-all, rebuild, rank) are INSERTs into the table itself (SG-8).
+      return refuse(
+        'not-an-edit',
+        `Edits change ordinary tables only; ${table} is a virtual table or part of one.`,
+      );
+    }
     seen.written.add(table);
     if (seen.written.size > 1) {
       return refuse(
@@ -486,6 +496,7 @@ export class GuardEngine {
       db,
       relations: new Set(),
       virtualTables: new Map(),
+      shadowTables: new Set(),
       refusal: undefined,
     };
     const bytes = schemaSql.reduce((n, s) => n + Buffer.byteLength(s, 'utf8'), 0);
@@ -505,6 +516,10 @@ export class GuardEngine {
       return scratch;
     }
     const names = db.selectValues("SELECT name FROM sqlite_schema WHERE type IN ('table', 'view')");
+    const shadows = db.selectValues("SELECT name FROM pragma_table_list WHERE type = 'shadow'");
+    scratch.shadowTables = new Set(
+      shadows.filter((n): n is string => typeof n === 'string').map(foldName),
+    );
     scratch.relations = new Set(
       names.filter((n): n is string => typeof n === 'string').map(foldName),
     );
