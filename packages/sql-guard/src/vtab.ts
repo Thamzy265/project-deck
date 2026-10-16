@@ -54,7 +54,8 @@ export function tokenize(sql: string): Token[] {
   return tokens;
 }
 
-export function virtualTableColumns(sql: string): { table: string; columns: string[] } | undefined {
+/** The table name and the top-level arguments of a CREATE VIRTUAL TABLE, as tokens. */
+function virtualTableArgs(sql: string): { table: string; args: Token[][] } | undefined {
   const tokens = tokenize(sql);
   const using = tokens.findIndex((t) => t.kind === 'word' && foldName(t.text) === 'using');
   if (using < 1) return undefined;
@@ -63,7 +64,7 @@ export function virtualTableColumns(sql: string): { table: string; columns: stri
     return undefined;
   }
   const open = tokens.findIndex((t, i) => i > using && t.text === '(');
-  if (open === -1) return undefined;
+  if (open === -1) return { table: nameToken.text, args: [] };
   const args: Token[][] = [[]];
   let depth = 0;
   for (const t of tokens.slice(open + 1)) {
@@ -78,12 +79,41 @@ export function virtualTableColumns(sql: string): { table: string; columns: stri
     }
     args.at(-1)?.push(t);
   }
+  return { table: nameToken.text, args };
+}
+
+const isOption = (arg: Token[]) => arg.some((t) => t.kind === 'punct' && t.text === '=');
+
+export function virtualTableColumns(sql: string): { table: string; columns: string[] } | undefined {
+  const parsed = virtualTableArgs(sql);
+  if (parsed === undefined) return undefined;
   const columns: string[] = [];
-  for (const arg of args) {
+  for (const arg of parsed.args) {
     const first = arg[0];
     // `option=value` arguments configure the module; they aren't columns.
-    if (first === undefined || arg.some((t) => t.kind === 'punct' && t.text === '=')) continue;
+    if (first === undefined || isOption(arg)) continue;
     if (first.kind === 'word' || first.kind === 'id') columns.push(first.text);
   }
-  return { table: nameToken.text, columns };
+  return { table: parsed.table, columns };
+}
+
+/**
+ * The `key=value` options of a CREATE VIRTUAL TABLE (folded key → value text), such as
+ * FTS's `content='notes'`. Quoted values lose their quotes.
+ */
+export function virtualTableOptions(sql: string): Map<string, string> {
+  const options = new Map<string, string>();
+  for (const arg of virtualTableArgs(sql)?.args ?? []) {
+    const eq = arg.findIndex((t) => t.kind === 'punct' && t.text === '=');
+    const key = arg[0];
+    if (eq !== 1 || key === undefined) continue;
+    options.set(
+      foldName(key.text),
+      arg
+        .slice(eq + 1)
+        .map((t) => t.text)
+        .join(''),
+    );
+  }
+  return options;
 }

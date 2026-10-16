@@ -132,3 +132,37 @@ describe('S2: stand-ins for modules the gate never runs', () => {
     expect(read(schema, 'SELECT title FROM notes')).toMatchObject({ ok: true });
   });
 });
+
+describe('S3: FTS tables over a content table with a hidden column', () => {
+  const hidden = [{ table: 'notes', column: 'body' }];
+  const base = [
+    'CREATE TABLE notes(id INTEGER PRIMARY KEY, title TEXT, body TEXT)',
+    'CREATE TABLE other(id INTEGER PRIMARY KEY, title TEXT)',
+  ];
+
+  it.each([
+    "CREATE VIRTUAL TABLE search USING fts5(title, body, content='notes', content_rowid='id')",
+    'CREATE VIRTUAL TABLE search USING fts5(title, body, content=notes)',
+    'CREATE VIRTUAL TABLE search USING fts5(title, body, content = "Notes")',
+    'CREATE VIRTUAL TABLE search USING fts4(title, body, content="notes")',
+  ])('hides the whole FTS table declared as %s', (fts) => {
+    const schema = [...base, fts];
+    for (const sql of [
+      'SELECT body FROM search',
+      'SELECT title FROM search',
+      "SELECT rowid FROM search WHERE search MATCH 'secret'",
+      'SELECT count(*) FROM search',
+    ]) {
+      expect(read(schema, sql, hidden), sql).toMatchObject({ ok: false, code: 'hidden-column' });
+    }
+    expect(read(schema, 'SELECT title FROM notes', hidden)).toMatchObject({ ok: true });
+  });
+
+  it('leaves an FTS table over another content table readable', () => {
+    const schema = [
+      ...base,
+      "CREATE VIRTUAL TABLE search USING fts5(title, content='other', content_rowid='id')",
+    ];
+    expect(read(schema, 'SELECT title FROM search', hidden)).toMatchObject({ ok: true });
+  });
+});

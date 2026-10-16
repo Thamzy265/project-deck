@@ -25,7 +25,7 @@ import type { BTree, HiddenColumns, Op } from './bytecode.js';
 import { findHiddenRead, tablesOpened } from './bytecode.js';
 import { generatedColumnRefs } from './generated.js';
 import { foldName } from './names.js';
-import { virtualTableColumns } from './vtab.js';
+import { virtualTableColumns, virtualTableOptions } from './vtab.js';
 
 type Sqlite3 = Sqlite3Static;
 type Db = InstanceType<Sqlite3['oo1']['DB']>;
@@ -128,6 +128,8 @@ interface Scratch {
    * create leaves its shadow tables as plain ones (S1).
    */
   shadowTables: ReadonlySet<string>;
+  /** FTS tables that index another table (`content=`): folded vtab → content table. */
+  contentTables: Map<string, string>;
   /** Main-schema tables and indexes by root page, for the bytecode check. */
   trees: ReadonlyMap<number, BTree>;
   /** Table → generated column → identifiers in its expression (all folded). */
@@ -220,9 +222,14 @@ export class GuardEngine {
    * that store its data (SG-2).
    */
   private hiddenTables(scratch: Scratch, hidden: readonly HiddenColumn[]): Set<string> {
+    const withHidden = new Set(hidden.map((h) => foldName(h.table)));
+    // An external-content FTS table indexes (and through MATCH reveals) its content
+    // table's text, so a hidden column there hides the FTS table whole too (S3).
+    for (const [vtab, content] of scratch.contentTables) {
+      if (withHidden.has(content)) withHidden.add(vtab);
+    }
     const tables = new Set<string>();
-    for (const h of hidden) {
-      const table = foldName(h.table);
+    for (const table of withHidden) {
       if (!scratch.virtualTables.has(table)) continue;
       tables.add(table);
       for (const shadow of scratch.shadowTables) {
@@ -584,6 +591,7 @@ export class GuardEngine {
       relations: new Set(),
       virtualTables: new Map(),
       shadowTables: new Set(),
+      contentTables: new Map(),
       trees: new Map(),
       generated: new Map(),
       skippedLong: 0,
@@ -765,6 +773,10 @@ export class GuardEngine {
         if (vtab !== undefined) {
           if (PAGE_MODULES.has(vtab.module)) return { pageModule: vtab.module };
           scratch.virtualTables.set(lower(vtab.name), vtab.module);
+          const content = virtualTableOptions(sql).get('content');
+          if (content !== undefined && content !== '') {
+            scratch.contentTables.set(lower(vtab.name), foldName(content));
+          }
           if (!VTAB_MODULES.has(vtab.module)) {
             flags.standIn = true;
             return 'skip';
