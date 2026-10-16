@@ -197,6 +197,31 @@ void main() {
     });
   });
 
+  test('WITHOUT ROWID comes from SQLite, not from the SQL text (CR-3)', () {
+    app.execute('''
+      CREATE TABLE d (code TEXT PRIMARY KEY, note TEXT DEFAULT 'without rowid');
+      CREATE TABLE e (code TEXT PRIMARY KEY /* WITHOUT ROWID */, n);
+      CREATE TABLE f (code TEXT PRIMARY KEY, n) WITHOUT ROWID;
+    ''');
+    final tables = (ops.schema()['tables']! as List)
+        .cast<Map<String, Object?>>();
+    bool codeNullable(String name) =>
+        ((tables.firstWhere((t) => t['name'] == name)['columns']! as List).first
+                as Map)['nullable']!
+            as bool;
+    expect(codeNullable('d'), isTrue);
+    expect(codeNullable('e'), isTrue);
+    expect(codeNullable('f'), isFalse);
+
+    final snap = (ops.snapshot()['tables']! as List)
+        .cast<Map<String, Object?>>();
+    Object? keyOf(String name) =>
+        snap.firstWhere((t) => t['name'] == name)['key'];
+    expect(keyOf('d'), ['rowid']);
+    expect(keyOf('e'), ['rowid']);
+    expect(keyOf('f'), ['code']);
+  });
+
   test('schema: an unusable view gets its own error entry', () {
     app.createFunction(
       functionName: 'regexp',

@@ -20,8 +20,6 @@ const _busyMessage = 'The app is writing; try again';
 /// Room for rows in a reply, leaving space for the envelope around them.
 const _rowBudget = maxReplyBytes - 64 * 1024;
 
-final _withoutRowid = RegExp(r'\bWITHOUT\s+ROWID\b', caseSensitive: false);
-
 /// One table or view as the schema call and the diff see it.
 final class _Entity {
   _Entity(this.name, this.kind, this.sql);
@@ -257,6 +255,17 @@ final class ReadOps {
     ];
   }
 
+  /// Whether [table] is a WITHOUT ROWID table, as SQLite itself reports it
+  /// (the `wr` column of `PRAGMA table_list`). Reading the CREATE text was
+  /// fooled by a default value or a comment holding the words (CR-3).
+  bool _isWithoutRowid(String table) {
+    final rows = db.select(
+      "SELECT wr FROM pragma_table_list(?) WHERE schema = 'main'",
+      [table],
+    );
+    return rows.isNotEmpty && rows.first['wr'] == 1;
+  }
+
   /// Every table and view with columns, keys, indexes and row counts.
   Map<String, Object?> schema() {
     return guarded(() {
@@ -272,7 +281,7 @@ final class ReadOps {
               [e.name],
             );
             final pkCount = info.where((c) => (c['pk'] as int) > 0).length;
-            final withoutRowid = _withoutRowid.hasMatch(e.sql ?? '');
+            final withoutRowid = _isWithoutRowid(e.name);
             final columns = [
               for (final c in info)
                 {
@@ -393,12 +402,7 @@ final class ReadOps {
             ..sort((a, b) => (a['pk'] as int).compareTo(b['pk'] as int)))
         c['name'] as String,
     ];
-    final sql = db.select('SELECT sql FROM main.sqlite_schema WHERE name = ?', [
-      table,
-    ]);
-    final withoutRowid = _withoutRowid.hasMatch(
-      sql.isEmpty ? '' : '${sql.first['sql'] ?? ''}',
-    );
+    final withoutRowid = _isWithoutRowid(table);
     final pkCount = pk.length;
     final keyMayBeNull = info.any(
       (c) =>
