@@ -147,11 +147,23 @@ final class ReadOps {
     }
   }
 
-  /// Runs one reading statement and returns at most [limit] typed rows.
-  Map<String, Object?> query(String sql, List<Object?> params, int limit) {
+  /// Refuses SQL that is too long or holds a NUL. SQLite stops reading at a
+  /// NUL, and package:sqlite3's `checkNoTail` then loops forever (FD-2).
+  void _checkSqlText(String sql) {
     if (sql.length > maxSqlLength) {
       throw const DriftDeckError(ErrorCode.badRequest, 'The SQL is too long');
     }
+    if (sql.contains('\u0000')) {
+      throw const DriftDeckError(
+        ErrorCode.badRequest,
+        'The SQL holds a NUL character',
+      );
+    }
+  }
+
+  /// Runs one reading statement and returns at most [limit] typed rows.
+  Map<String, Object?> query(String sql, List<Object?> params, int limit) {
+    _checkSqlText(sql);
     final reason = readGuard(sql);
     if (reason != null) {
       throw DriftDeckError(
@@ -486,9 +498,7 @@ final class ReadOps {
   /// Checks an edit before it runs on the app's connection: one statement
   /// that SQLite can prepare, on a table that exists (ADR 0005 writes).
   Map<String, Object?> checkWrite(String sql) {
-    if (sql.length > maxSqlLength) {
-      throw const DriftDeckError(ErrorCode.badRequest, 'The SQL is too long');
-    }
+    _checkSqlText(sql);
     final target = writeTarget(sql);
     if (target.error != null) {
       throw DriftDeckError(ErrorCode.notAllowed, 'Not run: ${target.error}');

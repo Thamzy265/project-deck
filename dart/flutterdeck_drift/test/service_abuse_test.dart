@@ -73,7 +73,6 @@ void main() {
         expect(watch.elapsed, lessThan(const Duration(seconds: 1)));
       },
       timeout: const Timeout(Duration(seconds: 30)),
-      skip: 'FD-2 (known bug): spins ~6 s, then "timeout"',
     );
 
     test(
@@ -90,7 +89,6 @@ void main() {
         expect(await app.count(), 1);
       },
       timeout: const Timeout(Duration(seconds: 30)),
-      skip: 'FD-2 (known bug): spins ~6 s, then "timeout"',
     );
   });
 
