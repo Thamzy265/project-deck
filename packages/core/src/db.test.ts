@@ -55,6 +55,29 @@ describe('database shapes', () => {
     expect(TableInfoSchema.safeParse({ ...view, kind: 'trigger' }).success).toBe(false);
   });
 
+  it('carry an error for a table the backend could only partly read', () => {
+    const unusable = {
+      name: 'coffee',
+      kind: 'view',
+      columns: [],
+      foreignKeys: [],
+      indexes: [],
+      error: {
+        code: 'unsupported',
+        message: "FlutterDeck can't read coffee: no such function: REGEXP",
+      },
+    };
+    expect(TableInfoSchema.parse(unusable)).toEqual(unusable);
+    const uncounted = {
+      ...orders,
+      rowCount: undefined,
+      error: { code: 'timeout', message: 'Rows not counted' },
+    };
+    expect(TableInfoSchema.parse(uncounted).error).toEqual(uncounted.error);
+    expect(TableInfoSchema.safeParse({ ...orders, error: { code: 'x' } }).success).toBe(false);
+    expect(TableInfoSchema.safeParse({ ...orders, error: 'broken' }).success).toBe(false);
+  });
+
   it('say whether a database is live or a snapshot, with the time it was taken', () => {
     expect(DbInfoSchema.parse({ name: 'app', backend: 'live' })).toEqual({
       name: 'app',
