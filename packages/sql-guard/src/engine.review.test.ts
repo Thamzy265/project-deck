@@ -302,3 +302,28 @@ describe('S7: FTS content that is not an ordinary table free of hidden columns',
     expect(read(schema, 'SELECT rowid FROM ext', hidden)).toMatchObject({ ok: true });
   });
 });
+
+describe('N1: a repeated virtual table option', () => {
+  const base = [
+    'CREATE TABLE users(id INTEGER PRIMARY KEY, secret TEXT)',
+    'CREATE VIEW v1 AS SELECT id, secret FROM users',
+    'CREATE TABLE other(id INTEGER PRIMARY KEY, secret TEXT)',
+  ];
+  const hidden = [{ table: 'users', column: 'secret' }];
+
+  it.each([
+    'CREATE VIRTUAL TABLE ext USING fts4(secret, content=v1, content=other)',
+    'CREATE VIRTUAL TABLE ext USING fts4(secret, content=other, CONTENT=v1)',
+    "CREATE VIRTUAL TABLE ext USING fts4(secret, content=other, content='')",
+  ])('is treated as unknown and fails closed: %s', (fts) => {
+    expect(read([...base, fts], 'SELECT secret FROM ext', hidden)).toMatchObject({
+      ok: false,
+      code: 'hidden-column',
+    });
+  });
+
+  it('still reads an FTS table with one content option over a clean table', () => {
+    const fts = 'CREATE VIRTUAL TABLE ext USING fts4(secret, content=other)';
+    expect(read([...base, fts], 'SELECT secret FROM ext', hidden)).toMatchObject({ ok: true });
+  });
+});

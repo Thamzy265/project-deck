@@ -858,7 +858,10 @@ export class GuardEngine {
           if (PAGE_MODULES.has(vtab.module)) return { pageModule: vtab.module };
           scratch.virtualTables.set(lower(vtab.name), vtab.module);
           const content = virtualTableOptions(sql).get('content');
-          if (content !== undefined && content !== '') {
+          if (content === null) {
+            // Repeated content= options: no table has this name, so it fails closed (N1).
+            scratch.contentTables.set(lower(vtab.name), '\u0000repeated content option');
+          } else if (content !== undefined && content !== '') {
             scratch.contentTables.set(lower(vtab.name), foldName(content));
           }
           if (!VTAB_MODULES.has(vtab.module)) {

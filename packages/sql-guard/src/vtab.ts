@@ -99,16 +99,22 @@ export function virtualTableColumns(sql: string): { table: string; columns: stri
 
 /**
  * The `key=value` options of a CREATE VIRTUAL TABLE (folded key → value text), such as
- * FTS's `content='notes'`. Quoted values lose their quotes.
+ * FTS's `content='notes'`. Quoted values lose their quotes. A key given more than once
+ * maps to null: which one the module uses is unknown, so callers fail closed (N1).
  */
-export function virtualTableOptions(sql: string): Map<string, string> {
-  const options = new Map<string, string>();
+export function virtualTableOptions(sql: string): Map<string, string | null> {
+  const options = new Map<string, string | null>();
   for (const arg of virtualTableArgs(sql)?.args ?? []) {
     const eq = arg.findIndex((t) => t.kind === 'punct' && t.text === '=');
     const key = arg[0];
     if (eq !== 1 || key === undefined) continue;
+    const name = foldName(key.text);
+    if (options.has(name)) {
+      options.set(name, null);
+      continue;
+    }
     options.set(
-      foldName(key.text),
+      name,
       arg
         .slice(eq + 1)
         .map((t) => t.text)
