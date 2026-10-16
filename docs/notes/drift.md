@@ -7,7 +7,7 @@ Research notes behind [the M3 design](../design/m3-drift-inspector.md), ADR 0004
 - Drift registers one service extension, `ext.drift.database`, the first time a database is created. Source: [drift/lib/src/runtime/devtools/service_extension.dart](https://github.com/simolus3/drift/blob/develop/drift/lib/src/runtime/devtools/service_extension.dart) (`registerExtension('ext.drift.database', …)`).
 - It is on in every build that isn't a product (release) build: `const _enable = !bool.fromEnvironment('dart.vm.product')` in [devtools.dart](https://github.com/simolus3/drift/blob/develop/drift/lib/src/runtime/devtools/devtools.dart). So profile builds have it too. The library is `@internal`.
 - Its actions: `get-supported-features`, `download`, `subscribe-to-tables`, `unsubscribe-from-tables`, `execute-query`, `collect-expected-schema`, `clear`, `notify-update`.
-- `execute-query` runs whatever it is given through `customSelect`, `customInsert`, `customUpdate` or `customStatement`, chosen by the caller. There is no read-only rule and no row limit, and `clear` deletes data. **Consequence:** FlutterDeck never calls `ext.drift.*`. `core` blocks the prefix outright (`BLOCKED_PREFIXES` in `packages/core/src/extensions.ts`), whatever the registry allows (ADR 0004, amended).
+- `execute-query` runs whatever it is given through `customSelect`, `customInsert`, `customUpdate` or `customStatement`, chosen by the caller. There is no read-only rule and no row limit, and `clear` deletes data. **Consequence:** FlutterDeck never calls `ext.drift.*`. `core` blocks the prefix outright, with `ext.flutter.`, `ext.dart.`, `ext.dds.` and dart:ui's `ext.ui.` (`BLOCKED_PREFIXES` in `packages/core/src/extensions.ts`), whatever the registry allows (ADR 0004, amended).
 
 ## Table change notifications
 
@@ -39,6 +39,23 @@ Checked by running the bundled SQLite 3.53.4 (sqlite-wasm) on 16 Oct 2026; each 
 - `CREATE TABLE … AUTOINCREMENT` reports two `SQLITE_CREATE_TABLE` actions (the table and `sqlite_sequence`). `CREATE TABLE … AS SELECT` reports `SQLITE_SELECT`, which the schema loader refuses. `CREATE VIEW` and `CREATE TRIGGER` bodies are not authorized at creation, only when a statement uses them.
 - `CREATE VIRTUAL TABLE` with a module the build lacks prepares fine and fails at step with `no such module: X`. The bundled build has fts5, rtree and dbstat/dbpage, but not fts3/fts4 or `generate_series`.
 - Functions in the bundled build: everything in the gate's allowlist except `soundex` (needs `SQLITE_SOUNDEX`); `functions.test.ts` checks the list against `pragma_function_list`.
+- SQLite stops reading SQL at a NUL character, so the gate refuses SQL that contains one. Text after a NUL would otherwise never be judged.
+- SQLite compares names by folding ASCII letters only (`sqlite3StrICmp`). `"Ünï"` matches `"ÜNï"` but not `"ÜNÏ"`. The gate folds names the same way (`packages/sql-guard/src/names.ts`), never with JavaScript's `toLowerCase`.
+- A schema statement longer than the SQL length limit (100 kB, `SQLITE_LIMIT_SQL_LENGTH`) can't be prepared. The gate skips it by design (lead decision, 16 Oct 2026). A query on a table it would create is refused, and the reason says why.
+
+### Reads the authorizer doesn't see (bytecode layer)
+
+Found by the tester in batch 1 (SG-1, SG-3, SG-4) and confirmed with `EXPLAIN` listings from the bundled build:
+
+- `JOIN … USING (email)` and `NATURAL JOIN` compare the column without any `SQLITE_READ`. The program reads it with `Column <cursor> <slot>` on the table's cursor. Joined with a generated list, this reads the value out.
+- A VIRTUAL generated column is computed at read time: `Column` reads its source column, then the expression runs. The authorizer reports only the generated column. A STORED one is read from its own record slot, so the gate marks a generated column as hidden when its expression names a hidden column, read from the `CREATE TABLE` text.
+- Record slots: stored columns in declared order, then VIRTUAL generated ones. An INTEGER PRIMARY KEY is the rowid and is read with `Rowid`, `SeekRowid` or `NotExists`, or with `IdxRowid` from any of the table's indexes. A WITHOUT ROWID table is stored as an index whose key starts with the primary key.
+- `OpenRead p1 p2 p3` opens cursor `p1` on root page `p2` of database `p3` (0 = main). `sqlite_schema.rootpage` names the table or index. `OpenDup` copies a cursor.
+- `INDEXED BY` an index on a hidden column, or one the planner picks, gives rows in that column's order. Counting through such an index uses only `Count`, which the gate allows.
+- FTS `highlight()`, `snippet()` and MATCH column filters (`'body:x'`) read FTS columns by number or inside a string, never through `SQLITE_READ`. So the gate hides a whole virtual table that holds a hidden column, with its shadow tables (`pragma_table_list` type `shadow`). Those tables hold copies of the text.
+- A schema's virtual table on `dbstat` or `sqlite_dbpage` reads raw pages under any name. The gate refuses such a schema. It runs only fts3, fts4, fts5, rtree and rtree_i32; any other module becomes a plain table and its code never runs.
+- FTS5 commands such as `INSERT INTO notes(notes) VALUES ('delete-all')` are INSERTs into the table itself, so edits of virtual tables and their shadow tables are refused.
+- Foreign key actions are compiled only when `foreign_keys` is on. The gate turns it on in its scratch database, so a cascade counts as a write to a second table.
 
 ## VM service: calling extensions and hearing events
 
