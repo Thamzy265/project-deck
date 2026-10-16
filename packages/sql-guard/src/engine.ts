@@ -138,11 +138,20 @@ export class GuardEngine {
     this.scratches.clear();
   }
 
+  /**
+   * Builds (or reuses) the scratch database for a schema. The guard calls this on its
+   * own, under its own time budget, before the check. Returns the refusal if the schema
+   * can't be used.
+   */
+  loadSchema(schemaSql: readonly string[]): GuardRefusal | undefined {
+    return this.scratch(schemaSql).refusal;
+  }
+
   check(sql: string, opts: GuardCheckOptions): GuardResult {
     if (Buffer.byteLength(sql, 'utf8') > MAX_SQL_BYTES) {
       return refuse('too-long', `The statement is longer than ${MAX_SQL_BYTES / 1000} kB.`);
     }
-    const scratch = this.scratch(opts);
+    const scratch = this.scratch(opts.schemaSql);
     if (scratch.refusal !== undefined) return scratch.refusal;
     const seen = newSeen();
     const hidden = new Set(
@@ -416,14 +425,14 @@ export class GuardEngine {
     return undefined;
   }
 
-  private scratch(opts: GuardCheckOptions): Scratch {
-    const key = createHash('sha256').update(JSON.stringify(opts.schemaSql)).digest('hex');
+  private scratch(schemaSql: readonly string[]): Scratch {
+    const key = createHash('sha256').update(JSON.stringify(schemaSql)).digest('hex');
     let scratch = this.scratches.get(key);
     if (scratch !== undefined) {
       // Most recently used goes last.
       this.scratches.delete(key);
     } else {
-      scratch = this.build(opts.schemaSql);
+      scratch = this.build(schemaSql);
       while (this.scratches.size >= this.maxSchemas) {
         const oldest = this.scratches.keys().next();
         if (oldest.done === true) break;
@@ -458,10 +467,13 @@ export class GuardEngine {
     };
     const bytes = schemaSql.reduce((n, s) => n + Buffer.byteLength(s, 'utf8'), 0);
     if (schemaSql.length > MAX_SCHEMA_STATEMENTS || bytes > MAX_SCHEMA_BYTES) {
-      scratch.refusal = refuse('schema', 'The database schema is too large for the gate.');
+      scratch.refusal = refuse(
+        'schema',
+        `The database schema is too large for the SQL gate (more than ${MAX_SCHEMA_STATEMENTS.toLocaleString('en-GB')} statements or ${MAX_SCHEMA_BYTES / 1024 / 1024} MB), so nothing can be checked.`,
+      );
       return scratch;
     }
-    this.loadSchema(db, schemaSql);
+    this.createAll(db, schemaSql);
     const names = db.selectValues(
       "SELECT lower(name) FROM sqlite_schema WHERE type IN ('table', 'view')",
     );
@@ -474,7 +486,7 @@ export class GuardEngine {
    * main schema; anything else is skipped. Retries in passes, since sqlite_schema order
    * can put an index before its table.
    */
-  private loadSchema(db: Db, schemaSql: readonly string[]): void {
+  private createAll(db: Db, schemaSql: readonly string[]): void {
     let pending = [...schemaSql];
     for (let pass = 0; pass < 5 && pending.length > 0; pass++) {
       const retry: string[] = [];

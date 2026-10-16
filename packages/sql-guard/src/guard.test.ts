@@ -76,6 +76,27 @@ describe('createSqlGuard', () => {
     });
   });
 
+  it('gives loading a schema its own budget, apart from the check budget', async () => {
+    const g = make({ workerUrl: fixture('slow-schema'), checkTimeoutMs: 50 });
+    expect(await g.check('SELECT 1', { schemaSql, mode: 'read' })).toMatchObject({ ok: true });
+  });
+
+  it('refuses with timeout when loading the schema runs over its budget', async () => {
+    const g = make({ workerUrl: fixture('schema-hang'), schemaTimeoutMs: 50 });
+    const result = await g.check('SELECT 1', { schemaSql, mode: 'read' });
+    expect(result).toMatchObject({ ok: false, code: 'timeout' });
+    expect(result.ok ? '' : result.reason).toMatch(/schema/i);
+  });
+
+  it('refuses a schema over 2,000 statements as too large', async () => {
+    const g = make({ workerUrl: BUILT_WORKER });
+    const big = Array.from({ length: 2001 }, (_, i) => `CREATE TABLE t${i}(a)`);
+    expect(await g.check('SELECT 1', { schemaSql: big, mode: 'read' })).toMatchObject({
+      ok: false,
+      code: 'schema',
+    });
+  });
+
   it('never trusts a malformed answer from the worker', async () => {
     const g = make({ workerUrl: fixture('liar'), checkTimeoutMs: 50 });
     expect(await g.check('SELECT 1', { schemaSql, mode: 'read' })).toMatchObject({

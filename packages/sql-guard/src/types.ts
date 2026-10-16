@@ -69,5 +69,5 @@ export type GuardRefusal = Extract<GuardResult, { ok: false }>;
 /** Longest SQL text the gate judges, in UTF-8 bytes. */
 export const MAX_SQL_BYTES = 100_000;
 /** Bounds on the schema a caller may hand in. */
-export const MAX_SCHEMA_STATEMENTS = 5000;
+export const MAX_SCHEMA_STATEMENTS = 2000;
 export const MAX_SCHEMA_BYTES = 4 * 1024 * 1024;

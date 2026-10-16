@@ -347,9 +347,14 @@ describe('schema loading (D3)', () => {
     expect(check('SELECT a FROM v', { schemaSql })).toMatchObject({ ok: true });
   });
 
-  it('refuses a schema over the limits', () => {
-    const schemaSql = Array.from({ length: 5001 }, (_, i) => `CREATE TABLE t${i}(a)`);
-    expect(check('SELECT 1', { schemaSql })).toMatchObject({ ok: false, code: 'schema' });
+  it('takes up to 2,000 schema statements and refuses more as too large', () => {
+    const tables = (n: number) => Array.from({ length: n }, (_, i) => `CREATE TABLE t${i}(a)`);
+    expect(check('SELECT a FROM t1999', { schemaSql: tables(2000) })).toMatchObject({ ok: true });
+    const tooMany = check('SELECT 1', { schemaSql: tables(2001) });
+    expect(tooMany).toMatchObject({ ok: false, code: 'schema' });
+    expect(reasonOf(tooMany)).toMatch(/schema is too large/i);
+    expect(engine.loadSchema(tables(2001))).toMatchObject({ code: 'schema' });
+    expect(engine.loadSchema(tables(3))).toBeUndefined();
   });
 
   it('keeps a bounded number of scratch databases', () => {

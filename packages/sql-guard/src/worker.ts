@@ -6,11 +6,9 @@ import { parentPort, workerData } from 'node:worker_threads';
 import { GuardEngine, loadSqlite } from './engine.js';
 import type { GuardCheckOptions } from './types.js';
 
-interface Request {
-  id: number;
-  sql: string;
-  opts: GuardCheckOptions;
-}
+type Request =
+  | { id: number; kind: 'schema'; schemaSql: readonly string[] }
+  | { id: number; kind: 'check'; sql: string; opts: GuardCheckOptions };
 
 const port = parentPort;
 if (port === null) throw new Error('The SQL guard worker must run in a worker thread');
@@ -20,7 +18,14 @@ const engine = new GuardEngine(await loadSqlite(), maxSchemas === undefined ? {}
 
 port.on('message', (req: Request) => {
   try {
-    port.postMessage({ id: req.id, result: engine.check(req.sql, req.opts) });
+    if (req.kind === 'schema') {
+      const refusal = engine.loadSchema(req.schemaSql);
+      port.postMessage(
+        refusal === undefined ? { id: req.id, schema: true } : { id: req.id, result: refusal },
+      );
+    } else {
+      port.postMessage({ id: req.id, result: engine.check(req.sql, req.opts) });
+    }
   } catch {
     port.postMessage({ id: req.id, failed: true });
   }
