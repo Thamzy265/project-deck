@@ -1,0 +1,416 @@
+{
+  "_source": "Recorded with dart/flutterdeck_drift/tool/record_fixtures.dart: a Dart VM (dart run --enable-vm-service, DDS on) registers a Drift database with FlutterDeckDrift.register and calls its own ext.flutterdeck.drift.v1.* extensions over the VM service WebSocket. Write tokens are masked; request ids are replaced. Sample rows only.",
+  "environment": {
+    "dart": "3.12.2",
+    "os": "macos",
+    "recordedAt": "2026-10-16"
+  },
+  "announcedExtensions": [
+    "ext.flutterdeck.drift.v1.list",
+    "ext.flutterdeck.drift.v1.schema",
+    "ext.flutterdeck.drift.v1.query",
+    "ext.flutterdeck.drift.v1.snapshot",
+    "ext.flutterdeck.drift.v1.rows",
+    "ext.flutterdeck.drift.v1.execute"
+  ],
+  "tablesEvent": {
+    "kind": "Extension",
+    "extensionKind": "flutterdeck.drift.tables",
+    "extensionData": {
+      "protocol": 1,
+      "db": "app",
+      "tables": [
+        {
+          "name": "orders",
+          "kind": "insert"
+        }
+      ]
+    }
+  },
+  "exchanges": [
+    {
+      "label": "list",
+      "request": {
+        "jsonrpc": "2.0",
+        "method": "ext.flutterdeck.drift.v1.list",
+        "params": {
+          "isolateId": "isolates/5022757454346251"
+        }
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "result": {
+          "protocol": 1,
+          "databases": [
+            {
+              "name": "app"
+            }
+          ]
+        },
+        "id": "<id>"
+      }
+    },
+    {
+      "label": "schema",
+      "request": {
+        "jsonrpc": "2.0",
+        "method": "ext.flutterdeck.drift.v1.schema",
+        "params": {
+          "isolateId": "isolates/5022757454346251",
+          "db": "app"
+        }
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "result": {
+          "protocol": 1,
+          "tables": [
+            {
+              "name": "lines",
+              "kind": "table",
+              "sql": "CREATE TABLE lines (order_id INTEGER, n INTEGER, PRIMARY KEY (order_id, n))",
+              "columns": [
+                {
+                  "name": "order_id",
+                  "type": "INTEGER",
+                  "nullable": true,
+                  "pk": true,
+                  "pkPosition": 1,
+                  "default": null
+                },
+                {
+                  "name": "n",
+                  "type": "INTEGER",
+                  "nullable": true,
+                  "pk": true,
+                  "pkPosition": 2,
+                  "default": null
+                }
+              ],
+              "rowCount": 0,
+              "foreignKeys": [],
+              "indexes": [
+                {
+                  "name": "sqlite_autoindex_lines_1",
+                  "unique": true,
+                  "columns": ["order_id", "n"]
+                }
+              ]
+            },
+            {
+              "name": "orders",
+              "kind": "table",
+              "sql": "CREATE TABLE orders (id INTEGER PRIMARY KEY AUTOINCREMENT, item TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending')",
+              "columns": [
+                {
+                  "name": "id",
+                  "type": "INTEGER",
+                  "nullable": false,
+                  "pk": true,
+                  "pkPosition": 1,
+                  "default": null
+                },
+                {
+                  "name": "item",
+                  "type": "TEXT",
+                  "nullable": false,
+                  "pk": false,
+                  "default": null
+                },
+                {
+                  "name": "status",
+                  "type": "TEXT",
+                  "nullable": false,
+                  "pk": false,
+                  "default": "'pending'"
+                }
+              ],
+              "rowCount": 2,
+              "foreignKeys": [],
+              "indexes": []
+            },
+            {
+              "name": "raw",
+              "kind": "table",
+              "sql": "CREATE TABLE raw (x)",
+              "columns": [
+                {
+                  "name": "x",
+                  "type": "",
+                  "nullable": true,
+                  "pk": false,
+                  "default": null
+                }
+              ],
+              "rowCount": 0,
+              "foreignKeys": [],
+              "indexes": []
+            }
+          ]
+        },
+        "id": "<id>"
+      }
+    },
+    {
+      "label": "query",
+      "request": {
+        "jsonrpc": "2.0",
+        "method": "ext.flutterdeck.drift.v1.query",
+        "params": {
+          "isolateId": "isolates/5022757454346251",
+          "db": "app",
+          "sql": "SELECT id, item, status FROM orders WHERE status = ?",
+          "params": "[\"pending\"]",
+          "limit": "100"
+        }
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "result": {
+          "protocol": 1,
+          "columns": ["id", "item", "status"],
+          "rows": [
+            [1, "Coffee", "pending"],
+            [2, "Tea", "pending"]
+          ],
+          "truncated": false,
+          "durationMs": 0.81
+        },
+        "id": "<id>"
+      }
+    },
+    {
+      "label": "query refused (write)",
+      "request": {
+        "jsonrpc": "2.0",
+        "method": "ext.flutterdeck.drift.v1.query",
+        "params": {
+          "isolateId": "isolates/5022757454346251",
+          "db": "app",
+          "sql": "DELETE FROM orders RETURNING *"
+        }
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "result": {
+          "protocol": 1,
+          "error": {
+            "code": "not-read-only",
+            "message": "Only reading queries run here: it would change data"
+          }
+        },
+        "id": "<id>"
+      }
+    },
+    {
+      "label": "query refused (ATTACH)",
+      "request": {
+        "jsonrpc": "2.0",
+        "method": "ext.flutterdeck.drift.v1.query",
+        "params": {
+          "isolateId": "isolates/5022757454346251",
+          "db": "app",
+          "sql": "ATTACH 'other.db' AS x"
+        }
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "result": {
+          "protocol": 1,
+          "error": {
+            "code": "not-read-only",
+            "message": "Only reading queries run here: it adds a database"
+          }
+        },
+        "id": "<id>"
+      }
+    },
+    {
+      "label": "query unknown db",
+      "request": {
+        "jsonrpc": "2.0",
+        "method": "ext.flutterdeck.drift.v1.query",
+        "params": {
+          "isolateId": "isolates/5022757454346251",
+          "db": "nope",
+          "sql": "SELECT 1"
+        }
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "result": {
+          "protocol": 1,
+          "error": {
+            "code": "unknown-db",
+            "message": "No database named nope"
+          }
+        },
+        "id": "<id>"
+      }
+    },
+    {
+      "label": "snapshot",
+      "request": {
+        "jsonrpc": "2.0",
+        "method": "ext.flutterdeck.drift.v1.snapshot",
+        "params": {
+          "isolateId": "isolates/5022757454346251",
+          "db": "app"
+        }
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "result": {
+          "protocol": 1,
+          "takenAt": 1792169396680,
+          "tables": [
+            {
+              "name": "lines",
+              "columns": ["order_id", "n"],
+              "key": ["order_id", "n"],
+              "rows": []
+            },
+            {
+              "name": "orders",
+              "columns": ["id", "item", "status"],
+              "key": ["id"],
+              "rows": [
+                [1, ["529a2ddc8ff5355f", "2e1d5ff04220d18e", "b8413ec34aa45d35"]],
+                [2, ["529a2edc8ff53712", "ae583b88f21d6d1c", "b8413ec34aa45d35"]]
+              ]
+            },
+            {
+              "name": "raw",
+              "columns": ["x"],
+              "key": ["rowid"],
+              "rowid": true,
+              "rows": []
+            }
+          ]
+        },
+        "id": "<id>"
+      }
+    },
+    {
+      "label": "rows",
+      "request": {
+        "jsonrpc": "2.0",
+        "method": "ext.flutterdeck.drift.v1.rows",
+        "params": {
+          "isolateId": "isolates/5022757454346251",
+          "db": "app",
+          "table": "orders",
+          "keys": "[3, 99]"
+        }
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "result": {
+          "protocol": 1,
+          "columns": ["id", "item", "status"],
+          "key": ["id"],
+          "rows": [[3, [3, "Cake", "pending"]]],
+          "missing": [99],
+          "truncated": false
+        },
+        "id": "<id>"
+      }
+    },
+    {
+      "label": "execute without token",
+      "request": {
+        "jsonrpc": "2.0",
+        "method": "ext.flutterdeck.drift.v1.execute",
+        "params": {
+          "isolateId": "isolates/5022757454346251",
+          "db": "app",
+          "sql": "UPDATE orders SET status = 'shipped' WHERE id = 1"
+        }
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "result": {
+          "protocol": 1,
+          "error": {
+            "code": "bad-token",
+            "message": "Changes need a confirm in the dashboard"
+          }
+        },
+        "id": "<id>"
+      }
+    },
+    {
+      "label": "execute with token",
+      "request": {
+        "jsonrpc": "2.0",
+        "method": "ext.flutterdeck.drift.v1.execute",
+        "params": {
+          "isolateId": "isolates/5022757454346251",
+          "db": "app",
+          "sql": "UPDATE orders SET status = ? WHERE id = ?",
+          "params": "[\"shipped\", 1]",
+          "token": "<masked>"
+        }
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "result": {
+          "protocol": 1,
+          "changes": 1
+        },
+        "id": "<id>"
+      }
+    },
+    {
+      "label": "query timeout",
+      "request": {
+        "jsonrpc": "2.0",
+        "method": "ext.flutterdeck.drift.v1.query",
+        "params": {
+          "isolateId": "isolates/5022757454346251",
+          "db": "app",
+          "sql": "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c) SELECT count(*) FROM c, orders"
+        }
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "result": {
+          "protocol": 1,
+          "error": {
+            "code": "timeout",
+            "message": "That query took too long and was stopped"
+          }
+        },
+        "id": "<id>"
+      }
+    },
+    {
+      "label": "unknown method",
+      "request": {
+        "jsonrpc": "2.0",
+        "method": "ext.flutterdeck.drift.v1.nope",
+        "params": {
+          "isolateId": "isolates/5022757454346251"
+        }
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "error": {
+          "code": -32601,
+          "message": "Unknown method \"ext.flutterdeck.drift.v1.nope\".",
+          "data": {
+            "request": {
+              "jsonrpc": "2.0",
+              "id": "14",
+              "method": "ext.flutterdeck.drift.v1.nope",
+              "params": {
+                "isolateId": "isolates/5022757454346251"
+              }
+            }
+          }
+        },
+        "id": "<id>"
+      }
+    }
+  ]
+}
