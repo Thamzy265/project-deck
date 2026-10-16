@@ -71,7 +71,7 @@ void _readerMain(List<Object?> args) {
     return;
   }
   final inbox = ReceivePort();
-  toController.send(['ready', inbox.sendPort, ops.handleAddress]);
+  toController.send(['ready', inbox.sendPort, ops.handleAddresses]);
   // The connection is freed only on the controller's "close": the
   // controller may call sqlite3_interrupt on it until it has sent that, and
   // it sends nothing after (CR-2).
@@ -108,11 +108,14 @@ void _readerMain(List<Object?> args) {
 
 /// The controlling side of one read isolate.
 final class ReadWorker {
-  ReadWorker._(this._isolate, this._toWorker, this._handle, this._ports);
+  ReadWorker._(this._isolate, this._toWorker, this._handles, this._ports);
 
   final Isolate _isolate;
   final SendPort _toWorker;
-  final int _handle;
+
+  /// The read isolate's connections: the file and its in-memory copy.
+  /// Interrupting an idle one does nothing, so a timeout interrupts both.
+  final List<int> _handles;
   final _Ports _ports;
   final _pending = <int, Completer<Map<String, Object?>>>{};
   var _nextId = 0;
@@ -170,7 +173,7 @@ final class ReadWorker {
     final worker = ReadWorker._(
       isolate,
       hello[1]! as SendPort,
-      hello[2]! as int,
+      (hello[2]! as List).cast<int>(),
       ports,
     );
     ports.onMessage = worker._onMessage;
@@ -207,7 +210,7 @@ final class ReadWorker {
     final budgetTimer = Timer(budget, () {
       if (_dead || done.isCompleted) return;
       fired = true;
-      ReadWorker.interrupt(_handle);
+      _interruptAll();
       grace = Timer(interruptGrace, () {
         // The step did not return: give up on this isolate.
         _fail(id, _tooLong);
@@ -226,6 +229,12 @@ final class ReadWorker {
       budgetTimer.cancel();
       grace?.cancel();
       _pending.remove(id);
+    }
+  }
+
+  void _interruptAll() {
+    for (final h in _handles) {
+      ReadWorker.interrupt(h);
     }
   }
 
@@ -272,7 +281,7 @@ final class ReadWorker {
   /// interrupted first, because the isolate can't exit while it is blocked
   /// in SQLite.
   Future<void> close() async {
-    if (!_dead && _pending.isNotEmpty) ReadWorker.interrupt(_handle);
+    if (!_dead && _pending.isNotEmpty) _interruptAll();
     for (final id in _pending.keys.toList()) {
       _fail(id, readerStopped);
     }

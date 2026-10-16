@@ -1,8 +1,11 @@
-/// Two SQLite C functions package:sqlite3 does not wrap, looked up in the
-/// same native library it bundles (its code asset).
+/// SQLite C functions package:sqlite3 does not wrap (or wraps only as an
+/// async stream), looked up in the same native library it bundles (its code
+/// asset).
 library;
 
 import 'dart:ffi';
+
+import 'package:ffi/ffi.dart';
 
 const _asset = 'package:sqlite3/src/ffi/libsqlite3.g.dart';
 
@@ -58,4 +61,55 @@ bool limitLength(Pointer<void> db, int bytes) {
   } on ArgumentError {
     return false;
   }
+}
+
+@Native<
+  Pointer<Void> Function(
+    Pointer<Void>,
+    Pointer<Utf8>,
+    Pointer<Void>,
+    Pointer<Utf8>,
+  )
+>(symbol: 'sqlite3_backup_init', assetId: _asset)
+external Pointer<Void> _backupInit(
+  Pointer<Void> dest,
+  Pointer<Utf8> destName,
+  Pointer<Void> source,
+  Pointer<Utf8> sourceName,
+);
+
+@Native<Int Function(Pointer<Void>, Int)>(
+  symbol: 'sqlite3_backup_step',
+  assetId: _asset,
+)
+external int _backupStep(Pointer<Void> backup, int pages);
+
+@Native<Int Function(Pointer<Void>)>(
+  symbol: 'sqlite3_backup_finish',
+  assetId: _asset,
+)
+external int _backupFinish(Pointer<Void> backup);
+
+/// "main", the schema name of both ends of a copy. Allocated once and kept.
+final Pointer<Utf8> _main = 'main'.toNativeUtf8();
+
+/// One in-progress copy of a database's main schema into another
+/// connection's main schema, run in steps (https://sqlite.org/backup.html).
+final class NativeBackup {
+  NativeBackup._(this._handle);
+
+  /// Starts a copy, or returns null if SQLite refused to start one.
+  static NativeBackup? start(Pointer<void> dest, Pointer<void> source) {
+    final handle = _backupInit(dest.cast(), _main, source.cast(), _main);
+    return handle.address == 0 ? null : NativeBackup._(handle);
+  }
+
+  final Pointer<Void> _handle;
+
+  /// Copies up to [pages] pages. Holds a shared lock on the source only
+  /// while it runs. Returns SQLite's result code (SQLITE_DONE when finished).
+  int step(int pages) => _backupStep(_handle, pages);
+
+  /// Ends the copy and frees it; returns SQLite's result code.
+  int finish() => _backupFinish(_handle);
 }

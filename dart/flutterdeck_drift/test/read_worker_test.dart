@@ -156,6 +156,37 @@ void main() {
   }
 
   test(
+    'non-WAL: a long query holds no lock; the app writes at once (F1)',
+    () async {
+      final app = await openApp(wal: false);
+      final reader = DbReader(path);
+      addTearDown(() async {
+        await reader.close();
+        await app.close();
+      });
+      final read = reader.call('query', {
+        'sql': runaway,
+        'params': const <Object?>[],
+        'limit': 10,
+      }, budget: const Duration(seconds: 3));
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+
+      // Another connection with no busy timeout at all: on Android the
+      // busy handler's sleeps are cut short, so only "no lock" is safe.
+      final writer = sqlite3.open(path);
+      addTearDown(writer.close);
+      writer.execute('PRAGMA busy_timeout = 0');
+      final watch = Stopwatch()..start();
+      writer.execute("INSERT INTO orders (item) VALUES ('during the read')");
+      expect(watch.elapsed, lessThan(const Duration(milliseconds: 200)));
+
+      await expectLater(read, failsWith(ErrorCode.timeout));
+      expect(await app.count(), 2);
+    },
+    timeout: const Timeout(Duration(seconds: 30)),
+  );
+
+  test(
     'an isolate that never returns is killed after the grace time',
     () async {
       final app = await openApp(wal: false);
@@ -180,7 +211,8 @@ void main() {
         failsWith(ErrorCode.timeout),
       );
       expect(watch.elapsed, lessThan(const Duration(seconds: 2)));
-      expect(interrupted, hasLength(1));
+      // Both connections: the file and its in-memory copy.
+      expect(interrupted, hasLength(2));
       expect(worker.isDead, isTrue);
       await expectLater(
         worker.call('schema', const {}),

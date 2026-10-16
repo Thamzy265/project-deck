@@ -1,9 +1,12 @@
-/// Everything the read isolate does, on its own read-only connection.
+/// Everything the read isolate does, on its own read-only connection, or,
+/// for databases not in WAL mode, on an in-memory copy of it.
 ///
 /// These calls are synchronous FFI and can block; they only ever run inside
 /// the read isolate, which the controlling isolate interrupts after
 /// [readBudget] (see read_worker.dart).
 library;
+
+import 'dart:io' show sleep;
 
 import 'package:sqlite3/sqlite3.dart';
 
@@ -15,6 +18,8 @@ import 'sql_guard.dart';
 const _notADatabase = 26; // SQLITE_NOTADB
 const _interrupted = 9; // SQLITE_INTERRUPT
 const _busy = 5; // SQLITE_BUSY
+const _locked = 6; // SQLITE_LOCKED
+const _done = 101; // SQLITE_DONE
 const _busyMessage = 'The app is writing; try again';
 
 /// Room for rows in a reply, leaving space for the envelope around them.
@@ -32,9 +37,43 @@ final class _Entity {
 }
 
 final class ReadOps {
-  ReadOps(this.db);
+  ReadOps(this.file, this.copy) : _current = file;
 
-  final Database db;
+  /// The read-only connection to the app's database file.
+  final Database file;
+
+  /// A private in-memory database that holds a copy of [file] for apps not
+  /// using WAL. Queries on it hold no lock on the app's file (F1).
+  final Database copy;
+
+  Database _current;
+
+  /// The connection the current operation reads: [copy] for databases not
+  /// in WAL mode, [file] for WAL databases.
+  Database get db => _current;
+
+  /// Whether the last operation read the in-memory copy.
+  bool lastReadFromCopy = false;
+
+  /// How many copies this connection has made (for tests and timings).
+  int copies = 0;
+
+  /// `PRAGMA data_version` of [file] when the current copy was made; the
+  /// copy is reused while it is unchanged. Null when there is no copy.
+  int? _copiedVersion;
+
+  /// Largest database the inspector copies (PM decision, 2026-10-16).
+  static int copyCap = 50 * 1024 * 1024;
+
+  /// Time a copy may take before it stops with `timeout`.
+  static Duration copyBudget = readBudget;
+
+  /// Test hook: read [file] live even when not in WAL mode.
+  static bool readLive = false;
+
+  /// Pages per backup step. Each step holds a shared lock on the app's
+  /// file for a few milliseconds and none between steps.
+  static const copyStepPages = 64;
 
   /// Opens [path] read-only, with no app functions, `query_only`, temp data
   /// in files, a small cache and a 16 MB value limit (design note S2).
@@ -74,13 +113,120 @@ final class ReadOps {
         "Couldn't read the database file: ${e.message}",
       );
     }
-    return ReadOps(db);
+    final copy = sqlite3.openInMemory();
+    limitLength(copy.handle, readLengthLimit);
+    copy.execute('PRAGMA temp_store = FILE');
+    copy.execute('PRAGMA query_only = 1');
+    return ReadOps(db, copy);
   }
 
-  /// The native connection, for `sqlite3_interrupt` from another isolate.
-  int get handleAddress => db.handle.address;
+  /// The native connections, for `sqlite3_interrupt` from another isolate.
+  List<int> get handleAddresses => [file.handle.address, copy.handle.address];
 
-  void close() => db.close();
+  void close() {
+    file.close();
+    copy.close();
+  }
+
+  /// Picks the connection for the next operation. For databases not in WAL
+  /// mode it reads an in-memory copy, made again only when the file changed
+  /// since the last copy (PM decision, 2026-10-16: "Read a copy").
+  void _chooseTarget() {
+    final spent = Stopwatch()..start();
+    if (readLive || _isWal(spent)) {
+      _current = file;
+      lastReadFromCopy = false;
+      return;
+    }
+    final version = _retryBusy(
+      () => file.select('PRAGMA data_version').first.values.first as int,
+      spent,
+    );
+    if (version != _copiedVersion) {
+      _copiedVersion = null;
+      _copyIn(spent);
+      _copiedVersion = version;
+      copies++;
+    }
+    _current = copy;
+    lastReadFromCopy = true;
+  }
+
+  bool _isWal(Stopwatch spent) {
+    final mode = _retryBusy(
+      () => file.select('PRAGMA journal_mode').first.values.first,
+      spent,
+    );
+    return '$mode'.toLowerCase() == 'wal';
+  }
+
+  /// Runs [read] on [file], waiting out an app commit by wall clock: on
+  /// Android, SQLite's own busy-handler sleeps are cut short by the Dart
+  /// profiler's signals, so they can't be trusted.
+  T _retryBusy<T>(T Function() read, Stopwatch spent) {
+    while (true) {
+      try {
+        return read();
+      } on SqliteException catch (e) {
+        if (e.resultCode != _busy && e.resultCode != _locked) rethrow;
+      }
+      if (spent.elapsed >= copyBudget) throw _copyTooLong;
+      sleep(const Duration(milliseconds: 2));
+    }
+  }
+
+  static const _copyTooLong = DriftDeckError(
+    ErrorCode.timeout,
+    'That query took too long and was stopped',
+  );
+
+  /// Copies [file] into [copy] in steps of [copyStepPages] pages, so the
+  /// app's writes wait at most one short step. A write by the app between
+  /// steps makes SQLite restart the copy, so it is always consistent.
+  void _copyIn(Stopwatch spent) {
+    final size = _retryBusy(() {
+      final pages = file.select('PRAGMA page_count').first.values.first as int;
+      final pageSize =
+          file.select('PRAGMA page_size').first.values.first as int;
+      return pages * pageSize;
+    }, spent);
+    if (size > copyCap) {
+      throw DriftDeckError(
+        ErrorCode.tooLarge,
+        'This database is ${_megabytes(size)} MB. FlutterDeck reads a copy '
+        'of databases that do not use WAL, up to ${_megabytes(copyCap)} MB. '
+        'Turn on WAL (PRAGMA journal_mode = WAL) to read it live.',
+      );
+    }
+    final backup = NativeBackup.start(copy.handle, file.handle);
+    if (backup == null) {
+      throw const DriftDeckError(
+        ErrorCode.internal,
+        "Couldn't start copying the database",
+      );
+    }
+    try {
+      while (true) {
+        if (spent.elapsed >= copyBudget) throw _copyTooLong;
+        final rc = backup.step(copyStepPages);
+        if (rc == _done) break;
+        if (rc == 0) continue;
+        if (rc == _busy || rc == _locked) {
+          sleep(const Duration(milliseconds: 2));
+          continue;
+        }
+        throw DriftDeckError(
+          ErrorCode.sqlError,
+          "Couldn't copy the database (SQLite error $rc)",
+        );
+      }
+    } finally {
+      backup.finish();
+    }
+  }
+
+  static String _megabytes(int bytes) =>
+      (bytes / (1024 * 1024)).toStringAsFixed(bytes < 10 * 1024 * 1024 ? 1 : 0);
 
   /// True once a statement changed the connection itself (an attached
   /// database, a setting): the read isolate then closes it and exits, and
@@ -91,7 +237,10 @@ final class ReadOps {
   /// transaction stays open afterwards (design note D2, S4). If the
   /// connection is no longer as [open] left it, the answer is `internal`.
   T guarded<T>(T Function() action) {
-    final result = _mapErrors(action);
+    final result = _mapErrors(() {
+      _chooseTarget();
+      return action();
+    });
     if (broken) {
       throw const DriftDeckError(
         ErrorCode.internal,
@@ -104,20 +253,22 @@ final class ReadOps {
   /// Defence in depth behind the guards: only main (and temp) attached,
   /// `query_only` and `temp_store=FILE` still set.
   void _checkConnection() {
-    try {
-      final names = db
-          .select('PRAGMA database_list')
-          .map((r) => r['name'])
-          .toList();
-      final queryOnly = db.select('PRAGMA query_only').first.values.first;
-      final tempStore = db.select('PRAGMA temp_store').first.values.first;
-      if (names.any((n) => n != 'main' && n != 'temp') ||
-          queryOnly != 1 ||
-          tempStore != 1) {
+    for (final c in [file, copy]) {
+      try {
+        final names = c
+            .select('PRAGMA database_list')
+            .map((r) => r['name'])
+            .toList();
+        final queryOnly = c.select('PRAGMA query_only').first.values.first;
+        final tempStore = c.select('PRAGMA temp_store').first.values.first;
+        if (names.any((n) => n != 'main' && n != 'temp') ||
+            queryOnly != 1 ||
+            tempStore != 1) {
+          broken = true;
+        }
+      } on SqliteException {
         broken = true;
       }
-    } on SqliteException {
-      broken = true;
     }
   }
 
@@ -143,11 +294,13 @@ final class ReadOps {
         "The parameters don't match the query",
       );
     } finally {
-      if (!db.autocommit) {
-        try {
-          db.execute('ROLLBACK');
-        } on SqliteException {
-          broken = true;
+      for (final c in [file, copy]) {
+        if (!c.autocommit) {
+          try {
+            c.execute('ROLLBACK');
+          } on SqliteException {
+            broken = true;
+          }
         }
       }
       _checkConnection();

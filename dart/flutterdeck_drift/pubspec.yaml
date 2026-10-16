@@ -10,6 +10,7 @@ environment:
 # 1.18.0, so apps on that Flutter could not resolve a higher constraint.
 dependencies:
   drift: ^2.35.2
+  ffi: ^2.1.0
   sqlite3: ^3.5.2
 
 dev_dependencies:
