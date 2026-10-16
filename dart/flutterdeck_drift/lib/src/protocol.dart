@@ -69,6 +69,13 @@ final class DriftDeckError implements Exception {
   String toString() => 'DriftDeckError($code): $message';
 }
 
+/// A read changed or broke its connection; the read isolate starts over
+/// with fresh connections, and the controller runs the read once more.
+const connectionReset = DriftDeckError(
+  ErrorCode.internal,
+  'The read connection was reset',
+);
+
 Map<String, Object?> okReply(Map<String, Object?> body) => {
   'protocol': protocolVersion,
   ...body,

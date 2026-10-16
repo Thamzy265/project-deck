@@ -20,6 +20,7 @@ const _interrupted = 9; // SQLITE_INTERRUPT
 const _busy = 5; // SQLITE_BUSY
 const _locked = 6; // SQLITE_LOCKED
 const _done = 101; // SQLITE_DONE
+const _readOnly = 8; // SQLITE_READONLY
 const _busyMessage = 'The app is writing; try again';
 
 /// Room for rows in a reply, leaving space for the envelope around them.
@@ -243,6 +244,14 @@ final class ReadOps {
         _checkCap(backup.pageCount * pageSize);
         if (rc == _done) break;
         if (rc == 0) continue;
+        if (rc == _readOnly) {
+          // SQLite can't copy into an in-memory database whose page size
+          // differs (the app changed page_size and ran VACUUM). The isolate
+          // restarts with a fresh copy connection; it is never swapped in
+          // place (R3-2).
+          broken = true;
+          throw connectionReset;
+        }
         if (rc == _busy || rc == _locked) {
           restarted = true;
           sleep(const Duration(milliseconds: 2));
@@ -287,12 +296,7 @@ final class ReadOps {
       _chooseTarget();
       return action();
     });
-    if (broken) {
-      throw const DriftDeckError(
-        ErrorCode.internal,
-        'The read connection was reset',
-      );
-    }
+    if (broken) throw connectionReset;
     return result;
   }
 

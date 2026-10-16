@@ -312,8 +312,9 @@ final class DbReader {
   var _closed = false;
 
   /// Runs [op] on the live read isolate. A read that met a stopped isolate
-  /// (for example queued behind a runaway read) runs once more on a fresh
-  /// one; reads change nothing, so that is safe (FD-3).
+  /// (for example queued behind a runaway read, FD-3) or a reset connection
+  /// (R3-2) runs once more on a fresh one; reads change nothing, so that is
+  /// safe.
   Future<Map<String, Object?>> call(
     String op,
     Map<String, Object?> args, {
@@ -334,7 +335,11 @@ final class DbReader {
       try {
         return await worker.call(op, args, budget: budget);
       } on DriftDeckError catch (e) {
-        if (attempt > 0 || _closed || !identical(e, readerStopped)) rethrow;
+        final again =
+            identical(e, readerStopped) ||
+            (e.code == connectionReset.code &&
+                e.message == connectionReset.message);
+        if (attempt > 0 || _closed || !again) rethrow;
       }
     }
   }

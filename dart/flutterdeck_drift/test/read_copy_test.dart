@@ -148,6 +148,28 @@ void main() {
     );
   });
 
+  test('a page size change resets the read connection (R3-2)', () {
+    ops.query('SELECT 1', const [], 10);
+    app.execute('PRAGMA page_size = 8192');
+    app.execute('VACUUM');
+    // SQLite can't copy into an in-memory database with another page size
+    // (SQLITE_READONLY); a fresh connection can.
+    expect(
+      () => ops.query('SELECT count(*) FROM orders', const [], 10),
+      throwsA(
+        isA<DriftDeckError>()
+            .having((e) => e.code, 'code', ErrorCode.internal)
+            .having((e) => e.message, 'message', contains('reset')),
+      ),
+    );
+    expect(ops.broken, isTrue);
+    ops.close();
+    ops = ReadOps.open(path);
+    expect(ops.query('SELECT count(*) FROM orders', const [], 10)['rows'], [
+      [2],
+    ]);
+  });
+
   test('a copy that runs out of time stops and holds no lock', () {
     app.execute(
       'WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c '

@@ -313,6 +313,28 @@ void main() {
     expect((await reader.call('schema', const {}))['tables'], isNotEmpty);
   });
 
+  test('a page size change is answered by a fresh reader (R3-2)', () async {
+    final app = await openApp(wal: false);
+    final reader = DbReader(path);
+    addTearDown(() async {
+      await reader.close();
+      await app.close();
+    });
+    const count = {
+      'sql': 'SELECT count(*) FROM orders',
+      'params': <Object?>[],
+      'limit': 1,
+    };
+    expect((await reader.call('query', count))['rows'], [
+      [1],
+    ]);
+    await app.customStatement('PRAGMA page_size = 8192');
+    await app.customStatement('VACUUM');
+    expect((await reader.call('query', count))['rows'], [
+      [1],
+    ]);
+  });
+
   group('DbReader starts one isolate at a time (CR-1)', () {
     const quick = {
       'sql': 'SELECT count(*) FROM orders',
