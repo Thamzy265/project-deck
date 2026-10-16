@@ -60,6 +60,14 @@ const SCHEMA_CREATES: ReadonlySet<number> = new Set([
 ]);
 const SCHEMA_TABLES: ReadonlySet<string> = new Set(['sqlite_master', 'sqlite_schema']);
 
+/**
+ * Virtual table modules the gate instantiates from a schema (SG-7). Any other module
+ * becomes a plain table of the same columns, so its code never runs in the gate.
+ */
+const VTAB_MODULES: ReadonlySet<string> = new Set(['fts3', 'fts4', 'fts5', 'rtree', 'rtree_i32']);
+/** Modules that read raw pages under any table name: such a schema is refused. */
+const PAGE_MODULES: ReadonlySet<string> = new Set(['dbstat', 'sqlite_dbpage']);
+
 /** What one statement's authorizer calls showed. */
 interface Seen {
   denial: GuardRefusal | undefined;
@@ -70,6 +78,8 @@ interface Seen {
   creates: number;
   /** Tables an edit inserts into, updates or deletes from, its triggers included. */
   written: Set<string>;
+  /** Schema loading: the virtual table a CREATE VIRTUAL TABLE declares, and its module. */
+  vtab: { name: string; module: string } | undefined;
 }
 
 const newSeen = (): Seen => ({
@@ -80,6 +90,7 @@ const newSeen = (): Seen => ({
   pragma: false,
   creates: 0,
   written: new Set(),
+  vtab: undefined,
 });
 
 type Policy =
@@ -95,6 +106,8 @@ type Policy =
 interface Scratch {
   db: Db;
   relations: ReadonlySet<string>;
+  /** Virtual tables the schema declares (folded name → module), stand-ins included. */
+  virtualTables: Map<string, string>;
   /** The schema could not be accepted; every check refuses with this. */
   refusal: GuardRefusal | undefined;
 }
@@ -312,7 +325,7 @@ export class GuardEngine {
     if (seen.denial !== undefined) return SQLITE_DENY;
     const denial =
       policy.kind === 'schema'
-        ? this.schemaRule(action, arg1, dbName, seen)
+        ? this.schemaRule(action, arg1, arg2, dbName, seen)
         : this.checkRule(action, arg1, arg2, policy);
     if (denial === undefined) return SQLITE_OK;
     seen.denial = denial;
@@ -322,10 +335,14 @@ export class GuardEngine {
   private schemaRule(
     action: number,
     arg1: string | 0,
+    arg2: string | 0,
     dbName: string | 0,
     seen: Seen,
   ): GuardRefusal | undefined {
     const bad = refuse('schema', 'The schema holds a statement other than CREATE.');
+    if (action === A.CREATE_VTABLE && typeof arg1 === 'string') {
+      seen.vtab = { name: arg1, module: lower(arg2) };
+    }
     if (SCHEMA_CREATES.has(action)) {
       // AUTOINCREMENT also creates sqlite_sequence, so one statement may create two.
       seen.creates++;
@@ -468,6 +485,7 @@ export class GuardEngine {
     const scratch: Scratch = {
       db,
       relations: new Set(),
+      virtualTables: new Map(),
       refusal: undefined,
     };
     const bytes = schemaSql.reduce((n, s) => n + Buffer.byteLength(s, 'utf8'), 0);
@@ -478,7 +496,14 @@ export class GuardEngine {
       );
       return scratch;
     }
-    this.createAll(db, schemaSql);
+    const pageModule = this.createAll(scratch, schemaSql);
+    if (pageModule !== undefined) {
+      scratch.refusal = refuse(
+        'schema',
+        `The database schema declares a virtual table on ${pageModule}, which reads raw database pages, so the SQL gate refuses every statement for this database.`,
+      );
+      return scratch;
+    }
     const names = db.selectValues("SELECT name FROM sqlite_schema WHERE type IN ('table', 'view')");
     scratch.relations = new Set(
       names.filter((n): n is string => typeof n === 'string').map(foldName),
@@ -491,49 +516,78 @@ export class GuardEngine {
    * main schema; anything else is skipped. Retries in passes, since sqlite_schema order
    * can put an index before its table.
    */
-  private createAll(db: Db, schemaSql: readonly string[]): void {
+  /** Returns the page-reading module when the schema declares one (SG-7). */
+  private createAll(scratch: Scratch, schemaSql: readonly string[]): string | undefined {
     let pending = [...schemaSql];
     for (let pass = 0; pass < 5 && pending.length > 0; pass++) {
       const retry: string[] = [];
       for (const sql of pending) {
-        if (this.createOne(db, sql) === 'retry') retry.push(sql);
+        const outcome = this.createOne(scratch, sql);
+        if (typeof outcome === 'object') return outcome.pageModule;
+        if (outcome === 'retry') retry.push(sql);
       }
       if (retry.length === pending.length) break;
       pending = retry;
     }
+    return undefined;
   }
 
-  private createOne(db: Db, sql: string): 'done' | 'skip' | 'retry' {
+  private createOne(
+    scratch: Scratch,
+    sql: string,
+  ): 'done' | 'skip' | 'retry' | { pageModule: string } {
     const { capi } = this.sqlite;
+    const db = scratch.db;
     const seen = newSeen();
-    let vtab: string | undefined;
+    // Set inside the callback: a virtual table to replace with a plain stand-in.
+    const flags = { standIn: false };
+    let outcome: ReturnType<GuardEngine['createOne']> = 'skip';
     this.policy = { kind: 'schema', seen };
     try {
-      return this.withStatement(db, sql, (stmt, rc, tailIsEmpty) => {
+      outcome = this.withStatement(db, sql, (stmt, rc, tailIsEmpty) => {
         if (seen.denial !== undefined) return 'skip';
         if (rc !== SQLITE_OK) return 'retry';
         if (stmt === 0 || seen.creates === 0 || !tailIsEmpty()) return 'skip';
+        const vtab = seen.vtab;
+        if (vtab !== undefined) {
+          if (PAGE_MODULES.has(vtab.module)) return { pageModule: vtab.module };
+          if (!VTAB_MODULES.has(vtab.module)) {
+            flags.standIn = true;
+            return 'skip';
+          }
+        }
         this.policy = { kind: 'off' };
         const stepped = capi.sqlite3_step(stmt);
-        if (stepped === capi.SQLITE_DONE) return 'done';
+        if (stepped === capi.SQLITE_DONE) {
+          if (vtab !== undefined) scratch.virtualTables.set(lower(vtab.name), vtab.module);
+          return 'done';
+        }
         const message = capi.sqlite3_errmsg(db.pointer ?? 0);
-        if (message.startsWith('no such module:')) vtab = sql;
-        return message.includes('already exists') ? 'skip' : vtab === undefined ? 'retry' : 'skip';
+        if (vtab !== undefined && message.startsWith('no such module:')) {
+          flags.standIn = true;
+          return 'skip';
+        }
+        return message.includes('already exists') ? 'skip' : 'retry';
       });
     } catch {
-      return 'skip';
+      outcome = 'skip';
     } finally {
       this.policy = { kind: 'off' };
-      if (vtab !== undefined) this.plainTableFor(db, vtab);
     }
+    const vtab = seen.vtab;
+    if (flags.standIn && vtab !== undefined && this.plainTableFor(scratch, sql) === 'done') {
+      scratch.virtualTables.set(lower(vtab.name), vtab.module);
+      return 'done';
+    }
+    return outcome;
   }
 
-  /** A virtual table whose module the gate lacks becomes a plain table of its columns. */
-  private plainTableFor(db: Db, sql: string): void {
+  /** A virtual table the gate won't or can't run becomes a plain table of its columns. */
+  private plainTableFor(scratch: Scratch, sql: string): ReturnType<GuardEngine['createOne']> {
     const parsed = virtualTableColumns(sql);
-    if (parsed === undefined || parsed.columns.length === 0) return;
+    if (parsed === undefined || parsed.columns.length === 0) return 'skip';
     const quote = (id: string) => `"${id.replaceAll('"', '""')}"`;
     const create = `CREATE TABLE ${quote(parsed.table)} (${parsed.columns.map(quote).join(', ')})`;
-    this.createOne(db, create);
+    return this.createOne(scratch, create);
   }
 }

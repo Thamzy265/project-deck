@@ -523,7 +523,7 @@ describe('schema loading: hostile statements', () => {
 
   // SG-7: LEAKY_TABLES matches names only. A schema table built on the dbstat or
   // sqlite_dbpage module reads raw pages (deleted rows, hidden columns) under any name.
-  it.fails('SG-7 refuses a schema virtual table over sqlite_dbpage or dbstat', () => {
+  it('SG-7 refuses a schema virtual table over sqlite_dbpage or dbstat', () => {
     expect(
       read(['CREATE VIRTUAL TABLE pages USING sqlite_dbpage'], 'SELECT * FROM pages'),
     ).toMatchObject({
@@ -532,6 +532,30 @@ describe('schema loading: hostile statements', () => {
     expect(read(['CREATE VIRTUAL TABLE st USING dbstat'], 'SELECT * FROM st')).toMatchObject({
       ok: false,
     });
+  });
+
+  it('SG-7 refuses the whole schema, saying why, when it declares dbstat or sqlite_dbpage', () => {
+    for (const module of ['dbstat', 'sqlite_dbpage', 'DBSTAT']) {
+      const schema = ['CREATE TABLE a(x)', `CREATE VIRTUAL TABLE pages USING ${module}`];
+      const result = read(schema, 'SELECT x FROM a');
+      expect(result, module).toMatchObject({ ok: false, code: 'schema' });
+      expect(result.ok ? '' : result.reason).toMatch(/raw database pages/);
+    }
+  });
+
+  it('SG-7 never runs a module outside fts3, fts4, fts5, rtree and rtree_i32', () => {
+    // fts5vocab exists in the bundled build; as a plain table it has the parsed columns only.
+    const schema = [
+      'CREATE VIRTUAL TABLE n USING fts5(a)',
+      'CREATE VIRTUAL TABLE v USING fts5vocab(n, row)',
+      'CREATE VIRTUAL TABLE r32 USING rtree_i32(id, x0, x1)',
+    ];
+    expect(read(schema, 'SELECT term, doc FROM v')).toMatchObject({
+      ok: false,
+      code: 'invalid-sql',
+    });
+    expect(read(schema, 'SELECT n FROM v')).toMatchObject({ ok: true });
+    expect(read(schema, 'SELECT id, x0 FROM r32')).toMatchObject({ ok: true });
   });
 
   it('accepts a schema of exactly 4 MiB and refuses one byte more', () => {
