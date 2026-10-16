@@ -10,6 +10,8 @@ import 'package:flutterdeck_drift/src/read_ops.dart';
 import 'package:sqlite3/sqlite3.dart';
 import 'package:test/test.dart';
 
+import 'fds.dart';
+
 Matcher refusedWith(String code) =>
     throwsA(isA<DriftDeckError>().having((e) => e.code, 'code', code));
 
@@ -42,6 +44,19 @@ void main() {
     ops.close();
     app.close();
     dir.deleteSync(recursive: true);
+  });
+
+  test('a failed copy-connection setup closes the file connection (R3-5)', () {
+    final before = openDescriptors(path);
+    ReadOps.openCopy = () => throw StateError('no memory for the copy');
+    addTearDown(() => ReadOps.openCopy = sqlite3.openInMemory);
+    expect(
+      () => ReadOps.open(path),
+      throwsA(
+        isA<DriftDeckError>().having((e) => e.code, 'code', ErrorCode.internal),
+      ),
+    );
+    expect(openDescriptors(path), before);
   });
 
   test('a rollback-journal database is read from a copy', () {

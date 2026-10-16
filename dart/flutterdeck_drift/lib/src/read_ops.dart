@@ -113,12 +113,27 @@ final class ReadOps {
         "Couldn't read the database file: ${e.message}",
       );
     }
-    final copy = sqlite3.openInMemory();
-    limitLength(copy.handle, readLengthLimit);
-    copy.execute('PRAGMA temp_store = FILE');
-    copy.execute('PRAGMA query_only = 1');
-    return ReadOps(db, copy);
+    Database? copy;
+    try {
+      copy = openCopy();
+      limitLength(copy.handle, readLengthLimit);
+      copy.execute('PRAGMA temp_store = FILE');
+      copy.execute('PRAGMA query_only = 1');
+      return ReadOps(db, copy);
+    } on Object {
+      // Never leave the file connection (a descriptor on the app's
+      // database) open behind a failed setup (R3-5).
+      copy?.close();
+      db.close();
+      throw const DriftDeckError(
+        ErrorCode.internal,
+        "Couldn't set up the read connection",
+      );
+    }
   }
+
+  /// Test hook: opens the in-memory connection that holds copies.
+  static Database Function() openCopy = sqlite3.openInMemory;
 
   /// The native connections, for `sqlite3_interrupt` from another isolate.
   List<int> get handleAddresses => [file.handle.address, copy.handle.address];
