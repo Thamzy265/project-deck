@@ -139,8 +139,15 @@ export class JsonRpcClient {
     return this.isClosed;
   }
 
-  /** Omit `params` for methods that take none: DTD rejects an empty object. */
-  call(method: string, params?: Record<string, unknown>): Promise<unknown> {
+  /**
+   * Omit `params` for methods that take none: DTD rejects an empty object.
+   * `opts.timeoutMs` replaces the client's timeout for this call.
+   */
+  call(
+    method: string,
+    params?: Record<string, unknown>,
+    opts: { timeoutMs?: number } = {},
+  ): Promise<unknown> {
     // While CLOSING, ws drops sends silently and a dead peer may take long to finish the close.
     if (this.isClosed || this.ws.readyState !== WebSocket.OPEN)
       return Promise.reject(new ConnectionClosedError());
@@ -149,11 +156,12 @@ export class JsonRpcClient {
       params === undefined
         ? { jsonrpc: '2.0', id, method }
         : { jsonrpc: '2.0', id, method, params };
+    const timeoutMs = opts.timeoutMs ?? this.timeoutMs;
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
-        reject(new CallTimeoutError(method, this.timeoutMs));
-      }, this.timeoutMs);
+        reject(new CallTimeoutError(method, timeoutMs));
+      }, timeoutMs);
       this.pending.set(id, { resolve, reject, timer });
       this.ws.send(JSON.stringify(message), (err) => {
         // ws may pass null on success at runtime, whatever the types say.
