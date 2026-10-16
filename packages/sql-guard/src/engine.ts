@@ -13,7 +13,13 @@ import {
   LEAKY_TABLES,
   READ_PRAGMAS,
 } from './functions.js';
-import type { GuardCheckOptions, GuardMode, GuardRefusal, GuardResult } from './types.js';
+import type {
+  GuardCheckOptions,
+  GuardMode,
+  GuardRefusal,
+  GuardResult,
+  HiddenColumn,
+} from './types.js';
 import { MAX_SCHEMA_BYTES, MAX_SCHEMA_STATEMENTS, MAX_SQL_BYTES } from './types.js';
 import { foldName } from './names.js';
 import { virtualTableColumns } from './vtab.js';
@@ -101,6 +107,8 @@ type Policy =
       mode: GuardMode;
       seen: Seen;
       hidden: ReadonlySet<string>;
+      /** Virtual tables holding a hidden column, with their shadow tables (SG-2). */
+      hiddenTables: ReadonlySet<string>;
     };
 
 interface Scratch {
@@ -182,12 +190,32 @@ export class GuardEngine {
       mode: opts.mode,
       seen,
       hidden,
+      hiddenTables: this.hiddenTables(scratch, opts.hiddenColumns ?? []),
     };
     try {
       return this.judge(scratch.db, sql, opts.mode, seen);
     } finally {
       this.policy = { kind: 'off' };
     }
+  }
+
+  /**
+   * A virtual table reads its columns its own way: FTS auxiliary functions and MATCH
+   * column filters name them by index or inside a string, never through SQLITE_READ. So
+   * a virtual table that holds a hidden column is hidden whole, with the shadow tables
+   * that store its data (SG-2).
+   */
+  private hiddenTables(scratch: Scratch, hidden: readonly HiddenColumn[]): Set<string> {
+    const tables = new Set<string>();
+    for (const h of hidden) {
+      const table = foldName(h.table);
+      if (!scratch.virtualTables.has(table)) continue;
+      tables.add(table);
+      for (const shadow of scratch.shadowTables) {
+        if (shadow.startsWith(`${table}_`)) tables.add(shadow);
+      }
+    }
+    return tables;
   }
 
   private judge(db: Db, sql: string, mode: GuardMode, seen: Seen): GuardResult {
@@ -448,6 +476,12 @@ export class GuardEngine {
       return refuse('table', `${table} is not a table or view of this database.`);
     }
     policy.seen.tables.add(table);
+    if (policy.hiddenTables.has(table)) {
+      return refuse(
+        'hidden-column',
+        `${table} holds a hidden column (db.hiddenColumns) and is a full-text or other virtual table, which can read any of its columns, so it can't be read at all.`,
+      );
+    }
     if (column !== '' && policy.hidden.has(`${table}.${column}`)) {
       return refuse(
         'hidden-column',

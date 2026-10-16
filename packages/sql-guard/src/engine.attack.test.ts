@@ -109,7 +109,9 @@ describe('read mode: harmless reads still pass', () => {
     ['SELECT 1 /* never closed', 'select'],
     ['EXPLAIN QUERY PLAN SELECT id FROM customers', 'explain'],
   ])('allows %s', (sql, kind) => {
-    expect(check(sql)).toMatchObject({ ok: true, kind });
+    // notes holds a hidden column, which hides it whole (SG-2); the rest stay hidden.
+    const hiddenColumns = HIDDEN.filter((h) => h.table !== 'notes');
+    expect(check(sql, { hiddenColumns })).toMatchObject({ ok: true, kind });
   });
 
   it('flags a recursive CTE without an end so callers can cap it (S2)', () => {
@@ -280,22 +282,48 @@ describe('hidden columns: open bypasses', () => {
 
   // SG-2: FTS5 auxiliary functions and column filters read a column by index or name in
   // a string, never through SQLITE_READ, so a hidden FTS column leaks in full.
-  it.fails('SG-2 refuses highlight() of a hidden FTS5 column', () => {
+  it('SG-2 refuses highlight() of a hidden FTS5 column', () => {
     expect(check("SELECT highlight(notes, 1, '', '') FROM notes")).toMatchObject({
       ok: false,
       code: 'hidden-column',
     });
   });
 
-  it.fails('SG-2 refuses snippet() of a hidden FTS5 column', () => {
+  it('SG-2 refuses snippet() of a hidden FTS5 column', () => {
     expect(check("SELECT snippet(notes, 1, '', '', '', 64) FROM notes")).toMatchObject({
       ok: false,
       code: 'hidden-column',
     });
   });
 
-  it.fails('SG-2 refuses a MATCH column filter on a hidden FTS5 column', () => {
+  it('SG-2 refuses a MATCH column filter on a hidden FTS5 column', () => {
     expect(check("SELECT title FROM notes WHERE notes MATCH 'body:secret*'")).toMatchObject({
+      ok: false,
+      code: 'hidden-column',
+    });
+  });
+
+  it('SG-2 hides the whole FTS table and its shadow tables when it holds a hidden column', () => {
+    for (const sql of [
+      'SELECT title FROM notes',
+      'SELECT 1 FROM notes',
+      'SELECT count(*) FROM notes',
+      "SELECT rowid FROM notes WHERE notes MATCH 'x'",
+      'SELECT bm25(notes) FROM notes',
+      'SELECT * FROM notes_content',
+      'SELECT block FROM notes_data',
+      'SELECT * FROM notes_idx',
+    ]) {
+      expect(check(sql), sql).toMatchObject({ ok: false, code: 'hidden-column' });
+    }
+    // Without a hidden column in it, the FTS table reads as before.
+    expect(check('SELECT title FROM notes', { hiddenColumns: [] })).toMatchObject({ ok: true });
+  });
+
+  it('SG-2 hides an FTS4 stand-in table with a hidden column too', () => {
+    const schemaSql = [...SCHEMA, 'CREATE VIRTUAL TABLE legacy USING fts4(subject, secret)'];
+    const hiddenColumns = [{ table: 'legacy', column: 'secret' }];
+    expect(check('SELECT subject FROM legacy', { schemaSql, hiddenColumns })).toMatchObject({
       ok: false,
       code: 'hidden-column',
     });
