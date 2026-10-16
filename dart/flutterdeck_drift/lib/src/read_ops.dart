@@ -191,10 +191,19 @@ final class ReadOps {
       } on SqliteException catch (e) {
         if (e.resultCode != _busy && e.resultCode != _locked) rethrow;
       }
+      if (_stopRequested) throw copyStopped;
       if (spent.elapsed >= copyBudget) throw _copyTooLong;
       sleep(const Duration(milliseconds: 2));
     }
   }
+
+  bool get _stopRequested {
+    final control = this.control;
+    return control != null && control[0] != 0;
+  }
+
+  /// How many backups this connection has started (for tests).
+  int backupsStarted = 0;
 
   /// Same text as the controller's "reader stopped", for a copy that was
   /// told to stop.
@@ -228,7 +237,16 @@ final class ReadOps {
     );
     _checkCap(pages * pageSize);
     final control = this.control;
+    // Say "copying" first, then look at the stop flag (R4-2): the
+    // controller sets the stop flag first and then looks at "copying", so
+    // one of the two always sees the other and a kill never lands on an
+    // unfinished backup.
     control?[1] = 1;
+    if (_stopRequested) {
+      control?[1] = 0;
+      throw copyStopped;
+    }
+    backupsStarted++;
     final backup = NativeBackup.start(copy.handle, file.handle);
     if (backup == null) {
       control?[1] = 0;
@@ -244,7 +262,7 @@ final class ReadOps {
       while (true) {
         // Asked to stop (the reader is closing): end here, finishing the
         // backup below, so no unfinished backup outlives the copy (R3-1).
-        if (control != null && control[0] != 0) throw copyStopped;
+        if (_stopRequested) throw copyStopped;
         if (spent.elapsed >= copyBudget) {
           // An app that writes all the time keeps restarting the copy; say
           // so, with the way out, rather than "took too long" (R3-3).

@@ -38,6 +38,51 @@ void main() {
 
   tearDownAll(() => dir.deleteSync(recursive: true));
 
+  group('a stop that arrives before the first step (R4-2)', () {
+    late Pointer<Int32> control;
+    late ReadOps ops;
+
+    setUp(() {
+      control = calloc<Int32>(2);
+      ops = ReadOps.open(path, control: control);
+    });
+
+    tearDown(() {
+      ReadOps.afterCopyStep = null;
+      ops.close();
+      calloc.free(control);
+    });
+
+    Matcher stopped() => throwsA(
+      isA<DriftDeckError>().having(
+        (e) => e.message,
+        'message',
+        'The reader stopped',
+      ),
+    );
+
+    test('a stop set before the copy starts takes no step', () {
+      // The controller set the flag just before the isolate said "copying".
+      control[0] = 1;
+      expect(() => ops.query('SELECT 1', const [], 1), stopped());
+      expect(ops.backupsStarted, 0, reason: 'no backup was even started');
+      expect(control[1], 0);
+    });
+
+    test('a stop ends a wait for the app\'s lock at once', () {
+      final app = sqlite3.open(path);
+      addTearDown(app.close);
+      app.execute('BEGIN EXCLUSIVE');
+      addTearDown(() => app.execute('ROLLBACK'));
+      control[0] = 1;
+      final watch = Stopwatch()..start();
+      expect(() => ops.query('SELECT 1', const [], 1), stopped());
+      // At most one wait of the file connection's own 1 s busy timeout,
+      // not the 5 s copy budget.
+      expect(watch.elapsed, lessThan(const Duration(milliseconds: 1500)));
+    });
+  });
+
   test('a copy told to stop finishes its backup: no zombie is left', () {
     final baseline = openDescriptors(path);
     final control = calloc<Int32>(2);
