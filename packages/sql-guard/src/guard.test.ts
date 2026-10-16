@@ -105,6 +105,23 @@ describe('createSqlGuard', () => {
     });
   });
 
+  it('resolves unavailable, never rejects, when a request can not be sent to the worker', async () => {
+    const g = make({ workerUrl: BUILT_WORKER });
+    // A function can't be structured-cloned, so postMessage throws.
+    const uncloneable = [() => 'CREATE TABLE t(a)'] as unknown as string[];
+    await expect(
+      g.check('SELECT 1', { schemaSql: uncloneable, mode: 'read' }),
+    ).resolves.toMatchObject({ ok: false, code: 'unavailable' });
+    expect(await g.check('SELECT 1', { schemaSql, mode: 'read' })).toMatchObject({ ok: true });
+  });
+
+  it('resolves unavailable when the SQL is not text', async () => {
+    const g = make({ workerUrl: BUILT_WORKER });
+    await expect(
+      g.check(42 as unknown as string, { schemaSql, mode: 'read' }),
+    ).resolves.toMatchObject({ ok: false, code: 'unavailable' });
+  });
+
   it('refuses after close', async () => {
     const g = make({ workerUrl: BUILT_WORKER });
     await g.close();

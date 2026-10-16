@@ -135,7 +135,12 @@ export function createSqlGuard(opts: SqlGuardOptions = {}): SqlGuard {
       }, budgetMs);
       w.on('message', onMessage);
       w.on('exit', onExit);
-      w.postMessage({ ...message, id });
+      try {
+        w.postMessage({ ...message, id });
+      } catch {
+        // Uncloneable input (DataCloneError) or a closing port: refuse, never reject.
+        finish(refusal('unavailable', 'The SQL gate could not receive this request.'));
+      }
     });
   };
 
@@ -166,6 +171,9 @@ export function createSqlGuard(opts: SqlGuardOptions = {}): SqlGuard {
 
   return {
     check(sql, checkOpts) {
+      if (typeof sql !== 'string') {
+        return Promise.resolve(refusal('unavailable', 'The SQL gate was given no SQL text.'));
+      }
       // Too long to judge: refuse here, without copying it to the worker.
       if (Buffer.byteLength(sql, 'utf8') > MAX_SQL_BYTES) {
         return Promise.resolve({
@@ -174,8 +182,11 @@ export function createSqlGuard(opts: SqlGuardOptions = {}): SqlGuard {
           reason: `The statement is longer than ${MAX_SQL_BYTES / 1000} kB.`,
         });
       }
-      const result = queue.then(() => runNow(sql, checkOpts));
-      queue = result.catch(() => undefined);
+      // check() never rejects: any unexpected failure refuses instead.
+      const result = queue
+        .then(() => runNow(sql, checkOpts))
+        .catch(() => refusal('unavailable', 'The SQL gate failed unexpectedly.'));
+      queue = result;
       return result;
     },
     async close() {
