@@ -204,7 +204,7 @@ describe('hidden columns: aliases and oracles that are refused', () => {
     'SELECT id FROM customers ORDER BY email',
     'SELECT count(*) FROM customers GROUP BY email',
     'SELECT typeof(email) FROM customers',
-    'SELECT sqlite_offset(email) FROM customers',
+    'SELECT quote(email) FROM customers',
     'SELECT id FROM customers WHERE (id, email) = (1, 2)',
     'SELECT id FROM customers WHERE email COLLATE NOCASE = 1',
     'SELECT row_number() OVER (PARTITION BY email) FROM customers',

@@ -166,3 +166,13 @@ describe('S3: FTS tables over a content table with a hidden column', () => {
     expect(read(schema, 'SELECT title FROM search', hidden)).toMatchObject({ ok: true });
   });
 });
+
+describe('S5: sqlite_offset', () => {
+  it('is not allowed: it reveals where a row sits in the file', () => {
+    const schema = ['CREATE TABLE t(id INTEGER PRIMARY KEY, a TEXT)'];
+    expect(read(schema, 'SELECT sqlite_offset(a) FROM t')).toMatchObject({
+      ok: false,
+      code: 'function',
+    });
+  });
+});

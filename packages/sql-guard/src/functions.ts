@@ -46,7 +46,6 @@ const CORE = [
   'sign',
   'sqlite_compileoption_get',
   'sqlite_compileoption_used',
-  'sqlite_offset',
   'sqlite_source_id',
   'sqlite_version',
   'substr',
