@@ -269,82 +269,118 @@ final class ReadOps {
   }
 
   /// Every table and view with columns, keys, indexes and row counts.
+  ///
+  /// `sqlSchema` holds every non-null `sqlite_schema.sql` in rowid order
+  /// (tables, views, indexes, triggers, virtual tables) for the daemon's
+  /// read-only gate, from the same read transaction. If it would push the
+  /// reply over the cap, it is cut and `sqlSchemaTruncated` is set.
   Map<String, Object?> schema() {
     return guarded(() {
-      final tables = <Map<String, Object?>>[];
-      final counting = Stopwatch()..start();
-      for (final e in _entities()) {
-        tables.add(
-          _unlessUnusable(e, () {
-            final info = db.select(
-              'SELECT name, type, "notnull", dflt_value, pk '
-              // xinfo lists generated columns too; hidden = 1 marks a
-              // virtual table's hidden columns (FD-6).
-              'FROM pragma_table_xinfo(?) WHERE hidden <> 1 ORDER BY cid',
-              [e.name],
-            );
-            final pkCount = info.where((c) => (c['pk'] as int) > 0).length;
-            final withoutRowid = _isWithoutRowid(e.name);
-            final columns = [
-              for (final c in info)
-                {
-                  'name': c['name'],
-                  'type': c['type'] ?? '',
-                  'nullable':
-                      c['notnull'] == 0 &&
-                      !_neverNull(
-                        c,
-                        pkCount: pkCount,
-                        withoutRowid: withoutRowid,
-                      ),
-                  'pk': (c['pk'] as int) > 0,
-                  if ((c['pk'] as int) > 0) 'pkPosition': c['pk'],
-                  'default': c['dflt_value']?.toString(),
-                },
-            ];
-            final foreignKeys = [
-              for (final f in db.select(
-                'SELECT "from", "table", "to" FROM pragma_foreign_key_list(?) '
-                'ORDER BY id, seq',
-                [e.name],
-              ))
-                {'from': f['from'], 'table': f['table'], 'to': f['to']},
-            ];
-            final indexes = [
-              for (final i in db.select(
-                'SELECT name, "unique" FROM pragma_index_list(?) ORDER BY name',
-                [e.name],
-              ))
-                {
-                  'name': i['name'],
-                  'unique': i['unique'] == 1,
-                  'columns': [
-                    for (final c in db.select(
-                      'SELECT name FROM pragma_index_info(?) ORDER BY seqno',
-                      [i['name']],
-                    ))
-                      c['name'] ?? '',
-                  ],
-                },
-            ];
-            final count = e.kind == 'table'
-                ? _boundedCount(e.name, counting)
-                : null;
-            return {
-              'name': e.name,
-              'kind': e.kind,
-              'sql': ?e.sql,
-              'columns': columns,
-              'rowCount': ?count?.rows,
-              'foreignKeys': foreignKeys,
-              'indexes': indexes,
-              'error': ?count?.error?.toJson(),
-            };
-          }),
-        );
+      db.execute('BEGIN');
+      try {
+        return _schemaIn();
+      } finally {
+        if (!db.autocommit) db.execute('COMMIT');
       }
-      return {'tables': tables};
     });
+  }
+
+  Map<String, Object?> _schemaIn() {
+    final tables = <Map<String, Object?>>[];
+    final counting = Stopwatch()..start();
+    for (final e in _entities()) {
+      tables.add(
+        _unlessUnusable(e, () {
+          final info = db.select(
+            'SELECT name, type, "notnull", dflt_value, pk '
+            // xinfo lists generated columns too; hidden = 1 marks a
+            // virtual table's hidden columns (FD-6).
+            'FROM pragma_table_xinfo(?) WHERE hidden <> 1 ORDER BY cid',
+            [e.name],
+          );
+          final pkCount = info.where((c) => (c['pk'] as int) > 0).length;
+          final withoutRowid = _isWithoutRowid(e.name);
+          final columns = [
+            for (final c in info)
+              {
+                'name': c['name'],
+                'type': c['type'] ?? '',
+                'nullable':
+                    c['notnull'] == 0 &&
+                    !_neverNull(
+                      c,
+                      pkCount: pkCount,
+                      withoutRowid: withoutRowid,
+                    ),
+                'pk': (c['pk'] as int) > 0,
+                if ((c['pk'] as int) > 0) 'pkPosition': c['pk'],
+                'default': c['dflt_value']?.toString(),
+              },
+          ];
+          final foreignKeys = [
+            for (final f in db.select(
+              'SELECT "from", "table", "to" FROM pragma_foreign_key_list(?) '
+              'ORDER BY id, seq',
+              [e.name],
+            ))
+              {'from': f['from'], 'table': f['table'], 'to': f['to']},
+          ];
+          final indexes = [
+            for (final i in db.select(
+              'SELECT name, "unique" FROM pragma_index_list(?) ORDER BY name',
+              [e.name],
+            ))
+              {
+                'name': i['name'],
+                'unique': i['unique'] == 1,
+                'columns': [
+                  for (final c in db.select(
+                    'SELECT name FROM pragma_index_info(?) ORDER BY seqno',
+                    [i['name']],
+                  ))
+                    c['name'] ?? '',
+                ],
+              },
+          ];
+          final count = e.kind == 'table'
+              ? _boundedCount(e.name, counting)
+              : null;
+          return {
+            'name': e.name,
+            'kind': e.kind,
+            'sql': ?e.sql,
+            'columns': columns,
+            'rowCount': ?count?.rows,
+            'foreignKeys': foreignKeys,
+            'indexes': indexes,
+            'error': ?count?.error?.toJson(),
+          };
+        }),
+      );
+    }
+    var bytes = jsonSize(tables);
+    if (bytes > _rowBudget) {
+      throw const DriftDeckError(ErrorCode.tooLarge, 'The schema is over 8 MB');
+    }
+    final sqlSchema = <String>[];
+    var truncated = false;
+    for (final row in db.select(
+      'SELECT sql FROM main.sqlite_schema WHERE sql IS NOT NULL '
+      'ORDER BY rowid',
+    )) {
+      final sql = row['sql'] as String;
+      bytes += jsonSize(sql) + 1;
+      if (bytes > _rowBudget) {
+        truncated = true;
+        break;
+      }
+      sqlSchema.add(sql);
+    }
+    return {
+      'tables': tables,
+      'sqlSchema': sqlSchema,
+      if (truncated) 'sqlSchemaTruncated': true,
+    };
   }
 
   /// Runs [describe] for one table or view. If the read connection cannot use

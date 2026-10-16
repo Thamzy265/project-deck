@@ -304,6 +304,47 @@ void main() {
     });
   });
 
+  group('schema: sqlSchema for the daemon gate', () {
+    test('holds every sqlite_schema.sql in rowid order', () {
+      app.execute('''
+        CREATE TRIGGER orders_touch AFTER UPDATE ON orders BEGIN SELECT 1; END;
+      ''');
+      final expected = [
+        for (final r in app.select(
+          'SELECT sql FROM sqlite_schema WHERE sql IS NOT NULL ORDER BY rowid',
+        ))
+          r['sql'] as String,
+      ];
+      final s = ops.schema();
+      expect(s['sqlSchema'], expected);
+      expect(s.containsKey('sqlSchemaTruncated'), isFalse);
+      final sql = (s['sqlSchema']! as List).cast<String>();
+      expect(sql.where((x) => x.startsWith('CREATE INDEX')), isNotEmpty);
+      expect(sql.where((x) => x.startsWith('CREATE TRIGGER')), isNotEmpty);
+      expect(sql.where((x) => x.startsWith('CREATE VIEW')), isNotEmpty);
+      expect(
+        sql.where((x) => x.startsWith('CREATE VIRTUAL TABLE')),
+        isNotEmpty,
+      );
+      expect(ops.db.autocommit, isTrue);
+    });
+
+    test('is cut and marked truncated beyond the reply cap', () {
+      // 9 x 600 KB: the table entries fit, both copies together don't.
+      final long = 'x' * (600 * 1024);
+      for (var i = 0; i < 9; i++) {
+        app.execute("CREATE VIEW big$i AS SELECT '$long' AS v");
+      }
+      final s = ops.schema();
+      expect(s['sqlSchemaTruncated'], isTrue);
+      expect(jsonSize(s), lessThanOrEqualTo(maxReplyBytes));
+      expect(
+        (s['sqlSchema']! as List).first,
+        startsWith('CREATE TABLE orders'),
+      );
+    });
+  });
+
   group('schema', () {
     test('lists tables and views with columns, keys and indexes', () {
       final tables = (ops.schema()['tables']! as List)
