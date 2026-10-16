@@ -106,9 +106,6 @@ void main() {
       ]);
     },
     timeout: const Timeout(Duration(seconds: 30)),
-    skip:
-        'FD-3 (known bug): the queued read fails with internal '
-        '"The reader stopped"',
   );
 
   test(

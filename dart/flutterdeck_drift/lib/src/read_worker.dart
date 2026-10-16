@@ -15,6 +15,10 @@ import 'native.dart';
 import 'protocol.dart';
 import 'read_ops.dart';
 
+/// The read isolate stopped (after a timeout, a reset or a crash) before
+/// this read ran or finished.
+const readerStopped = DriftDeckError(ErrorCode.internal, 'The reader stopped');
+
 const _tooLong = DriftDeckError(
   ErrorCode.timeout,
   'That query took too long and was stopped',
@@ -175,7 +179,7 @@ final class ReadWorker {
     Duration budget,
   ) async {
     if (_dead) {
-      throw const DriftDeckError(ErrorCode.internal, 'The reader stopped');
+      throw readerStopped;
     }
     final id = _nextId++;
     final done = Completer<Map<String, Object?>>();
@@ -227,7 +231,7 @@ final class ReadWorker {
   void _onExit() {
     _dead = true;
     for (final id in _pending.keys.toList()) {
-      _fail(id, const DriftDeckError(ErrorCode.internal, 'The reader stopped'));
+      _fail(id, readerStopped);
     }
     _ports.close();
   }
@@ -247,7 +251,7 @@ final class ReadWorker {
   /// Stops the read isolate. Pending reads fail.
   Future<void> close() async {
     for (final id in _pending.keys.toList()) {
-      _fail(id, const DriftDeckError(ErrorCode.internal, 'The reader stopped'));
+      _fail(id, readerStopped);
     }
     _stop();
   }
@@ -273,30 +277,47 @@ final class DbReader {
   final String path;
   Future<ReadWorker>? _worker;
 
+  var _closed = false;
+
+  /// Runs [op] on the live read isolate. A read that met a stopped isolate
+  /// (for example queued behind a runaway read) runs once more on a fresh
+  /// one; reads change nothing, so that is safe (FD-3).
   Future<Map<String, Object?>> call(
     String op,
     Map<String, Object?> args, {
     Duration budget = readBudget,
   }) async {
-    var pending = _worker;
-    if (pending != null) {
-      final ReadWorker w;
+    for (var attempt = 0; ; attempt++) {
+      final worker = await _live();
       try {
-        w = await pending;
-      } on Object {
-        _worker = null;
-        rethrow;
+        return await worker.call(op, args, budget: budget);
+      } on DriftDeckError catch (e) {
+        if (attempt > 0 || _closed || !identical(e, readerStopped)) rethrow;
       }
-      if (w.isDead) pending = null;
     }
-    if (pending == null) {
-      pending = ReadWorker.spawn(path);
-      _worker = pending;
+  }
+
+  Future<ReadWorker> _live() async {
+    if (_closed) throw readerStopped;
+    final pending = _worker;
+    if (pending != null) {
+      final w = await pending;
+      if (!w.isDead) return w;
     }
-    return (await pending).call(op, args, budget: budget);
+    final spawned = ReadWorker.spawn(path);
+    _worker = spawned;
+    // A failed start is tried again on the next call.
+    spawned.then<void>(
+      (_) {},
+      onError: (Object _) {
+        if (identical(_worker, spawned)) _worker = null;
+      },
+    );
+    return spawned;
   }
 
   Future<void> close() async {
+    _closed = true;
     final w = _worker;
     _worker = null;
     if (w != null) {
