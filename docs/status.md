@@ -2,6 +2,11 @@
 
 Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
 
+## 2026-10-16 — M3 batch 2 — PM decision on reads of apps not using WAL
+
+- Changed: QA finding F1 (Android): an app write during a long inspector read failed at once with "database is locked", because the Dart profiler's signals cut SQLite's busy-handler sleeps short. Root cause and evidence in [notes/flutterdeck-drift.md](notes/flutterdeck-drift.md).
+- Decision (PM, 2026-10-16): "Read a copy (Recommended)": for apps not using WAL, the inspector reads an in-memory copy made in small steps; the narrow debug-only busy timeout stays to cover the copy steps (closes D-1).
+
 ## 2026-10-16 — M3 batch 1 — db-core ready to merge
 
 - Changed: `feat/db-core` adds core DB shapes (incl. `DbInspector.schemaSql`, tagged non-finite reals), `AppSession.extensions` with registry prefix rules, connector-dart `VmExtensions`, and the new `packages/sql-guard` (ADR 0005). Tester findings SG-1..SG-8, EXT-1, EXT-2 fixed. Reviewer: three rounds; S1–S8, D1–D2, C1–C7, N1–N2 all fixed; verdict approve with notes, no open findings. QA: PASS (29/29 gate checks, daemon unaffected, 2861 tests), evidence in [qa/M3.md](qa/M3.md); new rerun script `scripts/qa/check-sql-guard.mjs`. CLAUDE.md gains the `sql-guard` package row and commit scope.
