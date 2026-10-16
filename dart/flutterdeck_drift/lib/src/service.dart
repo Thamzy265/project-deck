@@ -13,8 +13,12 @@ import 'read_worker.dart';
 /// Posts a VM service event (`dart:developer` `postEvent` in the app).
 typedef EventPoster = void Function(String kind, Map<String, Object?> data);
 
-/// How long the app's own connection waits for a lock before failing. Longer
-/// than a read can hold one ([readBudget] plus [interruptGrace]).
+/// How long the app's own connection waits for a lock before failing. For
+/// databases not in WAL mode the inspector reads a copy and holds the
+/// app's file only during one short copy step (a few milliseconds); this
+/// covers that step with room to spare. On Android in debug builds the
+/// Dart profiler cuts SQLite's busy-handler sleeps short, so the real wait
+/// is much shorter than this, which is still enough for one step.
 const appBusyTimeout = Duration(seconds: 7);
 
 /// How long table changes are gathered before one event goes out.
@@ -331,14 +335,12 @@ List<Object?> decodeKeys(String? json) {
 }
 
 /// Sets a busy timeout on the app's connection when it has none and is not
-/// in WAL mode, so a write that meets an inspector read waits for it (at
-/// most [readBudget] plus [interruptGrace]) instead of failing with
-/// "database is locked". In WAL mode readers never block writers, so
-/// nothing changes there. An existing timeout is never changed. Debug
-/// builds only, like everything in this package.
-///
-/// Pending a PM decision (D-1): if the PM says no, delete this function and
-/// its one call in [DriftDeckService._open], and the README note.
+/// in WAL mode, so a write that meets one of the inspector's copy steps
+/// waits a few milliseconds instead of failing with "database is locked".
+/// In WAL mode readers never block writers, so nothing changes there. An
+/// existing timeout is never changed. Debug builds only, like everything in
+/// this package. PM decision, 2026-10-16 (D-1, "Read a copy"): it stays,
+/// only to cover the copy steps.
 Future<void> ensureAppBusyTimeout(GeneratedDatabase db) async {
   final mode = await db.customSelect('PRAGMA journal_mode').getSingle();
   if ('${mode.data.values.firstOrNull}'.toLowerCase() == 'wal') return;
