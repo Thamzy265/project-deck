@@ -148,7 +148,6 @@ void main() {
       expect(() => q('SELECT ?'), refusedWith(ErrorCode.badRequest));
       expect(() => q('SELECT ?', [1, 2]), refusedWith(ErrorCode.badRequest));
     },
-    skip: 'FD-4 (known bug): ArgumentError escapes guarded() as "internal"',
   );
 
   group('FD-5: schema survives one object the read connection cannot use', () {

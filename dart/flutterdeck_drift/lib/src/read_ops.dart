@@ -135,6 +135,13 @@ final class ReadOps {
         throw const DriftDeckError(ErrorCode.busy, _busyMessage);
       }
       throw DriftDeckError(ErrorCode.sqlError, e.message);
+    } on ArgumentError {
+      // package:sqlite3 throws this for a wrong number of parameters. Its
+      // message can hold the values, so it is not sent (FD-4).
+      throw const DriftDeckError(
+        ErrorCode.badRequest,
+        "The parameters don't match the query",
+      );
     } finally {
       if (!db.autocommit) {
         try {
