@@ -234,6 +234,37 @@ void main() {
       expect(await app.count(), 1);
     });
 
+    test('notifies tables a trigger or cascade may change (CR-4)', () async {
+      await app.customStatement(
+        'CREATE TRIGGER orders_lines AFTER UPDATE ON orders BEGIN '
+        'INSERT OR IGNORE INTO lines VALUES (NEW.id, 1); END',
+      );
+      final r = await call('execute', {
+        'db': 'app',
+        'sql': "UPDATE orders SET status = 'shipped'",
+        'token': freshToken(),
+      });
+      expect(r['changes'], 1);
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      expect(events.single['tables'], [
+        {'name': 'lines', 'kind': 'unknown'},
+        {'name': 'orders', 'kind': 'update'},
+      ]);
+    });
+
+    test('REPLACE is reported as an update', () async {
+      final r = await call('execute', {
+        'db': 'app',
+        'sql': "INSERT OR REPLACE INTO orders (id, item) VALUES (1, 'Tea')",
+        'token': freshToken(),
+      });
+      expect(r['changes'], 1);
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      expect(events.single['tables'], [
+        {'name': 'orders', 'kind': 'update'},
+      ]);
+    });
+
     test('runs one edit, reports changes and notifies Drift', () async {
       final watched = app
           .customSelect('SELECT status FROM orders', readsFrom: {app.orders})

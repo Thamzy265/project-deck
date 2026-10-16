@@ -259,8 +259,10 @@ final class DriftDeckService {
     final ready = await _ready(params);
     final checked = await ready.reader.call('checkWrite', {'sql': sql});
     final table = checked['table']! as String;
+    final affected = (checked['affected']! as List).cast<String>();
+    // REPLACE deletes clashing rows and inserts: reported as an update.
     final kind = switch (checked['verb']) {
-      'UPDATE' => UpdateKind.update,
+      'UPDATE' || 'REPLACE' => UpdateKind.update,
       'DELETE' => UpdateKind.delete,
       _ => UpdateKind.insert,
     };
@@ -284,7 +286,11 @@ final class DriftDeckService {
     } on Object catch (e) {
       throw DriftDeckError(ErrorCode.sqlError, _sqliteMessage(e));
     }
-    db.notifyUpdates({TableUpdate(table, kind: kind)});
+    db.notifyUpdates({
+      TableUpdate(table, kind: kind),
+      for (final other in affected)
+        if (other != table) TableUpdate(other),
+    });
     return {'changes': changes};
   }
 

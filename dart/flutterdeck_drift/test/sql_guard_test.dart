@@ -188,7 +188,10 @@ void main() {
         ).verb,
         'DELETE',
       );
-      expect(writeTarget('insert or replace into t values (1)').verb, 'INSERT');
+      expect(
+        writeTarget('insert or replace into t values (1)').verb,
+        'REPLACE',
+      );
       expect(writeTarget('REPLACE INTO t VALUES (1)').verb, 'REPLACE');
       expect(writeTarget('DROP TABLE t').verb, isNull);
     });

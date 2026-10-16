@@ -529,7 +529,62 @@ void main() {
       expect(ops.checkWrite("UPDATE orders SET status = 'x' WHERE id = 1"), {
         'table': 'orders',
         'verb': 'UPDATE',
+        'affected': ['orders'],
       });
+    });
+
+    test('names the tables triggers and cascades may change (CR-4)', () {
+      app.execute('''
+        CREATE TABLE audit (what TEXT);
+        CREATE TABLE "Audit Two" (what TEXT);
+        CREATE TABLE child (
+          order_id INTEGER REFERENCES orders (id) ON DELETE CASCADE, x);
+        CREATE TABLE keeper (order_id INTEGER REFERENCES orders (id), x);
+        CREATE TABLE grandchild (
+          c INTEGER REFERENCES child (rowid) ON UPDATE SET NULL, y);
+        CREATE TRIGGER orders_audit AFTER UPDATE ON orders BEGIN
+          INSERT INTO audit VALUES ('update');
+          UPDATE OR IGNORE "Audit Two" SET what = 'x';
+          DELETE FROM child WHERE order_id = NEW.id;
+        END;
+        CREATE TRIGGER child_audit AFTER DELETE ON child BEGIN
+          INSERT INTO audit VALUES ('child');
+        END;
+      ''');
+      expect(ops.checkWrite("UPDATE orders SET status = 'x'")['affected'], [
+        'Audit Two',
+        'audit',
+        'child',
+        'grandchild',
+        'orders',
+      ]);
+      // Every trigger on the table counts, whatever its event: naming a
+      // table that didn't change only costs the dashboard a re-query.
+      expect(ops.checkWrite('DELETE FROM ORDERS')['affected'], [
+        'Audit Two',
+        'audit',
+        'child',
+        'grandchild',
+        'orders',
+      ]);
+      expect(ops.checkWrite("INSERT INTO audit VALUES ('x')")['affected'], [
+        'audit',
+      ]);
+    });
+
+    test('INSERT OR REPLACE and REPLACE report REPLACE', () {
+      expect(
+        ops.checkWrite(
+          "INSERT OR REPLACE INTO orders (id, item) VALUES (1, 'x')",
+        )['verb'],
+        'REPLACE',
+      );
+      expect(
+        ops.checkWrite(
+          "REPLACE INTO orders (id, item) VALUES (1, 'x')",
+        )['verb'],
+        'REPLACE',
+      );
     });
 
     test('refuses more than one statement, unknown tables and non-edits', () {

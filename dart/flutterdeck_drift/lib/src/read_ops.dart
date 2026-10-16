@@ -20,6 +20,8 @@ const _busyMessage = 'The app is writing; try again';
 /// Room for rows in a reply, leaving space for the envelope around them.
 const _rowBudget = maxReplyBytes - 64 * 1024;
 
+const _cascading = {'CASCADE', 'SET NULL', 'SET DEFAULT'};
+
 /// One table or view as the schema call and the diff see it.
 final class _Entity {
   _Entity(this.name, this.kind, this.sql);
@@ -650,7 +652,58 @@ final class ReadOps {
         );
       }
       stmt.close();
-      return {'table': table, 'verb': target.verb};
+      return {
+        'table': table,
+        'verb': target.verb,
+        'affected': _affectedBy(table),
+      };
     });
+  }
+
+  /// Every table an edit of [table] may change: the table itself, tables
+  /// its triggers write to, and tables whose foreign keys cascade from it
+  /// (CASCADE, SET NULL or SET DEFAULT), followed transitively. SQLite gives
+  /// no list of what a statement changed, so this reads the schema; naming
+  /// a table that didn't change only costs a re-query (CR-4).
+  List<String> _affectedBy(String table) {
+    final tables = [
+      for (final e in _entities())
+        if (e.kind == 'table') e.name,
+    ];
+    final byLower = {for (final t in tables) asciiLower(t): t};
+    final triggers = db.select(
+      "SELECT tbl_name, sql FROM main.sqlite_schema WHERE type = 'trigger'",
+    );
+    final cascades = <String, Set<String>>{};
+    for (final child in tables) {
+      for (final fk in db.select(
+        'SELECT "table", on_update, on_delete '
+        'FROM pragma_foreign_key_list(?)',
+        [child],
+      )) {
+        final actions = {fk['on_update'], fk['on_delete']};
+        if (actions.any(_cascading.contains)) {
+          cascades
+              .putIfAbsent(asciiLower(fk['table'] as String), () => {})
+              .add(child);
+        }
+      }
+    }
+    final seen = {table};
+    final work = [table];
+    while (work.isNotEmpty) {
+      final current = asciiLower(work.removeLast());
+      final next = <String>{
+        ...?cascades[current],
+        for (final t in triggers)
+          if (asciiLower('${t['tbl_name']}') == current)
+            for (final name in triggerTargets('${t['sql']}'))
+              ?byLower[asciiLower(name)],
+      };
+      for (final n in next) {
+        if (seen.add(n)) work.add(n);
+      }
+    }
+    return seen.toList()..sort();
   }
 }

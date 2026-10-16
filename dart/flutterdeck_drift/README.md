@@ -27,6 +27,7 @@ It does nothing in release builds (and in profile builds). Register each databas
 - Reads run in a background isolate on a second, read-only connection to the same file. That connection has none of your app's SQL functions. A read must be one reading statement; it stops after 5 seconds and returns at most 5,000 rows and 8 MB.
 - The first time FlutterDeck reads, it sets a busy timeout of 7 seconds on your app's connection if it has none. Without one, a write from your app that meets a read in progress would fail with "database is locked".
 - It changes data only for an edit you confirm in the FlutterDeck dashboard, with `db.allowWrites` on. Claude never changes data.
+- An edit is one `INSERT`, `REPLACE`, `UPDATE` or `DELETE` on one table. Your triggers and foreign-key actions run as usual. After the edit, Drift's streams and the dashboard are told about the table and every table its triggers write to or whose foreign keys cascade from it (`CASCADE`, `SET NULL`, `SET DEFAULT`), followed on from there. SQLite doesn't report which tables a statement changed, so this list comes from the schema and can name a table that didn't change. `REPLACE` and `INSERT OR REPLACE` are reported as updates.
 
 In-memory and encrypted (SQLCipher) databases are not supported.
 

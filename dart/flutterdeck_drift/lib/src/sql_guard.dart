@@ -233,24 +233,8 @@ WriteTarget writeTarget(String sql) {
       }
     }
   }
-  String? word(int k) => k < tokens.length ? tokens[k].word : null;
   if (i >= tokens.length) return const WriteTarget.refused(_onlyEdits);
-
-  int? nameAt;
-  switch (word(i)) {
-    case 'INSERT':
-      var k = i + 1;
-      if (word(k) == 'OR') k += 2;
-      if (word(k) == 'INTO') nameAt = k + 1;
-    case 'REPLACE':
-      if (word(i + 1) == 'INTO') nameAt = i + 2;
-    case 'UPDATE':
-      var k = i + 1;
-      if (word(k) == 'OR') k += 2;
-      nameAt = k;
-    case 'DELETE':
-      if (word(i + 1) == 'FROM') nameAt = i + 2;
-  }
+  final nameAt = _tableAfterVerb(tokens, i);
   if (nameAt == null || nameAt >= tokens.length) {
     return const WriteTarget.refused(_onlyEdits);
   }
@@ -259,7 +243,53 @@ WriteTarget writeTarget(String sql) {
   }
   final name = unquoteIdent(tokens[nameAt].text);
   if (name == null) return const WriteTarget.refused(_onlyEdits);
-  return WriteTarget.table(name, tokens[i].word);
+  final verb = tokens[i].word;
+  // INSERT OR REPLACE deletes clashing rows like REPLACE does.
+  final orReplace =
+      verb == 'INSERT' &&
+      i + 2 < tokens.length &&
+      tokens[i + 1].word == 'OR' &&
+      tokens[i + 2].word == 'REPLACE';
+  return WriteTarget.table(name, orReplace ? 'REPLACE' : verb);
+}
+
+/// The index of the table name after the verb at [i] (INSERT, REPLACE,
+/// UPDATE or DELETE), or null when [i] holds no such verb.
+int? _tableAfterVerb(List<SqlToken> tokens, int i) {
+  String? word(int k) => k < tokens.length ? tokens[k].word : null;
+  switch (word(i)) {
+    case 'INSERT':
+      var k = i + 1;
+      if (word(k) == 'OR') k += 2;
+      if (word(k) == 'INTO') return k + 1;
+    case 'REPLACE':
+      if (word(i + 1) == 'INTO') return i + 2;
+    case 'UPDATE':
+      var k = i + 1;
+      if (word(k) == 'OR') k += 2;
+      return k;
+    case 'DELETE':
+      if (word(i + 1) == 'FROM') return i + 2;
+  }
+  return null;
+}
+
+/// Tables the statements in a trigger's body write to, as written (a
+/// `main.` or `temp.` prefix dropped). Only the body after BEGIN is read, so
+/// the trigger's own `AFTER UPDATE ON t` never counts.
+Set<String> triggerTargets(String createTrigger) {
+  final tokens = tokenize(createTrigger);
+  final begin = tokens.indexWhere((t) => t.word == 'BEGIN');
+  final names = <String>{};
+  if (begin < 0) return names;
+  for (var i = begin + 1; i < tokens.length; i++) {
+    var at = _tableAfterVerb(tokens, i);
+    if (at == null || at >= tokens.length) continue;
+    if (at + 2 < tokens.length && tokens[at + 1].text == '.') at += 2;
+    final name = unquoteIdent(tokens[at].text);
+    if (name != null) names.add(name);
+  }
+  return names;
 }
 
 /// The identifier a token names, or null if the token is not one.
