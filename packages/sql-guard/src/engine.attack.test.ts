@@ -1,8 +1,7 @@
 /**
  * Tester probes against the gate (ADR 0005 amended, design review S3/S5/S8/D3). Every
- * statement runs through the real bundled sqlite-wasm. Tests marked `it.fails` are
- * repros of open bugs (ids SG-n): they pass today only because the gate lets the
- * statement through, and start failing once the gate refuses it.
+ * statement runs through the real bundled sqlite-wasm. Tests named SG-n began as
+ * `it.fails` repros of the tester's findings and now guard their fixes.
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 import { GuardEngine, loadSqlite } from './engine.js';
