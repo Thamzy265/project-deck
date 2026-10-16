@@ -208,6 +208,25 @@ void main() {
     ]);
   });
 
+  test('a closed reader answers "stopped" and starts no new isolate', () async {
+    final app = await openApp(wal: false);
+    final reader = DbReader(path);
+    addTearDown(app.close);
+    final slow = reader.call('query', {
+      'sql': runaway,
+      'params': const <Object?>[],
+      'limit': 10,
+    });
+    final stopped = expectLater(slow, failsWith(ErrorCode.internal));
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    await reader.close();
+    await stopped;
+    await expectLater(
+      reader.call('schema', const {}),
+      failsWith(ErrorCode.internal),
+    );
+  });
+
   test('an unreadable file fails to start with unsupported', () async {
     File(path).writeAsStringSync('not a database at all' * 300);
     await expectLater(ReadWorker.spawn(path), failsWith(ErrorCode.unsupported));

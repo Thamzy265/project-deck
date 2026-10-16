@@ -248,8 +248,11 @@ final class ReadWorker {
     });
   }
 
-  /// Stops the read isolate. Pending reads fail.
+  /// Stops the read isolate. Pending reads fail. A read still running is
+  /// interrupted first, because the isolate can't exit while it is blocked
+  /// in SQLite.
   Future<void> close() async {
+    if (!_dead && _pending.isNotEmpty) ReadWorker.interrupt(_handle);
     for (final id in _pending.keys.toList()) {
       _fail(id, readerStopped);
     }
