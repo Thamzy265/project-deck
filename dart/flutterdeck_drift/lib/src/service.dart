@@ -247,7 +247,7 @@ final class DriftDeckService {
         'Changes need a confirm in the dashboard',
       );
     }
-    if (!_usedTokens.add(token)) {
+    if (_usedTokens.contains(token)) {
       throw const DriftDeckError(
         ErrorCode.badToken,
         'This confirm was already used',
@@ -265,6 +265,15 @@ final class DriftDeckService {
       _ => UpdateKind.insert,
     };
     final db = entry.db;
+    // Used up only now, once the edit is known to be valid, and with no
+    // await between this check and the transaction's start, so two calls
+    // with one token can't both run (CR-6).
+    if (!_usedTokens.add(token)) {
+      throw const DriftDeckError(
+        ErrorCode.badToken,
+        'This confirm was already used',
+      );
+    }
     final int changes;
     try {
       changes = await db.transaction(() async {

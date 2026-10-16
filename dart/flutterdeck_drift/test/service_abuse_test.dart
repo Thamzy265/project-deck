@@ -165,22 +165,28 @@ void main() {
       },
     );
 
-    test('a token is used up even when the call fails', () async {
-      final token = freshToken();
-      final bad = await call('execute', {
-        'db': 'nope',
-        'sql': 'DELETE FROM orders',
-        'token': token,
-      });
-      expect(errorCode(bad), ErrorCode.unknownDb);
-      final again = await call('execute', {
-        'db': 'app',
-        'sql': 'DELETE FROM orders',
-        'token': token,
-      });
-      expect(errorCode(again), ErrorCode.badToken);
-      expect(await app.count(), 1);
-    });
+    test(
+      'a token is used up once the edit runs, even if SQLite fails it',
+      () async {
+        // CR-6: a call refused before it runs keeps its token; one that
+        // reached the transaction uses it up, whatever SQLite answered.
+        final token = freshToken();
+        final bad = await call('execute', {
+          'db': 'app',
+          'sql': 'INSERT INTO orders (id, item) VALUES (1, ?)',
+          'params': '["dup"]',
+          'token': token,
+        });
+        expect(errorCode(bad), ErrorCode.sqlError);
+        final again = await call('execute', {
+          'db': 'app',
+          'sql': 'DELETE FROM orders',
+          'token': token,
+        });
+        expect(errorCode(again), ErrorCode.badToken);
+        expect(await app.count(), 1);
+      },
+    );
 
     test(
       'a new service (as after a hot restart) forgets used tokens',

@@ -270,6 +270,48 @@ void main() {
       expect(await app.count(), 2);
     });
 
+    test('a refused edit does not use up its token (CR-6)', () async {
+      final token = freshToken();
+      final failures = <Map<String, String>>[
+        {'db': 'nope', 'sql': 'DELETE FROM orders', 'token': token},
+        {'db': 'app', 'token': token},
+        {
+          'db': 'app',
+          'sql': 'DELETE FROM orders',
+          'params': '[',
+          'token': token,
+        },
+        {'db': 'app', 'sql': 'DROP TABLE orders', 'token': token},
+        {'db': 'app', 'sql': 'DELETE FROM nope', 'token': token},
+      ];
+      for (final params in failures) {
+        final r = await call('execute', params);
+        expect(errorCode(r), isNot(ErrorCode.badToken), reason: '$params');
+      }
+      final ok = await call('execute', {
+        'db': 'app',
+        'sql': "INSERT INTO orders (item) VALUES ('Tea')",
+        'token': token,
+      });
+      expect(ok['changes'], 1);
+    });
+
+    test('two edits racing with one token run once', () async {
+      final token = freshToken();
+      Future<Map<String, Object?>> run() => call('execute', {
+        'db': 'app',
+        'sql': "INSERT INTO orders (item) VALUES ('Tea')",
+        'token': token,
+      });
+      final both = await Future.wait([run(), run()]);
+      expect(both.where((r) => r['changes'] == 1), hasLength(1));
+      expect(
+        both.where((r) => errorCode(r) == ErrorCode.badToken),
+        hasLength(1),
+      );
+      expect(await app.count(), 2);
+    });
+
     final refused = <String, String>{
       'DROP TABLE orders': ErrorCode.notAllowed,
       "ATTACH 'x.db' AS x": ErrorCode.notAllowed,
