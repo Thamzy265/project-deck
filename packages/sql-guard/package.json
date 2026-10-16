@@ -1,0 +1,24 @@
+{
+  "name": "@project-deck/sql-guard",
+  "version": "0.0.0",
+  "description": "project-deck read-only SQL gate: judges statements with the real SQLite engine (sqlite-wasm) before they reach a database.",
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@sqlite.org/sqlite-wasm": "3.53.4-build2",
+    "zod": "^4.6.5"
+  }
+}
