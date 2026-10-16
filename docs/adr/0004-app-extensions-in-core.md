@@ -36,3 +36,12 @@ interface AppSession {
 - `db-drift` depends on `core` only and works with any connector that offers extensions.
 - `connector-dart` gains a small generic surface; the daemon never exposes `extensions.call` over HTTP or MCP directly (only through `DbInspector`), so no client can call arbitrary extensions.
 - Other future adapters (Compose, web) can omit `extensions`; the Database tab then shows the snapshot or setup path.
+
+## Amended 16 Oct 2026 (M3 design review)
+
+These rules replace the matching parts above:
+
+- `connector-dart` calls only methods under prefixes the registry allows (`ext.flutterdeck.`). It never calls `ext.flutter.*` or `ext.drift.*`, whatever the method pattern allows.
+- Calls go to the isolate that registered the method (from `ServiceExtensionAdded`), not always the main isolate; after a hot restart the target follows the new registration.
+- Events are taken only from that isolate, validated with zod by the consumer, and coalesced to at most one re-query per table per 250 ms.
+- `timeoutMs` has a required default (5 s).

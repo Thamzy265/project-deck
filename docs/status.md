@@ -2,6 +2,12 @@
 
 Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
 
+## 2026-10-16 — M3 plan — design re-review fixes and PM decision on shell access
+
+- Changed: the re-review (R1–R5) is fixed: reads are stopped with `sqlite3_interrupt` after 5 s, diff snapshots return row hashes from one short transaction, ADR 0004 and ADR 0005 carry "Amended 16 Oct 2026" sections, `db.allowFunctions` is dropped, the SQL editor runs reads only (edits in the row-details editor), query exports cap at 5,000 rows, `ios/Runner.xcodeproj` reading rules are in docs/notes/untrusted-project-files.md, stale deck and design lines updated.
+- Risk accepted by PM (2026-10-16): accepted: Claude with shell access (Bash) can do anything the user can, including reading FlutterDeck's token, using the dashboard edit route or opening the database directly; FlutterDeck cannot block it and relies on Claude Code's Bash permission prompts — scope: the M3 design (review R5b) and FlutterDeck's threat model — expiry/review: before the M5 release — PM said: "Accept as outside FlutterDeck (Recommended)", whose description read "Recorded with today's date as a known limit: FlutterDeck protects against Claude's FlutterDeck tools and web pages, not against Claude using your shell. Keep Claude Code's permission prompts on for shell commands. Reviewed before the M5 release."
+- Blockers: Developer none · Tester none · Reviewer none (final design check) · QA none · Marketer none · Lead none.
+
 ## 2026-10-16 — M3 plan — design review and PM decision on writes
 
 - Changed: the reviewer blocked the M3 design (S1 High: a dashboard click can't prove a human approved a write; S2 High: runaway reads can freeze or kill the app; D1 High: 5 s MCP timeout vs 60 s confirm; S7: no command timeouts; plus Mediums on hidden columns, functions, locks, iOS paths, WAL and diff). The design note's new section "Design details after the design review" fixes them; UI spec, ADRs, deck, CLAUDE.md and PLAN.md updated.

@@ -25,3 +25,8 @@ A project folder can come from a cloned repository, so everything under its `.fl
 The home folder `~/.flutterdeck` itself is the user's own. A link there is their choice and is followed.
 
 Error messages that reach Claude or the dashboard name a file by its project-relative path. Before they are cut or masked, the project folder becomes `<project>` and the home folder becomes `~`.
+
+## `ios/Runner.xcodeproj/project.pbxproj` (read by `init`, M3)
+
+- Read with the link-refusing reader (`lstat` on every path part, no links), regular files only, 2 MB cap; never quoted in messages.
+- `init` takes `PRODUCT_BUNDLE_IDENTIFIER` only from the `Runner` target's Debug build configuration. A value holding `$(` (a variable) or not matching `^[A-Za-z0-9][A-Za-z0-9.-]*$` is skipped, and `init` asks the user to set `ios.bundleId` in `.flutterdeck/config.json`. Flavors and test targets are ignored.

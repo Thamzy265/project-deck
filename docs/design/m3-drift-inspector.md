@@ -109,7 +109,7 @@ Snapshot mode needs a command to read the app's files: `adb` on Android (already
 
 PM decisions, 16 Oct 2026: D1 B (our package only; revisit after feedback), D2 A (rows reach Claude masked, capped, with hidden columns; the developer's own processing), D3 A, then changed after the design review (16 Oct 2026) to "Claude never writes": no `db_execute` for Claude in M3, because a dashboard click can't prove a human approved a write (Claude can click in the Browser pane, or use the local token itself); only the user edits data in the Database tab, and only with `db.allowWrites` on, D4 B (snapshots also on the iOS simulator, with `xcrun simctl` as a new fixed command). ADR 0004 and ADR 0005 are accepted with the plan.
 
-**iOS simulator snapshots (D4 B).** The daemon may run `/usr/bin/xcrun simctl get_app_container <udid> <bundleId> data` (macOS only, fixed arguments; `udid` from `xcrun simctl list devices booted -j` parsed as JSON and validated `^[0-9A-F-]{36}$`; `bundleId` from config or the running app, validated like an applicationId). The container is a folder on the Mac, so the database is read straight from `<container>/Documents/<name>.sqlite` (path_provider's documents folder on iOS) and `Library/Application Support/`, with core's link-refusing reader, the same file-name pattern, size cap and header check; WAL merged as on Android. No copy command is needed. Only booted simulators; never a physical device.
+**iOS simulator snapshots (D4 B).** The daemon may run `/usr/bin/xcrun simctl get_app_container <udid> <bundleId> data` (macOS only, fixed arguments; `udid` from `xcrun simctl list devices booted -j` parsed as JSON and validated `^[0-9A-F-]{36}$`). The container is a folder on the Mac, so the database is read straight from `<container>/Documents/` (path_provider's documents folder on iOS) and `Library/Application Support/`; no copy command is needed. Bundle id, path checks and timeouts: see "Commands and timeouts" below. Only booted simulators; never a physical device.
 
 ## Design details
 
@@ -146,13 +146,13 @@ The review (PR #32) found gaps in how the decisions were built. These rules repl
 
 **Runaway reads (S2).** No read may freeze or crash the app or the daemon:
 
-- In the app, reads run in a dedicated background isolate with its own read-only connection; the isolate is killed when a query passes 5 s (a Dart timer can't stop synchronous FFI, so isolation is the stop). `SQLITE_LIMIT_LENGTH` on that connection is 16 MB; replies cap at 5,000 rows and 8 MB.
+- In the app, reads run in a dedicated background isolate with its own read-only connection (`PRAGMA temp_store=FILE`, small `cache_size`, `SQLITE_LIMIT_LENGTH` 16 MB). At 5 s the controlling isolate calls `sqlite3_interrupt` on that connection's handle (thread-safe; through FFI on `Database.handle`), waits up to 1 s for the step to return `SQLITE_INTERRUPT`, then closes the connection; killing the isolate is only the last step (an isolate blocked in a synchronous FFI call never sees a kill). Replies cap at 5,000 rows and 8 MB. Test: a runaway recursive CTE stops in about 5 s and the app's next write succeeds, in rollback-journal and WAL modes.
 - In the daemon, sql.js queries (snapshot backend) run in a terminable worker (core's budgeted worker) with the same limits.
 - Guard and backend tests include `WITH RECURSIVE` without end, `randomblob(1e9)`, `zeroblob`, and `printf('%.*c', 1e9, 'x')`.
 
 **Locks (D2, S4).** Reads step all rows into memory, then reset at once (no streaming while holding a lock), and the read connection checks autocommit after every query and rolls back if needed. Transaction-control statements (`BEGIN`, `COMMIT`, `ROLLBACK`, `SAVEPOINT`, `RELEASE`) are refused by both layers. Tests: the app writes while an inspector read runs, in rollback-journal and WAL modes. The database path comes from `PRAGMA database_list` on the app's connection; in-memory and encrypted (SQLCipher) databases report "unsupported" with a message.
 
-**Functions (S5).** The gate allows only SQLite's built-in scalar, aggregate, window, date/time and JSON functions (an allowlist from the SQLite docs). App-defined functions are refused unless the user lists them in `db.allowFunctions`. The read connection in the app registers none of the app's functions.
+**Functions (S5).** The gate allows only SQLite's built-in scalar, aggregate, window, date/time and JSON functions (an allowlist from the SQLite docs). App-defined functions are always refused: the read connection in the app registers none of the app's functions, so they could not run there anyway (no `db.allowFunctions` setting).
 
 **Hidden columns (S3, P2, S8).** For queries from Claude, the gate's authorizer refuses any statement that reads a hidden (table, column), which covers aliases, expressions, WHERE clauses, joins, views and subqueries; `SELECT *` over a hidden column is refused with a hint. Reads of `sqlite_dbpage`, `dbstat` and `pragma_*` table-valued functions outside the pragma allowlist are refused (they expose paths and raw pages). `db_diff` drops hidden columns. Claude gets blobs only as "BLOB n bytes"; numbers that look like phone or card numbers are masked like text; JSON text is masked after it is read as text.
 
@@ -164,19 +164,20 @@ The review (PR #32) found gaps in how the decisions were built. These rules repl
 
 **Snapshot consistency (D4).** Read the database header change counter (offset 24) and the WAL salt before and after the copy; retry up to 3 times if they differ, then "The app is writing; try Refresh". Apply only WAL frames up to the last valid commit frame, check salts and checksums, refuse page numbers beyond the header's page count plus committed growth, and count database plus WAL in the 50 MB cap.
 
-**Diff (D5).** Live snapshots for diff come from one extension call that reads each table inside one read transaction, paged by primary key (keyset, not OFFSET). Values are hashed with their SQLite type, composite keys are JSON arrays, rowid-keyed tables show "matched by row id", and views, `sqlite_%` and FTS shadow tables are skipped.
+**Diff (D5).** A live snapshot for diff is one extension call: in one short read transaction the app computes, per table, a map of primary key → hash of the row's values with their SQLite types (composite keys as JSON arrays; tables without a key use rowid and show "matched by row id"; views, `sqlite_%` and FTS shadow tables skipped), and returns only those hashes (compact, within the 8 MB reply cap). The transaction ends before the reply is sent. For a diff, the daemon compares hashes and then fetches row values only for added and changed keys with keyset reads by primary key; removed rows are reported by key, with values only if an earlier diff fetched them. Test: the app writes during a diff snapshot.
 
 **Caps per caller (D6).**
 
-| Caller              | Rows                              | Bytes          | Notes                              |
-| ------------------- | --------------------------------- | -------------- | ---------------------------------- |
-| Claude (`db_query`) | 100 by default, 500 max           | 20 kB          | masked; truncation said            |
-| Claude (`db_diff`)  | 50 rows per table, 20 tables      | 20 kB          | masked; hidden columns dropped     |
-| Dashboard page      | 100 per page, 1,000 max per query | 8 MB per reply | paged by primary key               |
-| Export              | 100,000                           | 50 MB          | keyset paging, 5,000 rows per call |
-| Diff snapshot       | 10,000 per table                  | 50 MB total    | the rest "too large to diff"       |
+| Caller                | Rows                              | Bytes          | Notes                                               |
+| --------------------- | --------------------------------- | -------------- | --------------------------------------------------- |
+| Claude (`db_query`)   | 100 by default, 500 max           | 20 kB          | masked; truncation said                             |
+| Claude (`db_diff`)    | 50 rows per table, 20 tables      | 20 kB          | masked; hidden columns dropped                      |
+| Dashboard page        | 100 per page, 1,000 max per query | 8 MB per reply | paged by primary key                                |
+| Export (table)        | 100,000                           | 50 MB          | keyset paging by primary key, 5,000 rows per call   |
+| Export (query result) | 5,000                             | 8 MB           | the query's own result; no paging for arbitrary SQL |
+| Diff snapshot         | 10,000 per table                  | 50 MB total    | the rest "too large to diff"                        |
 
-**Confirm and write states in the UI.** Only the user's own edits use the confirm dialog. If the daemon is lost while the dialog is open, it shows "Lost connection; the change did not run". Other dashboard tabs close the dialog when one tab answers.
+**Confirm and write states in the UI.** The SQL editor runs reading queries only. Edits happen only in the row-details editor (edit, add, delete a row), with writes on, and each uses the confirm dialog. If the daemon is lost while the dialog is open, it shows "Lost connection; the change did not run". Other dashboard tabs close the dialog when one tab answers.
 
 **CSV export (U3).** Every field is quoted; text cells that start with `=`, `+`, `-`, `@`, tab or carriage return get a leading `'`; numbers stay numbers.
 
@@ -210,11 +211,12 @@ The review (PR #32) found gaps in how the decisions were built. These rules repl
   - As Claude I start a transaction to lock the app's writes — mitigation: transaction control refused by both layers; autocommit check.
   - As a simulator app I put a link inside my container to a host folder — mitigation: every path part checked with lstat; realpath inside the container.
   - As a crafted WAL I make the daemon allocate huge memory — mitigation: committed frames only, page bounds, size cap.
-  - As a row value I contain HTML or a script — mitigation: text-only rendering (M2 rules), CSV export escapes formulas (`=`, `+`, `-`, `@` prefixed with `'`).
+  - As a row value I contain HTML or a script — mitigation: text-only rendering (M2 rules); CSV export quotes every field and prefixes text cells starting with `=`, `+`, `-`, `@`, tab or carriage return with `'`.
   - As a row value I tell Claude to do something — mitigation: tool descriptions say rows are untrusted data.
   - As a huge table I exhaust memory — mitigation: row caps, snapshot and diff caps, 50 MB snapshot limit.
   - As a crafted database file (snapshot) I exploit the parser — mitigation: sql.js in wasm, read-only, header check, size cap.
-  - As a cloned repo I set `db.allowWrites: true`, `db.allowFunctions` and saved queries that delete — mitigation: each edit still needs the user's confirm; saved queries run through the read gate; the dashboard shows "Writes are on (from .flutterdeck/config.json)" and lists allowed functions.
+  - As a cloned repo I set `db.allowWrites: true` and saved queries that delete — mitigation: saved queries run through the read gate (the SQL editor runs reads only); edits need the row-details editor and the user's confirm; the dashboard shows "Writes are on (from .flutterdeck/config.json)".
+  - As Claude with shell access (Bash) I read the token, open a login window, take the cookie and call the edit route, or run adb or sqlite3 on the database directly — outside FlutterDeck's control: an agent with the user's shell can do anything the user can; Claude Code's own Bash permission prompts are the control. Accepted by the PM as outside FlutterDeck, 16 Oct 2026 (docs/status.md).
   - As a release build I expose my database — mitigation: `kDebugMode` only; test that nothing registers in release and profile.
   - As a crafted simulator list or bundle id I make the daemon run another command or read outside the container — mitigation: `/usr/bin/xcrun` absolute path, fixed arguments, `simctl list` parsed as JSON, UDID and bundle id patterns, container path checked to be under `~/Library/Developer/CoreSimulator/Devices/`, files read without following links.
   - As another process on the device I read the copied snapshot — mitigation: the copy stays in daemon memory only.
@@ -229,7 +231,7 @@ Not legal advice. The PM decided D2 and D3 on 16 Oct 2026.
 | Snapshot file copy (Android, iOS simulator)                    | Inspect without the package                                   | as above                                                                                 | Memory only, replaced on Refresh, gone on daemon stop                                                    | none                                                                          | Never written to disk                  |
 | Saved queries                                                  | Reuse SQL                                                     | n/a — the developer's own SQL                                                            | Until deleted                                                                                            | none (git if the user commits it)                                             | `.flutterdeck/queries.json`            |
 
-- Fields removed: none beyond the hidden columns the user sets.
+- Fields removed: none beyond the hidden columns the user sets. Hidden columns protect a (table, column) pair only: copies of the same data, such as an FTS index or a denormalised table, need their own entries (setup docs say so).
 - DPIA screening: none of the ICO triggers apply to FlutterDeck itself (no profiling, local only). The developer's app may need one; out of scope — not needed because FlutterDeck stores no rows on disk and sends rows only on the developer's request.
 - Children likely: no (developer tool). Automated decisions: none. Special category data: possible in app data → covered by D2.
 - New vendors / SDKs / transfers: none new; new libraries are local only (sqlite-wasm, sql.js, CodeMirror, package:sqlite3 in the app's debug build).

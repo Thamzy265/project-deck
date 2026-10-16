@@ -27,3 +27,16 @@ We will judge every SQL statement from the dashboard or Claude with the real SQL
 - The daemon ships an 869 KB wasm file and loads it lazily on the first query.
 - Queries that use functions only the app registers fail to prepare in the gate unless stubbed; the stub list starts with Drift's own functions and grows from user reports.
 - Two independent checks must both fail for a write to slip through.
+
+## Amended 16 Oct 2026 (M3 design review)
+
+These rules replace the matching parts above:
+
+- **Functions:** the authorizer allows `SQLITE_FUNCTION` only for SQLite's built-in scalar, aggregate, window, date/time and JSON functions (an allowlist). App-defined functions are never stubbed and are always refused; the app's read connection registers none.
+- **Transaction control:** `BEGIN`, `COMMIT`, `ROLLBACK`, `SAVEPOINT` and `RELEASE` are refused in both modes and both layers. The app checks autocommit after every query and rolls back if needed.
+- **Hidden columns:** for queries from Claude, the authorizer refuses any `SQLITE_READ` of a hidden (table, column) pair, which covers aliases, expressions, joins, views and subqueries. Reads of `sqlite_dbpage`, `dbstat` and `pragma_*` table-valued functions outside the pragma allowlist are refused.
+- **Schema loading:** only `CREATE TABLE/INDEX/VIEW/TRIGGER/VIRTUAL TABLE` statements load, checked with an authorizer; a virtual table with a missing module becomes a plain table with the same columns. Wasm init has a 10 s timeout and each check 1 s.
+- **Runtime limits** (outside the gate): the app interrupts a read with `sqlite3_interrupt` after 5 s; sql.js reads run in a terminable worker.
+- **Writes:** only the user's own dashboard edits; Claude never writes (PM decision, 16 Oct 2026).
+
+The Consequences line about a stub list growing from user reports no longer applies.
