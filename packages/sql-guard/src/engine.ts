@@ -4,7 +4,6 @@
  * prepares it in a scratch in-memory database that holds the target's schema and no
  * rows, so nothing the statement says can touch the user's data.
  */
-import { createHash } from 'node:crypto';
 import type { Sqlite3Static } from '@sqlite.org/sqlite-wasm';
 import {
   BUILTIN_FUNCTIONS,
@@ -25,6 +24,7 @@ import type { BTree, HiddenColumns, Op } from './bytecode.js';
 import { findHiddenRead, tablesOpened } from './bytecode.js';
 import { generatedColumnRefs } from './generated.js';
 import { foldName } from './names.js';
+import { schemaKey } from './schema-key.js';
 import { virtualTableColumns, virtualTableOptions } from './vtab.js';
 
 type Sqlite3 = Sqlite3Static;
@@ -188,11 +188,34 @@ export class GuardEngine {
    * own, under its own time budget, before the check. Returns the refusal if the schema
    * can't be used.
    */
-  loadSchema(schemaSql: readonly string[]): GuardRefusal | undefined {
-    return this.scratch(schemaSql).refusal;
+  loadSchema(schemaSql: readonly string[], key = schemaKey(schemaSql)): GuardRefusal | undefined {
+    return this.scratch(schemaSql, key).refusal;
+  }
+
+  /**
+   * Checks against a schema loaded earlier under `key`, without the schema itself.
+   * Undefined when that schema is no longer cached: the caller loads it again.
+   */
+  checkLoaded(
+    key: string,
+    sql: string,
+    opts: Omit<GuardCheckOptions, 'schemaSql'>,
+  ): GuardResult | undefined {
+    const scratch = this.scratches.get(key);
+    if (scratch === undefined) return undefined;
+    this.touch(key, scratch);
+    return this.checkIn(scratch, sql, opts);
   }
 
   check(sql: string, opts: GuardCheckOptions): GuardResult {
+    return this.checkIn(this.scratch(opts.schemaSql, schemaKey(opts.schemaSql)), sql, opts);
+  }
+
+  private checkIn(
+    scratch: Scratch,
+    sql: string,
+    opts: Omit<GuardCheckOptions, 'schemaSql'>,
+  ): GuardResult {
     if (Buffer.byteLength(sql, 'utf8') > MAX_SQL_BYTES) {
       return refuse('too-long', `The statement is longer than ${MAX_SQL_BYTES / 1000} kB.`);
     }
@@ -200,7 +223,6 @@ export class GuardEngine {
     if (sql.includes('\u0000')) {
       return refuse('invalid-sql', 'The statement contains a NUL character, which is not allowed.');
     }
-    const scratch = this.scratch(opts.schemaSql);
     if (scratch.refusal !== undefined) return scratch.refusal;
     const seen = newSeen();
     const hidden = this.expandHidden(scratch, opts.hiddenColumns ?? []);
@@ -569,24 +591,28 @@ export class GuardEngine {
     return undefined;
   }
 
-  private scratch(schemaSql: readonly string[]): Scratch {
-    const key = createHash('sha256').update(JSON.stringify(schemaSql)).digest('hex');
-    let scratch = this.scratches.get(key);
-    if (scratch !== undefined) {
-      // Most recently used goes last.
-      this.scratches.delete(key);
-    } else {
-      scratch = this.build(schemaSql);
-      while (this.scratches.size >= this.maxSchemas) {
-        const oldest = this.scratches.keys().next();
-        if (oldest.done === true) break;
-        this.scratches.get(oldest.value)?.db.close();
-        this.scratches.delete(oldest.value);
-      }
+  private scratch(schemaSql: readonly string[], key: string): Scratch {
+    const cached = this.scratches.get(key);
+    if (cached !== undefined) {
+      this.touch(key, cached);
+      return cached;
     }
+    const scratch = this.build(schemaSql);
+    while (this.scratches.size >= this.maxSchemas) {
+      const oldest = this.scratches.keys().next();
+      if (oldest.done === true) break;
+      this.scratches.get(oldest.value)?.db.close();
+      this.scratches.delete(oldest.value);
+    }
+    this.touch(key, scratch);
+    return scratch;
+  }
+
+  /** Marks a scratch database most recently used (it goes last) and current. */
+  private touch(key: string, scratch: Scratch): void {
+    this.scratches.delete(key);
     this.scratches.set(key, scratch);
     this.current = scratch;
-    return scratch;
   }
 
   private build(schemaSql: readonly string[]): Scratch {

@@ -7,8 +7,14 @@ import { GuardEngine, loadSqlite } from './engine.js';
 import type { GuardCheckOptions } from './types.js';
 
 type Request =
-  | { id: number; kind: 'schema'; schemaSql: readonly string[] }
-  | { id: number; kind: 'check'; sql: string; opts: GuardCheckOptions };
+  | { id: number; kind: 'schema'; key: string; schemaSql: readonly string[] }
+  | {
+      id: number;
+      kind: 'check';
+      key: string;
+      sql: string;
+      opts: Omit<GuardCheckOptions, 'schemaSql'>;
+    };
 
 const port = parentPort;
 if (port === null) throw new Error('The SQL guard worker must run in a worker thread');
@@ -19,12 +25,14 @@ const engine = new GuardEngine(await loadSqlite(), maxSchemas === undefined ? {}
 port.on('message', (req: Request) => {
   try {
     if (req.kind === 'schema') {
-      const refusal = engine.loadSchema(req.schemaSql);
-      port.postMessage(
-        refusal === undefined ? { id: req.id, schema: true } : { id: req.id, result: refusal },
-      );
+      // A refused schema stays cached too; its refusal answers every check.
+      engine.loadSchema(req.schemaSql, req.key);
+      port.postMessage({ id: req.id, schema: true });
     } else {
-      port.postMessage({ id: req.id, result: engine.check(req.sql, req.opts) });
+      const result = engine.checkLoaded(req.key, req.sql, req.opts);
+      port.postMessage(
+        result === undefined ? { id: req.id, missing: true } : { id: req.id, result },
+      );
     }
   } catch {
     port.postMessage({ id: req.id, failed: true });

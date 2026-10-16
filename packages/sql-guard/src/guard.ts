@@ -1,6 +1,7 @@
 import { Worker } from 'node:worker_threads';
 import { z } from 'zod';
 import type { GuardCheckOptions, GuardResult } from './types.js';
+import { schemaKey } from './schema-key.js';
 import { GuardResultSchema, MAX_SQL_BYTES } from './types.js';
 
 export interface SqlGuard {
@@ -31,7 +32,11 @@ const ReplySchema = z.union([
   z.object({ id: z.number(), result: GuardResultSchema }),
   z.object({ id: z.number(), failed: z.literal(true) }),
   z.object({ id: z.number(), schema: z.literal(true) }),
+  z.object({ id: z.number(), missing: z.literal(true) }),
 ]);
+
+/** What the worker said to a request: a verdict, or that a schema loaded or is gone. */
+type Answer = GuardResult | 'loaded' | 'missing';
 
 const refusal = (code: 'unavailable' | 'timeout', reason: string): GuardResult => ({
   ok: false,
@@ -54,6 +59,11 @@ export function createSqlGuard(opts: SqlGuardOptions = {}): SqlGuard {
   let queue: Promise<unknown> = Promise.resolve();
   let nextId = 0;
   let closed = false;
+  // Hashing a large schema costs time: once per schema array, never inside a budget.
+  const keys = new WeakMap<readonly string[], string>();
+  // Schemas the live worker holds; a fresh worker starts with none.
+  let loadedBy: Worker | undefined;
+  const loaded = new Set<string>();
 
   const discard = (w: Worker): void => {
     void w.terminate().catch(() => undefined);
@@ -102,17 +112,17 @@ export function createSqlGuard(opts: SqlGuardOptions = {}): SqlGuard {
 
   /**
    * Sends one request and waits for its answer within `budgetMs`. Resolves to the
-   * worker's verdict, `true` for a loaded schema, or a refusal when anything goes wrong.
+   * worker's answer, or a refusal when anything goes wrong.
    */
   const ask = (
     w: Worker,
     message: Record<string, unknown>,
     budgetMs: number,
     overBudget: string,
-  ): Promise<GuardResult | true> => {
+  ): Promise<Answer> => {
     const id = nextId++;
-    return new Promise<GuardResult | true>((resolve) => {
-      const finish = (result: GuardResult | true): void => {
+    return new Promise<Answer>((resolve) => {
+      const finish = (result: Answer): void => {
         clearTimeout(timer);
         w.off('message', onMessage);
         w.off('exit', onExit);
@@ -122,7 +132,8 @@ export function createSqlGuard(opts: SqlGuardOptions = {}): SqlGuard {
         const reply = ReplySchema.safeParse(raw);
         if (!reply.success || !('id' in reply.data) || reply.data.id !== id) return;
         if ('result' in reply.data) finish(reply.data.result);
-        else if ('schema' in reply.data) finish(true);
+        else if ('schema' in reply.data) finish('loaded');
+        else if ('missing' in reply.data) finish('missing');
         else finish(refusal('unavailable', 'The SQL gate failed on this statement.'));
       };
       const onExit = (): void =>
@@ -150,24 +161,42 @@ export function createSqlGuard(opts: SqlGuardOptions = {}): SqlGuard {
     if (w === undefined) {
       return refusal('unavailable', 'The SQL gate could not start, so nothing was run.');
     }
-    // A new schema can take a while to load; that gets its own, larger budget.
-    const loaded = await ask(
-      w,
-      { kind: 'schema', schemaSql: checkOpts.schemaSql },
-      schemaTimeoutMs,
-      `Loading the database schema into the SQL gate took longer than ${schemaTimeoutMs} ms.`,
-    );
-    if (loaded !== true) return loaded;
-    const verdict = await ask(
-      w,
-      { kind: 'check', sql, opts: checkOpts },
-      checkTimeoutMs,
-      `The SQL gate took longer than ${checkTimeoutMs} ms.`,
-    );
-    return verdict === true
-      ? refusal('unavailable', 'The SQL gate answered out of turn.')
-      : verdict;
+    if (loadedBy !== w) {
+      loadedBy = w;
+      loaded.clear();
+    }
+    const { schemaSql, ...rest } = checkOpts;
+    let key = keys.get(schemaSql);
+    if (key === undefined) {
+      key = schemaKey(schemaSql);
+      keys.set(schemaSql, key);
+    }
+    // The worker may have dropped the schema from its cache: load it again, once.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (!loaded.has(key)) {
+        // A new schema can take a while to load; that gets its own, larger budget.
+        const answer = await ask(
+          w,
+          { kind: 'schema', key, schemaSql },
+          schemaTimeoutMs,
+          `Loading the database schema into the SQL gate took longer than ${schemaTimeoutMs} ms.`,
+        );
+        if (answer !== 'loaded') return answer === 'missing' ? outOfTurn() : answer;
+        loaded.add(key);
+      }
+      const verdict = await ask(
+        w,
+        { kind: 'check', key, sql, opts: rest },
+        checkTimeoutMs,
+        `The SQL gate took longer than ${checkTimeoutMs} ms.`,
+      );
+      if (verdict !== 'missing') return verdict === 'loaded' ? outOfTurn() : verdict;
+      loaded.delete(key);
+    }
+    return refusal('unavailable', 'The SQL gate kept losing the database schema.');
   };
+
+  const outOfTurn = (): GuardResult => refusal('unavailable', 'The SQL gate answered out of turn.');
 
   return {
     check(sql, checkOpts) {

@@ -216,3 +216,17 @@ describe('C1: an edit writes exactly one table', () => {
     expect(edit("UPDATE t SET a = 'x' WHERE id = 1")).toMatchObject({ ok: true, kind: 'write' });
   });
 });
+
+describe('C2: checks against a schema loaded once by key', () => {
+  it('checks by key, and says when the key is no longer cached', () => {
+    const small = new GuardEngine(engine.sqlite, { maxSchemas: 1 });
+    expect(small.loadSchema(['CREATE TABLE a(x)'], 'key-a')).toBeUndefined();
+    expect(small.checkLoaded('key-a', 'SELECT x FROM a', { mode: 'read' })).toMatchObject({
+      ok: true,
+    });
+    small.loadSchema(['CREATE TABLE b(y)'], 'key-b');
+    expect(small.checkLoaded('key-a', 'SELECT x FROM a', { mode: 'read' })).toBeUndefined();
+    expect(small.checkLoaded('unknown', 'SELECT 1', { mode: 'read' })).toBeUndefined();
+    small.close();
+  });
+});

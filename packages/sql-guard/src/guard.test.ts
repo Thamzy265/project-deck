@@ -122,6 +122,30 @@ describe('createSqlGuard', () => {
     ).resolves.toMatchObject({ ok: false, code: 'unavailable' });
   });
 
+  it('sends a schema to the worker once and then refers to it by its hash', async () => {
+    const g = make({ workerUrl: fixture('counting') });
+    const tables = async (sql: string, schema: readonly string[]) => {
+      const result = await g.check(sql, { schemaSql: schema, mode: 'read' });
+      return result.ok ? result.tables : [result.code];
+    };
+    expect(await tables('SELECT 1', schemaSql)).toEqual(['loads:1', 'schema-in-check:false']);
+    expect(await tables('SELECT 2', schemaSql)).toEqual(['loads:1', 'schema-in-check:false']);
+    // A new array with the same statements is the same schema.
+    expect(await tables('SELECT 3', [...schemaSql])).toEqual(['loads:1', 'schema-in-check:false']);
+    expect(await tables('SELECT 4', ['CREATE TABLE other(a)'])).toEqual([
+      'loads:2',
+      'schema-in-check:false',
+    ]);
+  });
+
+  it('sends the schema again when the worker no longer has it', async () => {
+    const g = make({ workerUrl: fixture('counting') });
+    expect(await g.check('FORGET', { schemaSql, mode: 'read' })).toMatchObject({
+      ok: true,
+      tables: ['loads:2', 'schema-in-check:false'],
+    });
+  });
+
   it('refuses after close', async () => {
     const g = make({ workerUrl: BUILT_WORKER });
     await g.close();
