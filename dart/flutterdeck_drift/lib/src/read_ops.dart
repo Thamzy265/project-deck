@@ -426,12 +426,6 @@ final class ReadOps {
     return (rows: n, error: null);
   }
 
-  int _count(String table) =>
-      db
-              .select('SELECT count(*) AS n FROM main.${quoteIdent(table)}')
-              .first['n']
-          as int;
-
   /// Names the key columns of [table]: its primary key in key order, or a
   /// rowid alias when it has none, or when a key column of a rowid table may
   /// hold NULL. SQLite lets such a key repeat NULL, so it would not tell
@@ -488,8 +482,8 @@ final class ReadOps {
         for (final e in _entities()) {
           if (e.kind != 'table') continue;
           try {
-            final table = _snapshotTable(e, _rowBudget - bytes);
-            bytes += jsonSize(table);
+            final (table, size) = _snapshotTable(e, _rowBudget - bytes);
+            bytes += size;
             tables.add(table);
           } on SqliteException catch (err) {
             if (err.resultCode == _interrupted || err.resultCode == _busy) {
@@ -511,26 +505,16 @@ final class ReadOps {
     });
   }
 
-  /// One table of a snapshot, in at most [room] bytes of JSON.
-  Map<String, Object?> _snapshotTable(_Entity e, int room) {
+  /// One table of a snapshot, in at most [room] bytes of JSON, and the
+  /// bytes it used. The table is read once: rows past the per-table cap stop
+  /// the scan.
+  (Map<String, Object?>, int) _snapshotTable(_Entity e, int room) {
     var bytes = 0;
     final ({List<String> key, bool rowid, List<String> columns}) shape;
     try {
       shape = _keyOf(e.name);
     } on DriftDeckError catch (err) {
-      return {'name': e.name, 'error': err.toJson()};
-    }
-    final count = _count(e.name);
-    if (count > maxSnapshotRowsPerTable) {
-      return {
-        'name': e.name,
-        'rowCount': count,
-        'error': DriftDeckError(
-          ErrorCode.tooLarge,
-          'Too large to diff: more than $maxSnapshotRowsPerTable rows '
-          'in ${e.name}',
-        ).toJson(),
-      };
+      return ({'name': e.name, 'error': err.toJson()}, 0);
     }
     final select = [
       ...shape.key.map(quoteIdent),
@@ -538,10 +522,20 @@ final class ReadOps {
     ].join(', ');
     final rows = <Object?>[];
     final keyCount = shape.key.length;
-    final stmt = db.prepare('SELECT $select FROM main.${quoteIdent(e.name)}');
+    final stmt = db.prepare(
+      'SELECT $select FROM main.${quoteIdent(e.name)} LIMIT ?',
+    );
     try {
-      final cursor = stmt.selectCursor();
+      final cursor = stmt.selectCursor([maxSnapshotRowsPerTable + 1]);
       while (cursor.moveNext()) {
+        if (rows.length == maxSnapshotRowsPerTable) {
+          final tooLarge = DriftDeckError(
+            ErrorCode.tooLarge,
+            'Too large to diff: more than $maxSnapshotRowsPerTable rows '
+            'in ${e.name}',
+          );
+          return ({'name': e.name, 'error': tooLarge.toJson()}, 0);
+        }
         final values = cursor.current.values;
         final entry = [
           _keyJson(values.sublist(0, keyCount)),
@@ -559,13 +553,16 @@ final class ReadOps {
     } finally {
       stmt.close();
     }
-    return {
-      'name': e.name,
-      'columns': shape.columns,
-      'key': shape.key,
-      if (shape.rowid) 'rowid': true,
-      'rows': rows,
-    };
+    return (
+      {
+        'name': e.name,
+        'columns': shape.columns,
+        'key': shape.key,
+        if (shape.rowid) 'rowid': true,
+        'rows': rows,
+      },
+      bytes,
+    );
   }
 
   /// The table's name as the schema spells it. SQLite matches names without
