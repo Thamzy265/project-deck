@@ -262,63 +262,98 @@ final class ReadOps {
     return guarded(() {
       final tables = <Map<String, Object?>>[];
       for (final e in _entities()) {
-        final info = db.select(
-          'SELECT name, type, "notnull", dflt_value, pk '
-          'FROM pragma_table_info(?)',
-          [e.name],
+        tables.add(
+          _unlessUnusable(e, () {
+            final info = db.select(
+              'SELECT name, type, "notnull", dflt_value, pk '
+              'FROM pragma_table_info(?)',
+              [e.name],
+            );
+            final pkCount = info.where((c) => (c['pk'] as int) > 0).length;
+            final withoutRowid = _withoutRowid.hasMatch(e.sql ?? '');
+            final columns = [
+              for (final c in info)
+                {
+                  'name': c['name'],
+                  'type': c['type'] ?? '',
+                  'nullable':
+                      c['notnull'] == 0 &&
+                      !_neverNull(
+                        c,
+                        pkCount: pkCount,
+                        withoutRowid: withoutRowid,
+                      ),
+                  'pk': (c['pk'] as int) > 0,
+                  if ((c['pk'] as int) > 0) 'pkPosition': c['pk'],
+                  'default': c['dflt_value']?.toString(),
+                },
+            ];
+            final foreignKeys = [
+              for (final f in db.select(
+                'SELECT "from", "table", "to" FROM pragma_foreign_key_list(?) '
+                'ORDER BY id, seq',
+                [e.name],
+              ))
+                {'from': f['from'], 'table': f['table'], 'to': f['to']},
+            ];
+            final indexes = [
+              for (final i in db.select(
+                'SELECT name, "unique" FROM pragma_index_list(?) ORDER BY name',
+                [e.name],
+              ))
+                {
+                  'name': i['name'],
+                  'unique': i['unique'] == 1,
+                  'columns': [
+                    for (final c in db.select(
+                      'SELECT name FROM pragma_index_info(?) ORDER BY seqno',
+                      [i['name']],
+                    ))
+                      c['name'] ?? '',
+                  ],
+                },
+            ];
+            return {
+              'name': e.name,
+              'kind': e.kind,
+              'sql': ?e.sql,
+              'columns': columns,
+              if (e.kind == 'table') 'rowCount': _count(e.name),
+              'foreignKeys': foreignKeys,
+              'indexes': indexes,
+            };
+          }),
         );
-        final pkCount = info.where((c) => (c['pk'] as int) > 0).length;
-        final withoutRowid = _withoutRowid.hasMatch(e.sql ?? '');
-        final columns = [
-          for (final c in info)
-            {
-              'name': c['name'],
-              'type': c['type'] ?? '',
-              'nullable':
-                  c['notnull'] == 0 &&
-                  !_neverNull(c, pkCount: pkCount, withoutRowid: withoutRowid),
-              'pk': (c['pk'] as int) > 0,
-              if ((c['pk'] as int) > 0) 'pkPosition': c['pk'],
-              'default': c['dflt_value']?.toString(),
-            },
-        ];
-        final foreignKeys = [
-          for (final f in db.select(
-            'SELECT "from", "table", "to" FROM pragma_foreign_key_list(?) '
-            'ORDER BY id, seq',
-            [e.name],
-          ))
-            {'from': f['from'], 'table': f['table'], 'to': f['to']},
-        ];
-        final indexes = [
-          for (final i in db.select(
-            'SELECT name, "unique" FROM pragma_index_list(?) ORDER BY name',
-            [e.name],
-          ))
-            {
-              'name': i['name'],
-              'unique': i['unique'] == 1,
-              'columns': [
-                for (final c in db.select(
-                  'SELECT name FROM pragma_index_info(?) ORDER BY seqno',
-                  [i['name']],
-                ))
-                  c['name'] ?? '',
-              ],
-            },
-        ];
-        tables.add({
-          'name': e.name,
-          'kind': e.kind,
-          'sql': ?e.sql,
-          'columns': columns,
-          if (e.kind == 'table') 'rowCount': _count(e.name),
-          'foreignKeys': foreignKeys,
-          'indexes': indexes,
-        });
       }
       return {'tables': tables};
     });
+  }
+
+  /// Runs [describe] for one table or view. If the read connection cannot use
+  /// it (a view calling an app function, a virtual table whose module is
+  /// missing), the entry says why instead of failing the whole call (FD-5).
+  /// A timeout or busy error still stops the call.
+  Map<String, Object?> _unlessUnusable(
+    _Entity e,
+    Map<String, Object?> Function() describe,
+  ) {
+    try {
+      return describe();
+    } on SqliteException catch (err) {
+      if (err.resultCode == _interrupted || err.resultCode == _busy) rethrow;
+      return {
+        'name': e.name,
+        'kind': e.kind,
+        'sql': ?e.sql,
+        'columns': const <Object?>[],
+        'foreignKeys': const <Object?>[],
+        'indexes': const <Object?>[],
+        'error': DriftDeckError(
+          ErrorCode.unsupported,
+          "FlutterDeck can't read ${e.name}: ${err.message}",
+        ).toJson(),
+      };
+    }
   }
 
   /// Key columns SQLite never stores NULL in, though not declared NOT NULL:
@@ -381,68 +416,85 @@ final class ReadOps {
       try {
         for (final e in _entities()) {
           if (e.kind != 'table') continue;
-          final ({List<String> key, bool rowid, List<String> columns}) shape;
           try {
-            shape = _keyOf(e.name);
-          } on DriftDeckError catch (err) {
-            tables.add({'name': e.name, 'error': err.toJson()});
-            continue;
-          }
-          final count = _count(e.name);
-          if (count > maxSnapshotRowsPerTable) {
+            final table = _snapshotTable(e, _rowBudget - bytes);
+            bytes += jsonSize(table);
+            tables.add(table);
+          } on SqliteException catch (err) {
+            if (err.resultCode == _interrupted || err.resultCode == _busy) {
+              rethrow;
+            }
             tables.add({
               'name': e.name,
-              'rowCount': count,
               'error': DriftDeckError(
-                ErrorCode.tooLarge,
-                'Too large to diff: more than $maxSnapshotRowsPerTable rows '
-                'in ${e.name}',
+                ErrorCode.unsupported,
+                "FlutterDeck can't read ${e.name}: ${err.message}",
               ).toJson(),
             });
-            continue;
           }
-          final select = [
-            ...shape.key.map(quoteIdent),
-            ...shape.columns.map(quoteIdent),
-          ].join(', ');
-          final rows = <Object?>[];
-          final keyCount = shape.key.length;
-          final stmt = db.prepare(
-            'SELECT $select FROM main.${quoteIdent(e.name)}',
-          );
-          try {
-            final cursor = stmt.selectCursor();
-            while (cursor.moveNext()) {
-              final values = cursor.current.values;
-              final entry = [
-                _keyJson(values.sublist(0, keyCount)),
-                [for (final v in values.skip(keyCount)) cellHash(v)],
-              ];
-              bytes += jsonSize(entry) + 1;
-              if (bytes > _rowBudget) {
-                throw const DriftDeckError(
-                  ErrorCode.tooLarge,
-                  'Too large to diff: the snapshot is over 8 MB',
-                );
-              }
-              rows.add(entry);
-            }
-          } finally {
-            stmt.close();
-          }
-          tables.add({
-            'name': e.name,
-            'columns': shape.columns,
-            'key': shape.key,
-            if (shape.rowid) 'rowid': true,
-            'rows': rows,
-          });
         }
       } finally {
         if (!db.autocommit) db.execute('COMMIT');
       }
       return {'takenAt': takenAt, 'tables': tables};
     });
+  }
+
+  /// One table of a snapshot, in at most [room] bytes of JSON.
+  Map<String, Object?> _snapshotTable(_Entity e, int room) {
+    var bytes = 0;
+    final ({List<String> key, bool rowid, List<String> columns}) shape;
+    try {
+      shape = _keyOf(e.name);
+    } on DriftDeckError catch (err) {
+      return {'name': e.name, 'error': err.toJson()};
+    }
+    final count = _count(e.name);
+    if (count > maxSnapshotRowsPerTable) {
+      return {
+        'name': e.name,
+        'rowCount': count,
+        'error': DriftDeckError(
+          ErrorCode.tooLarge,
+          'Too large to diff: more than $maxSnapshotRowsPerTable rows '
+          'in ${e.name}',
+        ).toJson(),
+      };
+    }
+    final select = [
+      ...shape.key.map(quoteIdent),
+      ...shape.columns.map(quoteIdent),
+    ].join(', ');
+    final rows = <Object?>[];
+    final keyCount = shape.key.length;
+    final stmt = db.prepare('SELECT $select FROM main.${quoteIdent(e.name)}');
+    try {
+      final cursor = stmt.selectCursor();
+      while (cursor.moveNext()) {
+        final values = cursor.current.values;
+        final entry = [
+          _keyJson(values.sublist(0, keyCount)),
+          [for (final v in values.skip(keyCount)) cellHash(v)],
+        ];
+        bytes += jsonSize(entry) + 1;
+        if (bytes > room) {
+          throw const DriftDeckError(
+            ErrorCode.tooLarge,
+            'Too large to diff: the snapshot is over 8 MB',
+          );
+        }
+        rows.add(entry);
+      }
+    } finally {
+      stmt.close();
+    }
+    return {
+      'name': e.name,
+      'columns': shape.columns,
+      'key': shape.key,
+      if (shape.rowid) 'rowid': true,
+      'rows': rows,
+    };
   }
 
   /// Row values of [table] for the given keys, read by key (keyset).

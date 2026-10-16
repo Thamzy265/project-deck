@@ -193,6 +193,28 @@ void main() {
     });
   });
 
+  test('schema: an unusable view gets its own error entry', () {
+    app.createFunction(
+      functionName: 'regexp',
+      argumentCount: const AllowedArgumentCount(2),
+      function: (args) => true,
+    );
+    app.execute("CREATE VIEW c AS SELECT * FROM orders WHERE item REGEXP 'C'");
+    final tables = (ops.schema()['tables']! as List)
+        .cast<Map<String, Object?>>();
+    final c = tables.firstWhere((t) => t['name'] == 'c');
+    expect(c['kind'], 'view');
+    expect(c['columns'], isEmpty);
+    expect(c['error'], {
+      'code': ErrorCode.unsupported,
+      'message': contains('no such function: REGEXP'),
+    });
+    expect(
+      tables.firstWhere((t) => t['name'] == 'orders').containsKey('error'),
+      isFalse,
+    );
+  });
+
   group('connection check', () {
     // Defence in depth behind the guards (FD-1): if anything ever changes
     // the read connection itself, the next answer is internal and the

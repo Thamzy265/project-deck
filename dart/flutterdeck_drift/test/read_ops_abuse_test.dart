@@ -142,50 +142,39 @@ void main() {
     });
   });
 
-  test(
-    'FD-4: a wrong number of parameters is a bad request, not internal',
-    () {
-      expect(() => q('SELECT ?'), refusedWith(ErrorCode.badRequest));
-      expect(() => q('SELECT ?', [1, 2]), refusedWith(ErrorCode.badRequest));
-    },
-  );
+  test('FD-4: a wrong number of parameters is a bad request, not internal', () {
+    expect(() => q('SELECT ?'), refusedWith(ErrorCode.badRequest));
+    expect(() => q('SELECT ?', [1, 2]), refusedWith(ErrorCode.badRequest));
+  });
 
   group('FD-5: schema survives one object the read connection cannot use', () {
-    test(
-      'a view that uses a Drift function (REGEXP)',
-      () {
-        app.createFunction(
-          functionName: 'regexp',
-          argumentCount: const AllowedArgumentCount(2),
-          function: (args) => true,
-        );
-        app.execute(
-          "CREATE VIEW coffee AS SELECT * FROM orders WHERE item REGEXP 'C'",
-        );
-        final tables = ops.schema()['tables']! as List;
-        expect(tables.map((t) => (t as Map)['name']), contains('orders'));
-      },
-      skip: 'FD-5 (known bug): "no such function: REGEXP" fails all of schema',
-    );
+    test('a view that uses a Drift function (REGEXP)', () {
+      app.createFunction(
+        functionName: 'regexp',
+        argumentCount: const AllowedArgumentCount(2),
+        function: (args) => true,
+      );
+      app.execute(
+        "CREATE VIEW coffee AS SELECT * FROM orders WHERE item REGEXP 'C'",
+      );
+      final tables = ops.schema()['tables']! as List;
+      expect(tables.map((t) => (t as Map)['name']), contains('orders'));
+    });
 
-    test(
-      'a virtual table whose module the read connection lacks',
-      () {
-        app.execute('''
+    test('a virtual table whose module the read connection lacks', () {
+      app.execute('''
           PRAGMA writable_schema = ON;
           INSERT INTO sqlite_schema VALUES ('table', 'vt', 'vt', 0,
             'CREATE VIRTUAL TABLE vt USING nosuchmod()');
           PRAGMA writable_schema = OFF;
         ''');
-        ops.close();
-        ops = ReadOps.open(path);
-        final tables = ops.schema()['tables']! as List;
-        expect(tables.map((t) => (t as Map)['name']), contains('orders'));
-        final snap = ops.snapshot()['tables']! as List;
-        expect(snap.map((t) => (t as Map)['name']), contains('orders'));
-      },
-      skip: 'FD-5 (known bug): "no such module" fails schema and snapshot',
-    );
+      ops.close();
+      ops = ReadOps.open(path);
+      final tables = ops.schema()['tables']! as List;
+      expect(tables.map((t) => (t as Map)['name']), contains('orders'));
+      final snap = ops.snapshot()['tables']! as List;
+      expect(snap.map((t) => (t as Map)['name']), contains('orders'));
+    });
   });
 
   test(
