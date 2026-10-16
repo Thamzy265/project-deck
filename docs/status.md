@@ -2,6 +2,13 @@
 
 Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
 
+## 2026-10-16 — M3 plan — design review and PM decision on writes
+
+- Changed: the reviewer blocked the M3 design (S1 High: a dashboard click can't prove a human approved a write; S2 High: runaway reads can freeze or kill the app; D1 High: 5 s MCP timeout vs 60 s confirm; S7: no command timeouts; plus Mediums on hidden columns, functions, locks, iOS paths, WAL and diff). The design note's new section "Design details after the design review" fixes them; UI spec, ADRs, deck, CLAUDE.md and PLAN.md updated.
+- Decisions: PM, 16 Oct 2026, chose "Claude never writes (Recommended)" for how Claude's database writes work in M3.
+- Risk accepted by PM (2026-10-16): accepted: with `db.allowWrites` on, Claude driving the Browser pane could still click an edit button in the Database tab — scope: M3 dashboard editing (design S1) — expiry/review: before the M5 release — PM said: "Claude never writes (Recommended)", whose description read "Remaining risk, written down: with writes on, Claude driving the Browser pane could still click an edit button."
+- Blockers: Developer none · Tester none · Reviewer none (re-review of the design) · QA none · Marketer none · Lead none.
+
 ## 2026-10-16 — M3 plan — approved by PM
 
 - Changed: M3 plan of record: [design note](design/m3-drift-inspector.md), [UI spec](ui/m3-database-tab.md), [deck](slides/m3-drift-inspector.html), [ADR 0004](adr/0004-app-extensions-in-core.md), [ADR 0005](adr/0005-read-only-sql-gate.md). Size: large. Research on 16 Oct 2026 corrected the plan's Android path (`app_flutter/`) and the snapshot WAL handling.

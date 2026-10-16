@@ -385,7 +385,6 @@
               <h3>Deferred (Later lines)</h3>
               <ul>
                 <li>Live mode with no package, trigger: 5 feedback requests</li>
-                <li>iOS simulator snapshots, trigger: 3 requests</li>
                 <li>Room / Isar / Hive, trigger: 3 requests for one</li>
               </ul>
             </div>
@@ -453,7 +452,7 @@
                   <td>Sent to Claude only when Claude asks, masked, capped, hidden columns (D2)</td>
                 </tr>
                 <tr>
-                  <td>Android snapshot copy</td>
+                  <td>Snapshot copy (Android, iOS simulator)</td>
                   <td>Look without the package</td>
                   <td>Memory only, never on disk</td>
                   <td>Read-only</td>
@@ -467,11 +466,11 @@
               </tbody>
             </table>
           </div>
-          <div class="card warn" style="margin-top: 14px">
-            <h3>Needs PM</h3>
+          <div class="card ok" style="margin-top: 14px">
+            <h3>Decided by PM, 16 Oct 2026</h3>
             <p>
-              How much Claude sees (D2) and its basis · DPIA screening: no triggers for FlutterDeck
-              itself
+              Claude sees rows masked and capped, with columns you can hide; treated as your own
+              processing · DPIA screening: no triggers for FlutterDeck itself
             </p>
           </div>
         </div>
@@ -503,7 +502,7 @@
               <h3>Mitigations</h3>
               <ul>
                 <li>Real SQLite checks every query in FlutterDeck, and the app checks again</li>
-                <li>Writes off by default; each write asks you</li>
+                <li>Claude never writes; your own edits need writes switched on and a confirm</li>
                 <li>Text-only display, capped output</li>
                 <li>The package does nothing outside debug builds</li>
               </ul>
@@ -581,41 +580,35 @@
         </div>
       </section>
 
-      <section class="slide" aria-label="Decisions needed">
+      <section class="slide" aria-label="Decisions">
         <div class="inner">
-          <p class="kicker">Decisions needed</p>
-          <h2>4 decisions for you</h2>
+          <p class="kicker">Decisions</p>
+          <h2>Your decisions, 16 Oct 2026</h2>
           <div class="grid g2">
-            <div class="card warn">
+            <div class="card ok">
               <h3>1. Live without our package</h3>
-              <p>Options: A also use Drift’s internal hook, or B our package only</p>
-              <p><b>Recommendation:</b> B, two guards protect the data; revisit after feedback</p>
+              <p>Our package only; revisit after demo feedback.</p>
             </div>
-            <div class="card warn">
+            <div class="card ok">
               <h3>2. What Claude sees</h3>
-              <p>
-                Options: A rows, masked and capped, with columns you can hide; or B schema only
-                until you opt in per project
-              </p>
-              <p><b>Recommendation:</b> A, so Claude can answer “how many orders are pending?”</p>
+              <p>Rows, masked and capped, with columns you can hide.</p>
             </div>
-            <div class="card warn">
+            <div class="card ok">
               <h3>3. Can Claude change data?</h3>
               <p>
-                Options: A only if writes are on, and every write waits for your click; or B never
-                in M3
+                No. Claude never writes in M3 (changed after the design review). You edit in the
+                Database tab with writes switched on.
               </p>
-              <p><b>Recommendation:</b> A, off by default and always asks you</p>
             </div>
-            <div class="card warn">
-              <h3>4. iOS simulator snapshots</h3>
-              <p>Options: A Android only (iOS has live view); or B add the xcrun command now</p>
-              <p><b>Recommendation:</b> A, no new command to trust</p>
+            <div class="card ok">
+              <h3>4. Snapshots</h3>
+              <p>Android and the iOS simulator (xcrun simctl allowed).</p>
             </div>
           </div>
           <p class="small">
-            Assumed yes unless you say otherwise: the package keeps the working name
-            flutterdeck_drift (free on pub.dev) until the name decision before M5.
+            Accepted risk (16 Oct 2026): with writes on, Claude driving the Browser pane could click
+            an edit. The package keeps the working name flutterdeck_drift until the name decision
+            before M5.
           </p>
         </div>
       </section>

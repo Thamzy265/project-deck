@@ -43,18 +43,18 @@ Facts checked on 16 Oct 2026 (drift 2.35.2, drift_flutter 0.3.1, package:sqlite3
   - Read-only gate in the daemon for every query from the dashboard or Claude, before it reaches either backend.
   - Database tab (UI spec), saved queries in `.flutterdeck/queries.json`, export CSV/JSON.
   - Snapshots and diffs: `db_snapshot` stores the current rows of each table (memory only), `db_diff` returns rows added, changed and removed per table.
-  - MCP tools `db_list`, `db_schema`, `db_query`, `db_execute`, `db_snapshot`, `db_diff`, with the M2 output rules (masking, 20 kB cap, truncation said, untrusted data).
+  - MCP tools `db_list`, `db_schema`, `db_query`, `db_snapshot`, `db_diff`, with the M2 output rules (masking, 20 kB cap, truncation said, untrusted data). No `db_execute` for Claude (PM decision, 16 Oct 2026); Claude may suggest SQL for the user to run.
   - Sample app: a Drift `orders` table (item, status, created) with an "Add order" button and a status toggle.
 - Non-functional: a new row shows in an open table within 1 s; a 10,000-row table pages smoothly at 420 px; queries time out after 5 s (app) and results cap at 500 rows / 20 kB for Claude and 1,000 rows per page in the dashboard; no native Node modules.
 - Non-goals: Room, Core Data, Hive, Isar (adapters later); schema migrations; editing the schema; snapshots from physical iOS devices; publishing to pub.dev and npm (M5).
 
 ## Top 3 qualities
 
-| Quality     | Target                                                                                                               | How we check it                                                                                                                                                                                                                  |
-| ----------- | -------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Data safety | No query from Claude or the dashboard can change data unless writes are switched on and the user confirms each write | Guard tests with every known write shape (CTE writes, `RETURNING`, `ATTACH`, `PRAGMA x=y`, `VACUUM INTO`, multiple statements, `writable_schema`), in the daemon and in the Dart package; reviewer security review; QA abuse run |
-| Privacy     | Claude sees only what it asks for, masked and capped; nothing is stored on disk except saved queries                 | MCP output tests; QA masking table with personal data in rows                                                                                                                                                                    |
-| Live feel   | A new row appears and flashes within 1 s                                                                             | Playwright with the fake backend; QA timing on the emulator                                                                                                                                                                      |
+| Quality     | Target                                                                                                                                                                      | How we check it                                                                                                                                                                                                                  |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Data safety | No query from Claude can change data; no dashboard query can change data unless writes are switched on and the user confirms the edit; no query can freeze or crash the app | Guard tests with every known write shape (CTE writes, `RETURNING`, `ATTACH`, `PRAGMA x=y`, `VACUUM INTO`, multiple statements, `writable_schema`), in the daemon and in the Dart package; reviewer security review; QA abuse run |
+| Privacy     | Claude sees only what it asks for, masked and capped; nothing is stored on disk except saved queries                                                                        | MCP output tests; QA masking table with personal data in rows                                                                                                                                                                    |
+| Live feel   | A new row appears and flashes within 1 s                                                                                                                                    | Playwright with the fake backend; QA timing on the emulator                                                                                                                                                                      |
 
 ## Estimate
 
@@ -107,7 +107,7 @@ Snapshot mode needs a command to read the app's files: `adb` on Android (already
 
 ## Decision
 
-PM decisions, 16 Oct 2026: D1 B (our package only; revisit after feedback), D2 A (rows reach Claude masked, capped, with hidden columns; the developer's own processing), D3 A (writes only when switched on, and every write waits for the user's click), D4 B (snapshots also on the iOS simulator, with `xcrun simctl` as a new fixed command). ADR 0004 and ADR 0005 are accepted with the plan.
+PM decisions, 16 Oct 2026: D1 B (our package only; revisit after feedback), D2 A (rows reach Claude masked, capped, with hidden columns; the developer's own processing), D3 A, then changed after the design review (16 Oct 2026) to "Claude never writes": no `db_execute` for Claude in M3, because a dashboard click can't prove a human approved a write (Claude can click in the Browser pane, or use the local token itself); only the user edits data in the Database tab, and only with `db.allowWrites` on, D4 B (snapshots also on the iOS simulator, with `xcrun simctl` as a new fixed command). ADR 0004 and ADR 0005 are accepted with the plan.
 
 **iOS simulator snapshots (D4 B).** The daemon may run `/usr/bin/xcrun simctl get_app_container <udid> <bundleId> data` (macOS only, fixed arguments; `udid` from `xcrun simctl list devices booted -j` parsed as JSON and validated `^[0-9A-F-]{36}$`; `bundleId` from config or the running app, validated like an applicationId). The container is a folder on the Mac, so the database is read straight from `<container>/Documents/<name>.sqlite` (path_provider's documents folder on iOS) and `Library/Application Support/`, with core's link-refusing reader, the same file-name pattern, size cap and header check; WAL merged as on Android. No copy command is needed. Only booted simulators; never a physical device.
 
@@ -138,12 +138,57 @@ PM decisions, 16 Oct 2026: D1 B (our package only; revisit after feedback), D2 A
 
 - Database tab first (per the plan), Logs, Activity. Details in the UI spec.
 
+## Design details after the design review (16 Oct 2026)
+
+The review (PR #32) found gaps in how the decisions were built. These rules replace anything above that conflicts with them.
+
+**Who can write (S1, D1).** Claude has no write tool. `db_execute` exists only as a dashboard route for the user's own edits: it accepts only the dashboard cookie with an exact localhost Origin, never the `runtime.json` token, and only when `db.allowWrites` is on. Each edit is bound to a server-made request id and the sha256 of its SQL and parameters, single use, refused after a hot restart. Residual risk (accepted by the PM with the "Claude never writes" option, 16 Oct 2026): with writes on, Claude driving the Browser pane could click an edit; the "Writes on" pill and config default off limit this.
+
+**Runaway reads (S2).** No read may freeze or crash the app or the daemon:
+
+- In the app, reads run in a dedicated background isolate with its own read-only connection; the isolate is killed when a query passes 5 s (a Dart timer can't stop synchronous FFI, so isolation is the stop). `SQLITE_LIMIT_LENGTH` on that connection is 16 MB; replies cap at 5,000 rows and 8 MB.
+- In the daemon, sql.js queries (snapshot backend) run in a terminable worker (core's budgeted worker) with the same limits.
+- Guard and backend tests include `WITH RECURSIVE` without end, `randomblob(1e9)`, `zeroblob`, and `printf('%.*c', 1e9, 'x')`.
+
+**Locks (D2, S4).** Reads step all rows into memory, then reset at once (no streaming while holding a lock), and the read connection checks autocommit after every query and rolls back if needed. Transaction-control statements (`BEGIN`, `COMMIT`, `ROLLBACK`, `SAVEPOINT`, `RELEASE`) are refused by both layers. Tests: the app writes while an inspector read runs, in rollback-journal and WAL modes. The database path comes from `PRAGMA database_list` on the app's connection; in-memory and encrypted (SQLCipher) databases report "unsupported" with a message.
+
+**Functions (S5).** The gate allows only SQLite's built-in scalar, aggregate, window, date/time and JSON functions (an allowlist from the SQLite docs). App-defined functions are refused unless the user lists them in `db.allowFunctions`. The read connection in the app registers none of the app's functions.
+
+**Hidden columns (S3, P2, S8).** For queries from Claude, the gate's authorizer refuses any statement that reads a hidden (table, column), which covers aliases, expressions, WHERE clauses, joins, views and subqueries; `SELECT *` over a hidden column is refused with a hint. Reads of `sqlite_dbpage`, `dbstat` and `pragma_*` table-valued functions outside the pragma allowlist are refused (they expose paths and raw pages). `db_diff` drops hidden columns. Claude gets blobs only as "BLOB n bytes"; numbers that look like phone or card numbers are masked like text; JSON text is masked after it is read as text.
+
+**Schema in the gate (D3).** The gate loads only `CREATE TABLE/INDEX/VIEW/TRIGGER/VIRTUAL TABLE` statements (checked with an authorizer while loading); a virtual table whose module is missing in wasm becomes a plain table with the same columns. The schema reloads after a hot restart or a schema change event. Wasm init has a 10 s timeout; each check has a 1 s timeout.
+
+**Extensions (D7).** `connector-dart` calls only methods under prefixes the registry allows (`ext.flutterdeck.`), never `ext.flutter.*` or `ext.drift.*`. Events are taken only from the isolate that registered the extension, validated with zod, and coalesced to at most one re-query per table per 250 ms. `register` is idempotent; the isolate comes from `ServiceExtensionAdded`.
+
+**Commands and timeouts (S7, S9, S6).** Every spawned command has a timeout and is killed on expiry: `adb … ls` 10 s, `adb … cat` 60 s, `xcrun simctl list` 10 s, `get_app_container` 10 s. Snapshot file names match `^[A-Za-z0-9_][A-Za-z0-9._-]*\.(sqlite|db)$` and are passed after `--` (the device shell joins `exec-out` arguments into one command line, so only fixed, validated text goes in). On the iOS simulator every path part is checked with `lstat` (no link anywhere), and the file's realpath must be inside the container's realpath. With more than one booted simulator that has the app, the user picks; FlutterDeck never guesses. The bundle id comes from `.flutterdeck/config.json` (`init` reads it from `ios/Runner.xcodeproj` when present) and matches `^[A-Za-z0-9][A-Za-z0-9.-]*$`. The iOS option is hidden on Linux and Windows.
+
+**Snapshot consistency (D4).** Read the database header change counter (offset 24) and the WAL salt before and after the copy; retry up to 3 times if they differ, then "The app is writing; try Refresh". Apply only WAL frames up to the last valid commit frame, check salts and checksums, refuse page numbers beyond the header's page count plus committed growth, and count database plus WAL in the 50 MB cap.
+
+**Diff (D5).** Live snapshots for diff come from one extension call that reads each table inside one read transaction, paged by primary key (keyset, not OFFSET). Values are hashed with their SQLite type, composite keys are JSON arrays, rowid-keyed tables show "matched by row id", and views, `sqlite_%` and FTS shadow tables are skipped.
+
+**Caps per caller (D6).**
+
+| Caller              | Rows                              | Bytes          | Notes                              |
+| ------------------- | --------------------------------- | -------------- | ---------------------------------- |
+| Claude (`db_query`) | 100 by default, 500 max           | 20 kB          | masked; truncation said            |
+| Claude (`db_diff`)  | 50 rows per table, 20 tables      | 20 kB          | masked; hidden columns dropped     |
+| Dashboard page      | 100 per page, 1,000 max per query | 8 MB per reply | paged by primary key               |
+| Export              | 100,000                           | 50 MB          | keyset paging, 5,000 rows per call |
+| Diff snapshot       | 10,000 per table                  | 50 MB total    | the rest "too large to diff"       |
+
+**Confirm and write states in the UI.** Only the user's own edits use the confirm dialog. If the daemon is lost while the dialog is open, it shows "Lost connection; the change did not run". Other dashboard tabs close the dialog when one tab answers.
+
+**CSV export (U3).** Every field is quoted; text cells that start with `=`, `+`, `-`, `@`, tab or carriage return get a leading `'`; numbers stay numbers.
+
 ## Failure plan
 
 - Extension calls: 5 s timeout; app gone → "The app stopped"; extension missing → "Add flutterdeck_drift (see setup)" with the snippet; protocol mismatch → "Update flutterdeck_drift".
 - Snapshot: adb missing / not debuggable / file too big / journal busy → clear message, nothing partial shown.
 - Gate refusal → message with the reason; nothing reaches the app.
-- Write confirm timeout → "Not allowed (no answer in 60 s)".
+- Edit confirm timeout → "Not run: no answer in 60 s".
+- Each spawned command (adb, xcrun) → its timeout, then "Couldn't read the database: <command> didn't answer".
+- A read over 5 s → the read isolate is killed and "That query took too long and was stopped".
+- Gate init or check timeout → "Couldn't check the query" and nothing runs.
 - Live events lost (reconnect) → re-query open tables on reconnect.
 
 ## Observability
@@ -157,12 +202,19 @@ PM decisions, 16 Oct 2026: D1 B (our package only; revisit after feedback), D2 A
 - Abuse cases:
   - As Claude (prompt-injected by a row value) I run `DELETE …` through `db_query` — mitigation: daemon gate + read-only connection + `isReadOnly` in the app.
   - As Claude I run `WITH x AS (DELETE … RETURNING *) SELECT …`, `ATTACH 'file' AS x`, `PRAGMA writable_schema=1`, `VACUUM INTO`, `SELECT 1; DROP TABLE` — mitigation: gate rules and tests for each.
-  - As Claude I call `db_execute` to destroy data — mitigation: off by default; per-write confirm in the dashboard (D3 A).
+  - As Claude I change data — mitigation: Claude has no write tool (PM decision); the dashboard's write route takes only the cookie, never the token.
+  - As Claude I click an edit in the Browser pane — accepted residual risk (PM, 16 Oct 2026); writes are off by default and the "Writes on" pill shows when they are on.
+  - As Claude I run a query that never ends or allocates 1 GB — mitigation: killable read isolate in the app, killable worker in the daemon, length and size limits.
+  - As Claude I read a hidden column through an alias, expression, view or join — mitigation: the gate's authorizer sees base columns.
+  - As Claude I call an app-defined function with side effects — mitigation: function allowlist; the read connection registers no app functions.
+  - As Claude I start a transaction to lock the app's writes — mitigation: transaction control refused by both layers; autocommit check.
+  - As a simulator app I put a link inside my container to a host folder — mitigation: every path part checked with lstat; realpath inside the container.
+  - As a crafted WAL I make the daemon allocate huge memory — mitigation: committed frames only, page bounds, size cap.
   - As a row value I contain HTML or a script — mitigation: text-only rendering (M2 rules), CSV export escapes formulas (`=`, `+`, `-`, `@` prefixed with `'`).
   - As a row value I tell Claude to do something — mitigation: tool descriptions say rows are untrusted data.
   - As a huge table I exhaust memory — mitigation: row caps, snapshot and diff caps, 50 MB snapshot limit.
   - As a crafted database file (snapshot) I exploit the parser — mitigation: sql.js in wasm, read-only, header check, size cap.
-  - As a cloned repo I set `db.allowWrites: true` and saved queries that delete — mitigation: allowWrites still needs a per-write confirm; saved queries run through the same gate; the dashboard shows "Writes are on (from .flutterdeck/config.json)".
+  - As a cloned repo I set `db.allowWrites: true`, `db.allowFunctions` and saved queries that delete — mitigation: each edit still needs the user's confirm; saved queries run through the read gate; the dashboard shows "Writes are on (from .flutterdeck/config.json)" and lists allowed functions.
   - As a release build I expose my database — mitigation: `kDebugMode` only; test that nothing registers in release and profile.
   - As a crafted simulator list or bundle id I make the daemon run another command or read outside the container — mitigation: `/usr/bin/xcrun` absolute path, fixed arguments, `simctl list` parsed as JSON, UDID and bundle id patterns, container path checked to be under `~/Library/Developer/CoreSimulator/Devices/`, files read without following links.
   - As another process on the device I read the copied snapshot — mitigation: the copy stays in daemon memory only.
@@ -193,7 +245,7 @@ Batches, each through developer → tester → reviewer → QA → merge:
 2. `feat/flutterdeck-drift`: `dart/flutterdeck_drift` + Drift in `examples/sample_app` (orders), Dart tests, CI job for the package; recorded extension fixtures.
 3. `feat/db-backends`: `db-drift`, `packages/android-adb` (moved from logs-android), `db-sqlite` with WAL merge for Android and the iOS simulator; daemon `/api/db/*` routes with the gate; snapshots and diff in the daemon.
 4. `feat/dashboard-db`: Database tab — browse, schema diagram, SQL editor, saved queries, live flash, diff view, export, guarded editing.
-5. `feat/mcp-db`: the six MCP tools with masking, hidden columns, caps and the write confirm flow.
+5. `feat/mcp-db`: the five MCP tools with masking, hidden columns and caps (no write tool).
 6. M3 acceptance (QA + PM check) and the validation checkpoint drafts (demo script, install guide, post text; the PM publishes).
 
 Rollback: revert the batch's merge commit; `flutterdeck_drift` is a path dependency of the sample app only until M5.
