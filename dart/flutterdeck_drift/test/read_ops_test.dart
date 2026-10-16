@@ -222,6 +222,39 @@ void main() {
     expect(keyOf('f'), ['code']);
   });
 
+  group('schema: row counts that take too long (CR-5)', () {
+    tearDown(() {
+      ReadOps.countBudget = const Duration(seconds: 2);
+      ReadOps.countCap = 1000000;
+    });
+
+    test('after the count budget, tables keep their columns but no count', () {
+      ReadOps.countBudget = Duration.zero;
+      final tables = (ops.schema()['tables']! as List)
+          .cast<Map<String, Object?>>();
+      final orders = tables.firstWhere((t) => t['name'] == 'orders');
+      expect(orders.containsKey('rowCount'), isFalse);
+      expect(orders['columns'], hasLength(4));
+      expect(orders['error'], {
+        'code': ErrorCode.timeout,
+        'message': contains('not counted'),
+      });
+    });
+
+    test('a table over the count cap says so instead of scanning on', () {
+      ReadOps.countCap = 1;
+      final orders = (ops.schema()['tables']! as List)
+          .cast<Map<String, Object?>>()
+          .firstWhere((t) => t['name'] == 'orders');
+      expect(orders.containsKey('rowCount'), isFalse);
+      expect(orders['error'], {
+        'code': ErrorCode.tooLarge,
+        'message': contains('more than 1 rows'),
+      });
+      expect(orders['columns'], hasLength(4));
+    });
+  });
+
   test('schema: an unusable view gets its own error entry', () {
     app.createFunction(
       functionName: 'regexp',

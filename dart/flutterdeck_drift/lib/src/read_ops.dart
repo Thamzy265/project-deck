@@ -270,6 +270,7 @@ final class ReadOps {
   Map<String, Object?> schema() {
     return guarded(() {
       final tables = <Map<String, Object?>>[];
+      final counting = Stopwatch()..start();
       for (final e in _entities()) {
         tables.add(
           _unlessUnusable(e, () {
@@ -324,14 +325,18 @@ final class ReadOps {
                   ],
                 },
             ];
+            final count = e.kind == 'table'
+                ? _boundedCount(e.name, counting)
+                : null;
             return {
               'name': e.name,
               'kind': e.kind,
               'sql': ?e.sql,
               'columns': columns,
-              if (e.kind == 'table') 'rowCount': _count(e.name),
+              'rowCount': ?count?.rows,
               'foreignKeys': foreignKeys,
               'indexes': indexes,
+              'error': ?count?.error?.toJson(),
             };
           }),
         );
@@ -377,6 +382,48 @@ final class ReadOps {
     if ((column['pk'] as int) == 0) return false;
     if (withoutRowid) return true;
     return pkCount == 1 && '${column['type']}'.toUpperCase() == 'INTEGER';
+  }
+
+  /// Time all row counts of one schema call may take together (CR-5).
+  static Duration countBudget = const Duration(seconds: 2);
+
+  /// Most rows one count scans; a bigger table reports no count.
+  static int countCap = 1000000;
+
+  /// Counts [table] unless the schema call has spent [countBudget] already,
+  /// and scans at most [countCap] + 1 rows, so one huge table can't use up
+  /// the whole read budget. A count it can't give comes back as an error
+  /// for that table only, with its columns intact.
+  ({int? rows, DriftDeckError? error}) _boundedCount(
+    String table,
+    Stopwatch spent,
+  ) {
+    if (spent.elapsed >= countBudget) {
+      return (
+        rows: null,
+        error: const DriftDeckError(
+          ErrorCode.timeout,
+          'Rows not counted: counting the tables took too long',
+        ),
+      );
+    }
+    final n =
+        db.select(
+              'SELECT count(*) AS n FROM (SELECT 1 FROM '
+              'main.${quoteIdent(table)} LIMIT ?)',
+              [countCap + 1],
+            ).first['n']
+            as int;
+    if (n > countCap) {
+      return (
+        rows: null,
+        error: DriftDeckError(
+          ErrorCode.tooLarge,
+          'Rows not counted: more than $countCap rows',
+        ),
+      );
+    }
+    return (rows: n, error: null);
   }
 
   int _count(String table) =>
