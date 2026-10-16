@@ -125,6 +125,8 @@ interface Scratch {
   trees: ReadonlyMap<number, BTree>;
   /** Table → generated column → identifiers in its expression (all folded). */
   generated: ReadonlyMap<string, ReadonlyMap<string, ReadonlySet<string>>>;
+  /** Schema statements skipped for being longer than MAX_SQL_BYTES (by design). */
+  skippedLong: number;
   /** The schema could not be accepted; every check refuses with this. */
   refusal: GuardRefusal | undefined;
 }
@@ -234,7 +236,7 @@ export class GuardEngine {
     const { db } = scratch;
     return this.withStatement(db, sql, (stmt, rc, tailIsEmpty) => {
       if (seen.denial !== undefined) return seen.denial;
-      if (rc !== SQLITE_OK) return this.prepareFailure(db);
+      if (rc !== SQLITE_OK) return this.prepareFailure(scratch);
       if (stmt === 0) return refuse('empty', 'There is no SQL statement to run.');
       if (!tailIsEmpty()) {
         return refuse('multiple-statements', 'Send only one statement at a time.');
@@ -335,11 +337,15 @@ export class GuardEngine {
     }
   }
 
-  private prepareFailure(db: Db): GuardRefusal {
-    const message = this.sqlite.capi.sqlite3_errmsg(db.pointer ?? 0);
+  private prepareFailure(scratch: Scratch): GuardRefusal {
+    const message = this.sqlite.capi.sqlite3_errmsg(scratch.db.pointer ?? 0);
     const fn = /^no such function: (.+)$/.exec(message)?.[1];
     if (fn !== undefined) return this.functionRefusal(foldName(fn));
-    return refuse('invalid-sql', `SQLite could not prepare the statement: ${message}.`);
+    const skipped =
+      scratch.skippedLong > 0 && message.startsWith('no such table')
+        ? ` The SQL gate skips schema statements longer than ${MAX_SQL_BYTES / 1000} kB (${scratch.skippedLong} in this database), so tables they create can't be queried here.`
+        : '';
+    return refuse('invalid-sql', `SQLite could not prepare the statement: ${message}.${skipped}`);
   }
 
   private functionRefusal(name: string): GuardRefusal {
@@ -544,6 +550,7 @@ export class GuardEngine {
       shadowTables: new Set(),
       trees: new Map(),
       generated: new Map(),
+      skippedLong: 0,
       refusal: undefined,
     };
     const bytes = schemaSql.reduce((n, s) => n + Buffer.byteLength(s, 'utf8'), 0);
@@ -554,6 +561,11 @@ export class GuardEngine {
       );
       return scratch;
     }
+    // Statements over the SQL length limit can't be prepared, so they never load. That is
+    // intended (lead decision 16 Oct 2026); refusals that need them say so.
+    scratch.skippedLong = schemaSql.filter(
+      (s) => Buffer.byteLength(s, 'utf8') > MAX_SQL_BYTES,
+    ).length;
     const pageModule = this.createAll(scratch, schemaSql);
     if (pageModule !== undefined) {
       scratch.refusal = refuse(

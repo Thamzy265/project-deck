@@ -677,6 +677,16 @@ describe('schema loading: hostile statements', () => {
     expect(read(schema, 'SELECT id, x0 FROM r32')).toMatchObject({ ok: true });
   });
 
+  it('skips a schema statement over 100 kB and says so when a query needs it', () => {
+    const head = 'CREATE TABLE big(a) -- ';
+    const long = `${head}${'x'.repeat(MAX_SQL_BYTES + 1 - head.length)}`;
+    const schema = ['CREATE TABLE small(a)', long];
+    const result = read(schema, 'SELECT a FROM big');
+    expect(result).toMatchObject({ ok: false, code: 'invalid-sql' });
+    expect(result.ok ? '' : result.reason).toMatch(/longer than 100 kB/);
+    expect(read(schema, 'SELECT a FROM small')).toMatchObject({ ok: true });
+  });
+
   it('accepts a schema of exactly 4 MiB and refuses one byte more', () => {
     const statements = 2000;
     const per = Math.floor(MAX_SCHEMA_BYTES / statements);
