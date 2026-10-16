@@ -1,6 +1,6 @@
 # M3 — Drift inspector — design note
 
-Date: 2026-10-16 — Size: large — new Dart package inside the user's app, new trust boundary (the app's database), personal data of the app's end users, writes to a database, new commands (`adb run-as`) — Phase: MVP — Status: draft, waiting for PM
+Date: 2026-10-16 — Size: large — new Dart package inside the user's app, new trust boundary (the app's database), personal data of the app's end users, writes to a database, new commands (`adb run-as`) — Phase: MVP — Status: approved by PM 16 Oct 2026
 
 ## Context
 
@@ -39,14 +39,14 @@ Facts checked on 16 Oct 2026 (drift 2.35.2, drift_flutter 0.3.1, package:sqlite3
 - Functional:
   - `flutterdeck_drift`: `FlutterDeckDrift.register(db, name: 'app')` registers `ext.flutterdeck.drift.*` extensions in debug builds only (`kDebugMode`; nothing in profile or release): list, schema, query (read-only connection), execute (only when the daemon says writes are allowed and the user confirmed), and table-change events through `postEvent`. Several databases per app.
   - `db-drift`: `DbInspector` over those extensions, `live: true`, `watch` from the events.
-  - `db-sqlite`: `DbInspector` over a snapshot copied with `adb exec-out run-as <applicationId> cat <file>` (WAL merged, `SQLite format 3` header checked), opened read-only in sql.js; `live: false`; "Snapshot from 14:02 · Refresh" in the UI. Android, debuggable apps only.
+  - `db-sqlite`: `DbInspector` over a snapshot — on Android copied with `adb exec-out run-as <applicationId> cat <file>` (debuggable apps only), on the iOS simulator read from the app's container found with `xcrun simctl get_app_container` (D4 B) — WAL merged, `SQLite format 3` header checked, opened read-only in sql.js; `live: false`; "Snapshot from 14:02 · Refresh" in the UI.
   - Read-only gate in the daemon for every query from the dashboard or Claude, before it reaches either backend.
   - Database tab (UI spec), saved queries in `.flutterdeck/queries.json`, export CSV/JSON.
   - Snapshots and diffs: `db_snapshot` stores the current rows of each table (memory only), `db_diff` returns rows added, changed and removed per table.
   - MCP tools `db_list`, `db_schema`, `db_query`, `db_execute`, `db_snapshot`, `db_diff`, with the M2 output rules (masking, 20 kB cap, truncation said, untrusted data).
   - Sample app: a Drift `orders` table (item, status, created) with an "Add order" button and a status toggle.
 - Non-functional: a new row shows in an open table within 1 s; a 10,000-row table pages smoothly at 420 px; queries time out after 5 s (app) and results cap at 500 rows / 20 kB for Claude and 1,000 rows per page in the dashboard; no native Node modules.
-- Non-goals: Room, Core Data, Hive, Isar (adapters later); schema migrations; editing the schema; iOS snapshot (live works on iOS); publishing to pub.dev and npm (M5).
+- Non-goals: Room, Core Data, Hive, Isar (adapters later); schema migrations; editing the schema; snapshots from physical iOS devices; publishing to pub.dev and npm (M5).
 
 ## Top 3 qualities
 
@@ -107,7 +107,9 @@ Snapshot mode needs a command to read the app's files: `adb` on Android (already
 
 ## Decision
 
-Waiting for PM on D1–D4. Recommendations: D1 B, D2 A, D3 A, D4 A. ADR 0004 (app extensions in core) and ADR 0005 (read-only gate) are proposed and need no PM decision beyond approving this plan.
+PM decisions, 16 Oct 2026: D1 B (our package only; revisit after feedback), D2 A (rows reach Claude masked, capped, with hidden columns; the developer's own processing), D3 A (writes only when switched on, and every write waits for the user's click), D4 B (snapshots also on the iOS simulator, with `xcrun simctl` as a new fixed command). ADR 0004 and ADR 0005 are accepted with the plan.
+
+**iOS simulator snapshots (D4 B).** The daemon may run `/usr/bin/xcrun simctl get_app_container <udid> <bundleId> data` (macOS only, fixed arguments; `udid` from `xcrun simctl list devices booted -j` parsed as JSON and validated `^[0-9A-F-]{36}$`; `bundleId` from config or the running app, validated like an applicationId). The container is a folder on the Mac, so the database is read straight from `<container>/Documents/<name>.sqlite` (path_provider's documents folder on iOS) and `Library/Application Support/`, with core's link-refusing reader, the same file-name pattern, size cap and header check; WAL merged as on Android. No copy command is needed. Only booted simulators; never a physical device.
 
 ## Design details
 
@@ -162,6 +164,7 @@ Waiting for PM on D1–D4. Recommendations: D1 B, D2 A, D3 A, D4 A. ADR 0004 (ap
   - As a crafted database file (snapshot) I exploit the parser — mitigation: sql.js in wasm, read-only, header check, size cap.
   - As a cloned repo I set `db.allowWrites: true` and saved queries that delete — mitigation: allowWrites still needs a per-write confirm; saved queries run through the same gate; the dashboard shows "Writes are on (from .flutterdeck/config.json)".
   - As a release build I expose my database — mitigation: `kDebugMode` only; test that nothing registers in release and profile.
+  - As a crafted simulator list or bundle id I make the daemon run another command or read outside the container — mitigation: `/usr/bin/xcrun` absolute path, fixed arguments, `simctl list` parsed as JSON, UDID and bundle id patterns, container path checked to be under `~/Library/Developer/CoreSimulator/Devices/`, files read without following links.
   - As another process on the device I read the copied snapshot — mitigation: the copy stays in daemon memory only.
 
 ## Privacy
@@ -198,5 +201,4 @@ Rollback: revert the batch's merge commit; `flutterdeck_drift` is a path depende
 ## Later lines
 
 - No-setup live path on Drift's own DevTools extension (D1 B) — internal API, no in-app read-only guard — trigger: 5 or more feedback replies asking for live mode without adding a package — noted 2026-10-16 by lead
-- iOS simulator snapshots (D4 A) — needs `xcrun simctl`, a new command — trigger: 3 user requests for snapshot mode on iOS — noted 2026-10-16 by lead
 - Room / Isar / Hive inspectors — other databases — trigger: 3 user requests for one of them — noted 2026-10-16 by lead
