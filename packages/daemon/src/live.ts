@@ -9,6 +9,8 @@ export function registerLive(
   uris: ConnectorUris,
   log: (message: string, err?: unknown) => void,
 ): void {
-  registry.connectors.register(new DartConnector({ ...uris, log }));
+  registry.connectors.register(
+    new DartConnector({ ...uris, log, extensionPrefixes: () => registry.extensionPrefixes() }),
+  );
   registry.logFeeds.register(new AndroidLogFeed({ log }));
 }
