@@ -74,6 +74,14 @@ const SCHEMA_TABLES: ReadonlySet<string> = new Set(['sqlite_master', 'sqlite_sch
  * becomes a plain table of the same columns, so its code never runs in the gate.
  */
 const VTAB_MODULES: ReadonlySet<string> = new Set(['fts3', 'fts4', 'fts5', 'rtree', 'rtree_i32']);
+/** Shadow table suffixes per module (fts3_write.c, fts5_storage.c, rtree.c). */
+const SHADOW_SUFFIXES: ReadonlyMap<string, readonly string[]> = new Map([
+  ['fts3', ['_content', '_segments', '_segdir', '_docsize', '_stat']],
+  ['fts4', ['_content', '_segments', '_segdir', '_docsize', '_stat']],
+  ['fts5', ['_data', '_idx', '_content', '_docsize', '_config']],
+  ['rtree', ['_node', '_parent', '_rowid']],
+  ['rtree_i32', ['_node', '_parent', '_rowid']],
+]);
 /** Modules that read raw pages under any table name: such a schema is refused. */
 const PAGE_MODULES: ReadonlySet<string> = new Set(['dbstat', 'sqlite_dbpage']);
 
@@ -122,12 +130,15 @@ interface Scratch {
    * created it, stood a plain table in for it, or failed to create it (S1).
    */
   virtualTables: Map<string, string>;
+  /** Virtual tables the gate created with their real module (folded). */
+  createdVirtualTables: Set<string>;
   /**
-   * Tables a virtual table keeps its data in (e.g. FTS5's notes_data), folded: SQLite's
-   * own list plus every `<vtab>_<suffix>` table, since a virtual table the gate could not
-   * create leaves its shadow tables as plain ones (S1).
+   * Tables a virtual table keeps its data in, folded shadow → owner. For one the gate
+   * created: SQLite's own shadow marking plus the module's known suffixes. For a
+   * stand-in or a failed create, whose shadows load as plain tables: every
+   * `<vtab>_<suffix>` table (S1).
    */
-  shadowTables: ReadonlySet<string>;
+  shadowTables: ReadonlyMap<string, string>;
   /** FTS tables that index another table (`content=`): folded vtab → content table. */
   contentTables: Map<string, string>;
   /** Main-schema tables and indexes by root page, for the bytecode check. */
@@ -259,8 +270,8 @@ export class GuardEngine {
     for (const table of withHidden) {
       if (!scratch.virtualTables.has(table)) continue;
       tables.add(table);
-      for (const shadow of scratch.shadowTables) {
-        if (shadow.startsWith(`${table}_`)) tables.add(shadow);
+      for (const [shadow, owner] of scratch.shadowTables) {
+        if (owner === table) tables.add(shadow);
       }
     }
     return tables;
@@ -537,11 +548,18 @@ export class GuardEngine {
       );
     }
     const scratch = this.current;
-    if (scratch?.virtualTables.has(table) === true || scratch?.shadowTables.has(table) === true) {
+    if (scratch?.virtualTables.has(table) === true) {
       // FTS commands (delete-all, rebuild, rank) are INSERTs into the table itself (SG-8).
       return refuse(
         'not-an-edit',
-        `Edits change ordinary tables only; ${table} is a virtual table or part of one.`,
+        `Edits change ordinary tables only; ${table} is a virtual table.`,
+      );
+    }
+    const owner = scratch?.shadowTables.get(table);
+    if (owner !== undefined) {
+      return refuse(
+        'not-an-edit',
+        `Edits change ordinary tables only; ${table} holds the data of the virtual table ${owner}.`,
       );
     }
     seen.written.add(table);
@@ -634,7 +652,8 @@ export class GuardEngine {
       db,
       relations: new Set(),
       virtualTables: new Map(),
-      shadowTables: new Set(),
+      createdVirtualTables: new Set(),
+      shadowTables: new Map(),
       contentTables: new Map(),
       trees: new Map(),
       generated: new Map(),
@@ -667,11 +686,18 @@ export class GuardEngine {
     scratch.relations = new Set(
       names.filter((n): n is string => typeof n === 'string').map(foldName),
     );
-    const prefixes = [...scratch.virtualTables.keys()].map((v) => `${v}_`);
-    scratch.shadowTables = new Set([
-      ...shadows.filter((n): n is string => typeof n === 'string').map(foldName),
-      ...[...scratch.relations].filter((r) => prefixes.some((p) => r.startsWith(p))),
-    ]);
+    const marked = new Set(shadows.filter((n): n is string => typeof n === 'string').map(foldName));
+    const shadowTables = new Map<string, string>();
+    for (const [vtab, module] of scratch.virtualTables) {
+      const created = scratch.createdVirtualTables.has(vtab);
+      for (const relation of scratch.relations) {
+        if (!relation.startsWith(`${vtab}_`)) continue;
+        const suffix = relation.slice(vtab.length);
+        const known = SHADOW_SUFFIXES.get(module)?.includes(suffix) === true;
+        if (!created || marked.has(relation) || known) shadowTables.set(relation, vtab);
+      }
+    }
+    scratch.shadowTables = shadowTables;
     this.mapTrees(scratch);
     return scratch;
   }
@@ -828,7 +854,10 @@ export class GuardEngine {
         }
         this.policy = { kind: 'off' };
         const stepped = capi.sqlite3_step(stmt);
-        if (stepped === capi.SQLITE_DONE) return 'done';
+        if (stepped === capi.SQLITE_DONE) {
+          if (vtab !== undefined) scratch.createdVirtualTables.add(lower(vtab.name));
+          return 'done';
+        }
         const message = capi.sqlite3_errmsg(db.pointer ?? 0);
         if (vtab !== undefined && message.startsWith('no such module:')) {
           flags.standIn = true;

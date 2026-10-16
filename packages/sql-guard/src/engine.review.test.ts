@@ -230,3 +230,44 @@ describe('C2: checks against a schema loaded once by key', () => {
     small.close();
   });
 });
+
+describe('shadow tables of virtual tables the gate created', () => {
+  const schema = [
+    'CREATE VIRTUAL TABLE notes USING fts5(title, body)',
+    'CREATE TABLE notes_archive(id INTEGER PRIMARY KEY, body TEXT)',
+    'CREATE VIRTUAL TABLE places USING rtree(id, x0, x1)',
+    'CREATE TABLE places_names(id INTEGER PRIMARY KEY, name TEXT)',
+  ];
+  const hidden = [{ table: 'notes', column: 'body' }];
+
+  it('leaves an ordinary table that only shares the prefix readable and editable', () => {
+    expect(read(schema, 'SELECT body FROM notes_archive', hidden)).toMatchObject({ ok: true });
+    expect(read(schema, 'SELECT count(*) FROM notes_archive', hidden)).toMatchObject({ ok: true });
+    for (const sql of [
+      "INSERT INTO notes_archive(body) VALUES ('x')",
+      "UPDATE places_names SET name = 'y'",
+    ]) {
+      expect(engine.check(sql, { schemaSql: schema, mode: 'write' }), sql).toMatchObject({
+        ok: true,
+        kind: 'write',
+      });
+    }
+  });
+
+  it('still hides and protects the real shadow tables, naming what they belong to', () => {
+    expect(read(schema, 'SELECT * FROM notes_content', hidden)).toMatchObject({
+      ok: false,
+      code: 'hidden-column',
+    });
+    for (const [sql, owner] of [
+      ['DELETE FROM notes_data', 'notes'],
+      ['DELETE FROM places_node', 'places'],
+    ] as const) {
+      const result = engine.check(sql, { schemaSql: schema, mode: 'write' });
+      expect(result, sql).toMatchObject({ ok: false, code: 'not-an-edit' });
+      expect(result.ok ? '' : result.reason).toContain(`data of the virtual table ${owner}`);
+    }
+    const own = engine.check('DELETE FROM notes', { schemaSql: schema, mode: 'write' });
+    expect(own.ok ? '' : own.reason).toMatch(/notes is a virtual table/);
+  });
+});
