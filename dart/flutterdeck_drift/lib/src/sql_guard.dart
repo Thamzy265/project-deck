@@ -108,10 +108,20 @@ const _readPragmas = {
   'FOREIGN_KEY_LIST',
 };
 
+List<SqlToken> _skipEmptyStatements(List<SqlToken> tokens) {
+  var i = 0;
+  while (i < tokens.length && tokens[i].text == ';') {
+    i++;
+  }
+  return i == 0 ? tokens : tokens.sublist(i);
+}
+
 /// Returns why [sql] may not run as a read, or null when the token check
 /// passes. SQLite's `isReadOnly` check still follows.
 String? readGuard(String sql) {
-  var tokens = tokenize(sql);
+  // SQLite skips empty statements (a lone `;`) when it prepares, so the
+  // statement that runs is the first one after them.
+  var tokens = _skipEmptyStatements(tokenize(sql));
   if (tokens.isEmpty) return 'the query is empty';
   if (tokens.first.word == 'EXPLAIN') {
     tokens = tokens.sublist(1);
@@ -120,6 +130,7 @@ String? readGuard(String sql) {
         tokens[1].word == 'PLAN') {
       tokens = tokens.sublist(2);
     }
+    tokens = _skipEmptyStatements(tokens);
     if (tokens.isEmpty) return 'the query is empty';
   }
   final first = tokens.first.word;

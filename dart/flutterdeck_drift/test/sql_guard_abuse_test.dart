@@ -23,7 +23,6 @@ void main() {
       test(
         'refuses: ${sql.replaceAll('\n', r'\n')}',
         () => expect(readGuard(sql), isNotNull),
-        skip: 'FD-1 (known bug): a leading ";" hides the first keyword',
       );
     }
   });

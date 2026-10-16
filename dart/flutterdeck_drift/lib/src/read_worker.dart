@@ -85,6 +85,11 @@ void _readerMain(List<Object?> args) {
       // Never send exception text: it can hold row values.
       toController.send([id, null, ErrorCode.internal, 'The read failed']);
     }
+    if (ops.broken) {
+      ops.close();
+      inbox.close();
+      Isolate.exit();
+    }
   });
 }
 

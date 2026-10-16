@@ -82,9 +82,46 @@ final class ReadOps {
 
   void close() => db.close();
 
+  /// True once a statement changed the connection itself (an attached
+  /// database, a setting): the read isolate then closes it and exits, and
+  /// the next read gets a fresh connection.
+  bool broken = false;
+
   /// Runs [action], maps SQLite errors to protocol errors, and makes sure no
-  /// transaction stays open afterwards (design note D2, S4).
+  /// transaction stays open afterwards (design note D2, S4). If the
+  /// connection is no longer as [open] left it, the answer is `internal`.
   T guarded<T>(T Function() action) {
+    final result = _mapErrors(action);
+    if (broken) {
+      throw const DriftDeckError(
+        ErrorCode.internal,
+        'The read connection was reset',
+      );
+    }
+    return result;
+  }
+
+  /// Defence in depth behind the guards: only main (and temp) attached,
+  /// `query_only` and `temp_store=FILE` still set.
+  void _checkConnection() {
+    try {
+      final names = db
+          .select('PRAGMA database_list')
+          .map((r) => r['name'])
+          .toList();
+      final queryOnly = db.select('PRAGMA query_only').first.values.first;
+      final tempStore = db.select('PRAGMA temp_store').first.values.first;
+      if (names.any((n) => n != 'main' && n != 'temp') ||
+          queryOnly != 1 ||
+          tempStore != 1) {
+        broken = true;
+      }
+    } on SqliteException {
+      broken = true;
+    }
+  }
+
+  T _mapErrors<T>(T Function() action) {
     try {
       return action();
     } on SqliteException catch (e) {
@@ -103,9 +140,10 @@ final class ReadOps {
         try {
           db.execute('ROLLBACK');
         } on SqliteException {
-          // Nothing more to do: the connection is recycled after errors.
+          broken = true;
         }
       }
+      _checkConnection();
     }
   }
 

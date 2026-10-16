@@ -179,6 +179,33 @@ void main() {
     });
   });
 
+  group('connection check', () {
+    // Defence in depth behind the guards (FD-1): if anything ever changes
+    // the read connection itself, the next answer is internal and the
+    // connection is marked for a reset.
+    for (final change in [
+      "ATTACH '%dir/app.sqlite' AS x",
+      'PRAGMA query_only = 0',
+      'PRAGMA temp_store = MEMORY',
+    ]) {
+      test('notices: $change', () {
+        ops.db.execute(change.replaceAll('%dir', dir.path));
+        expect(
+          () => ops.query('SELECT 1', const [], 10),
+          refusedWith(ErrorCode.internal),
+        );
+        expect(ops.broken, isTrue);
+      });
+    }
+
+    test('a normal read leaves the connection usable', () {
+      ops.query('SELECT * FROM orders', const [], 10);
+      ops.schema();
+      ops.snapshot();
+      expect(ops.broken, isFalse);
+    });
+  });
+
   group('schema', () {
     test('lists tables and views with columns, keys and indexes', () {
       final tables = (ops.schema()['tables']! as List)

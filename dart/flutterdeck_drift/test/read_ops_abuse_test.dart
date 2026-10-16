@@ -43,40 +43,32 @@ void main() {
       ops.query(sql, params, 10);
 
   group('FD-1: an empty statement before the real one', () {
-    test(
-      'a leading ";" cannot attach another database file',
-      () {
-        expect(
-          () => q(";ATTACH '$otherPath' AS x"),
-          refusedWith(ErrorCode.notReadOnly),
-        );
-        expect(
-          () => q('SELECT * FROM x.secret'),
-          refusedWith(ErrorCode.sqlError),
-          reason: 'nothing may stay attached to the read connection',
-        );
-        final names = ops.db.select('PRAGMA database_list');
-        expect(names.map((r) => r['name']), ['main']);
-      },
-      skip: 'FD-1 (known bug): ";ATTACH" runs and stays attached',
-    );
+    test('a leading ";" cannot attach another database file', () {
+      expect(
+        () => q(";ATTACH '$otherPath' AS x"),
+        refusedWith(ErrorCode.notReadOnly),
+      );
+      expect(
+        () => q('SELECT * FROM x.secret'),
+        refusedWith(ErrorCode.sqlError),
+        reason: 'nothing may stay attached to the read connection',
+      );
+      final names = ops.db.select('PRAGMA database_list');
+      expect(names.map((r) => r['name']), ['main']);
+    });
 
-    test(
-      'a leading ";" cannot change the connection settings',
-      () {
-        for (final sql in [
-          ';PRAGMA query_only=0',
-          ';PRAGMA writable_schema=1',
-          ';PRAGMA temp_store=MEMORY',
-          ';PRAGMA cache_size=-1000000',
-        ]) {
-          expect(() => q(sql), refusedWith(ErrorCode.notReadOnly), reason: sql);
-        }
-        expect(ops.db.select('PRAGMA query_only').first.values.first, 1);
-        expect(ops.db.select('PRAGMA temp_store').first.values.first, 1);
-      },
-      skip: 'FD-1 (known bug): ";PRAGMA x=y" runs on the read connection',
-    );
+    test('a leading ";" cannot change the connection settings', () {
+      for (final sql in [
+        ';PRAGMA query_only=0',
+        ';PRAGMA writable_schema=1',
+        ';PRAGMA temp_store=MEMORY',
+        ';PRAGMA cache_size=-1000000',
+      ]) {
+        expect(() => q(sql), refusedWith(ErrorCode.notReadOnly), reason: sql);
+      }
+      expect(ops.db.select('PRAGMA query_only').first.values.first, 1);
+      expect(ops.db.select('PRAGMA temp_store').first.values.first, 1);
+    });
 
     test('lock: a leading ";" before BEGIN never leaves a transaction', () {
       // Passes today only because guarded() rolls back after every query.
