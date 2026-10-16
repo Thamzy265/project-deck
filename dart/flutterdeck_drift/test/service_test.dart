@@ -447,5 +447,17 @@ void main() {
       await ensureAppBusyTimeout(own);
       expect(await timeout(own), 250);
     });
+
+    test(
+      'a WAL app keeps no busy timeout: its writes never wait for reads',
+      () async {
+        final wal = openAppDb('${dir.path}/wal.sqlite', wal: true);
+        addTearDown(wal.close);
+        await wal.addOrder('Coffee');
+        await ensureAppBusyTimeout(wal);
+        final row = await wal.customSelect('PRAGMA busy_timeout').getSingle();
+        expect(row.data.values.single, 0);
+      },
+    );
   });
 }

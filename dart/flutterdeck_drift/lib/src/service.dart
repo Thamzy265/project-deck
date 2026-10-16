@@ -330,11 +330,18 @@ List<Object?> decodeKeys(String? json) {
   return keys;
 }
 
-/// Sets a busy timeout on the app's connection when it has none, so a write
-/// that meets an inspector read waits for it (at most [readBudget] plus
-/// [interruptGrace]) instead of failing with "database is locked". Debug
+/// Sets a busy timeout on the app's connection when it has none and is not
+/// in WAL mode, so a write that meets an inspector read waits for it (at
+/// most [readBudget] plus [interruptGrace]) instead of failing with
+/// "database is locked". In WAL mode readers never block writers, so
+/// nothing changes there. An existing timeout is never changed. Debug
 /// builds only, like everything in this package.
+///
+/// Pending a PM decision (D-1): if the PM says no, delete this function and
+/// its one call in [DriftDeckService._open], and the README note.
 Future<void> ensureAppBusyTimeout(GeneratedDatabase db) async {
+  final mode = await db.customSelect('PRAGMA journal_mode').getSingle();
+  if ('${mode.data.values.firstOrNull}'.toLowerCase() == 'wal') return;
   final row = await db.customSelect('PRAGMA busy_timeout').getSingle();
   final current = row.data.values.firstOrNull;
   if (current is int && current > 0) return;
