@@ -266,7 +266,9 @@ final class ReadOps {
           _unlessUnusable(e, () {
             final info = db.select(
               'SELECT name, type, "notnull", dflt_value, pk '
-              'FROM pragma_table_info(?)',
+              // xinfo lists generated columns too; hidden = 1 marks a
+              // virtual table's hidden columns (FD-6).
+              'FROM pragma_table_xinfo(?) WHERE hidden <> 1 ORDER BY cid',
               [e.name],
             );
             final pkCount = info.where((c) => (c['pk'] as int) > 0).length;
@@ -378,7 +380,8 @@ final class ReadOps {
   /// rowid alias when it has none.
   ({List<String> key, bool rowid, List<String> columns}) _keyOf(String table) {
     final info = db.select(
-      'SELECT name, pk FROM pragma_table_info(?) ORDER BY cid',
+      'SELECT name, pk FROM pragma_table_xinfo(?) WHERE hidden <> 1 '
+      'ORDER BY cid',
       [table],
     );
     final columns = [for (final c in info) c['name'] as String];

@@ -177,21 +177,17 @@ void main() {
     });
   });
 
-  test(
-    'FD-6: schema lists generated columns',
-    () {
-      app.execute(
-        'CREATE TABLE g (id INTEGER PRIMARY KEY, a TEXT, '
-        'b TEXT GENERATED ALWAYS AS (upper(a)) VIRTUAL)',
-      );
-      final g = (ops.schema()['tables']! as List)
-          .cast<Map<String, Object?>>()
-          .firstWhere((t) => t['name'] == 'g');
-      final names = (g['columns']! as List).map((c) => (c as Map)['name']);
-      expect(names, ['id', 'a', 'b']);
-    },
-    skip: 'FD-6 (known bug): pragma_table_info hides generated columns',
-  );
+  test('FD-6: schema lists generated columns', () {
+    app.execute(
+      'CREATE TABLE g (id INTEGER PRIMARY KEY, a TEXT, '
+      'b TEXT GENERATED ALWAYS AS (upper(a)) VIRTUAL)',
+    );
+    final g = (ops.schema()['tables']! as List)
+        .cast<Map<String, Object?>>()
+        .firstWhere((t) => t['name'] == 'g');
+    final names = (g['columns']! as List).map((c) => (c as Map)['name']);
+    expect(names, ['id', 'a', 'b']);
+  });
 
   test(
     'FD-7: snapshot keys are unique when a primary key holds NULLs',
