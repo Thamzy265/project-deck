@@ -61,6 +61,12 @@ export const BigIntCellSchema = z.object({
   value: z.string().regex(/^-?\d{1,20}$/),
 });
 
+/** A double JSON can't carry (Infinity, -Infinity, NaN), as text. */
+export const RealCellSchema = z.object({
+  type: z.literal('real'),
+  value: z.enum(['Infinity', '-Infinity', 'NaN']),
+});
+
 /** A blob is never sent whole: its size, and optionally the start of it as base64. */
 export const BlobCellSchema = z.object({
   type: z.literal('blob'),
@@ -70,12 +76,13 @@ export const BlobCellSchema = z.object({
   truncated: z.boolean().optional(),
 });
 
-/** One value in a result row, typed so blobs and big integers survive JSON. */
+/** One value in a result row, typed so blobs, big integers and odd doubles survive JSON. */
 export const CellSchema = z.union([
   z.null(),
   z.number().refine(Number.isFinite, 'Not a finite number'),
   z.string(),
   BigIntCellSchema,
+  RealCellSchema,
   BlobCellSchema,
 ]);
 export type Cell = z.infer<typeof CellSchema>;

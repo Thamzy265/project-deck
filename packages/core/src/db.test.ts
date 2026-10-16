@@ -90,6 +90,20 @@ describe('database shapes', () => {
     }
   });
 
+  it('carry non-finite doubles as text, the form flutterdeck_drift sends', () => {
+    for (const value of ['Infinity', '-Infinity', 'NaN']) {
+      const cell = { type: 'real', value };
+      expect(CellSchema.parse(cell)).toEqual(cell);
+    }
+    for (const bad of [
+      { type: 'real', value: '1.5' },
+      { type: 'real', value: 'infinity' },
+      { type: 'real', value: Number.NaN },
+    ]) {
+      expect(CellSchema.safeParse(bad).success, JSON.stringify(bad)).toBe(false);
+    }
+  });
+
   it('carry truncation and duration on a query result', () => {
     const result = { columns: ['n'], rows: [[3]], truncated: false, durationMs: 4 };
     expect(QueryResultSchema.parse(result)).toEqual(result);
