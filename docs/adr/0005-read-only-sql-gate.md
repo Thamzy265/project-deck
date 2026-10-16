@@ -56,8 +56,8 @@ The Consequences line about a stub list growing from user reports no longer appl
 - **Edits:** write mode allows only INSERT, UPDATE and DELETE on one ordinary table. Triggers and foreign key actions count towards the one table. Virtual tables and their shadow tables can't be edited.
 - **Input:** SQL that contains a NUL character is refused. Names are compared the way SQLite compares them, folding ASCII letters only.
 - **Review fixes (16 Oct 2026):**
-  - The gate records every declared virtual table, including the ones it could not create, and treats every `<vtab>_<suffix>` table as one of its shadow tables.
-  - An FTS table whose `content=` table has a hidden column is hidden whole.
+  - The gate records every declared virtual table, including the ones it could not create. For a virtual table it created, the shadow tables are SQLite's own `shadow` marking plus the module's known suffixes. For a stand-in or a failed create, every `<vtab>_<suffix>` table counts as a shadow table.
+  - While any column is hidden, an FTS table is hidden whole unless its `content=` is an ordinary table free of hidden columns. A view, a virtual table or an unknown name fails closed. Contentless tables (`content=''`) stay readable.
   - A table that stands in for a module outside the allowlist can't be read.
   - `sqlite_sequence` is refused while any column is hidden.
   - `sqlite_offset` is no longer allowed.
