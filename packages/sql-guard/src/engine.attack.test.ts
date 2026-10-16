@@ -492,8 +492,21 @@ describe('schema loading: hostile statements', () => {
 
   // SG-6: SQLite's lower() folds ASCII only, JavaScript's toLowerCase folds all of
   // Unicode, so a table named with a non-ASCII capital is never "of this database".
-  it.fails('SG-6 lets a table with a non-ASCII capital in its name be read', () => {
+  it('SG-6 lets a table with a non-ASCII capital in its name be read', () => {
     expect(read(['CREATE TABLE "Ünï"(c)'], 'SELECT c FROM "Ünï"')).toMatchObject({ ok: true });
+    // SQLite folds ASCII letters only: N matches n, but Ï never matches ï.
+    expect(read(['CREATE TABLE "Ünï"(c)'], 'SELECT c FROM "ÜNï"')).toMatchObject({ ok: true });
+    expect(read(['CREATE TABLE "Ünï"(c)'], 'SELECT c FROM "ÜNÏ"')).toMatchObject({ ok: false });
+  });
+
+  it('SG-6 matches hidden columns with non-ASCII names the way SQLite does', () => {
+    const schema = ['CREATE TABLE "Ünï"("Çode" TEXT, n TEXT)'];
+    const hidden = [{ table: 'ÜNï', column: 'ÇODE' }];
+    expect(read(schema, 'SELECT "Çode" FROM "Ünï"', hidden)).toMatchObject({
+      ok: false,
+      code: 'hidden-column',
+    });
+    expect(read(schema, 'SELECT n FROM "Ünï"', hidden)).toMatchObject({ ok: true });
   });
 
   it('turns unknown modules into plain tables and loads the built-in ones', () => {

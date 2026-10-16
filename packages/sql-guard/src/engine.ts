@@ -15,6 +15,7 @@ import {
 } from './functions.js';
 import type { GuardCheckOptions, GuardMode, GuardRefusal, GuardResult } from './types.js';
 import { MAX_SCHEMA_BYTES, MAX_SCHEMA_STATEMENTS, MAX_SQL_BYTES } from './types.js';
+import { foldName } from './names.js';
 import { virtualTableColumns } from './vtab.js';
 
 type Sqlite3 = Sqlite3Static;
@@ -108,7 +109,7 @@ const refuse = (code: GuardRefusal['code'], reason: string): GuardRefusal => ({
 });
 
 const lower = (s: string | 0 | null | undefined): string =>
-  typeof s === 'string' ? s.toLowerCase() : '';
+  typeof s === 'string' ? foldName(s) : '';
 
 export interface GuardEngineOptions {
   /** Scratch databases kept, one per distinct schema (least recently used dropped). */
@@ -159,7 +160,7 @@ export class GuardEngine {
     if (scratch.refusal !== undefined) return scratch.refusal;
     const seen = newSeen();
     const hidden = new Set(
-      (opts.hiddenColumns ?? []).map((h) => `${h.table.toLowerCase()}.${h.column.toLowerCase()}`),
+      (opts.hiddenColumns ?? []).map((h) => `${foldName(h.table)}.${foldName(h.column)}`),
     );
     this.policy = {
       kind: 'check',
@@ -268,7 +269,7 @@ export class GuardEngine {
   private prepareFailure(db: Db): GuardRefusal {
     const message = this.sqlite.capi.sqlite3_errmsg(db.pointer ?? 0);
     const fn = /^no such function: (.+)$/.exec(message)?.[1];
-    if (fn !== undefined) return this.functionRefusal(fn.toLowerCase());
+    if (fn !== undefined) return this.functionRefusal(foldName(fn));
     return refuse('invalid-sql', `SQLite could not prepare the statement: ${message}.`);
   }
 
@@ -478,10 +479,10 @@ export class GuardEngine {
       return scratch;
     }
     this.createAll(db, schemaSql);
-    const names = db.selectValues(
-      "SELECT lower(name) FROM sqlite_schema WHERE type IN ('table', 'view')",
+    const names = db.selectValues("SELECT name FROM sqlite_schema WHERE type IN ('table', 'view')");
+    scratch.relations = new Set(
+      names.filter((n): n is string => typeof n === 'string').map(foldName),
     );
-    scratch.relations = new Set(names.filter((n): n is string => typeof n === 'string'));
     return scratch;
   }
 

@@ -5,6 +5,8 @@
  * refuses them. It never decides whether a statement is allowed.
  */
 
+import { foldName } from './names.js';
+
 type Token = { kind: 'id' | 'string' | 'punct' | 'word'; text: string };
 
 function tokenize(sql: string): Token[] {
@@ -54,7 +56,7 @@ function tokenize(sql: string): Token[] {
 
 export function virtualTableColumns(sql: string): { table: string; columns: string[] } | undefined {
   const tokens = tokenize(sql);
-  const using = tokens.findIndex((t) => t.kind === 'word' && t.text.toLowerCase() === 'using');
+  const using = tokens.findIndex((t) => t.kind === 'word' && foldName(t.text) === 'using');
   if (using < 1) return undefined;
   const nameToken = tokens[using - 1];
   if (nameToken === undefined || (nameToken.kind !== 'word' && nameToken.kind !== 'id')) {
