@@ -2,6 +2,12 @@
 
 Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
 
+## 2026-10-16 — M2 closed
+
+- Changed: the PM ran the final M2 check in Claude Desktop (19 steps: init, plugin install, IDE breakpoint, dashboard next to chat, `r` / `Shift+R`, Claude's reloads, a failed reload with notification, Claude waiting and finished, breakpoint still hits, clean-up). PM said: "all passed, this looks great". M2 Accept ticked in PLAN.md.
+- Decisions: none new.
+- Blockers: Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead none.
+
 ## 2026-10-16 — M2 build complete — waiting for the PM check
 
 - Changed: PR #29 (batch 5: plugin, hooks, notifications) merged after CI 8/8. One earlier CI run failed a timing-based test on macOS; the developer measured the scrub as linear up to 4 MB and made the test robust (8836c7a). PLAN.md: the four M2 build items are ticked; M2 Accept waits for the PM.

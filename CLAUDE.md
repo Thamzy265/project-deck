@@ -205,4 +205,5 @@ Follows [GitHub flow](https://docs.github.com/en/get-started/using-github/github
 ## Current status
 
 - **M1 done** (14 Oct 2026): scaffold, `core`, daemon, `connector-dart`, `logs-android`, `.mcp.json` example, sample app, acceptance check.
-- **M2 in progress.** All four build items are merged (PRs #20, #22, #24, #26, #27, #28, #29). Plan of record: `docs/design/m2-dashboard.md`, `docs/ui/m2-dashboard.md`, ADRs 0001–0003, `docs/notes/untrusted-project-files.md`, `docs/notes/claude-code-plugin.md`. Next: the PM's final M2 check in Claude Desktop (`docs/qa/M2.md#final-pm-check`), then tick M2 Accept.
+- **M2 done** (16 Oct 2026): dashboard, MCP server with masking, CLI (`init`, `start`, `stop`, `open`, `mcp`), plugin with hooks and notifications; PM acceptance check passed.
+- **M3 next** (Drift inspector): planning.
