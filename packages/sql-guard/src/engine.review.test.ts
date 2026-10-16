@@ -271,3 +271,34 @@ describe('shadow tables of virtual tables the gate created', () => {
     expect(own.ok ? '' : own.reason).toMatch(/notes is a virtual table/);
   });
 });
+
+describe('S7: FTS content that is not an ordinary table free of hidden columns', () => {
+  const base = [
+    'CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT, secret TEXT)',
+    'CREATE VIEW vsec AS SELECT id, secret FROM users',
+  ];
+  const hidden = [{ table: 'users', column: 'secret' }];
+
+  it.each([
+    'CREATE VIRTUAL TABLE ext USING fts5(secret, content=vsec, content_rowid=id)',
+    'CREATE VIRTUAL TABLE ext USING fts4(secret, content="vsec")',
+    "CREATE VIRTUAL TABLE ext USING fts5(secret, content='nowhere')",
+    'CREATE VIRTUAL TABLE ext USING fts5(secret, content=other_fts)',
+  ])('hides %s whole while any column is hidden', (fts) => {
+    const schema = [...base, 'CREATE VIRTUAL TABLE other_fts USING fts5(secret)', fts];
+    for (const sql of [
+      'SELECT secret FROM ext',
+      "SELECT rowid FROM ext WHERE ext MATCH 'x*'",
+      'SELECT count(*) FROM ext',
+    ]) {
+      expect(read(schema, sql, hidden), sql).toMatchObject({ ok: false, code: 'hidden-column' });
+    }
+    // With no hidden column at all, the same table reads normally.
+    expect(read(schema, 'SELECT secret FROM ext')).toMatchObject({ ok: true });
+  });
+
+  it('leaves a contentless FTS table readable', () => {
+    const schema = [...base, "CREATE VIRTUAL TABLE ext USING fts5(secret, content='')"];
+    expect(read(schema, 'SELECT rowid FROM ext', hidden)).toMatchObject({ ok: true });
+  });
+});

@@ -139,6 +139,8 @@ interface Scratch {
    * `<vtab>_<suffix>` table (S1).
    */
   shadowTables: ReadonlyMap<string, string>;
+  /** Views of the schema (folded). */
+  views: ReadonlySet<string>;
   /** FTS tables that index another table (`content=`): folded vtab → content table. */
   contentTables: Map<string, string>;
   /** Main-schema tables and indexes by root page, for the bytecode check. */
@@ -259,10 +261,19 @@ export class GuardEngine {
    */
   private hiddenTables(scratch: Scratch, hidden: readonly HiddenColumn[]): Set<string> {
     const withHidden = new Set(hidden.map((h) => foldName(h.table)));
-    // An external-content FTS table indexes (and through MATCH reveals) its content
-    // table's text, so a hidden column there hides the FTS table whole too (S3).
-    for (const [vtab, content] of scratch.contentTables) {
-      if (withHidden.has(content)) withHidden.add(vtab);
+    // An external-content FTS table indexes (and through MATCH reveals) its content's
+    // text. While any column is hidden, it is hidden whole unless that content is an
+    // ordinary table free of hidden columns: a view, a virtual table or a name the gate
+    // can't place may carry a hidden column through (S3, S7). Contentless is never here.
+    if (withHidden.size > 0) {
+      for (const [vtab, content] of scratch.contentTables) {
+        const ordinary =
+          scratch.relations.has(content) &&
+          !scratch.views.has(content) &&
+          !scratch.virtualTables.has(content) &&
+          !scratch.shadowTables.has(content);
+        if (!ordinary || withHidden.has(content)) withHidden.add(vtab);
+      }
     }
     const tables = new Set<string>();
     // AUTOINCREMENT's counters give away row counts and the newest ids (S6).
@@ -654,6 +665,7 @@ export class GuardEngine {
       virtualTables: new Map(),
       createdVirtualTables: new Set(),
       shadowTables: new Map(),
+      views: new Set(),
       contentTables: new Map(),
       trees: new Map(),
       generated: new Map(),
@@ -683,6 +695,8 @@ export class GuardEngine {
     }
     const names = db.selectValues("SELECT name FROM sqlite_schema WHERE type IN ('table', 'view')");
     const shadows = db.selectValues("SELECT name FROM pragma_table_list WHERE type = 'shadow'");
+    const views = db.selectValues("SELECT name FROM sqlite_schema WHERE type = 'view'");
+    scratch.views = new Set(views.filter((n): n is string => typeof n === 'string').map(foldName));
     scratch.relations = new Set(
       names.filter((n): n is string => typeof n === 'string').map(foldName),
     );
