@@ -39,7 +39,11 @@ final class _Entity {
 }
 
 final class ReadOps {
-  ReadOps(this.file, this.copy, {this.control}) : _current = file;
+  ReadOps(this.file, this.copy, {this.control, this.path}) : _current = file;
+
+  /// The database file, for the short-lived connection each copy reads
+  /// through. Null only for a ReadOps built around ready connections.
+  final String? path;
 
   /// Shared with the controlling isolate (see read_worker.dart): [0] asks a
   /// copy to stop, [1] is 1 while a copy runs.
@@ -125,7 +129,7 @@ final class ReadOps {
       limitLength(copy.handle, readLengthLimit);
       copy.execute('PRAGMA temp_store = FILE');
       copy.execute('PRAGMA query_only = 1');
-      return ReadOps(db, copy, control: control);
+      return ReadOps(db, copy, control: control, path: path);
     } on Object {
       // Never leave the file connection (a descriptor on the app's
       // database) open behind a failed setup (R3-5).
@@ -246,9 +250,22 @@ final class ReadOps {
       control?[1] = 0;
       throw copyStopped;
     }
+    // The copy reads through its own connection with a tiny page cache,
+    // closed right after the backup finishes (R4-1). If the isolate group
+    // is torn down mid-copy (a hot restart kills each isolate on its own),
+    // only this connection can be left as a zombie: one descriptor and a
+    // few KB, never the live connection or its cache.
+    final Database source;
+    try {
+      source = _openCopySource();
+    } on Object {
+      control?[1] = 0;
+      rethrow;
+    }
     backupsStarted++;
-    final backup = NativeBackup.start(copy.handle, file.handle);
+    final backup = NativeBackup.start(copy.handle, source.handle);
     if (backup == null) {
+      source.close();
       control?[1] = 0;
       throw const DriftDeckError(
         ErrorCode.internal,
@@ -300,8 +317,37 @@ final class ReadOps {
       }
     } finally {
       backup.finish();
+      source.close();
       control?[1] = 0;
     }
+  }
+
+  Database _openCopySource() {
+    final path = this.path;
+    if (path == null) {
+      throw const DriftDeckError(
+        ErrorCode.internal,
+        "Couldn't start copying the database",
+      );
+    }
+    final Database source;
+    try {
+      source = sqlite3.open(path, mode: OpenMode.readOnly, mutex: true);
+    } on SqliteException catch (e) {
+      throw DriftDeckError(
+        ErrorCode.sqlError,
+        "Couldn't open the database to copy it: ${e.message}",
+      );
+    }
+    try {
+      // 64 KB: the backup reads each page once, so a cache buys nothing.
+      source.execute('PRAGMA cache_size = -64');
+      source.execute('PRAGMA query_only = 1');
+    } on Object {
+      source.close();
+      rethrow;
+    }
+    return source;
   }
 
   void _checkCap(int size) {

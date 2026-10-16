@@ -59,6 +59,26 @@ void main() {
     expect(openDescriptors(path), before);
   });
 
+  test('each copy reads through its own short-lived connection (R4-1)', () {
+    final baseline = openDescriptors(path);
+    final during = <int>[];
+    ReadOps.afterCopyStep = () {
+      if (during.isEmpty) during.add(openDescriptors(path));
+    };
+    addTearDown(() => ReadOps.afterCopyStep = null);
+    ops.query('SELECT 1', const [], 1);
+    // One more descriptor while copying: the copy's own source connection,
+    // not the live one; closed again right after the copy.
+    expect(during, [baseline + 1]);
+    expect(openDescriptors(path), baseline);
+
+    app.execute("INSERT INTO orders (item) VALUES ('Cake')");
+    during.clear();
+    ops.query('SELECT 1', const [], 1);
+    expect(during, [baseline + 1]);
+    expect(openDescriptors(path), baseline);
+  });
+
   test('a rollback-journal database is read from a copy', () {
     final r = ops.query('SELECT item FROM orders ORDER BY id', const [], 10);
     expect(r['rows'], [
