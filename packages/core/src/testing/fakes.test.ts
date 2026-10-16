@@ -108,6 +108,8 @@ describe('FakeDbInspector', () => {
       'CREATE INDEX orders_status ON orders(status)',
     ]);
     await expect(db.schemaSql('missing')).rejects.toThrow(/No database/);
+    // A fresh array each time: a caller may change its copy.
+    expect(await db.schemaSql('app')).not.toBe(await db.schemaSql('app'));
   });
 
   it('notifies watchers on insert and uses the custom handler', async () => {

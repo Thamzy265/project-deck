@@ -113,7 +113,8 @@ export interface DbInspector {
   /**
    * Every `sqlite_schema.sql` of the database, in schema order: tables, views, indexes
    * and triggers. The read-only gate loads exactly this (ADR 0005); TableInfo alone
-   * can't give it indexes or triggers.
+   * can't give it indexes or triggers. Each call returns a fresh array the caller owns;
+   * the gate copies it anyway, so changing it later can't confuse the gate's cache.
    */
   schemaSql(db: string): Promise<string[]>;
   /** Callers pass only SQL the read-only gate accepted. */
