@@ -138,6 +138,22 @@ describe('createSqlGuard', () => {
     ]);
   });
 
+  it('notices a schema array changed in place after a check', async () => {
+    const g = make({ workerUrl: fixture('counting') });
+    const schema = ['CREATE TABLE a(x)'];
+    expect(await g.check('SELECT 1', { schemaSql: schema, mode: 'read' })).toMatchObject({
+      tables: ['loads:1', 'schema-in-check:false'],
+    });
+    schema.push('CREATE TABLE b(y)');
+    expect(await g.check('SELECT 1', { schemaSql: schema, mode: 'read' })).toMatchObject({
+      tables: ['loads:2', 'schema-in-check:false'],
+    });
+    schema[0] = 'CREATE TABLE a(z)';
+    expect(await g.check('SELECT 1', { schemaSql: schema, mode: 'read' })).toMatchObject({
+      tables: ['loads:3', 'schema-in-check:false'],
+    });
+  });
+
   it('sends the schema again when the worker no longer has it', async () => {
     const g = make({ workerUrl: fixture('counting') });
     expect(await g.check('FORGET', { schemaSql, mode: 'read' })).toMatchObject({

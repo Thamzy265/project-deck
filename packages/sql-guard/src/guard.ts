@@ -60,7 +60,23 @@ export function createSqlGuard(opts: SqlGuardOptions = {}): SqlGuard {
   let nextId = 0;
   let closed = false;
   // Hashing a large schema costs time: once per schema array, never inside a budget.
-  const keys = new WeakMap<readonly string[], string>();
+  // Each entry keeps a frozen copy, so an array changed in place is noticed (S8).
+  const keys = new WeakMap<readonly string[], { key: string; copy: readonly string[] }>();
+  const keyOf = (schemaSql: readonly string[]): { key: string; copy: readonly string[] } => {
+    const cached = keys.get(schemaSql);
+    // Comparing the strings by identity is far cheaper than hashing them again.
+    if (
+      cached !== undefined &&
+      cached.copy.length === schemaSql.length &&
+      cached.copy.every((s, i) => s === schemaSql[i])
+    ) {
+      return cached;
+    }
+    const copy = Object.freeze([...schemaSql]);
+    const entry = { key: schemaKey(copy), copy };
+    keys.set(schemaSql, entry);
+    return entry;
+  };
   // Schemas the live worker holds; a fresh worker starts with none.
   let loadedBy: Worker | undefined;
   const loaded = new Set<string>();
@@ -165,12 +181,8 @@ export function createSqlGuard(opts: SqlGuardOptions = {}): SqlGuard {
       loadedBy = w;
       loaded.clear();
     }
-    const { schemaSql, ...rest } = checkOpts;
-    let key = keys.get(schemaSql);
-    if (key === undefined) {
-      key = schemaKey(schemaSql);
-      keys.set(schemaSql, key);
-    }
+    const { schemaSql: given, ...rest } = checkOpts;
+    const { key, copy: schemaSql } = keyOf(given);
     // The worker may have dropped the schema from its cache: load it again, once.
     for (let attempt = 0; attempt < 2; attempt++) {
       if (!loaded.has(key)) {
