@@ -96,9 +96,13 @@ describe('method names that try to slip past the allowlist', () => {
 
   // EXT-1: dart:ui registers ext.ui.window.* in every Flutter app; D7 says Flutter's own
   // extensions can never be reached, but ext.ui. is a valid prefix today.
-  it.fails('EXT-1 blocks the Flutter engine prefix ext.ui.', () => {
+  it('EXT-1 blocks the Flutter engine prefix ext.ui.', () => {
     expect(isValidExtensionPrefix('ext.ui.')).toBe(false);
     expect(isAllowedExtensionMethod('ext.ui.window.scheduleFrame', ['ext.ui.'])).toBe(false);
+    for (const prefix of ['ext.flutter.', 'ext.drift.', 'ext.dart.', 'ext.dds.', 'ext.ui.']) {
+      expect(isValidExtensionPrefix(prefix), prefix).toBe(false);
+      expect(isValidExtensionPrefix(`${prefix}x.`), prefix).toBe(false);
+    }
   });
 });
 

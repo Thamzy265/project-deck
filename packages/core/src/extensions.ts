@@ -57,8 +57,8 @@ export interface AppExtensions {
 }
 
 export const DEFAULT_EXTENSION_PREFIXES: readonly string[] = ['ext.flutterdeck.'];
-/** Never callable, whatever prefixes are registered. */
-const BLOCKED_PREFIXES = ['ext.flutter.', 'ext.drift.', 'ext.dart.', 'ext.dds.'];
+/** Never callable, whatever prefixes are registered. ext.ui. is dart:ui's (Flutter engine). */
+const BLOCKED_PREFIXES = ['ext.flutter.', 'ext.drift.', 'ext.dart.', 'ext.dds.', 'ext.ui.'];
 
 export const DEFAULT_EXTENSION_TIMEOUT_MS = 5000;
 export const MAX_EXTENSION_TIMEOUT_MS = 60_000;
