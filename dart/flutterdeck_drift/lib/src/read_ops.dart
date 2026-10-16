@@ -1,0 +1,479 @@
+/// Everything the read isolate does, on its own read-only connection.
+///
+/// These calls are synchronous FFI and can block; they only ever run inside
+/// the read isolate, which the controlling isolate interrupts after
+/// [readBudget] (see read_worker.dart).
+library;
+
+import 'package:sqlite3/sqlite3.dart';
+
+import 'cells.dart';
+import 'native.dart';
+import 'protocol.dart';
+import 'sql_guard.dart';
+
+const _notADatabase = 26; // SQLITE_NOTADB
+const _interrupted = 9; // SQLITE_INTERRUPT
+const _busy = 5; // SQLITE_BUSY
+const _busyMessage = 'The app is writing; try again';
+
+/// Room for rows in a reply, leaving space for the envelope around them.
+const _rowBudget = maxReplyBytes - 64 * 1024;
+
+final _withoutRowid = RegExp(r'\bWITHOUT\s+ROWID\b', caseSensitive: false);
+
+/// One table or view as the schema call and the diff see it.
+final class _Entity {
+  _Entity(this.name, this.kind, this.sql);
+
+  final String name;
+  final String kind; // 'table' or 'view'
+  final String? sql;
+}
+
+final class ReadOps {
+  ReadOps(this.db);
+
+  final Database db;
+
+  /// Opens [path] read-only, with no app functions, `query_only`, temp data
+  /// in files, a small cache and a 16 MB value limit (design note S2).
+  static ReadOps open(String path) {
+    final Database db;
+    try {
+      db = sqlite3.open(path, mode: OpenMode.readOnly, mutex: true);
+    } on SqliteException catch (e) {
+      throw DriftDeckError(
+        ErrorCode.unsupported,
+        "Couldn't open the database file: ${e.message}",
+      );
+    }
+    try {
+      // First, because some pragmas below read the schema and so need a
+      // lock: wait briefly while the app commits rather than failing.
+      db.execute('PRAGMA busy_timeout = 1000');
+      limitLength(db.handle, readLengthLimit);
+      db.execute('PRAGMA temp_store = FILE');
+      db.execute('PRAGMA cache_size = -2048');
+      db.execute('PRAGMA query_only = 1');
+      db.select('SELECT count(*) FROM sqlite_schema');
+    } on SqliteException catch (e) {
+      db.close();
+      if (e.resultCode == _busy) {
+        throw const DriftDeckError(ErrorCode.busy, _busyMessage);
+      }
+      if (e.resultCode == _notADatabase) {
+        throw const DriftDeckError(
+          ErrorCode.unsupported,
+          'This database is encrypted or not a SQLite file, '
+          'so FlutterDeck cannot read it.',
+        );
+      }
+      throw DriftDeckError(
+        ErrorCode.unsupported,
+        "Couldn't read the database file: ${e.message}",
+      );
+    }
+    return ReadOps(db);
+  }
+
+  /// The native connection, for `sqlite3_interrupt` from another isolate.
+  int get handleAddress => db.handle.address;
+
+  void close() => db.close();
+
+  /// Runs [action], maps SQLite errors to protocol errors, and makes sure no
+  /// transaction stays open afterwards (design note D2, S4).
+  T guarded<T>(T Function() action) {
+    try {
+      return action();
+    } on SqliteException catch (e) {
+      if (e.resultCode == _interrupted) {
+        throw const DriftDeckError(
+          ErrorCode.timeout,
+          'That query took too long and was stopped',
+        );
+      }
+      if (e.resultCode == _busy) {
+        throw const DriftDeckError(ErrorCode.busy, _busyMessage);
+      }
+      throw DriftDeckError(ErrorCode.sqlError, e.message);
+    } finally {
+      if (!db.autocommit) {
+        try {
+          db.execute('ROLLBACK');
+        } on SqliteException {
+          // Nothing more to do: the connection is recycled after errors.
+        }
+      }
+    }
+  }
+
+  /// Runs one reading statement and returns at most [limit] typed rows.
+  Map<String, Object?> query(String sql, List<Object?> params, int limit) {
+    if (sql.length > maxSqlLength) {
+      throw const DriftDeckError(ErrorCode.badRequest, 'The SQL is too long');
+    }
+    final reason = readGuard(sql);
+    if (reason != null) {
+      throw DriftDeckError(
+        ErrorCode.notReadOnly,
+        'Only reading queries run here: $reason',
+      );
+    }
+    return guarded(() {
+      final stmt = _prepareOne(sql);
+      try {
+        if (!stmt.isReadOnly) {
+          throw const DriftDeckError(
+            ErrorCode.notReadOnly,
+            'Only reading queries run here: it would change data',
+          );
+        }
+        final watch = Stopwatch()..start();
+        final cursor = stmt.selectCursor(params);
+        final rows = <List<Object?>>[];
+        var bytes = 0;
+        var truncated = false;
+        while (cursor.moveNext()) {
+          if (rows.length >= limit) {
+            truncated = true;
+            break;
+          }
+          final row = [for (final v in cursor.current.values) encodeCell(v)];
+          bytes += jsonSize(row) + 1;
+          if (bytes > _rowBudget) {
+            truncated = true;
+            break;
+          }
+          rows.add(row);
+        }
+        final columns = cursor.columnNames;
+        return {
+          'columns': columns,
+          'rows': rows,
+          'truncated': truncated,
+          'durationMs': watch.elapsedMicroseconds / 1000,
+        };
+      } finally {
+        stmt.close();
+      }
+    });
+  }
+
+  PreparedStatement _prepareOne(String sql) {
+    try {
+      return db.prepare(sql, checkNoTail: true);
+    } on ArgumentError catch (e) {
+      final multi = '${e.message}'.contains('trailing');
+      throw DriftDeckError(
+        ErrorCode.notReadOnly,
+        multi
+            ? 'Only one statement runs at a time: it has more than one statement'
+            : 'The query is empty',
+      );
+    }
+  }
+
+  /// Tables and views, without SQLite's own and FTS shadow tables.
+  List<_Entity> _entities() {
+    final shadow = <String>{};
+    try {
+      for (final row in db.select('PRAGMA main.table_list')) {
+        if (row['type'] == 'shadow') shadow.add(row['name'] as String);
+      }
+    } on SqliteException {
+      // PRAGMA table_list needs SQLite 3.37; without it nothing is skipped.
+    }
+    return [
+      for (final row in db.select(
+        "SELECT type, name, sql FROM main.sqlite_schema "
+        "WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\' "
+        'ORDER BY name',
+      ))
+        if (!shadow.contains(row['name']))
+          _Entity(
+            row['name'] as String,
+            row['type'] as String,
+            row['sql'] as String?,
+          ),
+    ];
+  }
+
+  /// Every table and view with columns, keys, indexes and row counts.
+  Map<String, Object?> schema() {
+    return guarded(() {
+      final tables = <Map<String, Object?>>[];
+      for (final e in _entities()) {
+        final info = db.select(
+          'SELECT name, type, "notnull", dflt_value, pk '
+          'FROM pragma_table_info(?)',
+          [e.name],
+        );
+        final pkCount = info.where((c) => (c['pk'] as int) > 0).length;
+        final withoutRowid = _withoutRowid.hasMatch(e.sql ?? '');
+        final columns = [
+          for (final c in info)
+            {
+              'name': c['name'],
+              'type': c['type'] ?? '',
+              'nullable':
+                  c['notnull'] == 0 &&
+                  !_neverNull(c, pkCount: pkCount, withoutRowid: withoutRowid),
+              'pk': (c['pk'] as int) > 0,
+              if ((c['pk'] as int) > 0) 'pkPosition': c['pk'],
+              'default': c['dflt_value']?.toString(),
+            },
+        ];
+        final foreignKeys = [
+          for (final f in db.select(
+            'SELECT "from", "table", "to" FROM pragma_foreign_key_list(?) '
+            'ORDER BY id, seq',
+            [e.name],
+          ))
+            {'from': f['from'], 'table': f['table'], 'to': f['to']},
+        ];
+        final indexes = [
+          for (final i in db.select(
+            'SELECT name, "unique" FROM pragma_index_list(?) ORDER BY name',
+            [e.name],
+          ))
+            {
+              'name': i['name'],
+              'unique': i['unique'] == 1,
+              'columns': [
+                for (final c in db.select(
+                  'SELECT name FROM pragma_index_info(?) ORDER BY seqno',
+                  [i['name']],
+                ))
+                  c['name'] ?? '',
+              ],
+            },
+        ];
+        tables.add({
+          'name': e.name,
+          'kind': e.kind,
+          'sql': ?e.sql,
+          'columns': columns,
+          if (e.kind == 'table') 'rowCount': _count(e.name),
+          'foreignKeys': foreignKeys,
+          'indexes': indexes,
+        });
+      }
+      return {'tables': tables};
+    });
+  }
+
+  /// Key columns SQLite never stores NULL in, though not declared NOT NULL:
+  /// a rowid alias (`INTEGER PRIMARY KEY`) and keys of WITHOUT ROWID tables.
+  bool _neverNull(
+    Row column, {
+    required int pkCount,
+    required bool withoutRowid,
+  }) {
+    if ((column['pk'] as int) == 0) return false;
+    if (withoutRowid) return true;
+    return pkCount == 1 && '${column['type']}'.toUpperCase() == 'INTEGER';
+  }
+
+  int _count(String table) =>
+      db
+              .select('SELECT count(*) AS n FROM main.${quoteIdent(table)}')
+              .first['n']
+          as int;
+
+  /// Names the key columns of [table]: its primary key in key order, or a
+  /// rowid alias when it has none.
+  ({List<String> key, bool rowid, List<String> columns}) _keyOf(String table) {
+    final info = db.select(
+      'SELECT name, pk FROM pragma_table_info(?) ORDER BY cid',
+      [table],
+    );
+    final columns = [for (final c in info) c['name'] as String];
+    final pk = [
+      for (final c
+          in info.where((c) => (c['pk'] as int) > 0).toList()
+            ..sort((a, b) => (a['pk'] as int).compareTo(b['pk'] as int)))
+        c['name'] as String,
+    ];
+    if (pk.isNotEmpty) return (key: pk, rowid: false, columns: columns);
+    final lower = columns.map((c) => c.toLowerCase()).toSet();
+    for (final alias in const ['rowid', '_rowid_', 'oid']) {
+      if (!lower.contains(alias)) {
+        return (key: [alias], rowid: true, columns: columns);
+      }
+    }
+    throw DriftDeckError(
+      ErrorCode.unsupported,
+      '$table has no primary key and hides its row id',
+    );
+  }
+
+  Object? _keyJson(List<Object?> values) => values.length == 1
+      ? encodeKeyCell(values.single)
+      : [for (final v in values) encodeKeyCell(v)];
+
+  /// Per table, a map of key → one hash per column, all read in one short
+  /// read transaction that ends before the reply (design note D5).
+  Map<String, Object?> snapshot() {
+    return guarded(() {
+      final takenAt = DateTime.now().millisecondsSinceEpoch;
+      final tables = <Map<String, Object?>>[];
+      var bytes = 0;
+      db.execute('BEGIN');
+      try {
+        for (final e in _entities()) {
+          if (e.kind != 'table') continue;
+          final ({List<String> key, bool rowid, List<String> columns}) shape;
+          try {
+            shape = _keyOf(e.name);
+          } on DriftDeckError catch (err) {
+            tables.add({'name': e.name, 'error': err.toJson()});
+            continue;
+          }
+          final count = _count(e.name);
+          if (count > maxSnapshotRowsPerTable) {
+            tables.add({
+              'name': e.name,
+              'rowCount': count,
+              'error': DriftDeckError(
+                ErrorCode.tooLarge,
+                'Too large to diff: more than $maxSnapshotRowsPerTable rows '
+                'in ${e.name}',
+              ).toJson(),
+            });
+            continue;
+          }
+          final select = [
+            ...shape.key.map(quoteIdent),
+            ...shape.columns.map(quoteIdent),
+          ].join(', ');
+          final rows = <Object?>[];
+          final keyCount = shape.key.length;
+          final stmt = db.prepare(
+            'SELECT $select FROM main.${quoteIdent(e.name)}',
+          );
+          try {
+            final cursor = stmt.selectCursor();
+            while (cursor.moveNext()) {
+              final values = cursor.current.values;
+              final entry = [
+                _keyJson(values.sublist(0, keyCount)),
+                [for (final v in values.skip(keyCount)) cellHash(v)],
+              ];
+              bytes += jsonSize(entry) + 1;
+              if (bytes > _rowBudget) {
+                throw const DriftDeckError(
+                  ErrorCode.tooLarge,
+                  'Too large to diff: the snapshot is over 8 MB',
+                );
+              }
+              rows.add(entry);
+            }
+          } finally {
+            stmt.close();
+          }
+          tables.add({
+            'name': e.name,
+            'columns': shape.columns,
+            'key': shape.key,
+            if (shape.rowid) 'rowid': true,
+            'rows': rows,
+          });
+        }
+      } finally {
+        if (!db.autocommit) db.execute('COMMIT');
+      }
+      return {'takenAt': takenAt, 'tables': tables};
+    });
+  }
+
+  /// Row values of [table] for the given keys, read by key (keyset).
+  Map<String, Object?> rows(String table, List<Object?> keys) {
+    if (keys.length > maxKeysPerCall) {
+      throw const DriftDeckError(ErrorCode.badRequest, 'Too many keys');
+    }
+    return guarded(() {
+      final known = _entities().where((e) => e.kind == 'table');
+      if (!known.any((e) => e.name == table)) {
+        throw DriftDeckError(ErrorCode.notFound, 'No table named $table');
+      }
+      final shape = _keyOf(table);
+      final where = shape.key.map((k) => '${quoteIdent(k)} IS ?').join(' AND ');
+      final stmt = db.prepare(
+        'SELECT ${shape.columns.map(quoteIdent).join(', ')} '
+        'FROM main.${quoteIdent(table)} WHERE $where',
+      );
+      try {
+        final out = <Object?>[];
+        final missing = <Object?>[];
+        var bytes = 0;
+        var truncated = false;
+        for (final key in keys) {
+          final parts = shape.key.length == 1 ? [key] : key;
+          if (parts is! List || parts.length != shape.key.length) {
+            throw const DriftDeckError(ErrorCode.badRequest, 'Bad key');
+          }
+          final params = [for (final p in parts) decodeParam(p)];
+          final result = stmt.select(params);
+          if (result.isEmpty) {
+            missing.add(key);
+            continue;
+          }
+          final entry = [
+            key,
+            [for (final v in result.first.values) encodeCell(v)],
+          ];
+          bytes += jsonSize(entry) + 1;
+          if (bytes > _rowBudget) {
+            truncated = true;
+            break;
+          }
+          out.add(entry);
+        }
+        return {
+          'columns': shape.columns,
+          'key': shape.key,
+          if (shape.rowid) 'rowid': true,
+          'rows': out,
+          'missing': missing,
+          'truncated': truncated,
+        };
+      } finally {
+        stmt.close();
+      }
+    });
+  }
+
+  /// Checks an edit before it runs on the app's connection: one statement
+  /// that SQLite can prepare, on a table that exists (ADR 0005 writes).
+  Map<String, Object?> checkWrite(String sql) {
+    if (sql.length > maxSqlLength) {
+      throw const DriftDeckError(ErrorCode.badRequest, 'The SQL is too long');
+    }
+    final target = writeTarget(sql);
+    if (target.error != null) {
+      throw DriftDeckError(ErrorCode.notAllowed, 'Not run: ${target.error}');
+    }
+    return guarded(() {
+      final known = _entities().where((e) => e.kind == 'table');
+      if (!known.any((e) => e.name == target.table)) {
+        throw DriftDeckError(
+          ErrorCode.notFound,
+          'No table named ${target.table}',
+        );
+      }
+      final PreparedStatement stmt;
+      try {
+        stmt = db.prepare(sql, checkNoTail: true);
+      } on ArgumentError {
+        throw const DriftDeckError(
+          ErrorCode.notAllowed,
+          'Not run: it has more than one statement',
+        );
+      }
+      stmt.close();
+      return {'table': target.table};
+    });
+  }
+}

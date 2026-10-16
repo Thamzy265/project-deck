@@ -1,0 +1,305 @@
+/// The read isolate and its controller.
+///
+/// Reads run in a dedicated isolate with its own read-only connection, so a
+/// slow query never blocks the app's isolate or Drift's connection. At the
+/// budget the controller calls `sqlite3_interrupt` on that connection (an
+/// isolate blocked in a synchronous FFI call never sees a kill), waits up to
+/// [interruptGrace] for the step to return, then has the isolate close its
+/// connection, and kills the isolate last (design note S2).
+library;
+
+import 'dart:async';
+import 'dart:isolate';
+
+import 'native.dart';
+import 'protocol.dart';
+import 'read_ops.dart';
+
+const _tooLong = DriftDeckError(
+  ErrorCode.timeout,
+  'That query took too long and was stopped',
+);
+
+/// Runs one read operation in the read isolate. Public for tests.
+Map<String, Object?> runReadOp(
+  ReadOps ops,
+  String op,
+  Map<String, Object?> args,
+) {
+  switch (op) {
+    case 'query':
+      return ops.query(
+        args['sql']! as String,
+        (args['params'] as List<Object?>?) ?? const [],
+        args['limit']! as int,
+      );
+    case 'schema':
+      return ops.schema();
+    case 'snapshot':
+      return ops.snapshot();
+    case 'rows':
+      return ops.rows(args['table']! as String, args['keys']! as List<Object?>);
+    case 'checkWrite':
+      return ops.checkWrite(args['sql']! as String);
+    case 'sleep':
+      // Test hook: blocks the isolate without SQLite, like a hung FFI call.
+      final until = DateTime.now().add(
+        Duration(milliseconds: args['ms']! as int),
+      );
+      while (DateTime.now().isBefore(until)) {}
+      return const {};
+  }
+  throw DriftDeckError(ErrorCode.badRequest, 'Unknown read op $op');
+}
+
+void _readerMain(List<Object?> args) {
+  final toController = args[0]! as SendPort;
+  final path = args[1]! as String;
+  final ReadOps ops;
+  try {
+    ops = ReadOps.open(path);
+  } on DriftDeckError catch (e) {
+    toController.send(['failed', e.code, e.message]);
+    return;
+  }
+  final inbox = ReceivePort();
+  toController.send(['ready', inbox.sendPort, ops.handleAddress]);
+  inbox.listen((Object? message) {
+    final m = message! as List<Object?>;
+    if (m[0] == 'close') {
+      ops.close();
+      inbox.close();
+      Isolate.exit();
+    }
+    final id = m[0]! as int;
+    try {
+      final result = runReadOp(
+        ops,
+        m[1]! as String,
+        (m[2]! as Map).cast<String, Object?>(),
+      );
+      toController.send([id, result]);
+    } on DriftDeckError catch (e) {
+      toController.send([id, null, e.code, e.message]);
+    } on Object {
+      // Never send exception text: it can hold row values.
+      toController.send([id, null, ErrorCode.internal, 'The read failed']);
+    }
+  });
+}
+
+/// The controlling side of one read isolate.
+final class ReadWorker {
+  ReadWorker._(this._isolate, this._toWorker, this._handle, this._ports);
+
+  final Isolate _isolate;
+  final SendPort _toWorker;
+  final int _handle;
+  final _Ports _ports;
+  final _pending = <int, Completer<Map<String, Object?>>>{};
+  var _nextId = 0;
+  var _dead = false;
+  Future<void> _queue = Future.value();
+
+  /// Test hook: called with the connection handle instead of interrupting.
+  static bool Function(int handle) interrupt = interruptConnection;
+
+  bool get isDead => _dead;
+
+  static Future<ReadWorker> spawn(String path) async {
+    final ports = _Ports();
+    final first = Completer<List<Object?>>();
+    ports.messages.listen((Object? m) {
+      if (!first.isCompleted) {
+        first.complete(m! as List<Object?>);
+      } else {
+        ports.onMessage?.call(m! as List<Object?>);
+      }
+    });
+    ports.exits.listen((_) {
+      if (!first.isCompleted) {
+        first.complete(['failed', ErrorCode.internal, 'The reader stopped']);
+      }
+      ports.onExit?.call();
+    });
+    final isolate = await Isolate.spawn(
+      _readerMain,
+      [ports.messages.sendPort, path],
+      onExit: ports.exits.sendPort,
+      onError: ports.exits.sendPort,
+      debugName: 'flutterdeck_drift reader',
+    );
+    final hello = await first.future.timeout(
+      readBudget,
+      onTimeout: () => [
+        'failed',
+        ErrorCode.timeout,
+        'The reader did not start',
+      ],
+    );
+    if (hello[0] != 'ready') {
+      isolate.kill(priority: Isolate.immediate);
+      ports.close();
+      throw DriftDeckError(hello[1]! as String, hello[2]! as String);
+    }
+    final worker = ReadWorker._(
+      isolate,
+      hello[1]! as SendPort,
+      hello[2]! as int,
+      ports,
+    );
+    ports.onMessage = worker._onMessage;
+    ports.onExit = worker._onExit;
+    return worker;
+  }
+
+  /// Runs [op] in the read isolate, one at a time, within [budget].
+  Future<Map<String, Object?>> call(
+    String op,
+    Map<String, Object?> args, {
+    Duration budget = readBudget,
+  }) {
+    final result = _queue.then((_) => _run(op, args, budget));
+    _queue = result.then((_) {}, onError: (Object _) {});
+    return result;
+  }
+
+  Future<Map<String, Object?>> _run(
+    String op,
+    Map<String, Object?> args,
+    Duration budget,
+  ) async {
+    if (_dead) {
+      throw const DriftDeckError(ErrorCode.internal, 'The reader stopped');
+    }
+    final id = _nextId++;
+    final done = Completer<Map<String, Object?>>();
+    _pending[id] = done;
+    _toWorker.send([id, op, args]);
+
+    Timer? grace;
+    var fired = false;
+    final budgetTimer = Timer(budget, () {
+      if (_dead || done.isCompleted) return;
+      fired = true;
+      ReadWorker.interrupt(_handle);
+      grace = Timer(interruptGrace, () {
+        // The step did not return: give up on this isolate.
+        _fail(id, _tooLong);
+        _stop();
+      });
+    });
+    try {
+      final result = await done.future;
+      if (fired) _stop();
+      return result;
+    } on DriftDeckError {
+      if (!fired) rethrow;
+      _stop();
+      throw _tooLong;
+    } finally {
+      budgetTimer.cancel();
+      grace?.cancel();
+      _pending.remove(id);
+    }
+  }
+
+  void _fail(int id, DriftDeckError error) {
+    final c = _pending.remove(id);
+    if (c != null && !c.isCompleted) c.completeError(error);
+  }
+
+  void _onMessage(List<Object?> m) {
+    final c = _pending.remove(m[0]! as int);
+    if (c == null || c.isCompleted) return;
+    if (m[1] != null) {
+      c.complete((m[1]! as Map).cast<String, Object?>());
+    } else {
+      c.completeError(DriftDeckError(m[2]! as String, m[3]! as String));
+    }
+  }
+
+  void _onExit() {
+    _dead = true;
+    for (final id in _pending.keys.toList()) {
+      _fail(id, const DriftDeckError(ErrorCode.internal, 'The reader stopped'));
+    }
+    _ports.close();
+  }
+
+  /// Closes the connection in the isolate, then kills the isolate if it has
+  /// not exited after [interruptGrace].
+  void _stop() {
+    if (_dead) return;
+    _dead = true;
+    _toWorker.send(['close']);
+    Timer(interruptGrace, () {
+      _isolate.kill(priority: Isolate.immediate);
+      _ports.close();
+    });
+  }
+
+  /// Stops the read isolate. Pending reads fail.
+  Future<void> close() async {
+    for (final id in _pending.keys.toList()) {
+      _fail(id, const DriftDeckError(ErrorCode.internal, 'The reader stopped'));
+    }
+    _stop();
+  }
+}
+
+final class _Ports {
+  final messages = ReceivePort('flutterdeck_drift reader');
+  final exits = ReceivePort('flutterdeck_drift reader exit');
+  void Function(List<Object?>)? onMessage;
+  void Function()? onExit;
+
+  void close() {
+    messages.close();
+    exits.close();
+  }
+}
+
+/// Keeps one live read isolate for a database file, starting a new one after
+/// the last was stopped.
+final class DbReader {
+  DbReader(this.path);
+
+  final String path;
+  Future<ReadWorker>? _worker;
+
+  Future<Map<String, Object?>> call(
+    String op,
+    Map<String, Object?> args, {
+    Duration budget = readBudget,
+  }) async {
+    var pending = _worker;
+    if (pending != null) {
+      final ReadWorker w;
+      try {
+        w = await pending;
+      } on Object {
+        _worker = null;
+        rethrow;
+      }
+      if (w.isDead) pending = null;
+    }
+    if (pending == null) {
+      pending = ReadWorker.spawn(path);
+      _worker = pending;
+    }
+    return (await pending).call(op, args, budget: budget);
+  }
+
+  Future<void> close() async {
+    final w = _worker;
+    _worker = null;
+    if (w != null) {
+      try {
+        await (await w).close();
+      } on Object {
+        // Never started; nothing to stop.
+      }
+    }
+  }
+}

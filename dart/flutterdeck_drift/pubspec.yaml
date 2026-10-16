@@ -1,0 +1,18 @@
+name: flutterdeck_drift
+description: Debug-only helper that lets FlutterDeck inspect a Drift database through VM service extensions.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.12.2
+
+# sqlite3 stays on 3.5.x: 3.6+ needs meta ^1.19, but Flutter 3.44 pins meta
+# 1.18.0, so apps on that Flutter could not resolve a higher constraint.
+dependencies:
+  drift: ^2.35.2
+  sqlite3: ^3.5.2
+
+dev_dependencies:
+  lints: ^6.0.0
+  test: ^1.26.3
+  vm_service: ^15.0.0
