@@ -22,6 +22,7 @@ TypeScript (strict) pnpm monorepo, Node 22.12+, plus Dart code: one Dart package
 | `packages/mcp`                            | stdio MCP server, thin client of the daemon                                                                   | M2     |
 | `packages/dashboard`                      | Vite + React + Tailwind UI, works at 420 px wide                                                              | M2     |
 | `packages/cli`                            | `init`, `start`, `stop`, `doctor`, `mcp`                                                                      | M2     |
+| `packages/sql-guard`                      | Read-only SQL gate: sqlite-wasm in a worker, authorizer + bytecode checks (ADR 0005)                          | M3     |
 | `packages/db-drift`, `packages/db-sqlite` | `DbInspector` backends (live / `sql.js` snapshot)                                                             | M3     |
 | `packages/tasks-linear`                   | `TaskProvider` for Linear GraphQL                                                                             | M4     |
 | `dart/flutterdeck_drift`                  | Debug-only in-app helper exposing Drift via VM service extensions                                             | M3     |
@@ -193,7 +194,7 @@ Follows [GitHub flow](https://docs.github.com/en/get-started/using-github/github
 - Commits are atomic: one logical change each, and the repo builds and passes tests after every commit.
 - Message format: `<type>(<scope>): <imperative summary>`, at most about 72 characters, lower case, no trailing period. Add a body explaining why when it isn't obvious.
   - Types: `feat`, `fix`, `docs`, `test`, `refactor`, `perf`, `build`, `ci`, `chore`, `revert`.
-  - Scope is the package or area: `core`, `daemon`, `connector-dart`, `mcp`, `dashboard`, `cli`, `plugin`, `scripts`, `deps`.
+  - Scope is the package or area: `core`, `daemon`, `connector-dart`, `mcp`, `dashboard`, `cli`, `sql-guard`, `plugin`, `scripts`, `deps`.
   - Breaking changes to a frozen interface use `!` (e.g. `feat(core)!: ...`) plus a `BREAKING CHANGE:` footer.
 - A branch merges into `main` through a pull request. The review gate runs before the PR is opened.
 - **PR descriptions** are written in [ASD-STE100](https://www.asd-ste100.org/) Simplified Technical English:
