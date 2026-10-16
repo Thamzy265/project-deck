@@ -2,6 +2,13 @@
 
 Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
 
+## 2026-10-16 — M2 build complete — waiting for the PM check
+
+- Changed: PR #29 (batch 5: plugin, hooks, notifications) merged after CI 8/8. One earlier CI run failed a timing-based test on macOS; the developer measured the scrub as linear up to 4 MB and made the test robust (8836c7a). PLAN.md: the four M2 build items are ticked; M2 Accept waits for the PM.
+- Deleted (PM standing approval): worktree `agent-a11981da55891a256` and its branch; its `qa-artifacts/` were copied to the main checkout first.
+- Follow-ups (Low): the header chip shows Claude's reload results only while the dashboard is open (Activity keeps them); the batch 4 EXDEV risk is fixed.
+- Blockers: Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead none · PM: run the final M2 check (docs/qa/M2.md#final-pm-check).
+
 ## 2026-10-15 — M2 batch 5 (`feat/plugin-hooks`) — ready to merge
 
 - Changed: the Claude Code plugin (manifest, `.mcp.json` with the Dart MCP server and FlutterDeck, hooks for Stop, SubagentStop, Notification, PostToolUse and PostToolUseFailure, a standalone hook script with health and project-id checks, scrubbed minimal payloads and a 2 s deadline), a dev marketplace at the repo root, `claude.reload` events paired with VM reload events, daemon OS notifications (app crashed, reload failed, Claude waiting; fixed per-OS commands, rate limit, switches), a 16 kB limit on `/api/events`, CLI EXDEV retry and plugin next steps, QA scripts with a scratch home.
