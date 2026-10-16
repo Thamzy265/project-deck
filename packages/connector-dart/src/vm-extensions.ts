@@ -35,8 +35,11 @@ function shorten(text: string): string {
   return text.length > MAX_ERROR_MESSAGE ? `${text.slice(0, MAX_ERROR_MESSAGE - 1)}…` : text;
 }
 
-/** Announcements kept per session; an app announcing more is misbehaving. */
-const MAX_ANNOUNCED = 1000;
+/**
+ * Methods outside the allowed prefixes kept per session, in case a prefix is allowed
+ * later; an app announcing more is misbehaving. Allowed methods are always kept (C7).
+ */
+const MAX_FOREIGN = 1000;
 
 /**
  * App extensions over the VM service (ADR 0004). A method is called on the isolate that
@@ -52,6 +55,8 @@ export class VmExtensions implements AppExtensions {
   private readonly owners = new Map<string, string>();
   /** Isolate → the methods it owns. */
   private readonly byIsolate = new Map<string, Set<string>>();
+  /** Kept methods that were outside the allowed prefixes when announced. */
+  private readonly foreign = new Set<string>();
   private readonly listeners = new Map<string, Set<(data: unknown) => void>>();
 
   constructor(
@@ -112,9 +117,11 @@ export class VmExtensions implements AppExtensions {
 
   /** ServiceExtensionAdded on the Isolate stream. */
   added(method: string, isolateId: string): void {
-    if (!this.owners.has(method) && this.owners.size >= MAX_ANNOUNCED) return;
+    const allowed = isAllowedExtensionMethod(method, this.prefixes());
+    if (!allowed && !this.owners.has(method) && this.foreign.size >= MAX_FOREIGN) return;
     this.forget(method);
     this.owners.set(method, isolateId);
+    if (!allowed) this.foreign.add(method);
     let methods = this.byIsolate.get(isolateId);
     if (methods === undefined) {
       methods = new Set();
@@ -126,7 +133,10 @@ export class VmExtensions implements AppExtensions {
   /** IsolateExit, or a Sentinel for the isolate. */
   dropIsolate(isolateId: string | undefined): void {
     if (isolateId === undefined) return;
-    for (const method of this.byIsolate.get(isolateId) ?? []) this.owners.delete(method);
+    for (const method of this.byIsolate.get(isolateId) ?? []) {
+      this.owners.delete(method);
+      this.foreign.delete(method);
+    }
     this.byIsolate.delete(isolateId);
   }
 
@@ -134,6 +144,7 @@ export class VmExtensions implements AppExtensions {
   clear(): void {
     this.owners.clear();
     this.byIsolate.clear();
+    this.foreign.clear();
   }
 
   /** An `Extension` event from the app. */
@@ -158,6 +169,7 @@ export class VmExtensions implements AppExtensions {
     const owner = this.owners.get(method);
     if (owner === undefined) return;
     this.owners.delete(method);
+    this.foreign.delete(method);
     const methods = this.byIsolate.get(owner);
     methods?.delete(method);
     if (methods?.size === 0) this.byIsolate.delete(owner);

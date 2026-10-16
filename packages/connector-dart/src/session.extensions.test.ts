@@ -212,4 +212,12 @@ describe('DartAppSession extensions', () => {
     const { session } = await attach(['ext.flutter.exit']);
     expect(session.extensions.has('ext.flutter.exit')).toBe(false);
   });
+
+  it('keeps allowed methods announced after 1,000 foreign ones (C7)', async () => {
+    const foreign = Array.from({ length: 1000 }, (_, i) => `ext.other.m${i}`);
+    const { server, session } = await attach([...foreign, LIST]);
+    server.notify(serviceExtensionAdded(QUERY, 'isolates/1'));
+    await until(() => session.extensions.has(QUERY));
+    expect(session.extensions.has(LIST)).toBe(true);
+  });
 });
