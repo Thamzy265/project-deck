@@ -240,7 +240,6 @@ describe('write mode (confirmed dashboard edits)', () => {
     ],
     // Its trigger writes only to orders itself.
     ["UPDATE orders SET status = 'shipped'", 'write'],
-    ['SELECT * FROM orders', 'select'],
   ])('allows %s', (sql, kind) => {
     expect(write(sql)).toMatchObject({ ok: true, kind });
   });

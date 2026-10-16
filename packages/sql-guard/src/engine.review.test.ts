@@ -195,3 +195,24 @@ describe('S6: sqlite_sequence', () => {
     expect(read(schema, 'SELECT * FROM sqlite_sequence')).toMatchObject({ ok: true });
   });
 });
+
+describe('C1: an edit writes exactly one table', () => {
+  const schema = ['CREATE TABLE t(id INTEGER PRIMARY KEY, a TEXT)'];
+  const edit = (sql: string) => engine.check(sql, { schemaSql: schema, mode: 'write' });
+
+  it.each([
+    'SELECT * FROM t',
+    'SELECT 1',
+    'WITH x AS (SELECT 1) SELECT * FROM x',
+    'PRAGMA table_info(t)',
+    'EXPLAIN DELETE FROM t',
+    'EXPLAIN QUERY PLAN UPDATE t SET a = 1',
+    'EXPLAIN SELECT * FROM t',
+  ])('refuses %s', (sql) => {
+    expect(edit(sql)).toMatchObject({ ok: false, code: 'not-an-edit' });
+  });
+
+  it('allows a plain edit, reported as a write', () => {
+    expect(edit("UPDATE t SET a = 'x' WHERE id = 1")).toMatchObject({ ok: true, kind: 'write' });
+  });
+});

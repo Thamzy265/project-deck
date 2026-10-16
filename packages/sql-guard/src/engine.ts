@@ -140,6 +140,9 @@ interface Scratch {
   refusal: GuardRefusal | undefined;
 }
 
+/** How many tables the edit writes; authorizer callbacks fill the set while preparing. */
+const written = (seen: Seen): number => seen.written.size;
+
 /** Reads the denial afresh: authorizer callbacks set it while SQLite prepares. */
 const denialOf = (seen: Seen): GuardRefusal | undefined => seen.denial;
 
@@ -292,6 +295,13 @@ export class GuardEngine {
             `The statement reads ${read}, which is hidden (db.hiddenColumns), for example through a join USING it, an index on it or a column computed from it. Leave it out.`,
           );
         }
+      }
+      // An edit changes rows of exactly one table; anything else is not an edit (C1).
+      if (mode === 'write' && (explain || written(seen) !== 1)) {
+        return refuse(
+          'not-an-edit',
+          'An edit must insert, update or delete rows of one table; send queries as reads.',
+        );
       }
       return {
         ok: true,
