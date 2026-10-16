@@ -4,7 +4,7 @@
  * change, so a refusal leaves the project as it was. It only adds: a missing port in
  * config.json, one .gitignore block, one launch.json entry.
  */
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import type { DeckConfig } from '@project-deck/core';
 import {
   ConfigError,
@@ -24,7 +24,7 @@ import {
 import { constants } from 'node:fs';
 import { access, mkdir, rmdir } from 'node:fs/promises';
 import { newConfigText, withPort } from './config-merge.js';
-import { detectFlutterProject, readApplicationId } from './flutter-project.js';
+import { detectFlutterProject, isRecord, readApplicationId } from './flutter-project.js';
 import { addIgnoreBlock } from './gitignore.js';
 import type { Io } from './io.js';
 import { messageOf } from './io.js';
@@ -33,7 +33,13 @@ import { CLI_NAME } from './name.js';
 import type { RunTool } from './prerequisites.js';
 import { checkPrerequisites, formatPrerequisites } from './prerequisites.js';
 import type { FileState } from './project-files.js';
-import { UnsafeFileError, inspectDir, inspectFile, writeAtomic } from './project-files.js';
+import {
+  UnsafeFileError,
+  inspectDir,
+  inspectFile,
+  readProjectFile,
+  writeAtomic,
+} from './project-files.js';
 
 export interface InitOptions {
   projectDir: string;
@@ -112,7 +118,7 @@ export async function runInit(opts: InitOptions): Promise<number> {
       io.out(`  ${outcome.padEnd(10)}${file}${outcome === 'unchanged' ? '' : ` (${detail})`}`);
     }
     io.out('');
-    for (const line of nextSteps(opts.cliMainPath)) io.out(line);
+    for (const line of await nextSteps(opts.cliMainPath)) io.out(line);
     return 0;
   } catch (err) {
     // Every form of the project and home folders (Windows slashes, case, 8.3 names) is
@@ -348,19 +354,55 @@ async function apply(
   return changes;
 }
 
-function nextSteps(cliMainPath: string): string[] {
+/** The development marketplace at the root of a checkout (plugin/README.md). */
+const DEV_MARKETPLACE = 'flutterdeck-dev';
+const PLUGIN_NAME = 'flutterdeck';
+
+/**
+ * The checkout this CLI runs from (`<root>/packages/cli/dist/main.js`), if it holds the
+ * plugin's development marketplace: a regular file (never through a link) named
+ * `flutterdeck-dev` that lists the `flutterdeck` plugin. Any other marketplace there, such
+ * as a project's own when the CLI is installed inside it, isn't ours. Until the M5 release
+ * that marketplace is how the plugin loads.
+ */
+async function pluginCheckout(cliMainPath: string): Promise<string | undefined> {
+  const root = dirname(dirname(dirname(dirname(cliMainPath))));
+  try {
+    const file = await readProjectFile(join(root, '.claude-plugin', 'marketplace.json'));
+    if (file.kind !== 'file') return undefined;
+    const market: unknown = JSON.parse(file.text);
+    if (!isRecord(market) || market.name !== DEV_MARKETPLACE) return undefined;
+    const plugins = market.plugins;
+    if (!Array.isArray(plugins)) return undefined;
+    return plugins.some((p) => isRecord(p) && p.name === PLUGIN_NAME) ? root : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function nextSteps(cliMainPath: string): Promise<string[]> {
+  const checkout = await pluginCheckout(cliMainPath);
   const snippet = {
     mcpServers: {
       dart: { type: 'stdio', command: 'dart', args: ['mcp-server'] },
       flutterdeck: { type: 'stdio', command: 'node', args: [cliMainPath, 'mcp'] },
     },
   };
+  const mcp =
+    checkout === undefined
+      ? ['  3. Give Claude the MCP servers: add these to .mcp.json in the project:']
+      : [
+          '  3. Give Claude the FlutterDeck plugin (the Dart MCP server, the FlutterDeck MCP server',
+          '     and the hooks), then start a new Claude session in this project:',
+          `       claude plugin marketplace add "${checkout}"`,
+          `       claude plugin install ${PLUGIN_NAME}@${DEV_MARKETPLACE}`,
+          '     Without the plugin, or for another agent, add these to .mcp.json in the project:',
+        ];
   return [
     'Next steps:',
     `  1. Start the dashboard: ${CLI_NAME} start`,
     '  2. In Claude Desktop, open the Browser pane and choose "FlutterDeck".',
-    '  3. Give Claude the MCP servers: add these to .mcp.json in the project',
-    '     (the FlutterDeck plugin will do this for you later):',
+    ...mcp,
     '',
     ...JSON.stringify(snippet, null, 2).split('\n'),
   ];

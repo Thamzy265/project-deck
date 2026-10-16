@@ -2,6 +2,15 @@
 
 Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
 
+## 2026-10-15 — M2 batch 5 (`feat/plugin-hooks`) — ready to merge
+
+- Changed: the Claude Code plugin (manifest, `.mcp.json` with the Dart MCP server and FlutterDeck, hooks for Stop, SubagentStop, Notification, PostToolUse and PostToolUseFailure, a standalone hook script with health and project-id checks, scrubbed minimal payloads and a 2 s deadline), a dev marketplace at the repo root, `claude.reload` events paired with VM reload events, daemon OS notifications (app crashed, reload failed, Claude waiting; fixed per-OS commands, rate limit, switches), a 16 kB limit on `/api/events`, CLI EXDEV retry and plugin next steps, QA scripts with a scratch home.
+- Gates: developer pass · tester pass (129 tests, T-P5-1..9 fixed) · reviewer: block (C1) → block (R2-1) → approve (all findings fixed, each with a failing-first test) · QA pass for hooks, notifications (recorded, no real popups) and a live run with a real Dart MCP client ([qa/M2.md](qa/M2.md)); final PM check written and rehearsed.
+- Lead decisions: crash notification "App crashed — <app>" for crashes only; `elicitation_dialog` and `agent_needs_input` count as Claude waiting; the dev marketplace is accepted for M2; failed reload messages show their first line without the prefix; the header chip follows Claude's reloads; pairing rule per the design note (15 Oct).
+- Host clean-up (PM standing approval): deleted `~/.flutterdeck`, created by a QA script run on 15 Oct (the scripts now use a scratch home).
+- Open findings: none.
+- Blockers: Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead none. PM: the final M2 check in Claude Desktop.
+
 ## 2026-10-15 — Masking hardening (`fix/masking-hardening`) — ready to merge
 
 - Changed: one-pass decoding of broken escapes; unpadded auth codes found by their exact shape (VM service, DDS and DTD all use 8 random bytes in base64url: 11 characters, or 12 with `=`) on any loopback host form with a port; raw `?uri=ws://…` values; decoded first segments; encodings deeper than 3 levels fail closed.

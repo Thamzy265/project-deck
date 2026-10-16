@@ -79,5 +79,11 @@ export function activityText(entry: ActivityEntry): string {
       return 'App crashed';
     case 'app.reloaded':
       return reloadText(entry.result);
+    case 'claude.reload': {
+      const kind = entry.reload === 'hot-restart' ? 'restart' : 'reload';
+      if (entry.ok) return done(kind, true);
+      const failed = kind === 'reload' ? 'Reload failed' : 'Restart failed';
+      return entry.message === undefined ? failed : `${failed}: ${entry.message}`;
+    }
   }
 }

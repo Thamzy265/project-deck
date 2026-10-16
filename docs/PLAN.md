@@ -339,6 +339,7 @@ plugin/
 
 - `Stop` and `SubagentStop` send `claude.done` to `POST http://127.0.0.1:<port>/api/events`, with the port read from `.flutterdeck/runtime.json`; `Notification` sends `claude.waiting`.
 - Hooks fail silently if the daemon isn't running.
+- _Changed 15 Oct 2026 (batch 5, design note "Seeing reloads"):_ `PostToolUse` and `PostToolUseFailure` on the Dart MCP server's `hot_reload` and `hot_restart` send `claude.reload`; a failed MCP call arrives as `PostToolUseFailure`. In M2 the plugin's `.mcp.json` runs this checkout's CLI build (`${CLAUDE_PLUGIN_ROOT}/../packages/cli/dist/main.js mcp`), which works because a development marketplace at the repo root (`flutterdeck-dev`) loads the plugin in place; `npx flutterdeck mcp` and the public marketplace entry come in M5. No `commands/` until M3. Details: [notes/claude-code-plugin.md](notes/claude-code-plugin.md).
 
 **`flutterdeck init`**
 
@@ -449,4 +450,6 @@ One line per deferred item, in the format `- <what> — <why> — trigger: <meas
 - Move the dashboard's runtime libraries (react, react-dom, @tanstack/react-virtual, zod) to devDependencies so the daemon install doesn't pull them — the daemon only needs the bundled dist — trigger: first npm pack of @project-deck/daemon or the CLI for M5, or daemon install size > 20 MB — noted 2026-10-14 by reviewer
 - Leave `qa-client.js` and `testing/fake-daemon.js` out of the published `@project-deck/mcp` package — they are QA and test helpers — trigger: first npm pack of `@project-deck/mcp` for M5 — noted 2026-10-15 by reviewer
 - `init` also recognises the old `.gitignore` marker after the product is renamed — the marker holds the CLI name, so a renamed `init` would add a second block — trigger: the PM picks a product name other than FlutterDeck — noted 2026-10-15 by developer
+- Leave `plugin/test/`, `plugin/package.json`, `plugin/tsconfig.json` and the vitest files out of the published plugin — they only let the repo test the plugin — trigger: first public marketplace release of the plugin (M5) — noted 2026-10-15 by developer
+- Replace the development marketplace at the repo root (`.claude-plugin/marketplace.json`, `flutterdeck-dev`, which loads `./plugin` in place for M2) with the public marketplace entry, and switch the plugin's `.mcp.json` to `npx flutterdeck mcp` — the dev marketplace only works from a built checkout (lead decision 15 Oct 2026: accepted for M2, dev-only) — trigger: start of the M5 item "Claude Code plugin and marketplace entry" — noted 2026-10-15 by developer
 - Move the port registry writer (`allocatePort`, `claimConfigPort`, the file lock) from the daemon to `core/node`, so the CLI stops loading daemon code — the CLI imports it from the daemon package today — trigger: `flutterdeck --help` takes > 500 ms (0.25 s on 15 Oct 2026) — noted 2026-10-15 by developer

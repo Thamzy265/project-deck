@@ -162,6 +162,25 @@ function resultFrom(result: ReloadResult, { kind, startedAt, mark }: Origin): La
   };
 }
 
+/**
+ * Claude's reload result (from the reload hook) is the latest word on that reload, so the
+ * header chip shows it too: a failure the VM reported as "success", or one it never
+ * reported at all (review C1).
+ */
+function claudeResult(state: DeckState, entry: ActivityEntry): DeckState {
+  if (entry.kind !== 'claude.reload') return state;
+  const kind = entry.reload === 'hot-restart' ? 'restart' : 'reload';
+  const lastResult: LastResult = {
+    ok: entry.ok,
+    kind,
+    external: true,
+    ...(entry.ok || entry.message === undefined ? {} : { message: entry.message }),
+    startedAt: entry.ts,
+    mark: markNow(state),
+  };
+  return { ...state, lastResult };
+}
+
 /** The next line the daemon or this page will add. */
 function markNow(state: DeckState): LogMark {
   return {
@@ -339,13 +358,22 @@ export function deckReducer(state: DeckState, action: DeckAction): DeckState {
         activity: { ...state.activity, load: { status: 'error', error: action.error } },
       };
     case 'activity-add': {
-      const exists = state.activity.items.some(
+      const withResult = claudeResult(state, action.entry);
+      const at = withResult.activity.items.findIndex(
         (i) => i.kind !== 'local' && i.id === action.entry.id,
       );
-      if (exists) return state;
+      if (at !== -1) {
+        // The daemon announces an entry again when Claude's reload result replaces the
+        // VM's report of the same reload; same id and time, so the order holds.
+        const items = withResult.activity.items.with(at, action.entry);
+        return { ...withResult, activity: { ...withResult.activity, items } };
+      }
       return {
-        ...state,
-        activity: { ...state.activity, items: timeline([...state.activity.items, action.entry]) },
+        ...withResult,
+        activity: {
+          ...withResult.activity,
+          items: timeline([...withResult.activity.items, action.entry]),
+        },
       };
     }
     case 'activity-local': {

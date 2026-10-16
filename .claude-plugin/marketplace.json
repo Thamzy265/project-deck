@@ -1,0 +1,12 @@
+{
+  "name": "flutterdeck-dev",
+  "owner": { "name": "FlutterDeck contributors" },
+  "description": "Development only: loads the FlutterDeck plugin from this checkout, in place. The public marketplace entry comes with the M5 release.",
+  "plugins": [
+    {
+      "name": "flutterdeck",
+      "source": "./plugin",
+      "description": "FlutterDeck from this checkout (needs `pnpm build` first)"
+    }
+  ]
+}

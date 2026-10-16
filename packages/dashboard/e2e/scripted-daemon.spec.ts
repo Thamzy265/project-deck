@@ -254,6 +254,29 @@ test('reloads by Claude or the IDE show in the header and Activity', async ({ pa
   ).toBeVisible();
 });
 
+test("Claude's failed reload replaces the VM's success in the header and Activity (C1)", async ({
+  page,
+}) => {
+  deck = await startScriptedDaemon();
+  await openDashboard(page, deck.url);
+  session().simulateExternalReload();
+  const header = page.getByRole('banner');
+  await expect(header.getByText('Reloaded (from Claude or the IDE)')).toBeVisible();
+  deck.daemon.bus.emit('claude.reload', {
+    ok: false,
+    kind: 'hot-reload',
+    message: 'Unable to reload sources',
+  });
+  await expect(header.getByRole('button', { name: 'Last reload: failed, 1 error' })).toBeVisible();
+  await expect(header.getByText('Unable to reload sources')).toBeVisible();
+  await page.getByRole('tab', { name: 'Activity' }).click();
+  await expect(
+    page
+      .getByRole('list', { name: 'Activity' })
+      .getByText('Reload failed: Unable to reload sources'),
+  ).toBeVisible();
+});
+
 test('connection loss: banner, then reconnect without a page reload and fill the gap', async ({
   page,
 }) => {

@@ -26,6 +26,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { parseArgs } from 'node:util';
+import { scratchHomeEnv } from './scratch-home.mjs';
 
 const { fetch, URL, WebSocket } = globalThis;
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -269,6 +270,8 @@ const shots = [];
 const traffic = [];
 const daemonOutput = [];
 const project = await mkdtemp(join(tmpdir(), 'deck-qa-m1-'));
+// The daemon's port registry goes to a scratch home, never the user's ~/.flutterdeck.
+const scratchHome = await scratchHomeEnv();
 // Unique per run, so the clean-up can stop and delete only this run's recording.
 const devicePath = `/sdcard/project-deck-qa-${RUN}-${process.pid}-${Date.now()}.mp4`;
 let daemon;
@@ -337,6 +340,7 @@ function cleanup() {
       mask(JSON.stringify(traffic.slice(0, 400), null, 2)),
     ).catch(() => {});
     await rm(project, { recursive: true, force: true }).catch(() => {});
+    await scratchHome.cleanup().catch(() => {});
   })();
   return cleanupDone;
 }
@@ -406,6 +410,7 @@ try {
     const port = await freePort();
     daemon = spawn(process.execPath, [DAEMON, '--project', project, '--port', String(port)], {
       stdio: ['ignore', 'pipe', 'pipe'],
+      env: scratchHome.env,
     });
     daemon.on('error', (err) => daemonOutput.push(`spawn error: ${err.message}\n`));
     daemonExited = new Promise((ok) => daemon.once('exit', (code, signal) => ok({ code, signal })));

@@ -1,0 +1,15 @@
+{
+  "name": "@project-deck/plugin",
+  "version": "0.0.0",
+  "private": true,
+  "description": "FlutterDeck's Claude Code plugin. This file only lets the repo typecheck and test the plugin; Claude Code doesn't read it.",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@project-deck/core": "workspace:*",
+    "zod": "^4.6.5"
+  }
+}

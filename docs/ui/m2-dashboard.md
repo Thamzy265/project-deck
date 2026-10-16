@@ -92,7 +92,7 @@ flowchart LR
 - Empty states: as in the matrix.
 - Errors: "Reload failed. Check the errors below or in Logs.", "Couldn't attach: <reason>. Try again.", "Lost connection to FlutterDeck — retrying…", "Can't reach FlutterDeck. Run `flutterdeck start` in your project, or start a Claude session with the plugin."
 - Confirmations: "Clear all logs? This can't be undone."
-- Notifications (D3 A): "App stopped — <app name>", "Reload failed — <app name>", "Claude is waiting — <first 100 chars of the message>". Never log content.
+- Notifications (D3 A): "App crashed — <app name>" (only for a crash as the design defines it; a normal stop shows "App stopped" in Activity only, with no notification), "Reload failed — <app name>", "Claude is waiting — <first 100 chars of the message>". Never log content.
 
 ## Tokens used
 

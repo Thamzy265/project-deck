@@ -99,6 +99,26 @@ describe('activityText', () => {
       },
       'Reload failed',
     ],
+    [
+      { id: 1, ts: 0, kind: 'claude.reload', ok: true, reload: 'hot-reload', ...app },
+      'Reloaded (from Claude or the IDE)',
+    ],
+    [
+      { id: 1, ts: 0, kind: 'claude.reload', ok: true, reload: 'hot-restart' },
+      'Restarted (from Claude or the IDE)',
+    ],
+    [
+      {
+        id: 1,
+        ts: 0,
+        kind: 'claude.reload',
+        ok: false,
+        reload: 'hot-reload',
+        message: 'Hot reload failed.',
+      },
+      'Reload failed: Hot reload failed.',
+    ],
+    [{ id: 1, ts: 0, kind: 'claude.reload', ok: false, reload: 'hot-restart' }, 'Restart failed'],
   ];
   it.each(cases)('describes %j', (entry, text) => {
     expect(activityText(entry)).toBe(text);

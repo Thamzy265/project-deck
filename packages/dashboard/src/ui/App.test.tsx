@@ -206,6 +206,32 @@ describe('reload and restart', () => {
     });
     expect(screen.getByText('Reloaded (from Claude or the IDE)')).toBeInTheDocument();
   });
+
+  it("C1 shows Claude's failed reload in the header chip, with its message", async () => {
+    const t = renderDashboard();
+    await t.connect();
+    await t.send({
+      type: 'app.reloaded',
+      payload: { appId: 'app-1', result: { ok: true, kind: 'hot-reload', source: 'external' } },
+    });
+    // The hook result replaces the VM's "success" under the same id.
+    await t.send({
+      type: 'activity',
+      payload: {
+        id: 41,
+        ts: Date.now(),
+        kind: 'claude.reload',
+        ok: false,
+        reload: 'hot-reload',
+        message: 'Unable to reload sources',
+        appId: 'app-1',
+        appName: 'shop',
+      },
+    });
+    const chip = await screen.findByRole('button', { name: 'Last reload: failed, 1 error' });
+    expect(chip).toHaveTextContent('Reload failed');
+    expect(screen.getAllByText('Unable to reload sources').length).toBeGreaterThan(0);
+  });
 });
 
 describe('logs', () => {

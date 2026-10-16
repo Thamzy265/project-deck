@@ -18,6 +18,7 @@ import { Registry } from '@project-deck/core';
 import { FakeAppConnector, fakeApp } from '@project-deck/core/testing';
 import { DEFAULT_PORT, startDaemon } from './daemon.js';
 import { registerLive } from './live.js';
+import { systemNotifier } from './notify-run.js';
 import { formatStartupError } from './startup-error.js';
 import { connectorUris } from './uri-options.js';
 
@@ -60,12 +61,15 @@ if (values.fake) {
   );
 }
 
-const daemon = await startDaemon({ projectDir: resolve(values.project), registry, port }).catch(
-  (err: unknown) => {
-    console.error(formatStartupError(err));
-    process.exit(1);
-  },
-);
+const daemon = await startDaemon({
+  projectDir: resolve(values.project),
+  registry,
+  port,
+  notifier: systemNotifier({ log: (message) => console.error(message) }),
+}).catch((err: unknown) => {
+  console.error(formatStartupError(err));
+  process.exit(1);
+});
 console.log(`project-deck daemon listening on ${daemon.url}`);
 console.log(`Token in ${resolve(values.project, '.flutterdeck/runtime.json')}`);
 

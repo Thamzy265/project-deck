@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { MAX_RELOAD_MESSAGE } from './activity.js';
 import { DbQueryInput, HookEventInput, TaskSetStatusInput } from './api.js';
 import { ReloadResultSchema, RunningAppSchema } from './apps.js';
 import { TaskSchema } from './tasks.js';
@@ -83,5 +84,51 @@ describe('API inputs', () => {
       message: 'Approve?',
     });
     expect(HookEventInput.safeParse({ type: 'rm -rf' }).success).toBe(false);
+  });
+
+  it('a claude.reload hook event carries ok, the kind and a short message only', () => {
+    expect(
+      HookEventInput.parse({
+        type: 'claude.reload',
+        sessionId: 's1',
+        ok: false,
+        kind: 'hot-restart',
+        message: 'Hot restart failed.',
+      }),
+    ).toEqual({
+      type: 'claude.reload',
+      sessionId: 's1',
+      ok: false,
+      kind: 'hot-restart',
+      message: 'Hot restart failed.',
+    });
+    expect(HookEventInput.parse({ type: 'claude.reload', ok: true, kind: 'hot-reload' })).toEqual({
+      type: 'claude.reload',
+      ok: true,
+      kind: 'hot-reload',
+    });
+    const bad = [
+      { type: 'claude.reload', kind: 'hot-reload' },
+      { type: 'claude.reload', ok: 'yes', kind: 'hot-reload' },
+      { type: 'claude.reload', ok: true, kind: 'rebuild' },
+      {
+        type: 'claude.reload',
+        ok: false,
+        kind: 'hot-reload',
+        message: 'x'.repeat(MAX_RELOAD_MESSAGE + 1),
+      },
+    ];
+    for (const body of bad) expect(HookEventInput.safeParse(body).success).toBe(false);
+    // Unknown fields (a forwarded tool_input, cwd, …) are dropped, never kept.
+    expect(
+      HookEventInput.parse({ type: 'claude.reload', ok: true, kind: 'hot-reload', cwd: '/x' }),
+    ).not.toHaveProperty('cwd');
+  });
+
+  it('hook session ids are bounded', () => {
+    for (const type of ['claude.done', 'claude.waiting'] as const) {
+      expect(HookEventInput.safeParse({ type, sessionId: 'a'.repeat(128) }).success).toBe(true);
+      expect(HookEventInput.safeParse({ type, sessionId: 'a'.repeat(129) }).success).toBe(false);
+    }
   });
 });
