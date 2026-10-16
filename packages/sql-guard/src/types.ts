@@ -25,6 +25,10 @@ export const GuardRefusalCodeSchema = z.enum([
   'multiple-statements',
   'invalid-sql',
   'writes-data',
+  /** Write mode: a statement other than INSERT, UPDATE or DELETE. */
+  'not-an-edit',
+  /** Write mode: the edit (or a trigger it fires) writes to more than one table. */
+  'multiple-tables',
   'transaction',
   'attach',
   'vacuum',

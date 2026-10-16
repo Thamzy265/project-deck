@@ -67,6 +67,8 @@ interface Seen {
   recursive: boolean;
   pragma: boolean;
   creates: number;
+  /** Tables an edit inserts into, updates or deletes from, its triggers included. */
+  written: Set<string>;
 }
 
 const newSeen = (): Seen => ({
@@ -76,6 +78,7 @@ const newSeen = (): Seen => ({
   recursive: false,
   pragma: false,
   creates: 0,
+  written: new Set(),
 });
 
 type Policy =
@@ -363,11 +366,33 @@ export class GuardEngine {
       case A.DETACH:
         return refuse('attach', 'ATTACH and DETACH are not allowed.');
     }
-    if (mode === 'write' && action !== 0) return undefined;
+    if (mode === 'write') return this.editRule(action, lower(arg1), seen);
     return refuse(
       'writes-data',
       'This statement changes data or the database. Only reading is allowed here.',
     );
+  }
+
+  /**
+   * Dashboard edits change rows only (UI spec): INSERT, UPDATE or DELETE (REPLACE and
+   * upserts included) on exactly one table. Trigger bodies are compiled with the
+   * statement, so a trigger that writes elsewhere counts as a second table.
+   */
+  private editRule(action: number, table: string, seen: Seen): GuardRefusal | undefined {
+    if (action !== A.INSERT && action !== A.UPDATE && action !== A.DELETE) {
+      return refuse(
+        'not-an-edit',
+        'Only INSERT, UPDATE and DELETE on rows are allowed for edits; the schema stays as it is.',
+      );
+    }
+    seen.written.add(table);
+    if (seen.written.size > 1) {
+      return refuse(
+        'multiple-tables',
+        `An edit may change one table only; this one also changes ${[...seen.written].join(', ')} (for example through a trigger).`,
+      );
+    }
+    return undefined;
   }
 
   private readRule(
@@ -417,6 +442,8 @@ export class GuardEngine {
     const pointer = db.pointer ?? 0;
     capi.sqlite3_limit(pointer, capi.SQLITE_LIMIT_SQL_LENGTH, MAX_SQL_BYTES);
     capi.sqlite3_limit(pointer, capi.SQLITE_LIMIT_LENGTH, 1_000_000);
+    // Compile foreign key actions, so a cascade shows up as a write to its table.
+    db.exec('PRAGMA foreign_keys = ON');
     capi.sqlite3_set_authorizer(
       pointer,
       (_ctx, action, arg1, arg2, dbName) => this.authorize(action, arg1, arg2, dbName),

@@ -233,7 +233,13 @@ describe('write mode (confirmed dashboard edits)', () => {
     ["UPDATE orders SET status = 'shipped' WHERE id = 1", 'write'],
     ['DELETE FROM orders WHERE id = 1', 'write'],
     ["INSERT INTO orders(customer, item) VALUES (1, 'x') RETURNING id", 'write'],
-    ['CREATE INDEX i ON orders(item)', 'write'],
+    ["REPLACE INTO orders(id, customer, item) VALUES (1, 1, 'x')", 'write'],
+    [
+      "INSERT INTO orders(id, customer, item) VALUES (1, 1, 'x') ON CONFLICT(id) DO UPDATE SET item = 'y'",
+      'write',
+    ],
+    // Its trigger writes only to orders itself.
+    ["UPDATE orders SET status = 'shipped'", 'write'],
     ['SELECT * FROM orders', 'select'],
   ])('allows %s', (sql, kind) => {
     expect(write(sql)).toMatchObject({ ok: true, kind });
@@ -254,8 +260,54 @@ describe('write mode (confirmed dashboard edits)', () => {
     ['RELEASE s', 'transaction'],
     ["UPDATE orders SET status = 'x'; DELETE FROM orders", 'multiple-statements'],
     ["UPDATE orders SET item = load_extension('x')", 'function'],
+    // Edits change rows only (UI spec): no schema changes of any kind.
+    ['CREATE INDEX i ON orders(item)', 'not-an-edit'],
+    ['CREATE TABLE t(a)', 'not-an-edit'],
+    ['CREATE TEMP TABLE t(a)', 'not-an-edit'],
+    ['CREATE TEMP VIEW v AS SELECT 1', 'not-an-edit'],
+    ['CREATE TRIGGER t AFTER INSERT ON orders BEGIN DELETE FROM customers; END', 'not-an-edit'],
+    ['CREATE TEMP TRIGGER t AFTER INSERT ON orders BEGIN SELECT 1; END', 'not-an-edit'],
+    ['DROP TABLE orders', 'not-an-edit'],
+    ['DROP INDEX orders_status', 'not-an-edit'],
+    ['DROP VIEW pending', 'not-an-edit'],
+    ['DROP TRIGGER orders_touch', 'not-an-edit'],
+    ['ALTER TABLE orders ADD COLUMN x', 'not-an-edit'],
+    ['ALTER TABLE orders RENAME TO o2', 'not-an-edit'],
+    ['CREATE VIRTUAL TABLE v USING fts5(a)', 'not-an-edit'],
+    ['ANALYZE', 'not-an-edit'],
+    ['REINDEX', 'not-an-edit'],
   ])('refuses %s', (sql, code) => {
     expect(write(sql)).toMatchObject({ ok: false, code });
+  });
+
+  it('refuses an edit that writes to more than one table, triggers included', () => {
+    const schemaSql = [
+      ...SCHEMA,
+      'CREATE TABLE audit(id INTEGER PRIMARY KEY, what TEXT)',
+      "CREATE TRIGGER customers_gone AFTER DELETE ON customers BEGIN INSERT INTO audit(what) VALUES ('gone'); END",
+    ];
+    const edit = (sql: string) => check(sql, { mode: 'write', schemaSql });
+    expect(edit('DELETE FROM customers WHERE id = 1')).toMatchObject({
+      ok: false,
+      code: 'multiple-tables',
+    });
+    expect(reasonOf(edit('DELETE FROM customers WHERE id = 1'))).toMatch(/one table/i);
+    expect(edit("UPDATE customers SET name = 'x' WHERE id = 1")).toMatchObject({ ok: true });
+    expect(edit("INSERT INTO audit(what) VALUES ('x')")).toMatchObject({ ok: true });
+  });
+
+  it('counts foreign key cascades as writes to the other table', () => {
+    const schemaSql = [
+      'CREATE TABLE p(id INTEGER PRIMARY KEY)',
+      'CREATE TABLE c(id INTEGER PRIMARY KEY, p INTEGER REFERENCES p(id) ON DELETE CASCADE)',
+    ];
+    expect(check('DELETE FROM p WHERE id = 1', { mode: 'write', schemaSql })).toMatchObject({
+      ok: false,
+      code: 'multiple-tables',
+    });
+    expect(check('DELETE FROM c WHERE id = 1', { mode: 'write', schemaSql })).toMatchObject({
+      ok: true,
+    });
   });
 });
 
