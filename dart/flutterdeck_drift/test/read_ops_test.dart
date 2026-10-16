@@ -142,8 +142,12 @@ void main() {
     test('the file path and raw pages are not readable', () {
       for (final sql in [
         'SELECT file FROM pragma_database_list',
+        "SELECT file FROM 'pragma_database_list'",
+        "SELECT * FROM main.'pragma_database_list'",
         'SELECT * FROM dbstat',
+        "SELECT * FROM 'dbstat'",
         'SELECT * FROM sqlite_dbpage',
+        'SELECT * FROM pragma_compile_options',
       ]) {
         expect(
           () => ops.query(sql, const [], 10),

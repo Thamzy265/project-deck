@@ -112,6 +112,18 @@ const _readPragmas = {
 /// absolute file path, and dbstat and sqlite_dbpage expose raw pages.
 const _hiddenSources = {'pragma_database_list', 'dbstat', 'sqlite_dbpage'};
 
+/// The pragma table-valued functions a read may use (ADR 0005, amended).
+final _readPragmaFunctions = {
+  for (final p in _readPragmas) 'pragma_${p.toLowerCase()}',
+};
+
+String? _nameOrString(String token) {
+  if (token.length >= 2 && token.startsWith("'") && token.endsWith("'")) {
+    return token.substring(1, token.length - 1).replaceAll("''", "'");
+  }
+  return unquoteIdent(token);
+}
+
 /// Lower case for ASCII letters only, the way SQLite compares names.
 String asciiLower(String s) {
   final units = s.codeUnits.toList();
@@ -148,9 +160,17 @@ String? readGuard(String sql) {
     if (tokens.isEmpty) return 'the query is empty';
   }
   for (final t in tokens) {
-    final name = t.text.startsWith("'") ? null : unquoteIdent(t.text);
-    if (name != null && _hiddenSources.contains(asciiLower(name))) {
+    // SQLite also takes a string literal where it expects a table name
+    // (S1), so single-quoted text counts as a name here. Plain strings that
+    // hold these words are refused too; the guard can't tell them apart.
+    final name = _nameOrString(t.text);
+    if (name == null) continue;
+    final lower = asciiLower(name);
+    if (_hiddenSources.contains(lower)) {
       return 'it reads database files or raw pages';
+    }
+    if (lower.startsWith('pragma_') && !_readPragmaFunctions.contains(lower)) {
+      return 'it reads or changes a setting';
     }
   }
   final first = tokens.first.word;

@@ -96,9 +96,46 @@ void main() {
       test('refuses: $sql', () => expect(readGuard(sql), isNotNull));
     }
 
-    test('allows the words inside strings', () {
-      expect(readGuard("SELECT 'dbstat', 'pragma_database_list'"), isNull);
-    });
+    // SQLite takes a string literal where it expects a table name, so
+    // single-quoted names count too (S1). Plain strings with these words are
+    // refused as well: the guard can't tell the two apart, and refusing more
+    // is the safe side.
+    for (final sql in [
+      "SELECT file FROM 'pragma_database_list'",
+      "SELECT * FROM main.'pragma_database_list'",
+      "SELECT * FROM 'dbstat'",
+      "SELECT * FROM 'SQLITE_DBPAGE'",
+      "SELECT 'it''s', * FROM 'dbstat'",
+    ]) {
+      test(
+        'refuses a quoted name: $sql',
+        () => expect(readGuard(sql), isNotNull),
+      );
+    }
+  });
+
+  group('readGuard: pragma table-valued functions', () {
+    for (final sql in [
+      "SELECT * FROM pragma_table_info('orders')",
+      "SELECT * FROM PRAGMA_TABLE_XINFO('orders')",
+      "SELECT * FROM pragma_index_list('orders')",
+      "SELECT * FROM pragma_index_info('i')",
+      "SELECT * FROM pragma_foreign_key_list('orders')",
+    ]) {
+      test('allows: $sql', () => expect(readGuard(sql), isNull));
+    }
+    for (final sql in [
+      'SELECT * FROM pragma_compile_options',
+      'SELECT * FROM pragma_function_list',
+      "SELECT * FROM 'pragma_module_list'",
+      'SELECT * FROM "pragma_query_only"',
+      'SELECT * FROM main.pragma_temp_store',
+      'SELECT * FROM [PRAGMA_journal_mode]',
+    ]) {
+      test('refuses: $sql', () {
+        expect(readGuard(sql), contains('setting'));
+      });
+    }
   });
 
   group('writeGuard', () {
