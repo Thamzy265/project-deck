@@ -52,41 +52,45 @@ class SampleApp extends StatelessWidget {
       theme: ThemeData(colorSchemeSeed: Colors.indigo),
       home: Scaffold(
         appBar: AppBar(title: const Text('FlutterDeck sample')),
-        body: ListView(
-          padding: const EdgeInsets.all(24),
-          children: [
-            Text(
-              reloadMarker,
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
-            const SizedBox(height: 32),
-            ValueListenableBuilder<int>(
-              valueListenable: taps,
-              builder: (context, count, _) => Text(
-                'Taps: $count',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-            ),
-            const SizedBox(height: 32),
-            Center(
-              child: Semantics(
-                identifier: 'hit-breakpoint',
-                child: FilledButton(
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size(240, 72),
-                    textStyle: const TextStyle(fontSize: 22),
+        // Slivers, so a long orders list builds only the rows on screen.
+        body: CustomScrollView(
+          slivers: [
+            SliverPadding(
+              padding: const EdgeInsets.all(24),
+              sliver: SliverList.list(
+                children: [
+                  Text(
+                    reloadMarker,
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.headlineMedium,
                   ),
-                  onPressed: onHitBreakpoint,
-                  child: const Text('Hit breakpoint'),
-                ),
+                  const SizedBox(height: 32),
+                  ValueListenableBuilder<int>(
+                    valueListenable: taps,
+                    builder: (context, count, _) => Text(
+                      'Taps: $count',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                  Center(
+                    child: Semantics(
+                      identifier: 'hit-breakpoint',
+                      child: FilledButton(
+                        style: FilledButton.styleFrom(
+                          minimumSize: const Size(240, 72),
+                          textStyle: const TextStyle(fontSize: 22),
+                        ),
+                        onPressed: onHitBreakpoint,
+                        child: const Text('Hit breakpoint'),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-            if (db != null) ...[
-              const SizedBox(height: 32),
-              OrdersSection(database: db),
-            ],
+            if (db != null) OrdersSection(database: db),
           ],
         ),
       ),
@@ -120,25 +124,34 @@ class _OrdersSectionState extends State<OrdersSection> {
   @override
   Widget build(BuildContext context) {
     final database = widget.database;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Center(
-          child: Semantics(
-            identifier: 'add-order',
-            child: OutlinedButton(
-              style: OutlinedButton.styleFrom(minimumSize: const Size(240, 56)),
-              onPressed: database.addOrder,
-              child: const Text('Add order'),
+    return SliverMainAxisGroup(
+      slivers: [
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Center(
+              child: Semantics(
+                identifier: 'add-order',
+                child: OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(240, 56),
+                  ),
+                  onPressed: database.addOrder,
+                  child: const Text('Add order'),
+                ),
+              ),
             ),
           ),
         ),
         StreamBuilder<List<Order>>(
           stream: _orders,
-          builder: (context, snapshot) => Column(
-            children: [
-              for (final order in snapshot.data ?? const <Order>[])
-                ListTile(
+          builder: (context, snapshot) {
+            final orders = snapshot.data ?? const <Order>[];
+            return SliverList.builder(
+              itemCount: orders.length,
+              itemBuilder: (context, i) {
+                final order = orders[i];
+                return ListTile(
                   title: Text(order.item),
                   subtitle: Text('Order ${order.id}'),
                   trailing: Semantics(
@@ -152,9 +165,10 @@ class _OrdersSectionState extends State<OrdersSection> {
                       ),
                     ),
                   ),
-                ),
-            ],
-          ),
+                );
+              },
+            );
+          },
         ),
       ],
     );

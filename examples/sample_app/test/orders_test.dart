@@ -90,6 +90,28 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     });
 
+    testWidgets('a long orders list builds only the rows on screen', (
+      tester,
+    ) async {
+      final db = AppDatabase(NativeDatabase.memory());
+      await tester.runAsync(() async {
+        await db.customStatement(
+          'WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c '
+          "WHERE x < 5000) INSERT INTO orders (item) SELECT 'Tea' FROM c",
+        );
+      });
+      await tester.pumpWidget(SampleApp(database: db));
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 200)),
+      );
+      await tester.pump();
+      final built = find.byType(ListTile).evaluate().length;
+      expect(built, greaterThan(0), reason: 'the list shows');
+      expect(built, lessThan(100), reason: 'rows are built lazily');
+      await tester.runAsync(db.close);
+      await tester.pumpWidget(const SizedBox());
+    });
+
     testWidgets('a rebuild keeps the one orders stream', (tester) async {
       final db = _CountingDatabase();
       await tester.pumpWidget(SampleApp(database: db));
