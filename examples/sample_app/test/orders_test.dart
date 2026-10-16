@@ -90,6 +90,16 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     });
 
+    testWidgets('a rebuild keeps the one orders stream', (tester) async {
+      final db = _CountingDatabase();
+      await tester.pumpWidget(SampleApp(database: db));
+      await tester.pumpWidget(SampleApp(database: db));
+      await tester.pump();
+      expect(db.watches, 1);
+      await tester.runAsync(db.close);
+      await tester.pumpWidget(const SizedBox());
+    });
+
     testWidgets('the add button keeps its test hook', (tester) async {
       final db = AppDatabase(NativeDatabase.memory());
       await tester.pumpWidget(SampleApp(database: db));
@@ -105,4 +115,17 @@ void main() {
     final database = File('lib/database.dart').readAsStringSync();
     expect(database, contains("driftDatabase(name: 'sample')"));
   });
+}
+
+/// Counts how often the screen asks for the orders stream.
+class _CountingDatabase extends AppDatabase {
+  _CountingDatabase() : super(NativeDatabase.memory());
+
+  int watches = 0;
+
+  @override
+  Stream<List<Order>> watchOrders() {
+    watches++;
+    return super.watchOrders();
+  }
 }

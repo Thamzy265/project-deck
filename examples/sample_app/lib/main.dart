@@ -96,13 +96,30 @@ class SampleApp extends StatelessWidget {
 
 /// An "Add order" button and the orders, newest first. Tapping an order's
 /// status moves it to the next one.
-class OrdersSection extends StatelessWidget {
+class OrdersSection extends StatefulWidget {
   const OrdersSection({super.key, required this.database});
 
   final AppDatabase database;
 
   @override
+  State<OrdersSection> createState() => _OrdersSectionState();
+}
+
+class _OrdersSectionState extends State<OrdersSection> {
+  // Held here so a rebuild keeps one query instead of starting another.
+  late Stream<List<Order>> _orders = widget.database.watchOrders();
+
+  @override
+  void didUpdateWidget(OrdersSection old) {
+    super.didUpdateWidget(old);
+    if (!identical(old.database, widget.database)) {
+      _orders = widget.database.watchOrders();
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final database = widget.database;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -117,7 +134,7 @@ class OrdersSection extends StatelessWidget {
           ),
         ),
         StreamBuilder<List<Order>>(
-          stream: database.watchOrders(),
+          stream: _orders,
           builder: (context, snapshot) => Column(
             children: [
               for (final order in snapshot.data ?? const <Order>[])
