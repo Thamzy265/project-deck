@@ -7,6 +7,9 @@
  * runs nothing) and refuses when an opcode reads a hidden column.
  */
 
+/** Hidden columns by table, all names folded. Never joined into one string (S4). */
+export type HiddenColumns = ReadonlyMap<string, ReadonlySet<string>>;
+
 /** One row of an EXPLAIN listing: the opcode and its first three operands. */
 export interface Op {
   opcode: string;
@@ -87,17 +90,19 @@ interface Cursor {
 }
 
 /**
- * Returns "table.column" for the first hidden read in `ops`, else undefined.
- * `hidden` holds folded "table.column" pairs (generated columns built on hidden ones
- * included). `trees` maps main-schema root pages to their b-tree.
+ * Describes the first hidden read in `ops` ("table.column"), else undefined. `hidden`
+ * includes generated columns built on hidden ones. `trees` maps main-schema root pages
+ * to their b-tree.
  */
 export function findHiddenRead(
   ops: readonly Op[],
   trees: ReadonlyMap<number, BTree>,
-  hidden: ReadonlySet<string>,
+  hidden: HiddenColumns,
 ): string | undefined {
-  const tablesWithHidden = new Set([...hidden].map((pair) => pair.slice(0, pair.indexOf('.'))));
-  const isHidden = (table: string, column: string) => hidden.has(`${table}.${column}`);
+  const tablesWithHidden = new Set(
+    [...hidden].filter(([, columns]) => columns.size > 0).map(([table]) => table),
+  );
+  const isHidden = (table: string, column: string) => hidden.get(table)?.has(column) === true;
   const cursors = new Map<number, Cursor>();
 
   // An index (or a WITHOUT ROWID table, stored as one) that orders or holds a hidden

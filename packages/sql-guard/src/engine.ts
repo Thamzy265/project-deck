@@ -21,7 +21,7 @@ import type {
   HiddenColumn,
 } from './types.js';
 import { MAX_SCHEMA_BYTES, MAX_SCHEMA_STATEMENTS, MAX_SQL_BYTES } from './types.js';
-import type { BTree, Op } from './bytecode.js';
+import type { BTree, HiddenColumns, Op } from './bytecode.js';
 import { findHiddenRead } from './bytecode.js';
 import { generatedColumnRefs } from './generated.js';
 import { foldName } from './names.js';
@@ -109,7 +109,7 @@ type Policy =
       kind: 'check';
       mode: GuardMode;
       seen: Seen;
-      hidden: ReadonlySet<string>;
+      hidden: HiddenColumns;
       /** Virtual tables holding a hidden column, with their shadow tables (SG-2). */
       hiddenTables: ReadonlySet<string>;
     };
@@ -230,7 +230,7 @@ export class GuardEngine {
     sql: string,
     mode: GuardMode,
     seen: Seen,
-    hidden: ReadonlySet<string>,
+    hidden: HiddenColumns,
   ): GuardResult {
     const { capi } = this.sqlite;
     const { db } = scratch;
@@ -499,7 +499,7 @@ export class GuardEngine {
         `${table} holds a hidden column (db.hiddenColumns) and is a full-text or other virtual table, which can read any of its columns, so it can't be read at all.`,
       );
     }
-    if (column !== '' && policy.hidden.has(`${table}.${column}`)) {
+    if (column !== '' && policy.hidden.get(table)?.has(column) === true) {
       return refuse(
         'hidden-column',
         `The statement reads ${table}.${column}, which is hidden (db.hiddenColumns). Leave it out; if you used *, list the columns you need.`,
@@ -640,23 +640,30 @@ export class GuardEngine {
    * The hidden columns plus every generated column computed, directly or through other
    * generated columns, from one of them (SG-3).
    */
-  private expandHidden(scratch: Scratch, hidden: readonly HiddenColumn[]): Set<string> {
-    const pairs = new Set(hidden.map((h) => `${foldName(h.table)}.${foldName(h.column)}`));
+  private expandHidden(scratch: Scratch, hidden: readonly HiddenColumn[]): HiddenColumns {
+    const byTable = new Map<string, Set<string>>();
+    for (const h of hidden) {
+      const table = foldName(h.table);
+      const columns = byTable.get(table) ?? new Set<string>();
+      columns.add(foldName(h.column));
+      byTable.set(table, columns);
+    }
     let grew = true;
     while (grew) {
       grew = false;
-      for (const [table, columns] of scratch.generated) {
-        for (const [column, refs] of columns) {
-          const pair = `${table}.${column}`;
-          if (pairs.has(pair)) continue;
-          if ([...refs].some((ref) => pairs.has(`${table}.${ref}`))) {
-            pairs.add(pair);
+      for (const [table, generated] of scratch.generated) {
+        const columns = byTable.get(table);
+        if (columns === undefined) continue;
+        for (const [column, refs] of generated) {
+          if (columns.has(column)) continue;
+          if ([...refs].some((ref) => columns.has(ref))) {
+            columns.add(column);
             grew = true;
           }
         }
       }
     }
-    return pairs;
+    return byTable;
   }
 
   /** Lists the compiled program (EXPLAIN only lists it; nothing runs). */
