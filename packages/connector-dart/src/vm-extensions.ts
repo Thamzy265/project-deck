@@ -35,15 +35,23 @@ function shorten(text: string): string {
   return text.length > MAX_ERROR_MESSAGE ? `${text.slice(0, MAX_ERROR_MESSAGE - 1)}…` : text;
 }
 
+/** Announcements kept per session; an app announcing more is misbehaving. */
+const MAX_ANNOUNCED = 1000;
+
 /**
  * App extensions over the VM service (ADR 0004). A method is called on the isolate that
  * announced it (ServiceExtensionAdded or Isolate.extensionRPCs), else on the main
  * isolate. Events reach listeners only from isolates that announced an allowed
  * extension, so another isolate can't pose as flutterdeck_drift.
+ *
+ * Every announced method is kept, and the prefix rules are applied when it is used, so
+ * a prefix the registry allows later works for methods announced before (D2).
  */
 export class VmExtensions implements AppExtensions {
-  /** Allowed method → the isolate that announced it most recently. */
+  /** Announced method → the isolate that announced it most recently. */
   private readonly owners = new Map<string, string>();
+  /** Isolate → the methods it owns. */
+  private readonly byIsolate = new Map<string, Set<string>>();
   private readonly listeners = new Map<string, Set<(data: unknown) => void>>();
 
   constructor(
@@ -104,31 +112,55 @@ export class VmExtensions implements AppExtensions {
 
   /** ServiceExtensionAdded on the Isolate stream. */
   added(method: string, isolateId: string): void {
-    if (isAllowedExtensionMethod(method, this.prefixes())) this.owners.set(method, isolateId);
+    if (!this.owners.has(method) && this.owners.size >= MAX_ANNOUNCED) return;
+    this.forget(method);
+    this.owners.set(method, isolateId);
+    let methods = this.byIsolate.get(isolateId);
+    if (methods === undefined) {
+      methods = new Set();
+      this.byIsolate.set(isolateId, methods);
+    }
+    methods.add(method);
   }
 
   /** IsolateExit, or a Sentinel for the isolate. */
   dropIsolate(isolateId: string | undefined): void {
-    for (const [method, owner] of this.owners) {
-      if (owner === isolateId) this.owners.delete(method);
-    }
+    if (isolateId === undefined) return;
+    for (const method of this.byIsolate.get(isolateId) ?? []) this.owners.delete(method);
+    this.byIsolate.delete(isolateId);
   }
 
   /** The connection closed: nothing is callable any more. */
   clear(): void {
     this.owners.clear();
+    this.byIsolate.clear();
   }
 
   /** An `Extension` event from the app. */
   event(isolateId: string | undefined, kind: string, data: unknown): void {
-    if (isolateId === undefined || ![...this.owners.values()].includes(isolateId)) return;
-    for (const cb of [...(this.listeners.get(kind) ?? [])]) {
+    const listeners = this.listeners.get(kind);
+    if (listeners === undefined || listeners.size === 0 || isolateId === undefined) return;
+    const prefixes = this.prefixes();
+    const methods = this.byIsolate.get(isolateId);
+    if (methods === undefined || ![...methods].some((m) => isAllowedExtensionMethod(m, prefixes))) {
+      return;
+    }
+    for (const cb of [...listeners]) {
       try {
         cb(data);
       } catch (err) {
         this.onListenerError(err);
       }
     }
+  }
+
+  private forget(method: string): void {
+    const owner = this.owners.get(method);
+    if (owner === undefined) return;
+    this.owners.delete(method);
+    const methods = this.byIsolate.get(owner);
+    methods?.delete(method);
+    if (methods?.size === 0) this.byIsolate.delete(owner);
   }
 
   private async target(method: string): Promise<string> {
@@ -169,7 +201,7 @@ export class VmExtensions implements AppExtensions {
     }
     if (err instanceof JsonRpcError) {
       if (err.code === METHOD_NOT_FOUND) {
-        this.owners.delete(method);
+        this.forget(method);
         return new AppExtensionError('not-found', `The app has no extension ${method}`);
       }
       if (

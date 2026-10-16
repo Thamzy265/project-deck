@@ -177,4 +177,39 @@ describe('DartAppSession extensions', () => {
     });
     expect((await rejection(session.extensions.call(LIST, {}))).code).toBe('not-allowed');
   });
+
+  it('keeps methods announced under a prefix that is allowed only later (D2)', async () => {
+    const prefixes = ['ext.flutterdeck.other.'];
+    server = await FakeRpcServer.start('/AbC=/ws');
+    asFlutterVmService(server);
+    server.handle('getIsolate', (params) => isolateResponse(String(params?.isolateId), [LIST]));
+    server.handle(LIST, (params) => params?.isolateId);
+    session = await DartAppSession.attach(server.uri, app, {
+      serviceWaitMs: 100,
+      extensionPrefixes: () => prefixes,
+    });
+    const s = session;
+    server.notify(serviceExtensionAdded(QUERY, 'isolates/7'));
+    server.notify(extensionEvent('flutterdeck.drift.tables', { early: true }, 'isolates/7'));
+    // A round trip after the notifications: they have been handled once it answers.
+    await s.reload();
+    expect(s.extensions.has(LIST)).toBe(false);
+    expect(s.extensions.has(QUERY)).toBe(false);
+    prefixes.push('ext.flutterdeck.drift.');
+    await until(() => s.extensions.has(QUERY));
+    expect(s.extensions.has(LIST)).toBe(true);
+    // The call goes to the isolate that announced the method, not the main one.
+    server.handle(QUERY, (params) => params?.isolateId);
+    await expect(s.extensions.call(QUERY, {})).resolves.toBe('isolates/7');
+    const cb = vi.fn();
+    s.extensions.onEvent('flutterdeck.drift.tables', cb);
+    server.notify(extensionEvent('flutterdeck.drift.tables', { late: true }, 'isolates/7'));
+    await until(() => cb.mock.calls.length === 1);
+    expect(cb).toHaveBeenCalledWith({ late: true });
+  });
+
+  it('never makes a blocked method callable, whatever it announced', async () => {
+    const { session } = await attach(['ext.flutter.exit']);
+    expect(session.extensions.has('ext.flutter.exit')).toBe(false);
+  });
 });
