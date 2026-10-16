@@ -37,9 +37,11 @@ function shorten(text: string): string {
 
 /**
  * Methods outside the allowed prefixes kept per session, in case a prefix is allowed
- * later; an app announcing more is misbehaving. Allowed methods are always kept (C7).
+ * later; an app announcing more is misbehaving. Allowed methods have their own, larger
+ * cap, so foreign ones never crowd them out (C7) and memory stays bounded (N2).
  */
 const MAX_FOREIGN = 1000;
+const MAX_ALLOWED = 10_000;
 
 /**
  * App extensions over the VM service (ADR 0004). A method is called on the isolate that
@@ -118,7 +120,10 @@ export class VmExtensions implements AppExtensions {
   /** ServiceExtensionAdded on the Isolate stream. */
   added(method: string, isolateId: string): void {
     const allowed = isAllowedExtensionMethod(method, this.prefixes());
-    if (!allowed && !this.owners.has(method) && this.foreign.size >= MAX_FOREIGN) return;
+    if (!this.owners.has(method)) {
+      if (!allowed && this.foreign.size >= MAX_FOREIGN) return;
+      if (allowed && this.owners.size - this.foreign.size >= MAX_ALLOWED) return;
+    }
     this.forget(method);
     this.owners.set(method, isolateId);
     if (!allowed) this.foreign.add(method);

@@ -220,4 +220,12 @@ describe('DartAppSession extensions', () => {
     await until(() => session.extensions.has(QUERY));
     expect(session.extensions.has(LIST)).toBe(true);
   });
+
+  it('keeps at most 10,000 allowed methods per session (N2)', async () => {
+    const allowed = Array.from({ length: 10_005 }, (_, i) => `ext.flutterdeck.drift.m${i}`);
+    const { session } = await attach(allowed);
+    expect(session.extensions.has('ext.flutterdeck.drift.m0')).toBe(true);
+    expect(session.extensions.has('ext.flutterdeck.drift.m9999')).toBe(true);
+    expect(session.extensions.has('ext.flutterdeck.drift.m10000')).toBe(false);
+  });
 });
