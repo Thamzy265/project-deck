@@ -47,3 +47,63 @@ describe('S4: names that contain a dot', () => {
     expect(read(schema, 'SELECT d FROM "a.b"', hidden)).toMatchObject({ ok: true });
   });
 });
+
+describe('S1: shadow tables of virtual tables the gate could not create', () => {
+  // As SQLite writes them into sqlite_schema for an fts4 table (fts3_write.c).
+  const fts4 = [
+    'CREATE VIRTUAL TABLE notes USING fts4(title, body)',
+    "CREATE TABLE 'notes_content'(docid INTEGER PRIMARY KEY, 'c0title', 'c1body')",
+    "CREATE TABLE 'notes_segments'(blockid INTEGER PRIMARY KEY, block BLOB)",
+    "CREATE TABLE 'notes_segdir'(level INTEGER,idx INTEGER,start_block INTEGER,leaves_end_block INTEGER,end_block INTEGER,root BLOB,PRIMARY KEY(level, idx))",
+    "CREATE TABLE 'notes_docsize'(docid INTEGER PRIMARY KEY, size BLOB)",
+    "CREATE TABLE 'notes_stat'(id INTEGER PRIMARY KEY, value BLOB)",
+    'CREATE TABLE audit(id INTEGER PRIMARY KEY, what TEXT)',
+  ];
+  // An fts5 table whose tokenizer the app registers itself, so it fails to load here.
+  const fts5Custom = [
+    "CREATE VIRTUAL TABLE notes USING fts5(title, body, tokenize='custom')",
+    "CREATE TABLE 'notes_data'(id INTEGER PRIMARY KEY, block BLOB)",
+    "CREATE TABLE 'notes_idx'(segid, term, pgno, PRIMARY KEY(segid, term)) WITHOUT ROWID",
+    "CREATE TABLE 'notes_content'(id INTEGER PRIMARY KEY, c0, c1)",
+    "CREATE TABLE 'notes_docsize'(id INTEGER PRIMARY KEY, sz BLOB)",
+    "CREATE TABLE 'notes_config'(k PRIMARY KEY, v) WITHOUT ROWID",
+  ];
+  const hidden = [{ table: 'notes', column: 'body' }];
+
+  it('hides the shadow tables of an fts4 table with a hidden column', () => {
+    for (const sql of [
+      'SELECT c1body FROM notes_content',
+      'SELECT c0title FROM notes_content',
+      'SELECT count(*) FROM notes_content',
+      'SELECT block FROM notes_segments',
+    ]) {
+      expect(read(fts4, sql, hidden), sql).toMatchObject({ ok: false, code: 'hidden-column' });
+    }
+    expect(read(fts4, 'SELECT what FROM audit', hidden)).toMatchObject({ ok: true });
+  });
+
+  it('hides the shadow tables of an fts5 table with a custom tokenizer', () => {
+    for (const sql of ['SELECT c1 FROM notes_content', 'SELECT * FROM notes_data']) {
+      expect(read(fts5Custom, sql, hidden), sql).toMatchObject({
+        ok: false,
+        code: 'hidden-column',
+      });
+    }
+  });
+
+  it('refuses edits of those shadow tables', () => {
+    for (const [schema, sql] of [
+      [fts4, 'DELETE FROM notes_content'],
+      [fts4, 'UPDATE notes_segments SET block = NULL'],
+      [fts5Custom, 'DELETE FROM notes_data'],
+    ] as const) {
+      expect(engine.check(sql, { schemaSql: schema, mode: 'write' }), sql).toMatchObject({
+        ok: false,
+        code: 'not-an-edit',
+      });
+    }
+    expect(
+      engine.check("INSERT INTO audit(what) VALUES ('x')", { schemaSql: fts4, mode: 'write' }),
+    ).toMatchObject({ ok: true });
+  });
+});

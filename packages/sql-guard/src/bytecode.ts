@@ -98,6 +98,8 @@ export function findHiddenRead(
   ops: readonly Op[],
   trees: ReadonlyMap<number, BTree>,
   hidden: HiddenColumns,
+  /** Tables no cursor may touch at all, not even to count (hidden whole). */
+  hiddenTables: ReadonlySet<string> = new Set(),
 ): string | undefined {
   const tablesWithHidden = new Set(
     [...hidden].filter(([, columns]) => columns.size > 0).map(([table]) => table),
@@ -140,6 +142,7 @@ export function findHiddenRead(
     const cursor = cursors.get(op.p1);
     if (cursor === undefined || cursor.write) continue;
     const { tree } = cursor;
+    if (hiddenTables.has(tree.table)) return `${tree.table} (hidden whole)`;
 
     const wholeTree = hiddenTree(tree);
     if (wholeTree !== undefined) {

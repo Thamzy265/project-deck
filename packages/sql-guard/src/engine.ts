@@ -117,9 +117,16 @@ type Policy =
 interface Scratch {
   db: Db;
   relations: ReadonlySet<string>;
-  /** Virtual tables the schema declares (folded name → module), stand-ins included. */
+  /**
+   * Every virtual table the schema declares (folded name → module), whether the gate
+   * created it, stood a plain table in for it, or failed to create it (S1).
+   */
   virtualTables: Map<string, string>;
-  /** Tables a virtual table keeps its data in (e.g. FTS5's notes_data), folded. */
+  /**
+   * Tables a virtual table keeps its data in (e.g. FTS5's notes_data), folded: SQLite's
+   * own list plus every `<vtab>_<suffix>` table, since a virtual table the gate could not
+   * create leaves its shadow tables as plain ones (S1).
+   */
   shadowTables: ReadonlySet<string>;
   /** Main-schema tables and indexes by root page, for the bytecode check. */
   trees: ReadonlyMap<number, BTree>;
@@ -255,7 +262,8 @@ export class GuardEngine {
           'This statement changes data or the database. Only reading is allowed here.',
         );
       }
-      if (mode === 'write' || hidden.size > 0) {
+      const { hiddenTables } = this.checkPolicy();
+      if (mode === 'write' || hidden.size > 0 || hiddenTables.size > 0) {
         const ops = this.listProgram(stmt);
         if (ops === undefined) {
           return refuse('invalid-sql', 'SQLite could not list the compiled statement.');
@@ -264,7 +272,7 @@ export class GuardEngine {
         if (mode === 'write' && ops.some((op) => op.opcode === 'Vacuum')) {
           return refuse('vacuum', 'VACUUM is not allowed.');
         }
-        const read = findHiddenRead(ops, scratch.trees, hidden);
+        const read = findHiddenRead(ops, scratch.trees, hidden, hiddenTables);
         if (read !== undefined) {
           return refuse(
             'hidden-column',
@@ -356,6 +364,11 @@ export class GuardEngine {
       'function',
       `The function ${name} is not allowed. Only SQLite's built-in functions can be used here.`,
     );
+  }
+
+  private checkPolicy(): Extract<Policy, { kind: 'check' }> {
+    if (this.policy.kind !== 'check') throw new Error('No check is running');
+    return this.policy;
   }
 
   /** The authorizer: one per scratch database, following the current policy. */
@@ -576,12 +589,14 @@ export class GuardEngine {
     }
     const names = db.selectValues("SELECT name FROM sqlite_schema WHERE type IN ('table', 'view')");
     const shadows = db.selectValues("SELECT name FROM pragma_table_list WHERE type = 'shadow'");
-    scratch.shadowTables = new Set(
-      shadows.filter((n): n is string => typeof n === 'string').map(foldName),
-    );
     scratch.relations = new Set(
       names.filter((n): n is string => typeof n === 'string').map(foldName),
     );
+    const prefixes = [...scratch.virtualTables.keys()].map((v) => `${v}_`);
+    scratch.shadowTables = new Set([
+      ...shadows.filter((n): n is string => typeof n === 'string').map(foldName),
+      ...[...scratch.relations].filter((r) => prefixes.some((p) => r.startsWith(p))),
+    ]);
     this.mapTrees(scratch);
     return scratch;
   }
@@ -726,6 +741,7 @@ export class GuardEngine {
         const vtab = seen.vtab;
         if (vtab !== undefined) {
           if (PAGE_MODULES.has(vtab.module)) return { pageModule: vtab.module };
+          scratch.virtualTables.set(lower(vtab.name), vtab.module);
           if (!VTAB_MODULES.has(vtab.module)) {
             flags.standIn = true;
             return 'skip';
@@ -733,10 +749,7 @@ export class GuardEngine {
         }
         this.policy = { kind: 'off' };
         const stepped = capi.sqlite3_step(stmt);
-        if (stepped === capi.SQLITE_DONE) {
-          if (vtab !== undefined) scratch.virtualTables.set(lower(vtab.name), vtab.module);
-          return 'done';
-        }
+        if (stepped === capi.SQLITE_DONE) return 'done';
         const message = capi.sqlite3_errmsg(db.pointer ?? 0);
         if (vtab !== undefined && message.startsWith('no such module:')) {
           flags.standIn = true;
@@ -749,11 +762,7 @@ export class GuardEngine {
     } finally {
       this.policy = { kind: 'off' };
     }
-    const vtab = seen.vtab;
-    if (flags.standIn && vtab !== undefined && this.plainTableFor(scratch, sql) === 'done') {
-      scratch.virtualTables.set(lower(vtab.name), vtab.module);
-      return 'done';
-    }
+    if (flags.standIn) return this.plainTableFor(scratch, sql);
     return outcome;
   }
 
