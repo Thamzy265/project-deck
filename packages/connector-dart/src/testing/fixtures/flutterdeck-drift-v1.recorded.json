@@ -34,7 +34,7 @@
         "jsonrpc": "2.0",
         "method": "ext.flutterdeck.drift.v1.list",
         "params": {
-          "isolateId": "isolates/492174523214171"
+          "isolateId": "isolates/589512981487031"
         }
       },
       "response": {
@@ -56,7 +56,7 @@
         "jsonrpc": "2.0",
         "method": "ext.flutterdeck.drift.v1.schema",
         "params": {
-          "isolateId": "isolates/492174523214171",
+          "isolateId": "isolates/589512981487031",
           "db": "app"
         }
       },
@@ -146,6 +146,12 @@
               "foreignKeys": [],
               "indexes": []
             }
+          ],
+          "sqlSchema": [
+            "CREATE TABLE orders (id INTEGER PRIMARY KEY AUTOINCREMENT, item TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending')",
+            "CREATE TABLE sqlite_sequence(name,seq)",
+            "CREATE TABLE lines (order_id INTEGER, n INTEGER, PRIMARY KEY (order_id, n))",
+            "CREATE TABLE raw (x)"
           ]
         },
         "id": "<id>"
@@ -157,7 +163,7 @@
         "jsonrpc": "2.0",
         "method": "ext.flutterdeck.drift.v1.query",
         "params": {
-          "isolateId": "isolates/492174523214171",
+          "isolateId": "isolates/589512981487031",
           "db": "app",
           "sql": "SELECT id, item, status FROM orders WHERE status = ?",
           "params": "[\"pending\"]",
@@ -174,7 +180,7 @@
             [2, "Tea", "pending"]
           ],
           "truncated": false,
-          "durationMs": 0.772
+          "durationMs": 0.597
         },
         "id": "<id>"
       }
@@ -185,7 +191,7 @@
         "jsonrpc": "2.0",
         "method": "ext.flutterdeck.drift.v1.query",
         "params": {
-          "isolateId": "isolates/492174523214171",
+          "isolateId": "isolates/589512981487031",
           "db": "app",
           "sql": "DELETE FROM orders RETURNING *"
         }
@@ -208,7 +214,7 @@
         "jsonrpc": "2.0",
         "method": "ext.flutterdeck.drift.v1.query",
         "params": {
-          "isolateId": "isolates/492174523214171",
+          "isolateId": "isolates/589512981487031",
           "db": "app",
           "sql": "ATTACH 'other.db' AS x"
         }
@@ -231,7 +237,7 @@
         "jsonrpc": "2.0",
         "method": "ext.flutterdeck.drift.v1.query",
         "params": {
-          "isolateId": "isolates/492174523214171",
+          "isolateId": "isolates/589512981487031",
           "db": "nope",
           "sql": "SELECT 1"
         }
@@ -254,7 +260,7 @@
         "jsonrpc": "2.0",
         "method": "ext.flutterdeck.drift.v1.snapshot",
         "params": {
-          "isolateId": "isolates/492174523214171",
+          "isolateId": "isolates/589512981487031",
           "db": "app"
         }
       },
@@ -262,7 +268,7 @@
         "jsonrpc": "2.0",
         "result": {
           "protocol": 1,
-          "takenAt": 1792173439086,
+          "takenAt": 1792176214286,
           "tables": [
             {
               "name": "lines",
@@ -298,7 +304,7 @@
         "jsonrpc": "2.0",
         "method": "ext.flutterdeck.drift.v1.rows",
         "params": {
-          "isolateId": "isolates/492174523214171",
+          "isolateId": "isolates/589512981487031",
           "db": "app",
           "table": "orders",
           "keys": "[3, 99]"
@@ -323,7 +329,7 @@
         "jsonrpc": "2.0",
         "method": "ext.flutterdeck.drift.v1.execute",
         "params": {
-          "isolateId": "isolates/492174523214171",
+          "isolateId": "isolates/589512981487031",
           "db": "app",
           "sql": "UPDATE orders SET status = 'shipped' WHERE id = 1"
         }
@@ -346,7 +352,7 @@
         "jsonrpc": "2.0",
         "method": "ext.flutterdeck.drift.v1.execute",
         "params": {
-          "isolateId": "isolates/492174523214171",
+          "isolateId": "isolates/589512981487031",
           "db": "app",
           "sql": "UPDATE orders SET status = ? WHERE id = ?",
           "params": "[\"shipped\", 1]",
@@ -368,7 +374,7 @@
         "jsonrpc": "2.0",
         "method": "ext.flutterdeck.drift.v1.query",
         "params": {
-          "isolateId": "isolates/492174523214171",
+          "isolateId": "isolates/589512981487031",
           "db": "app",
           "sql": "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c) SELECT count(*) FROM c, orders"
         }
@@ -391,7 +397,7 @@
         "jsonrpc": "2.0",
         "method": "ext.flutterdeck.drift.v1.nope",
         "params": {
-          "isolateId": "isolates/492174523214171"
+          "isolateId": "isolates/589512981487031"
         }
       },
       "response": {
@@ -405,7 +411,7 @@
               "id": "14",
               "method": "ext.flutterdeck.drift.v1.nope",
               "params": {
-                "isolateId": "isolates/492174523214171"
+                "isolateId": "isolates/589512981487031"
               }
             }
           }

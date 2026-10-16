@@ -98,6 +98,23 @@ describe('flutterdeck_drift recorded fixture', () => {
       }
     });
 
+    it('schema: sqlSchema holds every CREATE statement for the gate (schemaSql)', () => {
+      const r = z
+        .object({
+          protocol: z.literal(1),
+          tables: z.array(z.unknown()),
+          sqlSchema: z.array(z.string().min(1)),
+          sqlSchemaTruncated: z.literal(true).optional(),
+        })
+        .strict()
+        .parse(result('schema'));
+      expect(r.sqlSchemaTruncated).toBeUndefined();
+      expect(r.sqlSchema.every((s) => /^CREATE /i.test(s))).toBe(true);
+      // Every table and view has its CREATE text in sqlSchema too.
+      const tableSql = (r.tables as { sql?: string }[]).flatMap((t) => (t.sql ? [t.sql] : []));
+      for (const sql of tableSql) expect(r.sqlSchema).toContain(sql);
+    });
+
     it('query: the reply is a QueryResult', () => {
       const parsed = QueryResultSchema.extend({ protocol: z.literal(1) })
         .strict()
