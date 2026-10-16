@@ -189,25 +189,19 @@ void main() {
     expect(names, ['id', 'a', 'b']);
   });
 
-  test(
-    'FD-7: snapshot keys are unique when a primary key holds NULLs',
-    () {
-      // A non-INTEGER PRIMARY KEY in a rowid table may hold NULL, more than
-      // once (a SQLite quirk), so the key does not identify the row.
-      app.execute('''
+  test('FD-7: snapshot keys are unique when a primary key holds NULLs', () {
+    // A non-INTEGER PRIMARY KEY in a rowid table may hold NULL, more than
+    // once (a SQLite quirk), so the key does not identify the row.
+    app.execute('''
         CREATE TABLE k (code TEXT PRIMARY KEY, n INTEGER);
         INSERT INTO k VALUES (NULL, 1), (NULL, 2), ('a', 3);
       ''');
-      final k = (ops.snapshot()['tables']! as List)
-          .cast<Map<String, Object?>>()
-          .firstWhere((t) => t['name'] == 'k');
-      final keys = (k['rows']! as List).map((r) => '${(r as List).first}');
-      expect(keys.toSet(), hasLength(keys.length));
-    },
-    skip:
-        'FD-7 (known bug): two rows share the key null, so a diff '
-        'matches the wrong row',
-  );
+    final k = (ops.snapshot()['tables']! as List)
+        .cast<Map<String, Object?>>()
+        .firstWhere((t) => t['name'] == 'k');
+    final keys = (k['rows']! as List).map((r) => '${(r as List).first}');
+    expect(keys.toSet(), hasLength(keys.length));
+  });
 
   test(
     'FD-8: a key from snapshot can be read back with rows (non-finite real)',
@@ -241,7 +235,8 @@ void main() {
   group('locks: rows with odd keys', () {
     setUp(() {
       app.execute('''
-        CREATE TABLE c (a TEXT, b INTEGER, v, PRIMARY KEY (a, b));
+        -- NOT NULL keys: a nullable key is matched by rowid (FD-7).
+        CREATE TABLE c (a TEXT NOT NULL, b INTEGER NOT NULL, v, PRIMARY KEY (a, b));
         INSERT INTO c VALUES ('x', 1, 'one'), ('[1]', 2, 'two');
       ''');
     });
@@ -299,7 +294,7 @@ void main() {
 
     test('a blob over 64 KB is cut in a cell but whole in a key', () {
       app.execute(
-        'CREATE TABLE b (k BLOB PRIMARY KEY, v BLOB);'
+        'CREATE TABLE b (k BLOB NOT NULL PRIMARY KEY, v BLOB);'
         'INSERT INTO b VALUES (zeroblob(70000), zeroblob(70000));',
       );
       final b = (ops.snapshot()['tables']! as List)

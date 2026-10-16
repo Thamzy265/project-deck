@@ -377,11 +377,13 @@ final class ReadOps {
           as int;
 
   /// Names the key columns of [table]: its primary key in key order, or a
-  /// rowid alias when it has none.
+  /// rowid alias when it has none, or when a key column of a rowid table may
+  /// hold NULL. SQLite lets such a key repeat NULL, so it would not tell
+  /// rows apart (FD-7).
   ({List<String> key, bool rowid, List<String> columns}) _keyOf(String table) {
     final info = db.select(
-      'SELECT name, pk FROM pragma_table_xinfo(?) WHERE hidden <> 1 '
-      'ORDER BY cid',
+      'SELECT name, type, "notnull", pk FROM pragma_table_xinfo(?) '
+      'WHERE hidden <> 1 ORDER BY cid',
       [table],
     );
     final columns = [for (final c in info) c['name'] as String];
@@ -391,7 +393,22 @@ final class ReadOps {
             ..sort((a, b) => (a['pk'] as int).compareTo(b['pk'] as int)))
         c['name'] as String,
     ];
-    if (pk.isNotEmpty) return (key: pk, rowid: false, columns: columns);
+    final sql = db.select('SELECT sql FROM main.sqlite_schema WHERE name = ?', [
+      table,
+    ]);
+    final withoutRowid = _withoutRowid.hasMatch(
+      sql.isEmpty ? '' : '${sql.first['sql'] ?? ''}',
+    );
+    final pkCount = pk.length;
+    final keyMayBeNull = info.any(
+      (c) =>
+          (c['pk'] as int) > 0 &&
+          c['notnull'] == 0 &&
+          !_neverNull(c, pkCount: pkCount, withoutRowid: withoutRowid),
+    );
+    if (pk.isNotEmpty && !keyMayBeNull) {
+      return (key: pk, rowid: false, columns: columns);
+    }
     final lower = columns.map((c) => c.toLowerCase()).toSet();
     for (final alias in const ['rowid', '_rowid_', 'oid']) {
       if (!lower.contains(alias)) {
