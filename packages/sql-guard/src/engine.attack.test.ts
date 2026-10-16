@@ -172,14 +172,16 @@ describe('read mode: size, nesting and odd bytes', () => {
   it('refuses statements split by non-ASCII spaces as invalid', () => {
     expect(check('SELECT 1 ; DELETE FROM orders')).toMatchObject({ ok: false });
     expect(check('SELECT 1; DELETE FROM orders')).toMatchObject({ ok: false });
-    expect(check('\u0000DELETE FROM orders')).toMatchObject({ ok: false, code: 'empty' });
+    expect(check('\u0000DELETE FROM orders')).toMatchObject({ ok: false, code: 'invalid-sql' });
   });
 
   // SG-5: SQLite stops reading at a NUL byte, so whatever follows is never judged. A
   // backend or transport that drops NULs (or reads past them) would run it.
-  it.fails('SG-5 refuses SQL with a NUL byte that hides a second statement', () => {
+  it('SG-5 refuses SQL with a NUL byte that hides a second statement', () => {
     expect(check('SELECT 1\u0000; DELETE FROM orders')).toMatchObject({ ok: false });
     expect(check('SELECT 1 -- x\u0000\nDELETE FROM orders')).toMatchObject({ ok: false });
+    expect(check('SELECT 1\u0000')).toMatchObject({ ok: false, code: 'invalid-sql' });
+    expect(check("SELECT 'a\u0000b'")).toMatchObject({ ok: false, code: 'invalid-sql' });
   });
 });
 

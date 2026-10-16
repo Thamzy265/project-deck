@@ -151,6 +151,10 @@ export class GuardEngine {
     if (Buffer.byteLength(sql, 'utf8') > MAX_SQL_BYTES) {
       return refuse('too-long', `The statement is longer than ${MAX_SQL_BYTES / 1000} kB.`);
     }
+    // SQLite stops reading at a NUL, so text after one would never be judged (SG-5).
+    if (sql.includes('\u0000')) {
+      return refuse('invalid-sql', 'The statement contains a NUL character, which is not allowed.');
+    }
     const scratch = this.scratch(opts.schemaSql);
     if (scratch.refusal !== undefined) return scratch.refusal;
     const seen = newSeen();
