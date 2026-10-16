@@ -1,0 +1,682 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>M3 Drift Inspector Plan</title>
+    <!--
+  Deck template: one self-contained file. No external scripts, fonts or trackers.
+  Each <section class="slide"> is one slide. Keys: → ↓ Space PageDown = next; ← ↑ PageUp = back;
+  Home/End = first/last. URL hash (#3) links to a slide. Print (Cmd/Ctrl+P) gives one slide per page.
+-->
+    <style>
+      :root {
+        --bg: #f7f6f2;
+        --surface: #ffffff;
+        --text: #1d1d1b;
+        --muted: #5f5e58;
+        --line: #dedcd3;
+        --accent: #c2512f;
+        --accent-soft: #f6e3dc;
+        --ok: #2f7a4f;
+        --ok-soft: #dcefe3;
+        --warn: #9a6a00;
+        --warn-soft: #f7ecd2;
+        --no: #a33a3a;
+        --no-soft: #f6dcdc;
+        --font:
+          ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+          sans-serif;
+        --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme='light']) {
+          --bg: #161614;
+          --surface: #201f1c;
+          --text: #ecebe6;
+          --muted: #a8a69e;
+          --line: #36352f;
+          --accent: #e8805f;
+          --accent-soft: #3a2620;
+          --ok: #6cc290;
+          --ok-soft: #1d3326;
+          --warn: #e0b04d;
+          --warn-soft: #3a3020;
+          --no: #e57f7f;
+          --no-soft: #3d2222;
+        }
+      }
+      :root[data-theme='dark'] {
+        --bg: #161614;
+        --surface: #201f1c;
+        --text: #ecebe6;
+        --muted: #a8a69e;
+        --line: #36352f;
+        --accent: #e8805f;
+        --accent-soft: #3a2620;
+        --ok: #6cc290;
+        --ok-soft: #1d3326;
+        --warn: #e0b04d;
+        --warn-soft: #3a3020;
+        --no: #e57f7f;
+        --no-soft: #3d2222;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+      }
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: var(--font);
+        line-height: 1.45;
+      }
+
+      .slide {
+        display: none;
+        min-height: 100vh;
+        padding: clamp(24px, 6vh, 64px) clamp(16px, 7vw, 96px) 88px;
+        flex-direction: column;
+        justify-content: center;
+      }
+      .slide.active {
+        display: flex;
+      }
+      .slide > .inner {
+        width: 100%;
+        max-width: 1080px;
+        margin: 0 auto;
+      }
+
+      .kicker {
+        font-size: 13px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--accent);
+        font-weight: 600;
+        margin: 0 0 10px;
+      }
+      h1 {
+        font-size: clamp(34px, 6vw, 64px);
+        line-height: 1.05;
+        margin: 0 0 18px;
+        letter-spacing: -0.02em;
+      }
+      h2 {
+        font-size: clamp(26px, 4vw, 40px);
+        line-height: 1.12;
+        margin: 0 0 22px;
+        letter-spacing: -0.01em;
+      }
+      h3 {
+        font-size: 17px;
+        margin: 0 0 8px;
+      }
+      p,
+      li {
+        font-size: clamp(16px, 1.6vw, 20px);
+      }
+      p.lead {
+        font-size: clamp(18px, 2.1vw, 24px);
+        color: var(--muted);
+        max-width: 46ch;
+      }
+      ul {
+        margin: 0;
+        padding-left: 1.2em;
+      }
+      li {
+        margin: 6px 0;
+      }
+      .small {
+        font-size: 14px;
+        color: var(--muted);
+      }
+      code {
+        font-family: var(--mono);
+        font-size: 0.9em;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        padding: 1px 5px;
+      }
+
+      .grid {
+        display: grid;
+        gap: 14px;
+      }
+      .g2 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .g3 {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+      @media (max-width: 760px) {
+        .g2,
+        .g3 {
+          grid-template-columns: 1fr;
+        }
+      }
+      .card {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 16px 18px;
+      }
+      .card p,
+      .card li {
+        font-size: 16px;
+        margin: 4px 0;
+      }
+      .card.ok {
+        background: var(--ok-soft);
+        border-color: transparent;
+      }
+      .card.warn {
+        background: var(--warn-soft);
+        border-color: transparent;
+      }
+      .card.no {
+        background: var(--no-soft);
+        border-color: transparent;
+      }
+      .card.accent {
+        background: var(--accent-soft);
+        border-color: transparent;
+      }
+      .tag {
+        display: inline-block;
+        font-size: 12px;
+        font-weight: 600;
+        padding: 2px 8px;
+        border-radius: 99px;
+        background: var(--accent-soft);
+        color: var(--accent);
+        margin-right: 6px;
+      }
+
+      .flow {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        margin: 6px 0 14px;
+      }
+      .flow .step {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 8px 12px;
+        font-size: 16px;
+      }
+      .flow .step b {
+        color: var(--accent);
+      }
+      .flow .arrow {
+        color: var(--muted);
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 16px;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 9px 10px;
+        border-bottom: 1px solid var(--line);
+        vertical-align: top;
+      }
+      th {
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--muted);
+        font-weight: 600;
+      }
+      .table-wrap {
+        overflow-x: auto;
+      }
+
+      .bar {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 16px;
+        background: var(--bg);
+        border-top: 1px solid var(--line);
+        font-size: 14px;
+        color: var(--muted);
+      }
+      .bar button {
+        font: inherit;
+        color: var(--text);
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 6px 12px;
+        cursor: pointer;
+        min-width: 44px;
+        min-height: 36px;
+      }
+      .bar button:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+      .bar .title {
+        margin-right: auto;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .progress {
+        position: fixed;
+        left: 0;
+        top: 0;
+        height: 3px;
+        background: var(--accent);
+        transition: width 0.2s ease;
+      }
+
+      @media print {
+        .bar,
+        .progress {
+          display: none;
+        }
+        .slide {
+          display: flex !important;
+          min-height: 0;
+          height: 100vh;
+          page-break-after: always;
+          break-after: page;
+          padding: 40px 56px;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .progress {
+          transition: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="progress" id="progress" aria-hidden="true"></div>
+    <main id="deck">
+      <section class="slide" aria-label="Title">
+        <div class="inner">
+          <p class="kicker">FlutterDeck · M3 plan · 16 Oct 2026</p>
+          <h1>The Drift database inspector</h1>
+          <p class="lead">
+            See your app’s database live next to Claude, ask Claude about the data, and see exactly
+            what an action saved.
+          </p>
+          <p class="small">Use the arrow keys to move between slides · Print to save as PDF</p>
+        </div>
+      </section>
+
+      <section class="slide" aria-label="Problem and users">
+        <div class="inner">
+          <p class="kicker">Problem and users</p>
+          <h2>Checking what the app saved is slow today</h2>
+          <div class="grid g2">
+            <div class="card">
+              <h3>Who</h3>
+              <p>
+                A Flutter developer whose app stores data with Drift (SQLite), working with Claude.
+              </p>
+            </div>
+            <div class="card">
+              <h3>The job they are doing</h3>
+              <p>
+                Tap something in the app, then check what was saved, find a row, or run a quick
+                query.
+              </p>
+            </div>
+            <div class="card warn">
+              <h3>Today’s pain</h3>
+              <p>
+                Drift’s DevTools extension lives in a separate browser window, has no “what changed”
+                view, and Claude can’t see the data.
+              </p>
+            </div>
+            <div class="card ok">
+              <h3>Success measure</h3>
+              <p>
+                A new row flashes on screen within 1 second; “what changed?” takes two clicks;
+                Claude answers questions about the data.
+              </p>
+            </div>
+          </div>
+          <p class="small">
+            Design note: docs/design/m3-drift-inspector.md · UI spec: docs/ui/m3-database-tab.md ·
+            ADRs 0004, 0005
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" aria-label="Scope for this phase">
+        <div class="inner">
+          <p class="kicker">Scope for M3</p>
+          <h2>What we build now and what waits</h2>
+          <div class="grid g2">
+            <div class="card ok">
+              <h3>In M3</h3>
+              <ul>
+                <li>A small debug-only Dart package for the app (one line to add)</li>
+                <li>Live view, plus a no-setup snapshot on Android</li>
+                <li>
+                  Database tab: tables, diagram, SQL editor, saved queries, live flash, “what
+                  changed”, export, careful editing
+                </li>
+                <li>Six Claude tools for the database</li>
+                <li>Sample app gets an orders table; then a demo for you to publish</li>
+              </ul>
+            </div>
+            <div class="card warn">
+              <h3>Deferred (Later lines)</h3>
+              <ul>
+                <li>Live mode with no package, trigger: 5 feedback requests</li>
+                <li>iOS simulator snapshots, trigger: 3 requests</li>
+                <li>Room / Isar / Hive, trigger: 3 requests for one</li>
+              </ul>
+            </div>
+          </div>
+          <p class="small">
+            Corrections to the plan from research: Drift keeps its file in app_flutter/ on Android
+            (not databases/); snapshot copies need their change log merged.
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" aria-label="Options">
+        <div class="inner">
+          <p class="kicker">Options</p>
+          <h2>Live data without our package?</h2>
+          <div class="grid g2">
+            <div class="card">
+              <h3>Option A: also use Drift’s own hook</h3>
+              <ul>
+                <li>Live view with no setup</li>
+                <li>Drift’s hook is internal and can change any release</li>
+                <li>
+                  It runs any SQL and has a “wipe database” action, so only our daemon guards it
+                </li>
+              </ul>
+            </div>
+            <div class="card">
+              <h3>Option B: our package only</h3>
+              <ul>
+                <li>One supported live path, with a guard inside the app too</li>
+                <li>Live needs one line in the app</li>
+                <li>Android still has a no-setup snapshot</li>
+              </ul>
+            </div>
+          </div>
+          <div class="card accent" style="margin-top: 14px">
+            <h3>Recommendation</h3>
+            <p>
+              Option B, because two independent guards protect the user’s data; we revisit after
+              demo feedback.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" aria-label="Data and privacy">
+        <div class="inner">
+          <p class="kicker">Data and privacy</p>
+          <h2>App databases can hold your users’ personal data</h2>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Data</th>
+                  <th>Purpose</th>
+                  <th>Retention</th>
+                  <th>Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Database rows</td>
+                  <td>Inspect and debug the app’s data</td>
+                  <td>Memory only while shown; “what changed” copies until FlutterDeck stops</td>
+                  <td>Sent to Claude only when Claude asks, masked, capped, hidden columns (D2)</td>
+                </tr>
+                <tr>
+                  <td>Android snapshot copy</td>
+                  <td>Look without the package</td>
+                  <td>Memory only, never on disk</td>
+                  <td>Read-only</td>
+                </tr>
+                <tr>
+                  <td>Saved queries</td>
+                  <td>Reuse SQL</td>
+                  <td>Until deleted</td>
+                  <td>Your own SQL, in .flutterdeck/queries.json</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="card warn" style="margin-top: 14px">
+            <h3>Needs PM</h3>
+            <p>
+              How much Claude sees (D2) and its basis · DPIA screening: no triggers for FlutterDeck
+              itself
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" aria-label="Security">
+        <div class="inner">
+          <p class="kicker">Security</p>
+          <h2>Claude must never change data by accident</h2>
+          <div class="grid g3">
+            <div class="card">
+              <h3>Trust boundaries</h3>
+              <ul>
+                <li>Claude’s and the dashboard’s SQL → the app</li>
+                <li>Row contents → dashboard and Claude</li>
+                <li>A copied database file → our reader</li>
+              </ul>
+            </div>
+            <div class="card no">
+              <h3>Abuse cases</h3>
+              <ul>
+                <li>A row tells Claude to delete data</li>
+                <li>Tricky SQL that reads like a query but writes</li>
+                <li>A cloned project switches writes on</li>
+                <li>A release build exposes the database</li>
+              </ul>
+            </div>
+            <div class="card ok">
+              <h3>Mitigations</h3>
+              <ul>
+                <li>Real SQLite checks every query in FlutterDeck, and the app checks again</li>
+                <li>Writes off by default; each write asks you</li>
+                <li>Text-only display, capped output</li>
+                <li>The package does nothing outside debug builds</li>
+              </ul>
+            </div>
+          </div>
+          <p class="small">
+            Full list in the design note. ADR 0005: the two-layer read-only check.
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" aria-label="Risks">
+        <div class="inner">
+          <p class="kicker">Risks</p>
+          <h2>The main risks</h2>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Risk</th>
+                  <th>Impact</th>
+                  <th>Mitigation</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Drift or SQLite changes how things work</td>
+                  <td>Live view breaks after an update</td>
+                  <td>
+                    Versioned protocol; clear “update the package” message; recorded fixtures in
+                    tests
+                  </td>
+                </tr>
+                <tr>
+                  <td>Masking misses personal data in free text</td>
+                  <td>Some personal data reaches Claude</td>
+                  <td>Hidden columns you choose; caps; clearly “best effort”</td>
+                </tr>
+                <tr>
+                  <td>The sample app’s Drift setup needs network at build time</td>
+                  <td>CI or offline builds fail</td>
+                  <td>CI already has network; noted in the setup guide</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" aria-label="Plan and how you'll check it">
+        <div class="inner">
+          <p class="kicker">Plan and how you’ll check it</p>
+          <h2>Five build steps, then the check and the demo</h2>
+          <div class="flow">
+            <span class="step"><b>1</b> Query guard</span><span class="arrow">→</span>
+            <span class="step"><b>2</b> Dart package + sample app</span><span class="arrow">→</span>
+            <span class="step"><b>3</b> Live + snapshot</span><span class="arrow">→</span>
+            <span class="step"><b>4</b> Database tab</span><span class="arrow">→</span>
+            <span class="step"><b>5</b> Claude tools</span>
+          </div>
+          <div class="card accent">
+            <h3>How we will check it</h3>
+            <ul>
+              <li>
+                Automated: tricky-SQL tests at both guards; Playwright on the Database tab; QA on
+                the emulator
+              </li>
+              <li>Live flash under 1 second, timed by QA</li>
+              <li>
+                What only you can check: a short slide check like M2, then publishing the demo the
+                team drafts
+              </li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" aria-label="Decisions needed">
+        <div class="inner">
+          <p class="kicker">Decisions needed</p>
+          <h2>4 decisions for you</h2>
+          <div class="grid g2">
+            <div class="card warn">
+              <h3>1. Live without our package</h3>
+              <p>Options: A also use Drift’s internal hook, or B our package only</p>
+              <p><b>Recommendation:</b> B, two guards protect the data; revisit after feedback</p>
+            </div>
+            <div class="card warn">
+              <h3>2. What Claude sees</h3>
+              <p>
+                Options: A rows, masked and capped, with columns you can hide; or B schema only
+                until you opt in per project
+              </p>
+              <p><b>Recommendation:</b> A, so Claude can answer “how many orders are pending?”</p>
+            </div>
+            <div class="card warn">
+              <h3>3. Can Claude change data?</h3>
+              <p>
+                Options: A only if writes are on, and every write waits for your click; or B never
+                in M3
+              </p>
+              <p><b>Recommendation:</b> A, off by default and always asks you</p>
+            </div>
+            <div class="card warn">
+              <h3>4. iOS simulator snapshots</h3>
+              <p>Options: A Android only (iOS has live view); or B add the xcrun command now</p>
+              <p><b>Recommendation:</b> A, no new command to trust</p>
+            </div>
+          </div>
+          <p class="small">
+            Assumed yes unless you say otherwise: the package keeps the working name
+            flutterdeck_drift (free on pub.dev) until the name decision before M5.
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <nav class="bar" aria-label="Slide controls">
+      <span class="title" id="title">FlutterDeck M3</span>
+      <span id="count" aria-live="polite"></span>
+      <button type="button" id="prev" aria-label="Previous slide">←</button>
+      <button type="button" id="next" aria-label="Next slide">→</button>
+      <button type="button" id="theme" aria-label="Switch light or dark theme">◐</button>
+    </nav>
+
+    <script>
+      (function () {
+        var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+        var i = 0;
+        function fromHash() {
+          var n = parseInt(location.hash.slice(1), 10);
+          return isNaN(n) ? 0 : Math.min(Math.max(n - 1, 0), slides.length - 1);
+        }
+        function show(n) {
+          i = Math.min(Math.max(n, 0), slides.length - 1);
+          slides.forEach(function (s, k) {
+            s.classList.toggle('active', k === i);
+          });
+          document.getElementById('count').textContent = i + 1 + ' / ' + slides.length;
+          document.getElementById('progress').style.width = ((i + 1) / slides.length) * 100 + '%';
+          document.getElementById('title').textContent =
+            slides[i].getAttribute('aria-label') || document.title;
+          if (location.hash !== '#' + (i + 1)) history.replaceState(null, '', '#' + (i + 1));
+        }
+        document.addEventListener('keydown', function (e) {
+          if (e.target.closest && e.target.closest('input, textarea')) return;
+          if (['ArrowRight', 'ArrowDown', 'PageDown', ' '].indexOf(e.key) >= 0) {
+            e.preventDefault();
+            show(i + 1);
+          } else if (['ArrowLeft', 'ArrowUp', 'PageUp'].indexOf(e.key) >= 0) {
+            e.preventDefault();
+            show(i - 1);
+          } else if (e.key === 'Home') show(0);
+          else if (e.key === 'End') show(slides.length - 1);
+        });
+        document.getElementById('prev').addEventListener('click', function () {
+          show(i - 1);
+        });
+        document.getElementById('next').addEventListener('click', function () {
+          show(i + 1);
+        });
+        document.getElementById('theme').addEventListener('click', function () {
+          var root = document.documentElement;
+          var dark = root.dataset.theme
+            ? root.dataset.theme === 'dark'
+            : matchMedia('(prefers-color-scheme: dark)').matches;
+          root.dataset.theme = dark ? 'light' : 'dark';
+        });
+        window.addEventListener('hashchange', function () {
+          show(fromHash());
+        });
+        show(fromHash());
+      })();
+    </script>
+  </body>
+</html>
