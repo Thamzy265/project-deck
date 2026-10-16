@@ -50,7 +50,17 @@ The Consequences line about a stub list growing from user reports no longer appl
 
   Generated columns computed from a hidden column are hidden too, read from the schema, so STORED ones are caught. Both layers run; the cursor of the row an edit rewrites is not checked.
 
+  The bytecode layer checks the gate's own query plan. The app's SQLite version or statistics may choose another index. That changes only the order of the rows, because every index that holds a hidden column is refused whenever the gate's plan uses it.
+
 - **Virtual tables:** a virtual table that holds a hidden column is hidden whole, with its shadow tables. FTS auxiliary functions and MATCH column filters read columns without `SQLITE_READ`. A schema loads only the fts3, fts4, fts5, rtree and rtree_i32 modules; any other module becomes a plain table. A schema that declares a `dbstat` or `sqlite_dbpage` table is refused.
 - **Edits:** write mode allows only INSERT, UPDATE and DELETE on one ordinary table. Triggers and foreign key actions count towards the one table. Virtual tables and their shadow tables can't be edited.
 - **Input:** SQL that contains a NUL character is refused. Names are compared the way SQLite compares them, folding ASCII letters only.
+- **Review fixes (16 Oct 2026):**
+  - The gate records every declared virtual table, including the ones it could not create, and treats every `<vtab>_<suffix>` table as one of its shadow tables.
+  - An FTS table whose `content=` table has a hidden column is hidden whole.
+  - A table that stands in for a module outside the allowlist can't be read.
+  - `sqlite_sequence` is refused while any column is hidden.
+  - `sqlite_offset` is no longer allowed.
+  - An edit must write exactly one table.
+  - Backends give the gate the full `sqlite_schema` SQL through `DbInspector.schemaSql()`.
 - **Schema size:** loading a schema has its own 5 s budget. A schema with more than 2,000 statements or 4 MB is refused. A schema statement longer than 100 kB is skipped by design, and a query that needs it says so.
