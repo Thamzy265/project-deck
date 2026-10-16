@@ -229,6 +229,8 @@ export class GuardEngine {
       if (withHidden.has(content)) withHidden.add(vtab);
     }
     const tables = new Set<string>();
+    // AUTOINCREMENT's counters give away row counts and the newest ids (S6).
+    if (withHidden.size > 0) tables.add('sqlite_sequence');
     for (const table of withHidden) {
       if (!scratch.virtualTables.has(table)) continue;
       tables.add(table);
@@ -536,6 +538,12 @@ export class GuardEngine {
       return this.uncheckedRefusal(scratch, table);
     }
     policy.seen.tables.add(table);
+    if (table === 'sqlite_sequence' && policy.hiddenTables.has(table)) {
+      return refuse(
+        'hidden-column',
+        "sqlite_sequence shows the newest ids of tables, and some columns are hidden (db.hiddenColumns), so it can't be read.",
+      );
+    }
     if (policy.hiddenTables.has(table)) {
       return refuse(
         'hidden-column',

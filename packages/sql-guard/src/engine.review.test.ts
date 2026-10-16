@@ -176,3 +176,22 @@ describe('S5: sqlite_offset', () => {
     });
   });
 });
+
+describe('S6: sqlite_sequence', () => {
+  const schema = [
+    'CREATE TABLE u(id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT)',
+    'CREATE TABLE sqlite_sequence(name,seq)',
+  ];
+  const hidden = [{ table: 'u', column: 'email' }];
+
+  it.each(['SELECT * FROM sqlite_sequence', 'SELECT count(*) FROM sqlite_sequence'])(
+    'refuses %s whenever a hidden column is set',
+    (sql) => {
+      expect(read(schema, sql, hidden)).toMatchObject({ ok: false, code: 'hidden-column' });
+    },
+  );
+
+  it('reads it when no column is hidden', () => {
+    expect(read(schema, 'SELECT * FROM sqlite_sequence')).toMatchObject({ ok: true });
+  });
+});
