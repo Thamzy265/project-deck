@@ -113,7 +113,7 @@ const _readPragmas = {
 const _hiddenSources = {'pragma_database_list', 'dbstat', 'sqlite_dbpage'};
 
 /// Lower case for ASCII letters only, the way SQLite compares names.
-String _asciiLower(String s) {
+String asciiLower(String s) {
   final units = s.codeUnits.toList();
   for (var i = 0; i < units.length; i++) {
     final c = units[i];
@@ -149,7 +149,7 @@ String? readGuard(String sql) {
   }
   for (final t in tokens) {
     final name = t.text.startsWith("'") ? null : unquoteIdent(t.text);
-    if (name != null && _hiddenSources.contains(_asciiLower(name))) {
+    if (name != null && _hiddenSources.contains(asciiLower(name))) {
       return 'it reads database files or raw pages';
     }
   }

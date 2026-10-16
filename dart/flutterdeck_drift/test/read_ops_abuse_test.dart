@@ -219,17 +219,13 @@ void main() {
     },
   );
 
-  test(
-    'FD-9: table names match the way SQLite matches them (any case)',
-    () {
-      expect(ops.rows('ORDERS', [1])['rows'], hasLength(1));
-      expect(
-        ops.checkWrite('DELETE FROM ORDERS WHERE id = 1')['table'],
-        isNotNull,
-      );
-    },
-    skip: 'FD-9 (known bug): rows and checkWrite compare names by case',
-  );
+  test('FD-9: table names match the way SQLite matches them (any case)', () {
+    expect(ops.rows('ORDERS', [1])['rows'], hasLength(1));
+    expect(
+      ops.checkWrite('DELETE FROM ORDERS WHERE id = 1')['table'],
+      isNotNull,
+    );
+  });
 
   group('locks: rows with odd keys', () {
     setUp(() {

@@ -517,16 +517,23 @@ final class ReadOps {
     };
   }
 
-  /// Row values of [table] for the given keys, read by key (keyset).
-  Map<String, Object?> rows(String table, List<Object?> keys) {
+  /// The table's name as the schema spells it. SQLite matches names without
+  /// regard to ASCII case, so this does too (FD-9).
+  String _tableNamed(String name) {
+    final wanted = asciiLower(name);
+    for (final e in _entities()) {
+      if (e.kind == 'table' && asciiLower(e.name) == wanted) return e.name;
+    }
+    throw DriftDeckError(ErrorCode.notFound, 'No table named $name');
+  }
+
+  /// Row values of the table [name] for the given keys, read by key.
+  Map<String, Object?> rows(String name, List<Object?> keys) {
     if (keys.length > maxKeysPerCall) {
       throw const DriftDeckError(ErrorCode.badRequest, 'Too many keys');
     }
     return guarded(() {
-      final known = _entities().where((e) => e.kind == 'table');
-      if (!known.any((e) => e.name == table)) {
-        throw DriftDeckError(ErrorCode.notFound, 'No table named $table');
-      }
+      final table = _tableNamed(name);
       final shape = _keyOf(table);
       final where = shape.key.map((k) => '${quoteIdent(k)} IS ?').join(' AND ');
       final stmt = db.prepare(
@@ -579,17 +586,12 @@ final class ReadOps {
   Map<String, Object?> checkWrite(String sql) {
     _checkSqlText(sql);
     final target = writeTarget(sql);
-    if (target.error != null) {
+    final targetTable = target.table;
+    if (targetTable == null) {
       throw DriftDeckError(ErrorCode.notAllowed, 'Not run: ${target.error}');
     }
     return guarded(() {
-      final known = _entities().where((e) => e.kind == 'table');
-      if (!known.any((e) => e.name == target.table)) {
-        throw DriftDeckError(
-          ErrorCode.notFound,
-          'No table named ${target.table}',
-        );
-      }
+      final table = _tableNamed(targetTable);
       final PreparedStatement stmt;
       try {
         stmt = db.prepare(sql, checkNoTail: true);
@@ -600,7 +602,7 @@ final class ReadOps {
         );
       }
       stmt.close();
-      return {'table': target.table};
+      return {'table': table};
     });
   }
 }
