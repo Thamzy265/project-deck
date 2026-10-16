@@ -45,6 +45,10 @@ Map<String, Object?> runReadOp(
       return ops.rows(args['table']! as String, args['keys']! as List<Object?>);
     case 'checkWrite':
       return ops.checkWrite(args['sql']! as String);
+    case 'breakForTest':
+      // Test hook: as if a statement had changed the connection itself.
+      ops.broken = true;
+      return const {};
     case 'sleep':
       // Test hook: blocks the isolate without SQLite, like a hung FFI call.
       final until = DateTime.now().add(
@@ -68,6 +72,9 @@ void _readerMain(List<Object?> args) {
   }
   final inbox = ReceivePort();
   toController.send(['ready', inbox.sendPort, ops.handleAddress]);
+  // The connection is freed only on the controller's "close": the
+  // controller may call sqlite3_interrupt on it until it has sent that, and
+  // it sends nothing after (CR-2).
   inbox.listen((Object? message) {
     final m = message! as List<Object?>;
     if (m[0] == 'close') {
@@ -75,25 +82,27 @@ void _readerMain(List<Object?> args) {
       inbox.close();
       Isolate.exit();
     }
+    // After "closing" only "close" is expected; the controller is dead.
+    if (ops.broken) return;
     final id = m[0]! as int;
+    List<Object?> reply;
     try {
       final result = runReadOp(
         ops,
         m[1]! as String,
         (m[2]! as Map).cast<String, Object?>(),
       );
-      toController.send([id, result]);
+      reply = [id, result];
     } on DriftDeckError catch (e) {
-      toController.send([id, null, e.code, e.message]);
+      reply = [id, null, e.code, e.message];
     } on Object {
       // Never send exception text: it can hold row values.
-      toController.send([id, null, ErrorCode.internal, 'The read failed']);
+      reply = [id, null, ErrorCode.internal, 'The read failed'];
     }
-    if (ops.broken) {
-      ops.close();
-      inbox.close();
-      Isolate.exit();
-    }
+    // "closing" goes first, so the controller is dead before the caller
+    // sees the reply.
+    if (ops.broken) toController.send(['closing']);
+    toController.send(reply);
   });
 }
 
@@ -223,6 +232,10 @@ final class ReadWorker {
   }
 
   void _onMessage(List<Object?> m) {
+    if (m[0] == 'closing') {
+      _stop();
+      return;
+    }
     final c = _pending.remove(m[0]! as int);
     if (c == null || c.isCompleted) return;
     if (m[1] != null) {

@@ -227,6 +227,32 @@ void main() {
     );
   });
 
+  test(
+    'a reset connection is marked dead before its reply arrives (CR-2)',
+    () async {
+      final app = await openApp(wal: false);
+      final worker = await ReadWorker.spawn(path);
+      addTearDown(() async {
+        await worker.close();
+        await app.close();
+      });
+      final interrupted = <int>[];
+      final real = ReadWorker.interrupt;
+      ReadWorker.interrupt = (h) {
+        interrupted.add(h);
+        return true;
+      };
+      addTearDown(() => ReadWorker.interrupt = real);
+
+      // The isolate frees its connection only after the controller knows, so
+      // no interrupt can ever reach a freed sqlite3*.
+      await worker.call('breakForTest', const {});
+      expect(worker.isDead, isTrue);
+      await worker.close();
+      expect(interrupted, isEmpty);
+    },
+  );
+
   group('DbReader starts one isolate at a time (CR-1)', () {
     const quick = {
       'sql': 'SELECT count(*) FROM orders',
