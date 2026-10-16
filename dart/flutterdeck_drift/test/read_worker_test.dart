@@ -253,6 +253,34 @@ void main() {
     },
   );
 
+  test('without sqlite3_interrupt, queries are unsupported (D-2)', () async {
+    expect(interruptAvailable(), isTrue, reason: 'the bundled library');
+    final app = await openApp(wal: false);
+    final reader = DbReader(path);
+    addTearDown(() async {
+      await reader.close();
+      await app.close();
+    });
+    final real = ReadWorker.canInterrupt;
+    ReadWorker.canInterrupt = () => false;
+    addTearDown(() => ReadWorker.canInterrupt = real);
+
+    await expectLater(
+      reader.call('query', {
+        'sql': 'SELECT 1',
+        'params': const <Object?>[],
+        'limit': 1,
+      }),
+      throwsA(
+        isA<DriftDeckError>()
+            .having((e) => e.code, 'code', ErrorCode.unsupported)
+            .having((e) => e.message, 'message', contains('stop')),
+      ),
+    );
+    // The package's own bounded reads still work.
+    expect((await reader.call('schema', const {}))['tables'], isNotEmpty);
+  });
+
   group('DbReader starts one isolate at a time (CR-1)', () {
     const quick = {
       'sql': 'SELECT count(*) FROM orders',

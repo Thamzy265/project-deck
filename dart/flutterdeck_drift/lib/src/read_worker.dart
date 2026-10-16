@@ -122,6 +122,9 @@ final class ReadWorker {
   /// Test hook: called with the connection handle instead of interrupting.
   static bool Function(int handle) interrupt = interruptConnection;
 
+  /// Test hook: whether reads can be stopped at all (D-2).
+  static bool Function() canInterrupt = interruptAvailable;
+
   bool get isDead => _dead;
 
   /// Test hook: how many read isolates this process has started.
@@ -307,6 +310,16 @@ final class DbReader {
     Map<String, Object?> args, {
     Duration budget = readBudget,
   }) async {
+    // A query is arbitrary SQL; without sqlite3_interrupt a runaway one
+    // could never be stopped, so none runs (D-2). The package's own reads
+    // (schema, snapshot, rows) are bounded and still run.
+    if (op == 'query' && !ReadWorker.canInterrupt()) {
+      throw const DriftDeckError(
+        ErrorCode.unsupported,
+        "This app's SQLite library has no sqlite3_interrupt, so FlutterDeck "
+        "couldn't stop a slow query. Queries are off; tables still show.",
+      );
+    }
     for (var attempt = 0; ; attempt++) {
       final worker = await _live();
       try {

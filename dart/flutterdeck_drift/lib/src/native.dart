@@ -20,6 +20,20 @@ external int _sqlite3Limit(Pointer<Void> db, int id, int value);
 
 const _limitLength = 0; // SQLITE_LIMIT_LENGTH
 
+/// Whether the bundled SQLite library exports `sqlite3_interrupt`. It does
+/// unless package:sqlite3 compiled SQLite from source on Linux, where its
+/// linker script hides symbols it doesn't use itself.
+bool interruptAvailable() {
+  try {
+    Native.addressOf<NativeFunction<Void Function(Pointer<Void>)>>(
+      _sqlite3Interrupt,
+    );
+    return true;
+  } on ArgumentError {
+    return false;
+  }
+}
+
 /// Asks SQLite to stop whatever runs on the connection at [address].
 ///
 /// `sqlite3_interrupt` is safe to call from another thread while a statement
