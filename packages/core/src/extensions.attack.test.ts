@@ -209,11 +209,14 @@ describe('Registry extension prefixes', () => {
   });
 
   // EXT-2: the first backend to remove a shared prefix removes it for every backend.
-  it.fails('EXT-2 keeps a prefix two backends added until both remove it', () => {
+  it('EXT-2 keeps a prefix two backends added until both remove it', () => {
     const registry = new Registry();
     const removeA = registry.allowExtensionPrefix('ext.flutterdeck.drift.');
-    registry.allowExtensionPrefix('ext.flutterdeck.drift.');
+    const removeB = registry.allowExtensionPrefix('ext.flutterdeck.drift.');
+    removeA();
     removeA();
     expect(registry.extensionPrefixes()).toContain('ext.flutterdeck.drift.');
+    removeB();
+    expect(registry.extensionPrefixes()).toEqual(['ext.flutterdeck.']);
   });
 });
