@@ -217,7 +217,6 @@ void main() {
       final back = ops.rows('r', [key]);
       expect(back['missing'], isEmpty);
     },
-    skip: 'FD-8 (known bug): decodeParam refuses {type: real} keys',
   );
 
   test(

@@ -48,7 +48,8 @@ Object? _encode(Object? value, {required bool wholeBlob}) {
 final _intText = RegExp(r'^-?\d{1,19}$');
 
 /// Decodes a JSON array of parameters. Accepts null, numbers, text, booleans
-/// (as 0 or 1), `{type: 'int', value}` and `{type: 'blob', base64}`.
+/// (as 0 or 1), `{type: 'int', value}`, `{type: 'real', value}` (Infinity,
+/// -Infinity or NaN) and `{type: 'blob', base64}`.
 List<Object?> decodeParams(String? json) => [
   for (final p in decodeParamsRaw(json)) decodeParam(p),
 ];
@@ -84,6 +85,14 @@ Object? decodeParam(Object? p) {
         throw const DriftDeckError(ErrorCode.badRequest, 'bad int param');
       }
       return v;
+    // The agreed tag for doubles JSON can't hold (core's CellSchema has the
+    // same variant), so a key from a snapshot can come back (FD-8).
+    case {'type': 'real', 'value': 'Infinity'}:
+      return double.infinity;
+    case {'type': 'real', 'value': '-Infinity'}:
+      return double.negativeInfinity;
+    case {'type': 'real', 'value': 'NaN'}:
+      return double.nan;
     case {'type': 'blob', 'base64': String text}:
       try {
         return base64Decode(text);

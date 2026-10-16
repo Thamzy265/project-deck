@@ -121,6 +121,26 @@ void main() {
       });
     }
 
+    test('decodes tagged non-finite reals, as encodeCell sends them', () {
+      final back = decodeParams(
+        jsonEncode([
+          encodeCell(double.infinity),
+          encodeCell(double.negativeInfinity),
+          {'type': 'real', 'value': 'NaN'},
+        ]),
+      );
+      expect(back[0], double.infinity);
+      expect(back[1], double.negativeInfinity);
+      expect((back[2]! as double).isNaN, isTrue);
+      for (final bad in ['inf', '1.5', '', 'infinity']) {
+        expect(
+          () => decodeParam({'type': 'real', 'value': bad}),
+          throwsA(isA<DriftDeckError>()),
+          reason: bad,
+        );
+      }
+    });
+
     test('refuses more than 999 parameters', () {
       expect(
         () => decodeParams(jsonEncode(List.filled(1000, 1))),
