@@ -7,9 +7,9 @@
 
 import { foldName } from './names.js';
 
-type Token = { kind: 'id' | 'string' | 'punct' | 'word'; text: string };
+export type Token = { kind: 'id' | 'string' | 'punct' | 'word'; text: string };
 
-function tokenize(sql: string): Token[] {
+export function tokenize(sql: string): Token[] {
   const tokens: Token[] = [];
   let i = 0;
   const closeOf: Record<string, string> = { '"': '"', '`': '`', '[': ']', "'": "'" };

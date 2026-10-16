@@ -244,7 +244,7 @@ describe('hidden columns: aliases and oracles that are refused', () => {
 describe('hidden columns: open bypasses', () => {
   // SG-1: a USING or NATURAL join compares the hidden column without an SQLITE_READ, so
   // it is an equality oracle, and with a generated list it reads the value out.
-  it.fails('SG-1 refuses JOIN … USING on a hidden column (equality oracle)', () => {
+  it('SG-1 refuses JOIN … USING on a hidden column (equality oracle)', () => {
     expect(
       check(
         "SELECT c.id FROM customers c JOIN (SELECT 'bob@example.com' AS email) k USING (email)",
@@ -252,13 +252,13 @@ describe('hidden columns: open bypasses', () => {
     ).toMatchObject({ ok: false, code: 'hidden-column' });
   });
 
-  it.fails('SG-1 refuses NATURAL JOIN on a hidden column', () => {
+  it('SG-1 refuses NATURAL JOIN on a hidden column', () => {
     expect(
       check("SELECT c.id FROM (SELECT 'bob@example.com' AS email) k NATURAL JOIN customers c"),
     ).toMatchObject({ ok: false, code: 'hidden-column' });
   });
 
-  it.fails('SG-1 refuses a self-join USING a hidden column (finds shared values)', () => {
+  it('SG-1 refuses a self-join USING a hidden column (finds shared values)', () => {
     expect(
       check('SELECT a.id, b.id FROM customers a JOIN customers b USING (password_hash)'),
     ).toMatchObject({
@@ -267,13 +267,13 @@ describe('hidden columns: open bypasses', () => {
     });
   });
 
-  it.fails('SG-1 refuses reading a hidden integer out with a generated list and USING', () => {
+  it('SG-1 refuses reading a hidden integer out with a generated list and USING', () => {
     const sql =
       'WITH RECURSIVE n(sid) AS (SELECT 0 UNION ALL SELECT sid + 1 FROM n LIMIT 100000) SELECT n.sid FROM secrets JOIN n USING (sid)';
     expect(check(sql)).toMatchObject({ ok: false, code: 'hidden-column' });
   });
 
-  it.fails('SG-1 refuses LEFT, RIGHT and FULL joins USING a hidden column', () => {
+  it('SG-1 refuses LEFT, RIGHT and FULL joins USING a hidden column', () => {
     for (const join of ['LEFT', 'RIGHT', 'FULL']) {
       const sql = `SELECT c.id FROM customers c ${join} JOIN (SELECT 'x' AS email) k USING (email)`;
       expect(check(sql), join).toMatchObject({ ok: false, code: 'hidden-column' });
@@ -331,7 +331,7 @@ describe('hidden columns: open bypasses', () => {
 
   // SG-3: a generated column computes from the hidden one at read time; reading it reads
   // the hidden value, but the authorizer only sees the generated column.
-  it.fails('SG-3 refuses a generated column computed from a hidden column', () => {
+  it('SG-3 refuses a generated column computed from a hidden column', () => {
     expect(check('SELECT email_lower FROM people')).toMatchObject({
       ok: false,
       code: 'hidden-column',
@@ -344,8 +344,82 @@ describe('hidden columns: open bypasses', () => {
 
   // SG-4: INDEXED BY an index on a hidden column returns rows in the hidden column's
   // order: the ORDER BY oracle without naming the column.
-  it.fails('SG-4 refuses INDEXED BY an index on a hidden column', () => {
+  it('SG-4 refuses INDEXED BY an index on a hidden column', () => {
     expect(check('SELECT id FROM people INDEXED BY people_email')).toMatchObject({ ok: false });
+  });
+
+  it('SG-4 refuses a planner-chosen scan or seek of an index on a hidden column', () => {
+    for (const sql of [
+      'SELECT id FROM people ORDER BY email',
+      'SELECT id FROM people WHERE email > ?',
+      'SELECT max(id) FROM people GROUP BY email',
+    ]) {
+      expect(check(sql), sql).toMatchObject({ ok: false, code: 'hidden-column' });
+    }
+  });
+
+  it('still counts the rows of a table through an index on a hidden column', () => {
+    expect(check('SELECT count(*) FROM people')).toMatchObject({ ok: true });
+  });
+
+  it('refuses expression and partial indexes on a table with hidden columns', () => {
+    const schemaSql = [
+      'CREATE TABLE u(id INTEGER PRIMARY KEY, email TEXT, name TEXT)',
+      'CREATE INDEX u_lower ON u(lower(email))',
+      'CREATE INDEX u_named ON u(name) WHERE email IS NOT NULL',
+    ];
+    const hiddenColumns = [{ table: 'u', column: 'email' }];
+    expect(
+      check('SELECT id FROM u INDEXED BY u_lower', { schemaSql, hiddenColumns }),
+    ).toMatchObject({ ok: false, code: 'hidden-column' });
+    // SQLite only uses a partial index when the WHERE names its condition, which the
+    // authorizer already refuses; without it the planner has no plan.
+    expect(
+      check('SELECT name FROM u INDEXED BY u_named', { schemaSql, hiddenColumns }),
+    ).toMatchObject({ ok: false });
+    expect(check('SELECT id, name FROM u', { schemaSql, hiddenColumns })).toMatchObject({
+      ok: true,
+    });
+  });
+
+  it('checks WITHOUT ROWID tables with hidden columns at the bytecode level too', () => {
+    const schemaSql = ['CREATE TABLE w(k TEXT PRIMARY KEY, secret TEXT, n INTEGER) WITHOUT ROWID'];
+    const hiddenColumns = [{ table: 'w', column: 'secret' }];
+    expect(
+      check("SELECT k FROM w JOIN (SELECT 'x' AS secret) USING (secret)", {
+        schemaSql,
+        hiddenColumns,
+      }),
+    ).toMatchObject({ ok: false, code: 'hidden-column' });
+    expect(check('SELECT count(*) FROM w', { schemaSql, hiddenColumns })).toMatchObject({
+      ok: true,
+    });
+  });
+
+  it('marks a stored generated column built on a hidden one as hidden, in a chain', () => {
+    const schemaSql = [
+      'CREATE TABLE g(id INTEGER PRIMARY KEY, pin INTEGER, a INTEGER AS (pin * 2) STORED, b INTEGER AS (a + 1) STORED, c TEXT)',
+    ];
+    const hiddenColumns = [{ table: 'g', column: 'pin' }];
+    for (const sql of ['SELECT a FROM g', 'SELECT b FROM g', 'SELECT id FROM g WHERE b = 5']) {
+      expect(check(sql, { schemaSql, hiddenColumns }), sql).toMatchObject({
+        ok: false,
+        code: 'hidden-column',
+      });
+    }
+    expect(check('SELECT id, c FROM g', { schemaSql, hiddenColumns })).toMatchObject({ ok: true });
+  });
+
+  it('lets an edit rewrite a row of a table with hidden columns but not read them out', () => {
+    expect(check("UPDATE customers SET name = 'x' WHERE id = 1", { mode: 'write' })).toMatchObject({
+      ok: true,
+    });
+    expect(
+      check(
+        "INSERT INTO audit(what) SELECT 'x' FROM customers c JOIN (SELECT 'b' AS email) k USING (email)",
+        { mode: 'write' },
+      ),
+    ).toMatchObject({ ok: false, code: 'hidden-column' });
   });
 });
 

@@ -21,6 +21,9 @@ import type {
   HiddenColumn,
 } from './types.js';
 import { MAX_SCHEMA_BYTES, MAX_SCHEMA_STATEMENTS, MAX_SQL_BYTES } from './types.js';
+import type { BTree, Op } from './bytecode.js';
+import { findHiddenRead } from './bytecode.js';
+import { generatedColumnRefs } from './generated.js';
 import { foldName } from './names.js';
 import { virtualTableColumns } from './vtab.js';
 
@@ -118,6 +121,10 @@ interface Scratch {
   virtualTables: Map<string, string>;
   /** Tables a virtual table keeps its data in (e.g. FTS5's notes_data), folded. */
   shadowTables: ReadonlySet<string>;
+  /** Main-schema tables and indexes by root page, for the bytecode check. */
+  trees: ReadonlyMap<number, BTree>;
+  /** Table → generated column → identifiers in its expression (all folded). */
+  generated: ReadonlyMap<string, ReadonlyMap<string, ReadonlySet<string>>>;
   /** The schema could not be accepted; every check refuses with this. */
   refusal: GuardRefusal | undefined;
 }
@@ -182,9 +189,7 @@ export class GuardEngine {
     const scratch = this.scratch(opts.schemaSql);
     if (scratch.refusal !== undefined) return scratch.refusal;
     const seen = newSeen();
-    const hidden = new Set(
-      (opts.hiddenColumns ?? []).map((h) => `${foldName(h.table)}.${foldName(h.column)}`),
-    );
+    const hidden = this.expandHidden(scratch, opts.hiddenColumns ?? []);
     this.policy = {
       kind: 'check',
       mode: opts.mode,
@@ -193,7 +198,7 @@ export class GuardEngine {
       hiddenTables: this.hiddenTables(scratch, opts.hiddenColumns ?? []),
     };
     try {
-      return this.judge(scratch.db, sql, opts.mode, seen);
+      return this.judge(scratch, sql, opts.mode, seen, hidden);
     } finally {
       this.policy = { kind: 'off' };
     }
@@ -218,8 +223,15 @@ export class GuardEngine {
     return tables;
   }
 
-  private judge(db: Db, sql: string, mode: GuardMode, seen: Seen): GuardResult {
+  private judge(
+    scratch: Scratch,
+    sql: string,
+    mode: GuardMode,
+    seen: Seen,
+    hidden: ReadonlySet<string>,
+  ): GuardResult {
     const { capi } = this.sqlite;
+    const { db } = scratch;
     return this.withStatement(db, sql, (stmt, rc, tailIsEmpty) => {
       if (seen.denial !== undefined) return seen.denial;
       if (rc !== SQLITE_OK) return this.prepareFailure(db);
@@ -241,8 +253,22 @@ export class GuardEngine {
           'This statement changes data or the database. Only reading is allowed here.',
         );
       }
-      if (mode === 'write' && this.hasVacuum(stmt)) {
-        return refuse('vacuum', 'VACUUM is not allowed.');
+      if (mode === 'write' || hidden.size > 0) {
+        const ops = this.listProgram(stmt);
+        if (ops === undefined) {
+          return refuse('invalid-sql', 'SQLite could not list the compiled statement.');
+        }
+        // VACUUM has no authorizer action; its opcode shows it.
+        if (mode === 'write' && ops.some((op) => op.opcode === 'Vacuum')) {
+          return refuse('vacuum', 'VACUUM is not allowed.');
+        }
+        const read = findHiddenRead(ops, scratch.trees, hidden);
+        if (read !== undefined) {
+          return refuse(
+            'hidden-column',
+            `The statement reads ${read}, which is hidden (db.hiddenColumns), for example through a join USING it, an index on it or a column computed from it. Leave it out.`,
+          );
+        }
       }
       return {
         ok: true,
@@ -324,21 +350,6 @@ export class GuardEngine {
       'function',
       `The function ${name} is not allowed. Only SQLite's built-in functions can be used here.`,
     );
-  }
-
-  /** VACUUM has no authorizer action, so look for its opcode in the EXPLAIN listing. */
-  private hasVacuum(stmt: number): boolean {
-    const { capi } = this.sqlite;
-    if (capi.sqlite3_stmt_explain(stmt, 1) !== SQLITE_OK) return true;
-    try {
-      // Stepping an EXPLAIN only lists the program; nothing runs.
-      while (capi.sqlite3_step(stmt) === capi.SQLITE_ROW) {
-        if (capi.sqlite3_column_text(stmt, 1) === 'Vacuum') return true;
-      }
-      return false;
-    } finally {
-      capi.sqlite3_reset(stmt);
-    }
   }
 
   /** The authorizer: one per scratch database, following the current policy. */
@@ -531,6 +542,8 @@ export class GuardEngine {
       relations: new Set(),
       virtualTables: new Map(),
       shadowTables: new Set(),
+      trees: new Map(),
+      generated: new Map(),
       refusal: undefined,
     };
     const bytes = schemaSql.reduce((n, s) => n + Buffer.byteLength(s, 'utf8'), 0);
@@ -557,7 +570,101 @@ export class GuardEngine {
     scratch.relations = new Set(
       names.filter((n): n is string => typeof n === 'string').map(foldName),
     );
+    this.mapTrees(scratch);
     return scratch;
+  }
+
+  /** Reads the scratch schema's b-trees and generated columns for the bytecode check. */
+  private mapTrees(scratch: Scratch): void {
+    const { db } = scratch;
+    const rows = (sql: string, bind: (string | number)[] = []): unknown[][] =>
+      db.exec({ sql, bind, returnValue: 'resultRows', rowMode: 'array' });
+    const str = (v: unknown): string => (typeof v === 'string' ? v : '');
+    const num = (v: unknown): number => (typeof v === 'number' ? v : Number(v));
+    const trees = new Map<number, BTree>();
+    const generated = new Map<string, Map<string, Set<string>>>();
+    const withoutRowid = new Set(
+      rows("SELECT name FROM pragma_table_list WHERE schema = 'main' AND wr = 1").map((r) =>
+        foldName(str(r[0])),
+      ),
+    );
+    for (const [name, root, sql] of rows(
+      "SELECT name, rootpage, sql FROM sqlite_schema WHERE type = 'table' AND rootpage > 0",
+    )) {
+      const table = foldName(str(name));
+      const columns = rows('SELECT name, type, pk, hidden FROM pragma_table_xinfo(?)', [str(name)]);
+      // Record order: stored columns as declared, then VIRTUAL generated ones (hidden = 2).
+      const storage = [
+        ...columns.filter((c) => num(c[3]) !== 2),
+        ...columns.filter((c) => num(c[3]) === 2),
+      ].map((c) => foldName(str(c[0])));
+      const pks = columns.filter((c) => num(c[2]) > 0);
+      const wr = withoutRowid.has(table);
+      const only = pks.length === 1 ? pks[0] : undefined;
+      const rowidAlias =
+        !wr && only !== undefined && foldName(str(only[1])) === 'integer'
+          ? foldName(str(only[0]))
+          : undefined;
+      trees.set(num(root), { kind: 'table', table, storage, rowidAlias, withoutRowid: wr });
+      generated.set(table, generatedColumnRefs(str(sql)));
+    }
+    for (const [name, tbl, root] of rows(
+      "SELECT name, tbl_name, rootpage FROM sqlite_schema WHERE type = 'index' AND rootpage > 0",
+    )) {
+      const columns = rows('SELECT cid, name FROM pragma_index_xinfo(?) WHERE key = 1', [
+        str(name),
+      ]).map((c) => (num(c[0]) < 0 ? '' : foldName(str(c[1]))));
+      const partial = rows('SELECT partial FROM pragma_index_list(?) WHERE name = ?', [
+        str(tbl),
+        str(name),
+      ]).some((r) => num(r[0]) === 1);
+      trees.set(num(root), { kind: 'index', table: foldName(str(tbl)), columns, partial });
+    }
+    scratch.trees = trees;
+    scratch.generated = generated;
+  }
+
+  /**
+   * The hidden columns plus every generated column computed, directly or through other
+   * generated columns, from one of them (SG-3).
+   */
+  private expandHidden(scratch: Scratch, hidden: readonly HiddenColumn[]): Set<string> {
+    const pairs = new Set(hidden.map((h) => `${foldName(h.table)}.${foldName(h.column)}`));
+    let grew = true;
+    while (grew) {
+      grew = false;
+      for (const [table, columns] of scratch.generated) {
+        for (const [column, refs] of columns) {
+          const pair = `${table}.${column}`;
+          if (pairs.has(pair)) continue;
+          if ([...refs].some((ref) => pairs.has(`${table}.${ref}`))) {
+            pairs.add(pair);
+            grew = true;
+          }
+        }
+      }
+    }
+    return pairs;
+  }
+
+  /** Lists the compiled program (EXPLAIN only lists it; nothing runs). */
+  private listProgram(stmt: number): Op[] | undefined {
+    const { capi } = this.sqlite;
+    if (capi.sqlite3_stmt_explain(stmt, 1) !== SQLITE_OK) return undefined;
+    const ops: Op[] = [];
+    try {
+      while (capi.sqlite3_step(stmt) === capi.SQLITE_ROW) {
+        ops.push({
+          opcode: capi.sqlite3_column_text(stmt, 1),
+          p1: capi.sqlite3_column_int(stmt, 2),
+          p2: capi.sqlite3_column_int(stmt, 3),
+          p3: capi.sqlite3_column_int(stmt, 4),
+        });
+      }
+      return ops;
+    } finally {
+      capi.sqlite3_reset(stmt);
+    }
   }
 
   /**
