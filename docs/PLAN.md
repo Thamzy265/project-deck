@@ -222,7 +222,7 @@ The daemon attaches to apps that are already running; it never launches or stops
    ```
 
    It registers VM service extensions (`ext.flutterdeck.drift.schema`, `.query`, `.execute`, `.watch`) using `dart:developer`, runs queries through Drift's `customSelect` / `customStatement`, and forwards table-change events with `postEvent`. It does nothing in release builds.
-2. **Snapshot fallback, `db-sqlite`.** No setup, Android only: copy the DB (plus `-wal` and `-shm`) with `adb exec-out run-as <applicationId> cat databases/<file>` and open it read-only with `sql.js`. Show a “Snapshot from 14:02, refresh” banner.
+2. **Snapshot fallback, `db-sqlite`.** No setup, Android only: copy the DB (plus `-wal` and `-shm`) with `adb exec-out run-as <applicationId> cat databases/<file>` and open it read-only with `sql.js`. Show a “Snapshot from 14:02, refresh” banner. *Changed 16 Oct 2026 (M3 plan):* drift_flutter stores the file in `app_flutter/` on Android, so both `app_flutter/` and `databases/` are read; the WAL is merged in JS; and the iOS simulator is supported too through `xcrun simctl get_app_container` (PM decision D4).
 
 Before finalising the live backend, check how the Drift DevTools extension talks to the app; reusing its mechanism could remove the need for the extra package.
 
@@ -390,7 +390,8 @@ Five milestones, each ending in something usable. Claude should not start the ne
 
 ### M3 — Drift inspector (headline feature)
 
-- [ ] `flutterdeck_drift` Dart package; no-op in release
+- Plan of record (16 Oct 2026): [design note](design/m3-drift-inspector.md), [UI spec](ui/m3-database-tab.md), [deck](slides/m3-drift-inspector.html), ADRs [0004](adr/0004-app-extensions-in-core.md) and [0005](adr/0005-read-only-sql-gate.md). PM decisions: D1 our package only; D2 rows reach Claude masked, capped, with hidden columns; D3 writes only when switched on and each one confirmed by the user; D4 snapshots on Android and the iOS simulator.
+- [ ] `flutterdeck_drift` Dart package; no-op in release (debug builds only)
 - [ ] `db-drift` (live) and `db-sqlite` (snapshot, `sql.js`) backends
 - [ ] Database tab: tables, schema diagram, SQL editor with autocomplete, saved queries, live refresh, snapshot diff, export, guarded editing
 - [ ] MCP tools: `db_list`, `db_schema`, `db_query`, `db_execute`, `db_snapshot`, `db_diff`
@@ -453,3 +454,5 @@ One line per deferred item, in the format `- <what> — <why> — trigger: <meas
 - Leave `plugin/test/`, `plugin/package.json`, `plugin/tsconfig.json` and the vitest files out of the published plugin — they only let the repo test the plugin — trigger: first public marketplace release of the plugin (M5) — noted 2026-10-15 by developer
 - Replace the development marketplace at the repo root (`.claude-plugin/marketplace.json`, `flutterdeck-dev`, which loads `./plugin` in place for M2) with the public marketplace entry, and switch the plugin's `.mcp.json` to `npx flutterdeck mcp` — the dev marketplace only works from a built checkout (lead decision 15 Oct 2026: accepted for M2, dev-only) — trigger: start of the M5 item "Claude Code plugin and marketplace entry" — noted 2026-10-15 by developer
 - Move the port registry writer (`allocatePort`, `claimConfigPort`, the file lock) from the daemon to `core/node`, so the CLI stops loading daemon code — the CLI imports it from the daemon package today — trigger: `flutterdeck --help` takes > 500 ms (0.25 s on 15 Oct 2026) — noted 2026-10-15 by developer
+- No-setup live path on Drift's own DevTools extension — internal API, no in-app read-only guard — trigger: 5 or more feedback replies asking for live mode without adding a package — noted 2026-10-16 by lead
+- Room / Isar / Hive inspectors — other databases — trigger: 3 user requests for one of them — noted 2026-10-16 by lead

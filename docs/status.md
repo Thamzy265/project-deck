@@ -2,6 +2,17 @@
 
 Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
 
+## 2026-10-16 — M3 plan — approved by PM
+
+- Changed: M3 plan of record: [design note](design/m3-drift-inspector.md), [UI spec](ui/m3-database-tab.md), [deck](slides/m3-drift-inspector.html), [ADR 0004](adr/0004-app-extensions-in-core.md), [ADR 0005](adr/0005-read-only-sql-gate.md). Size: large. Research on 16 Oct 2026 corrected the plan's Android path (`app_flutter/`) and the snapshot WAL handling.
+- Decisions (PM, 16 Oct 2026, chosen options word for word):
+  - D1: "Our package only (Recommended)".
+  - D2: "Rows, masked + capped (Recommended)".
+  - D3: "Only if on + you click (Recommended)".
+  - D4: "Add iOS simulator too". This changes the security rule on commands the daemon runs (`xcrun simctl`); CLAUDE.md and PLAN.md updated.
+- Next: batch 1 `feat/db-core`.
+- Blockers: Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead none.
+
 ## 2026-10-16 — M2 closed
 
 - Changed: the PM ran the final M2 check in Claude Desktop (19 steps: init, plugin install, IDE breakpoint, dashboard next to chat, `r` / `Shift+R`, Claude's reloads, a failed reload with notification, Claude waiting and finished, breakpoint still hits, clean-up). PM said: "all passed, this looks great". M2 Accept ticked in PLAN.md.

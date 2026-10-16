@@ -169,13 +169,13 @@ PM decisions, 16 Oct 2026: D1 B (our package only; revisit after feedback), D2 A
 
 ## Privacy
 
-Not legal advice. Items marked "PM decides" need the PM's decision before the developer starts.
+Not legal advice. The PM decided D2 and D3 on 16 Oct 2026.
 
-| Field                                                          | Purpose                                                       | Lawful basis (PM decides)                                                                                   | Retention                                                                                                | Shared with                                                                   | Notes                                  |
-| -------------------------------------------------------------- | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- | -------------------------------------- |
-| Rows of the app's database (may hold end users' personal data) | Let the developer and Claude inspect and debug the app's data | PM decides with D2 — options: the developer's own processing (as M2 D4), or opt-in before rows go to Claude | Dashboard: memory while shown; snapshots: memory until the daemon stops or 20 snapshots (oldest dropped) | Claude (Anthropic) only for `db_query` / `db_diff` results (D2); nowhere else | Masking + caps + hidden columns (D2 A) |
-| Snapshot file copy (Android)                                   | Inspect without the package                                   | as above                                                                                                    | Memory only, replaced on Refresh, gone on daemon stop                                                    | none                                                                          | Never written to disk                  |
-| Saved queries                                                  | Reuse SQL                                                     | n/a — the developer's own SQL                                                                               | Until deleted                                                                                            | none (git if the user commits it)                                             | `.flutterdeck/queries.json`            |
+| Field                                                          | Purpose                                                       | Lawful basis                                                                             | Retention                                                                                                | Shared with                                                                   | Notes                                  |
+| -------------------------------------------------------------- | ------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- | -------------------------------------- |
+| Rows of the app's database (may hold end users' personal data) | Let the developer and Claude inspect and debug the app's data | PM decision 16 Oct 2026 (D2 A): the developer's own processing, documented in the README | Dashboard: memory while shown; snapshots: memory until the daemon stops or 20 snapshots (oldest dropped) | Claude (Anthropic) only for `db_query` / `db_diff` results (D2); nowhere else | Masking + caps + hidden columns (D2 A) |
+| Snapshot file copy (Android, iOS simulator)                    | Inspect without the package                                   | as above                                                                                 | Memory only, replaced on Refresh, gone on daemon stop                                                    | none                                                                          | Never written to disk                  |
+| Saved queries                                                  | Reuse SQL                                                     | n/a — the developer's own SQL                                                            | Until deleted                                                                                            | none (git if the user commits it)                                             | `.flutterdeck/queries.json`            |
 
 - Fields removed: none beyond the hidden columns the user sets.
 - DPIA screening: none of the ICO triggers apply to FlutterDeck itself (no profiling, local only). The developer's app may need one; out of scope — not needed because FlutterDeck stores no rows on disk and sends rows only on the developer's request.
@@ -183,7 +183,7 @@ Not legal advice. Items marked "PM decides" need the PM's decision before the de
 - New vendors / SDKs / transfers: none new; new libraries are local only (sqlite-wasm, sql.js, CodeMirror, package:sqlite3 in the app's debug build).
 - Private defaults: writes off; masking on; row caps.
 - Export, delete, rectify: export is the developer's own action; snapshots deleted on daemon stop; nothing to rectify.
-- Escalated to PM: D2 (and its lawful basis), D3.
+- Escalated to PM: D2 (and its lawful basis), D3 — decided 16 Oct 2026.
 
 ## Rollout and rollback
 
@@ -191,7 +191,7 @@ Batches, each through developer → tester → reviewer → QA → merge:
 
 1. `feat/db-core`: core `DbInspector` zod schemas, `AppSession.extensions` (ADR 0004), `packages/sql-guard` (ADR 0005), fakes; `docs/notes/drift.md`.
 2. `feat/flutterdeck-drift`: `dart/flutterdeck_drift` + Drift in `examples/sample_app` (orders), Dart tests, CI job for the package; recorded extension fixtures.
-3. `feat/db-backends`: `db-drift`, `packages/android-adb` (moved from logs-android), `db-sqlite` with WAL merge; daemon `/api/db/*` routes with the gate; snapshots and diff in the daemon.
+3. `feat/db-backends`: `db-drift`, `packages/android-adb` (moved from logs-android), `db-sqlite` with WAL merge for Android and the iOS simulator; daemon `/api/db/*` routes with the gate; snapshots and diff in the daemon.
 4. `feat/dashboard-db`: Database tab — browse, schema diagram, SQL editor, saved queries, live flash, diff view, export, guarded editing.
 5. `feat/mcp-db`: the six MCP tools with masking, hidden columns, caps and the write confirm flow.
 6. M3 acceptance (QA + PM check) and the validation checkpoint drafts (demo script, install guide, post text; the PM publishes).

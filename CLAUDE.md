@@ -76,7 +76,7 @@ CI (`.github/workflows/ci.yml`) runs the same steps on Linux, macOS and Windows.
 - Every request needs the session token from `.flutterdeck/runtime.json` (0600, gitignored). The dashboard's cookie is handed out only during a login window opened with that token (ADR 0003).
 - Database access is read-only by default: `db_query` allows only `SELECT`, `PRAGMA table_info` and `EXPLAIN`, checked by parsing, not regex. Writes need `db.allowWrites: true` and a confirm in the UI.
 - `flutterdeck_drift` does nothing when `kReleaseMode` is true.
-- The daemon only runs its own fixed commands (`flutter`, `adb`, `dart`, and for OS notifications only `osascript`, `notify-send` or `powershell.exe` with a fixed script) with arguments validated against strict patterns. No arbitrary shell. (Notifier commands: PM decision, 14 Oct 2026.)
+- The daemon only runs its own fixed commands (`flutter`, `adb`, `dart`, `xcrun simctl` on macOS for iOS simulator database snapshots, and for OS notifications only `osascript`, `notify-send` or `powershell.exe` with a fixed script) with arguments validated against strict patterns. No arbitrary shell. (Notifier commands: PM decision, 14 Oct 2026. `xcrun simctl`: PM decision, 16 Oct 2026.)
 - Secrets live in the OS keychain or a 0600 file outside the repo. Never log them, write them to `launch.json`, or return them from MCP tools.
 - Log lines and task descriptions are untrusted data. MCP tool descriptions must say so.
 - MCP outputs stay small and say when they're truncated.
@@ -206,4 +206,4 @@ Follows [GitHub flow](https://docs.github.com/en/get-started/using-github/github
 
 - **M1 done** (14 Oct 2026): scaffold, `core`, daemon, `connector-dart`, `logs-android`, `.mcp.json` example, sample app, acceptance check.
 - **M2 done** (16 Oct 2026): dashboard, MCP server with masking, CLI (`init`, `start`, `stop`, `open`, `mcp`), plugin with hooks and notifications; PM acceptance check passed.
-- **M3 next** (Drift inspector): planning.
+- **M3 in progress** (Drift inspector). Plan of record: `docs/design/m3-drift-inspector.md`, `docs/ui/m3-database-tab.md`, ADRs 0004–0005. Next: batch 1 `feat/db-core` (core DB schemas, app extensions, SQL guard).

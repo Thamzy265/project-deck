@@ -4,7 +4,7 @@ Date: 2026-10-16
 
 ## Status
 
-Proposed (M3 plan, waiting for PM approval of the plan)
+Accepted (M3 plan approved by the PM, 16 Oct 2026)
 
 ## Context
 
