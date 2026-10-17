@@ -4,6 +4,7 @@ import { FakeSnapshotSource } from './fake-source.js';
 import { plainDbFixture, walDbFixture, walFixture } from './fixtures.js';
 
 export * from './fake-source.js';
+export * from './image.js';
 export * from './fixtures.js';
 
 /**
