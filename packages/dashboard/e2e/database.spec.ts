@@ -100,11 +100,21 @@ test.describe('fake mode', () => {
     await expect(page.getByRole('button', { name: 'Clear filter' })).toBeVisible();
   });
 
+  /**
+   * The fake app adds an order every 5 s. On a slow machine one may already be there
+   * when the table opens (no flash for it), so wait for the next one after opening.
+   */
+  async function nextOrder(page: Page) {
+    const rows = grid(page).getByRole('row');
+    await expect(grid(page).getByText('Coffee')).toBeVisible();
+    const before = await rows.count();
+    await expect(rows).toHaveCount(before + 1, { timeout: 10_000 });
+    return rows.last();
+  }
+
   test('a new order appears and flashes within a second of the change', async ({ page }) => {
     await openOrders(page, daemon.url);
-    // The fake app adds "Order 3" about 5 s after it starts.
-    const row = grid(page).getByRole('row').filter({ hasText: 'Order 3' });
-    await expect(row).toBeVisible({ timeout: 10_000 });
+    const row = await nextOrder(page);
     await expect(row).toHaveClass(/deck-flash/);
     await expect(page.getByText('1 row added to orders')).toBeAttached();
   });
@@ -112,8 +122,8 @@ test.describe('fake mode', () => {
   test('with reduced motion the flash is an outline', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await openOrders(page, daemon.url);
-    const row = grid(page).getByRole('row').filter({ hasText: 'Order 3' });
-    await expect(row).toBeVisible({ timeout: 10_000 });
+    const row = await nextOrder(page);
+    await expect(row).toHaveClass(/deck-flash/);
     const outline = await row.evaluate((el) => getComputedStyle(el).outlineStyle);
     expect(outline).toBe('solid');
   });
