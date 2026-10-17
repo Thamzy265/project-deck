@@ -32,6 +32,11 @@ export interface AppManagerOptions {
   onConnectorError?: (connectorId: string, err: unknown) => void;
   /** Clock for the crash window; tests pass a fake one. */
   now?: () => number;
+  /**
+   * Called on each attach, after the log feeds. The function it returns runs when the
+   * app is detached or exits (the database layer uses this).
+   */
+  onSession?: (app: RunningApp, session: AppSession) => Promise<() => Promise<void>>;
 }
 
 const NOT_ATTACHED: ReloadResult = {
@@ -221,6 +226,10 @@ export class AppManager {
     for (const entry of live) if (!seen.has(entry)) push(entry);
     for (const feed of this.registry.logFeeds.list()) {
       const close = await feed.open(app, push).catch(() => undefined);
+      if (close !== undefined) attached.cleanup.push(close);
+    }
+    if (this.opts.onSession !== undefined) {
+      const close = await this.opts.onSession(app, session).catch(() => undefined);
       if (close !== undefined) attached.cleanup.push(close);
     }
 

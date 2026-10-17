@@ -5,11 +5,14 @@ import type { Registry } from '@project-deck/core';
 import { DECK_VERSION, EventBus } from '@project-deck/core';
 import { checkStateDir } from '@project-deck/core/node';
 import { getRequestListener } from '@hono/node-server';
+import type { SqlGuard } from '@project-deck/sql-guard';
+import { createSqlGuard } from '@project-deck/sql-guard';
 import { ActivityFeed } from './activity.js';
 import { createApi } from './api.js';
 import { defaultDashboardDir, loadDashboardAssets } from './dashboard-assets.js';
 import { AppManager } from './app-manager.js';
 import { readConfig } from './config.js';
+import { DbService } from './db-service.js';
 import { listen, listenWithFallback } from './listen.js';
 import { LoginWindow } from './login-window.js';
 import { startNotifications } from './notifications.js';
@@ -61,6 +64,11 @@ export interface DaemonOptions {
   /** Clock for the login window; tests pass a fake one. */
   now?: () => number;
   log?: (message: string, err?: unknown) => void;
+  /**
+   * The read-only SQL gate (ADR 0005). Defaults to the real one, whose wasm engine
+   * loads on the first query; tests pass a fake.
+   */
+  sqlGuard?: SqlGuard;
 }
 
 export interface Daemon {
@@ -137,9 +145,18 @@ async function startLocked(opts: DaemonOptions): Promise<Daemon> {
     opts.notifier === undefined
       ? () => undefined
       : startNotifications(bus, { settings: config.notifications, notify: opts.notifier });
+  const sqlGuard = opts.sqlGuard ?? createSqlGuard();
+  const db = new DbService({
+    registry: opts.registry,
+    bus,
+    guard: sqlGuard,
+    settings: config.db,
+    log: (message) => log(message),
+  });
   const manager = new AppManager(opts.registry, bus, {
     ...(opts.logCapacity === undefined ? {} : { logCapacity: opts.logCapacity }),
     onConnectorError: (id, err) => log(`Connector '${id}' failed to start`, err),
+    onSession: (app, session) => db.attach(app, session),
   });
 
   const requestedPort = config.port ?? opts.port ?? DEFAULT_PORT;
@@ -162,6 +179,7 @@ async function startLocked(opts: DaemonOptions): Promise<Daemon> {
     projectId,
     projectName: basename(opts.projectDir),
     dashboard,
+    db,
     shutdown: () => void stop().catch((err: unknown) => log('Stopping failed', err)),
   });
   const listener = getRequestListener(api.fetch);
@@ -187,6 +205,8 @@ async function startLocked(opts: DaemonOptions): Promise<Daemon> {
     }
   } catch (err) {
     ws.close();
+    await db.close();
+    await sqlGuard.close();
     throw err;
   }
   if (requestedPort !== 0 && port !== requestedPort) {
@@ -203,6 +223,8 @@ async function startLocked(opts: DaemonOptions): Promise<Daemon> {
     // Without the runtime file no client can authenticate, so don't keep the port.
     ws.close();
     await new Promise<void>((resolve) => server.close(() => resolve()));
+    await db.close();
+    await sqlGuard.close();
     throw err;
   }
 
@@ -224,6 +246,8 @@ async function startLocked(opts: DaemonOptions): Promise<Daemon> {
         // A connector that fails to stop must not leave a stale runtime.json behind
         // or keep main.js waiting on `closed` for ever.
         await regexFilter.close();
+        await db.close();
+        await sqlGuard.close();
         stopActivity();
         stopNotifications();
         await removeRuntime(opts.projectDir, token).catch((err: unknown) =>

@@ -10,13 +10,15 @@
  * Android native logs (adb logcat) for an attached app on an Android device.
  * Addresses can also come from DECK_DTD_URIS and DECK_VM_SERVICE_URIS (comma-separated).
  * They carry auth codes, and env vars keep them out of `ps`, unlike the flags.
- * `--fake` uses an in-memory app instead, so the API can be exercised without Flutter.
+ * `--fake` uses an in-memory app instead, so the API can be exercised without Flutter: a
+ * live database that gains an order every 5 s, and fake Android snapshot files.
  */
 import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { Registry } from '@project-deck/core';
-import { FakeAppConnector, fakeApp } from '@project-deck/core/testing';
+import { readConfig } from './config.js';
 import { DEFAULT_PORT, startDaemon } from './daemon.js';
+import { registerFake } from './fake-mode.js';
 import { registerLive } from './live.js';
 import { systemNotifier } from './notify-run.js';
 import { formatStartupError } from './startup-error.js';
@@ -41,23 +43,24 @@ if (!Number.isInteger(port) || port < 0 || port > 65535) {
 
 const registry = new Registry();
 if (values.fake) {
-  const connector = new FakeAppConnector('fake', [fakeApp()]);
-  registry.connectors.register(connector);
-  setInterval(() => {
-    connector.sessions.get('app-1')?.logs().push({
-      ts: Date.now(),
-      level: 'info',
-      source: 'app',
-      message: 'Heartbeat from the fake app',
-    });
-  }, 2000).unref();
+  registerFake(registry);
 } else {
+  // A config that can't be read is reported by startDaemon below; here it just means
+  // the snapshot backend has no ids from config.
+  const config = await readConfig(resolve(values.project)).catch(() => undefined);
+  const snapshotIds = {
+    androidApplicationId: config?.android?.applicationId,
+    iosBundleId: config?.ios?.bundleId,
+  };
   const uris = connectorUris(
     { dtdUris: values['dtd-uri'], vmServiceUris: values['vm-service-uri'] },
     process.env,
   );
-  registerLive(registry, uris, (message, err) =>
-    console.error(message, err instanceof Error ? err.message : ''),
+  registerLive(
+    registry,
+    uris,
+    (message, err) => console.error(message, err instanceof Error ? err.message : ''),
+    () => snapshotIds,
   );
 }
 
