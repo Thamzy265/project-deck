@@ -64,7 +64,7 @@ class FakeXcrun implements XcrunRunner {
 }
 
 const iosApp = (over: { device?: { id: string; name: string; platform: 'ios' } } = {}) =>
-  fakeApp({ name: 'shop', device: { id: 'x', name: 'iPhone 17', platform: 'ios' }, ...over });
+  fakeApp({ name: 'shop', device: { id: 'unknown', name: 'iPhone 17', platform: 'ios' }, ...over });
 
 beforeEach(() => {
   home = realpathSync(mkdtempSync(join(tmpdir(), 'deck-ios-')));

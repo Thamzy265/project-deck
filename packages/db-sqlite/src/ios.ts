@@ -214,6 +214,17 @@ export async function resolveIosSource(
   const booted = Object.values(listed.devices)
     .flat()
     .filter((d) => d.state === 'Booted' && UDID.test(d.udid));
+  // An app that names its device by an id no booted simulator has runs on a physical
+  // iPhone: never read a simulator's copy of the same app instead.
+  const deviceId = app.device?.id;
+  if (
+    deviceId !== undefined &&
+    deviceId !== '' &&
+    deviceId !== 'unknown' &&
+    !booted.some((d) => d.udid === deviceId)
+  ) {
+    throw new DbError('unavailable', 'Snapshots work on the iOS simulator only.');
+  }
   const withApp: { udid: string; name: string; container: string }[] = [];
   for (const sim of booted) {
     const out = await xcrun

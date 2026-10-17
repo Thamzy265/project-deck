@@ -80,7 +80,7 @@ class FakeXcrun implements XcrunRunner {
 }
 
 const iosApp = (over: { device?: { id: string; name: string; platform: 'ios' } } = {}) =>
-  fakeApp({ name: 'shop', device: { id: 'x', name: 'iPhone 17', platform: 'ios' }, ...over });
+  fakeApp({ name: 'shop', device: { id: 'unknown', name: 'iPhone 17', platform: 'ios' }, ...over });
 
 beforeEach(() => {
   home = realpathSync(mkdtempSync(join(tmpdir(), 'deck-ios-')));
@@ -95,24 +95,21 @@ afterEach(() => {
 const opts = () => ({ simulatorRoot: root, platform: 'darwin' as const });
 
 describe('resolveIosSource: which device the app runs on (tester probes)', () => {
-  it.fails(
-    'DB-3: does not read a booted simulator when the app runs on a physical iPhone',
-    async () => {
-      // Flutter names a physical iPhone by its 25-character device id; a simulator by its
-      // 36-character UDID. The same app is also installed on a booted simulator.
-      const dir = container(UDID_A);
-      writeFileSync(join(dir, 'Documents/app.sqlite'), plainDbFixture());
-      const xcrun = new FakeXcrun([UDID_A], { [UDID_A]: dir });
-      const onPhone = iosApp({
-        device: { id: '00008110-000A1C2E3E91801E', name: "Pat's iPhone", platform: 'ios' },
-      });
-      const outcome = await resolveIosSource(xcrun, onPhone, BUNDLE, opts()).then(
-        (s) => `read ${s.label}`,
-        (err: unknown) => (err as { code?: string }).code,
-      );
-      expect(outcome).not.toBe('read iOS simulator iPhone 17');
-    },
-  );
+  it('DB-3: does not read a booted simulator when the app runs on a physical iPhone', async () => {
+    // Flutter names a physical iPhone by its 25-character device id; a simulator by its
+    // 36-character UDID. The same app is also installed on a booted simulator.
+    const dir = container(UDID_A);
+    writeFileSync(join(dir, 'Documents/app.sqlite'), plainDbFixture());
+    const xcrun = new FakeXcrun([UDID_A], { [UDID_A]: dir });
+    const onPhone = iosApp({
+      device: { id: '00008110-000A1C2E3E91801E', name: "Pat's iPhone", platform: 'ios' },
+    });
+    const outcome = await resolveIosSource(xcrun, onPhone, BUNDLE, opts()).then(
+      (s) => `read ${s.label}`,
+      (err: unknown) => (err as { code?: string }).code,
+    );
+    expect(outcome).not.toBe('read iOS simulator iPhone 17');
+  });
 
   it('uses the simulator the app names even when another booted one has the app', async () => {
     const xcrun = new FakeXcrun([UDID_A, UDID_B], {
