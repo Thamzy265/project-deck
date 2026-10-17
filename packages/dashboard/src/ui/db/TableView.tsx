@@ -5,6 +5,7 @@ import { asDbApiError } from '../../api/db-client.js';
 import type { Param } from '../../db/cells.js';
 import { paramLabel, visibleText } from '../../db/cells.js';
 import { changedRows, keyColumns, rowIdentity, rowKeyOrReason } from '../../db/keys.js';
+import { seenNewRows, withNewRows } from '../../db/new-rows.js';
 import type { PageSpec } from '../../db/sql-build.js';
 import { countQuery, keysetQuery, pageQuery } from '../../db/sql-build.js';
 import { useDebounced } from '../../search/useDebounced.js';
@@ -103,7 +104,8 @@ export function TableView(p: TableViewProps) {
   /** Rows that flash, by identity, so a re-read that moves them keeps the flash. */
   const [flash, setFlash] = useState<ReadonlySet<string>>(new Set());
   const range = useRef<[number, number]>([0, -1]);
-  const [newRows, setNewRows] = useState<number[]>([]);
+  /** New or changed rows out of view, by identity, for the chip (lead decision B4-6). */
+  const [newRows, setNewRows] = useState<ReadonlySet<string>>(new Set());
   const [scrollTo, setScrollTo] = useState<{ index: number; seq: number }>();
   /** The open row: its identity, so a live re-read that moves rows keeps it, and its
    *  last cells, shown if the row has gone from this page. */
@@ -188,17 +190,15 @@ export function TableView(p: TableViewProps) {
         // Only a change flashes; another read (a new page, the schema read again) keeps
         // the flash the last change started, on the same rows.
         if (!live || prev === undefined) {
-          setNewRows([]);
+          setNewRows(new Set());
           return;
         }
-        const changed = changedRows(identityKey, prev, next);
-        setFlash(
-          new Set(
-            [...changed].map((i) => rowIdentity(identityKey, next.columns, next.rows[i] ?? [])),
-          ),
+        const changed = [...changedRows(identityKey, prev, next)].map((i) =>
+          rowIdentity(identityKey, next.columns, next.rows[i] ?? []),
         );
-        const [first, last] = range.current;
-        setNewRows([...changed].filter((i) => i < first || i > last));
+        setFlash(new Set(changed));
+        const visible = inView(next);
+        setNewRows((pending) => withNewRows(pending, changed, visible));
       },
       (err: unknown) => {
         if (cancelled) return;
@@ -218,9 +218,25 @@ export function TableView(p: TableViewProps) {
   }, [flash]);
 
   const page = load.status === 'ready' ? load.page : load.last;
-  const onRange = useCallback((first: number, last: number) => {
-    range.current = [first, last];
-  }, []);
+  /** Identities of the page's rows drawn now. */
+  const inView = useCallback(
+    (p: Page): Set<string> => {
+      const [first, last] = range.current;
+      return new Set(
+        p.rows.slice(first, last + 1).map((r) => rowIdentity(identityKey, p.columns, r)),
+      );
+    },
+    [identityKey],
+  );
+  const onRange = useCallback(
+    (first: number, last: number) => {
+      range.current = [first, last];
+      const shown = lastPage.current;
+      // Rows the user scrolls to no longer count as new (lead decision B4-6).
+      if (shown !== undefined) setNewRows((pending) => seenNewRows(pending, inView(shown)));
+    },
+    [inView],
+  );
 
   const openRow = (index: number) => {
     returnFocus.current =
@@ -375,16 +391,20 @@ export function TableView(p: TableViewProps) {
             />
           )}
         </TableBody>
-        {newRows.length > 0 && (
+        {newRows.size > 0 && (
           <button
             type="button"
             className={`${button} absolute bottom-12 left-1/2 -translate-x-1/2 bg-surface`}
             onClick={() => {
-              setScrollTo({ index: newRows[0] ?? 0, seq: Date.now() });
-              setNewRows([]);
+              const index =
+                page?.rows.findIndex((r) =>
+                  newRows.has(rowIdentity(identityKey, page.columns, r)),
+                ) ?? -1;
+              if (index >= 0) setScrollTo({ index, seq: Date.now() });
+              setNewRows(new Set());
             }}
           >
-            {newRows.length} new {newRows.length === 1 ? 'row' : 'rows'}
+            {newRows.size} new {newRows.size === 1 ? 'row' : 'rows'}
           </button>
         )}
         <div className="flex flex-wrap items-center gap-2 border-t border-border px-2 py-1 text-sm">
