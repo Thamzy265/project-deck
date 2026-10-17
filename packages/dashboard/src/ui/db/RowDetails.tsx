@@ -96,7 +96,28 @@ export function RowDetails(p: RowDetailsProps) {
   const trigger = useRef<HTMLElement | null>(null);
   const keyText = JSON.stringify(key?.values);
 
-  useEffect(() => heading.current?.focus(), []);
+  const form = useRef<HTMLFormElement>(null);
+  /** Edit or Add row in the panel: Cancel gives focus back to it (QA B4-2). */
+  const opener = useRef<'edit' | 'add'>('edit');
+  const editButton = useRef<HTMLButtonElement>(null);
+  const addButton = useRef<HTMLButtonElement>(null);
+  const backToOpener = useRef(false);
+
+  // The form takes focus where it opens: its first field (WCAG 2.4.3, QA B4-2).
+  useEffect(() => {
+    if (mode.kind !== 'view') {
+      form.current?.querySelector<HTMLInputElement>('input:not([disabled])')?.focus();
+      return;
+    }
+    if (backToOpener.current) {
+      backToOpener.current = false;
+      // The buttons are drawn again in view mode: focus the new one.
+      (opener.current === 'edit' ? editButton : addButton).current?.focus();
+    }
+  }, [mode.kind]);
+  useEffect(() => {
+    if (!adding) heading.current?.focus();
+  }, [adding]);
 
   useEffect(() => {
     if (key === undefined) return;
@@ -278,6 +299,7 @@ export function RowDetails(p: RowDetailsProps) {
         )}
         {mode.kind !== 'view' && (
           <form
+            ref={form}
             className="flex flex-col gap-2"
             onSubmit={(e) => {
               e.preventDefault();
@@ -346,7 +368,14 @@ export function RowDetails(p: RowDetailsProps) {
               <button
                 type="button"
                 className={button}
-                onClick={() => (adding ? p.onClose() : setMode({ kind: 'view' }))}
+                onClick={() => {
+                  if (adding) {
+                    p.onClose();
+                    return;
+                  }
+                  backToOpener.current = true;
+                  setMode({ kind: 'view' });
+                }}
               >
                 Cancel
               </button>
@@ -366,6 +395,7 @@ export function RowDetails(p: RowDetailsProps) {
         <div className="flex flex-wrap gap-2 border-t border-border p-2">
           {saving && <span role="status">Saving…</span>}
           <button
+            ref={editButton}
             type="button"
             className={button}
             aria-disabled={
@@ -375,6 +405,7 @@ export function RowDetails(p: RowDetailsProps) {
             onClick={() => {
               if (row === undefined || key === undefined || !p.connected) return;
               setFields(startFields(table.columns, names, row));
+              opener.current = 'edit';
               setMode({ kind: 'edit' });
             }}
           >
@@ -393,12 +424,14 @@ export function RowDetails(p: RowDetailsProps) {
             Delete row
           </button>
           <button
+            ref={addButton}
             type="button"
             className={button}
             aria-disabled={!p.connected ? true : undefined}
             onClick={() => {
               if (!p.connected) return;
               setFields(startFields(table.columns, names, undefined));
+              opener.current = 'add';
               setMode({ kind: 'add' });
             }}
           >

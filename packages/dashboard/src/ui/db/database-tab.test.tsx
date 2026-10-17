@@ -348,6 +348,20 @@ describe('Editing (writes on)', () => {
     expect(screen.queryByRole('button', { name: 'Add row' })).toBeNull();
   });
 
+  it('Edit and Add row move focus into the form, and Cancel back to the button (QA B4-2)', async () => {
+    const t = await details();
+    const edit = within(t.panel).getByRole('button', { name: 'Edit' });
+    await t.user.click(edit);
+    expect(within(t.panel).getByRole('textbox', { name: /^id/ })).toHaveFocus();
+    await t.user.click(within(t.panel).getByRole('button', { name: 'Cancel' }));
+    expect(within(t.panel).getByRole('button', { name: 'Edit' })).toHaveFocus();
+    within(t.panel).getByRole('button', { name: 'Add row' }).focus();
+    await t.user.keyboard('{Enter}');
+    expect(within(t.panel).getByRole('textbox', { name: /^id/ })).toHaveFocus();
+    await t.user.click(within(t.panel).getByRole('button', { name: 'Cancel' }));
+    expect(within(t.panel).getByRole('button', { name: 'Add row' })).toHaveFocus();
+  });
+
   it('Enter in the form asks once while saving, and not at all offline (R8)', async () => {
     const t = await details();
     t.db.requestEdit.mockReturnValue(never());
