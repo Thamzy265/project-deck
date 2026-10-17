@@ -1,6 +1,6 @@
 /** Reviews R3 and R4: which rows flash after a live change, and for how long. */
 import type { TableInfo } from '@project-deck/core';
-import { screen, within } from '@testing-library/react';
+import { act, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fakeDbClient, fakeDbData } from '../../testing/db-fake.js';
@@ -53,5 +53,22 @@ describe('row flash (UI spec, grid Success)', () => {
     await t.send({ type: 'db.changed', payload: { source: 'drift', db: 'app', table: 'notes' } });
     await within(t.g).findByText('c');
     expect(flashing(t.g)).toEqual(['c3']);
+  });
+
+  it('the flash outlasts the schema re-read half a second later (review R4)', async () => {
+    const data = fakeDbData();
+    const t = await grid('orders', data);
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    data.rows.orders = [...(data.rows.orders ?? []), [3, 'Cake', 'pending', 1]];
+    await t.send({ type: 'db.changed', payload: { source: 'drift', db: 'app', table: 'orders' } });
+    await within(t.g).findByText('Cake');
+    const queries = t.db.query.mock.calls.length;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1400);
+    });
+    // The schema was read again (row counts) without reading the rows again.
+    expect(t.db.schema.mock.calls.length).toBeGreaterThan(1);
+    expect(t.db.query.mock.calls.length).toBe(queries);
+    expect(flashing(t.g)).toEqual(['3Cakepending1']);
   });
 });

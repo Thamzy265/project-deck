@@ -209,7 +209,7 @@ describe('Table picker and grid', () => {
     await t.user.click(item);
     expect(item).toHaveAttribute('aria-sort', 'ascending');
     await waitFor(() =>
-      expect(t.db.query.mock.calls.at(-2)?.[0].sql).toBe(
+      expect(t.db.query.mock.calls.at(-1)?.[0].sql).toBe(
         'SELECT * FROM "orders" ORDER BY "item", "id" LIMIT ? OFFSET ?',
       ),
     );

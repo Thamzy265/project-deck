@@ -79,6 +79,8 @@ export function DatabasePanel() {
   });
   const [view, setView] = useState<ViewId>('table');
   const [ticks, setTicks] = useState<Record<string, number>>({});
+  /** Bumped by a reconnect or a Refresh: every open view reads its rows again. */
+  const [rereads, setRereads] = useState(0);
   const [toast, setToast] = useState<string | undefined>();
   const [refreshing, setRefreshing] = useState(false);
   const [snapshots, setSnapshots] = useState<Record<string, Snapshot>>({});
@@ -134,7 +136,20 @@ export function DatabasePanel() {
     setSchema(loading);
     client.schema(currentName).then(
       (s) => {
-        if (!cancelled) setSchema({ status: 'ready', value: s.tables });
+        if (cancelled) return;
+        // Same content: keep the same objects, so open views don't read their rows again
+        // (review R4). Row counts change with every insert, and only that table differs.
+        setSchema((old) => {
+          const last = lastOf(old);
+          if (last === undefined) return { status: 'ready', value: s.tables };
+          const before = new Map(last.map((t) => [t.name, t]));
+          const value = s.tables.map((t) => {
+            const same = before.get(t.name);
+            return same !== undefined && JSON.stringify(same) === JSON.stringify(t) ? same : t;
+          });
+          const unchanged = value.length === last.length && value.every((t, i) => t === last[i]);
+          return { status: 'ready', value: unchanged ? last : value };
+        });
       },
       (err: unknown) => {
         if (cancelled) return;
@@ -158,7 +173,7 @@ export function DatabasePanel() {
         if (event.kind === 'reconnected') {
           setListRun((n) => n + 1);
           setSchemaRun((n) => n + 1);
-          setTicks((t) => Object.fromEntries(Object.entries(t).map(([k, v]) => [k, v + 1])));
+          setRereads((n) => n + 1);
           return;
         }
         if (event.db !== currentName) return;
@@ -325,7 +340,7 @@ export function DatabasePanel() {
         setRefreshing(false);
         setListRun((n) => n + 1);
         setSchemaRun((n) => n + 1);
-        setTicks((t) => Object.fromEntries(Object.entries(t).map(([k, v]) => [k, v + 1])));
+        setRereads((n) => n + 1);
       },
       (err: unknown) => {
         setRefreshing(false);
@@ -426,7 +441,7 @@ export function DatabasePanel() {
         key={JSON.stringify([current.name, table.name])}
         db={current.name}
         table={table}
-        tick={ticks[table.name] ?? 0}
+        tick={(ticks[table.name] ?? 0) + rereads}
         connected={connected}
         writes={writes}
         match={nav.match}

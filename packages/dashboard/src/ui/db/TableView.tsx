@@ -4,7 +4,7 @@ import type { DbApiError } from '../../api/db-client.js';
 import { asDbApiError } from '../../api/db-client.js';
 import type { Param } from '../../db/cells.js';
 import { paramLabel, visibleText } from '../../db/cells.js';
-import { changedRows, keyColumns, rowKeyOrReason } from '../../db/keys.js';
+import { changedRows, keyColumns, rowIdentity, rowKeyOrReason } from '../../db/keys.js';
 import type { PageSpec } from '../../db/sql-build.js';
 import { countQuery, keysetQuery, pageQuery } from '../../db/sql-build.js';
 import { useDebounced } from '../../search/useDebounced.js';
@@ -47,7 +47,6 @@ export interface TableViewProps {
 interface Page {
   columns: string[];
   rows: Cell[][];
-  total: number;
 }
 
 type Load =
@@ -66,17 +65,25 @@ function nextSort(
 export function TableView(p: TableViewProps) {
   const client = useDbClient();
   const { db, table } = p;
-  const columnsInfo = table.columns;
-  const names = useMemo(() => columnsInfo.map((c) => c.name), [columnsInfo]);
+  // The schema is read again after every change (row counts): new objects with the same
+  // content must not read the rows again or end a flash (review R4).
+  const columnsSig = JSON.stringify(
+    table.columns.map((c) => [c.name, c.type, c.pk, c.pkPosition ?? 0]),
+  );
+  const fkSig = JSON.stringify(table.foreignKeys);
+  const tableRef = useRef(table);
+  tableRef.current = table;
+  const names = useMemo(() => tableRef.current.columns.map((c) => c.name), [columnsSig]);
+  /** Tells rows apart: the primary key, or all cells without one (review R3). */
+  const identityKey = useMemo(() => keyColumns(tableRef.current), [columnsSig]);
   const key = useMemo(() => {
-    const pk = keyColumns(table);
-    if (pk.length > 0) return pk;
+    if (identityKey.length > 0) return identityKey;
     return table.kind === 'table' ? ['rowid'] : [];
-  }, [table]);
+  }, [identityKey, table.kind]);
   const gridColumns = useMemo<GridColumn[]>(
     () =>
-      columnsInfo.map((c) => {
-        const fk = table.foreignKeys.find((f) => f.from === c.name);
+      tableRef.current.columns.map((c) => {
+        const fk = tableRef.current.foreignKeys.find((f) => f.from === c.name);
         return {
           name: c.name,
           type: c.type,
@@ -84,7 +91,7 @@ export function TableView(p: TableViewProps) {
           ...(fk === undefined ? {} : { fk: fk.table }),
         };
       }),
-    [columnsInfo, table.foreignKeys],
+    [columnsSig, fkSig],
   );
 
   const [filter, setFilter] = useState('');
@@ -92,7 +99,9 @@ export function TableView(p: TableViewProps) {
   const [sort, setSort] = useState<{ column: string; dir: SortDir } | undefined>();
   const [pageIndex, setPageIndex] = useState(0);
   const [load, setLoad] = useState<Load>({ status: 'loading' });
-  const [flash, setFlash] = useState<ReadonlySet<number>>(new Set());
+  const [countedTotal, setTotal] = useState<number | undefined>();
+  /** Rows that flash, by identity, so a re-read that moves them keeps the flash. */
+  const [flash, setFlash] = useState<ReadonlySet<string>>(new Set());
   const range = useRef<[number, number]>([0, -1]);
   const [newRows, setNewRows] = useState<number[]>([]);
   const [scrollTo, setScrollTo] = useState<{ index: number; seq: number }>();
@@ -102,6 +111,8 @@ export function TableView(p: TableViewProps) {
   const narrow = !useMedia(PANE_QUERY, true);
   const lastPage = useRef<Page | undefined>(undefined);
   const lastTick = useRef(p.tick);
+  const lastCountTick = useRef(p.tick);
+  const lastTotal = useRef<number | undefined>(undefined);
   const returnFocus = useRef<HTMLElement | null>(null);
 
   const spec: PageSpec = useMemo(
@@ -122,6 +133,40 @@ export function TableView(p: TableViewProps) {
   useEffect(() => setPageIndex(0), [typed, sort, p.match]);
 
   const { tick, announce } = p;
+
+  // The count follows the filter, the match and changes only, not paging or sorting.
+  useEffect(() => {
+    let cancelled = false;
+    const live = tick !== lastCountTick.current;
+    lastCountTick.current = tick;
+    const count = countQuery({
+      table: table.name,
+      columns: names,
+      filter: typed,
+      ...(p.match === undefined ? {} : { match: p.match }),
+    });
+    client.query({ db, sql: count.sql, params: count.params, limit: 1 }).then(
+      (counted) => {
+        if (cancelled) return;
+        const cell = counted.rows[0]?.[0];
+        const next = typeof cell === 'number' ? cell : 0;
+        const before = lastTotal.current;
+        lastTotal.current = next;
+        setTotal(next);
+        const added = before === undefined ? 0 : next - before;
+        if (live && added > 0) {
+          announce(`${added} ${added === 1 ? 'row' : 'rows'} added to ${visibleText(table.name)}`);
+        }
+      },
+      () => {
+        // The rows' read says what went wrong.
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [client, db, table.name, names, typed, p.match, tick, retry, announce]);
+
   useEffect(() => {
     let cancelled = false;
     const live = tick !== lastTick.current;
@@ -132,33 +177,26 @@ export function TableView(p: TableViewProps) {
       return last === undefined ? { status: 'loading' } : { status: 'loading', last };
     });
     const page = pageQuery(spec);
-    const count = countQuery(spec);
-    Promise.all([
-      client.query({ db, sql: page.sql, params: page.params, limit: PAGE_SIZE }),
-      client.query({ db, sql: count.sql, params: count.params, limit: 1 }),
-    ]).then(
-      ([rows, counted]) => {
+    client.query({ db, sql: page.sql, params: page.params, limit: PAGE_SIZE }).then(
+      (rows) => {
         if (cancelled) return;
-        const totalCell = counted.rows[0]?.[0];
-        const total = typeof totalCell === 'number' ? totalCell : rows.rows.length;
-        const next: Page = { columns: rows.columns, rows: rows.rows, total };
+        const next: Page = { columns: rows.columns, rows: rows.rows };
         lastPage.current = next;
         setLoad({ status: 'ready', page: next });
+        // Only a change flashes; another read (a new page, the schema read again) keeps
+        // the flash the last change started, on the same rows.
         if (!live || prev === undefined) {
-          setFlash(new Set());
           setNewRows([]);
           return;
         }
-        // Rows are told apart by their primary key, or whole when there is none: the
-        // rowid that orders such a table isn't in `SELECT *` (review R3).
-        const changed = changedRows(keyColumns(table), prev, next);
-        setFlash(changed);
-        const added = total - prev.total;
-        if (added > 0)
-          announce(`${added} ${added === 1 ? 'row' : 'rows'} added to ${visibleText(table.name)}`);
+        const changed = changedRows(identityKey, prev, next);
+        setFlash(
+          new Set(
+            [...changed].map((i) => rowIdentity(identityKey, next.columns, next.rows[i] ?? [])),
+          ),
+        );
         const [first, last] = range.current;
-        const away = [...changed].filter((i) => i < first || i > last);
-        setNewRows(away);
+        setNewRows([...changed].filter((i) => i < first || i > last));
       },
       (err: unknown) => {
         if (cancelled) return;
@@ -169,7 +207,7 @@ export function TableView(p: TableViewProps) {
       cancelled = true;
     };
     // `range` is read when the answer comes (a ref): a scroll must not re-query.
-  }, [client, db, spec, tick, retry, table, announce]);
+  }, [client, db, spec, tick, retry, identityKey]);
 
   useEffect(() => {
     if (flash.size === 0) return;
@@ -205,7 +243,15 @@ export function TableView(p: TableViewProps) {
     p.onFollowKey(fk.table, fk.to ?? '', param);
   };
 
-  const total = page?.total ?? 0;
+  const flashRows = useMemo(() => {
+    const out = new Set<number>();
+    if (page === undefined || flash.size === 0) return out;
+    page.rows.forEach((row, i) => {
+      if (flash.has(rowIdentity(identityKey, page.columns, row))) out.add(i);
+    });
+    return out;
+  }, [page, flash, identityKey]);
+  const total = countedTotal ?? 0;
   const from = total === 0 ? 0 : pageIndex * PAGE_SIZE + 1;
   const to = Math.min(total, (pageIndex + 1) * PAGE_SIZE);
   const filtered = typed !== '' || p.match !== undefined;
@@ -301,7 +347,7 @@ export function TableView(p: TableViewProps) {
             onSort={(c) => setSort(nextSort(sort, c))}
             onOpenRow={openRow}
             onFollowKey={followKey}
-            flash={flash}
+            flash={flashRows}
             narrow={narrow}
             onRange={onRange}
             scrollTo={scrollTo}
