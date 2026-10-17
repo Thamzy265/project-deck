@@ -87,6 +87,21 @@ export const DbEditConfirmInput = z.object({
 /** `POST /api/db/execute/cancel`: the user pressed "Cancel" or closed the dialog. */
 export const DbEditCancelInput = z.object({ requestId: EditRequestId });
 
+/** One saved query of the SQL editor (`.flutterdeck/queries.json`). */
+export const SavedQuerySchema = z.object({
+  name: z.string().min(1).max(100),
+  sql: Sql,
+});
+export type SavedQuery = z.infer<typeof SavedQuerySchema>;
+
+/** Most saved queries per project. */
+export const MAX_SAVED_QUERIES = 200;
+
+/** `GET /api/db/queries` and the body of `PUT /api/db/queries` (dashboard only). */
+export const SavedQueriesSchema = z.object({
+  queries: z.array(SavedQuerySchema).max(MAX_SAVED_QUERIES),
+});
+
 /** `POST /api/db/refresh`: snapshot backends take a fresh copy. */
 export const DbRefreshInput = z.object({ db: DbName });
 

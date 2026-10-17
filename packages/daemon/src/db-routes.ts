@@ -3,7 +3,7 @@
  * every other `/api` route. On top of that, edits accept only the dashboard cookie with
  * the dashboard's exact Origin, never the runtime.json token (design review S1).
  */
-import type { DbErrorCode } from '@project-deck/core';
+import type { DbErrorCode, SavedQuery } from '@project-deck/core';
 import {
   DbChooseDeviceInput,
   DbDiffInput,
@@ -15,6 +15,7 @@ import {
   DbSchemaInput,
   DbSnapshotInput,
   McpDbQueryInput,
+  SavedQueriesSchema,
   isDbError,
 } from '@project-deck/core';
 import type { Context, Hono } from 'hono';
@@ -58,7 +59,12 @@ export function dbErrorResponse(c: Context, err: unknown): Response | undefined 
 export interface DbRouteContext {
   db: DbService;
   credentials: () => Credentials;
+  /** The SQL editor's saved queries; without it, `/api/db/queries` doesn't exist. */
+  queries?: { read(): Promise<SavedQuery[]>; write(queries: SavedQuery[]): Promise<void> };
 }
+
+/** 200 saved queries of a few kB each, with room to spare. */
+export const QUERIES_BODY_LIMIT = 2 * 1024 * 1024;
 
 export function registerDbRoutes<E extends object>(api: Hono<E>, ctx: DbRouteContext): void {
   const limit = bodyLimit({
@@ -114,6 +120,26 @@ export function registerDbRoutes<E extends object>(api: Hono<E>, ctx: DbRouteCon
     await ctx.db.refresh(parse(DbRefreshInput, await jsonBody(c.req)).db);
     return c.json({ ok: true });
   });
+
+  const queries = ctx.queries;
+  if (queries !== undefined) {
+    api.get('/api/db/queries', async (c) => {
+      const refused = dashboardOnly(c);
+      if (refused !== undefined) return refused;
+      return c.json({ queries: await queries.read() });
+    });
+    const queriesLimit = bodyLimit({
+      maxSize: QUERIES_BODY_LIMIT,
+      onError: (c) => c.json({ error: 'Body too large' }, 413),
+    });
+    api.put('/api/db/queries', queriesLimit, async (c) => {
+      const refused = dashboardOnly(c);
+      if (refused !== undefined) return refused;
+      const body = parse(SavedQueriesSchema, await jsonBody(c.req));
+      await queries.write(body.queries);
+      return c.json({ queries: body.queries });
+    });
+  }
 
   api.post('/api/db/device', limit, async (c) => {
     const refused = dashboardOnly(c);

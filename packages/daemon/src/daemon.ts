@@ -13,6 +13,7 @@ import { defaultDashboardDir, loadDashboardAssets } from './dashboard-assets.js'
 import { AppManager } from './app-manager.js';
 import { readConfig } from './config.js';
 import { DbService } from './db-service.js';
+import { SavedQueryStore } from './saved-queries.js';
 import { listen, listenWithFallback } from './listen.js';
 import { LoginWindow } from './login-window.js';
 import { startNotifications } from './notifications.js';
@@ -180,6 +181,7 @@ async function startLocked(opts: DaemonOptions): Promise<Daemon> {
     projectName: basename(opts.projectDir),
     dashboard,
     db,
+    queries: new SavedQueryStore(opts.projectDir),
     shutdown: () => void stop().catch((err: unknown) => log('Stopping failed', err)),
   });
   const listener = getRequestListener(api.fetch);

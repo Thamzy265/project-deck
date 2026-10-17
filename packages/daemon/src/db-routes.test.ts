@@ -1,4 +1,5 @@
 import type { DeckEvents } from '@project-deck/core';
+import type { SavedQuery } from '@project-deck/core';
 import { DbError, DbListResponse, EventBus, Registry } from '@project-deck/core';
 import { FakeAppConnector, FakeDbInspector, fakeApp } from '@project-deck/core/testing';
 import { registerDrift } from '@project-deck/db-drift';
@@ -10,6 +11,7 @@ import { afterAll, describe, expect, it, vi } from 'vitest';
 import { ActivityFeed } from './activity.js';
 import { createApi } from './api.js';
 import { AppManager } from './app-manager.js';
+import type { DbRouteContext } from './db-routes.js';
 import { DB_BODY_LIMIT } from './db-routes.js';
 import type { DbSettings } from './db-service.js';
 import { DbService } from './db-service.js';
@@ -27,6 +29,7 @@ afterAll(async () => {
 });
 
 interface SetupOptions {
+  queries?: DbRouteContext['queries'];
   settings?: Partial<DbSettings>;
   guard?: SqlGuard;
   extraDb?: FakeDbInspector;
@@ -65,6 +68,7 @@ async function setup(opts: SetupOptions = {}) {
     projectId: undefined,
     projectName: 'shop_app',
     db,
+    ...(opts.queries === undefined ? {} : { queries: opts.queries }),
     shutdown: () => undefined,
   });
   type Init = { method?: string; body?: unknown; headers?: Record<string, string> };
@@ -115,6 +119,39 @@ class ChoosyDb extends FakeDbInspector {
     return Promise.resolve();
   }
 }
+
+describe('/api/db/queries (saved queries)', () => {
+  it('reads and replaces the saved queries, from the dashboard only', async () => {
+    const saved: SavedQuery[][] = [];
+    const queries = {
+      read: () => Promise.resolve(saved.at(-1) ?? []),
+      write: (q: SavedQuery[]) => {
+        saved.push(q);
+        return Promise.resolve();
+      },
+    };
+    const { asToken, asDashboard } = await setup({ guard: new FakeSqlGuard(), queries });
+    expect(await (await asDashboard('/api/db/queries')).json()).toEqual({ queries: [] });
+    const list = [{ name: 'Pending', sql: 'SELECT 1' }];
+    const put = await asDashboard('/api/db/queries', { method: 'PUT', body: { queries: list } });
+    expect(put.status).toBe(200);
+    expect(await put.json()).toEqual({ queries: list });
+    expect(saved).toEqual([list]);
+    expect((await asToken('/api/db/queries')).status).toBe(403);
+    const byToken = await asToken('/api/db/queries', { method: 'PUT', body: { queries: [] } });
+    expect(byToken.status).toBe(403);
+    for (const body of [
+      {},
+      { queries: [{ name: '', sql: 'SELECT 1' }] },
+      { queries: [{ name: 'x'.repeat(101), sql: 'SELECT 1' }] },
+      { queries: Array(201).fill({ name: 'a', sql: 'SELECT 1' }) },
+    ]) {
+      const res = await asDashboard('/api/db/queries', { method: 'PUT', body });
+      expect(res.status).toBe(400);
+    }
+    expect(saved).toHaveLength(1);
+  });
+});
 
 describe('/api/db/device (choose-device)', () => {
   it('lists the devices to pick from, and lists databases once the user picked', async () => {
@@ -188,6 +225,7 @@ describe('/api/db security', () => {
       ['/api/db/execute/confirm', { requestId: 'a'.repeat(32), sql: 'x' }],
       ['/api/db/execute/cancel', { requestId: 'a'.repeat(32) }],
       ['/api/db/device', { source: 'sqlite-file', device: 'emulator-5554' }],
+      ['/api/db/queries', undefined],
     ] as const) {
       const init = body === undefined ? {} : { body };
       expect((await send(path, init, {})).status, `${path} without a token`).toBe(401);

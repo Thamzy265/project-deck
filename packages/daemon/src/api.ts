@@ -15,6 +15,7 @@ import {
 import type { Context, MiddlewareHandler } from 'hono';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
+import type { DbRouteContext } from './db-routes.js';
 import { dbErrorResponse, registerDbRoutes } from './db-routes.js';
 import type { DbService } from './db-service.js';
 import { BadRequest, jsonBody, parse } from './http-input.js';
@@ -61,6 +62,8 @@ export interface ApiContext {
   regexFilter?: RegexFilter | undefined;
   /** The database layer; without it the `/api/db` routes don't exist. */
   db?: DbService | undefined;
+  /** The SQL editor's saved queries (`.flutterdeck/queries.json`). */
+  queries?: DbRouteContext['queries'] | undefined;
 }
 
 /**
@@ -282,6 +285,7 @@ export function createApi(ctx: ApiContext): Hono<DeckEnv> {
     registerDbRoutes(api, {
       db: ctx.db,
       credentials: () => ({ token: ctx.token, sessionSecret: ctx.sessionSecret, port: ctx.port() }),
+      ...(ctx.queries === undefined ? {} : { queries: ctx.queries }),
     });
   }
 
