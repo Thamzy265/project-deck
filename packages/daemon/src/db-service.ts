@@ -106,8 +106,6 @@ export class DbService {
   private attached: Attached | undefined;
   private snapshots: Snapshot[] = [];
   private readonly pending = new Map<string, PendingEdit>();
-  /** Every confirm token ever made: none is ever made twice, across restarts. */
-  private readonly usedTokens = new Set<string>();
   private readonly now: () => number;
   private readonly offBus: () => void;
   private closed = false;
@@ -357,9 +355,8 @@ export class DbService {
     }
     const execute = edit.source.inspector.execute?.bind(edit.source.inspector);
     if (execute === undefined) throw new DbError('unsupported', 'Snapshots are read-only.');
-    let token = randomBytes(32).toString('base64url');
-    while (this.usedTokens.has(token)) token = randomBytes(32).toString('base64url');
-    this.usedTokens.add(token);
+    // 256 random bits per confirm: a repeat is not a practical event, so none is tracked.
+    const token = randomBytes(32).toString('base64url');
     try {
       return await execute(edit.db, edit.sql, edit.params, { token });
     } catch (err) {
