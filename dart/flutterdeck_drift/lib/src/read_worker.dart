@@ -353,8 +353,10 @@ final class _Ports {
 
   /// Shared with the read isolate: [0] is set to ask a copy to stop, [1] is
   /// 1 while a copy runs, [2] is 1 while statements run, [3] is set when the
-  /// budget for the current operation ran out. Freed only once the isolate has exited, so neither
-  /// side can touch freed memory.
+  /// budget for the current operation ran out. The controller never reads
+  /// [2]: the repeated interrupts already cover a statement that starts late,
+  /// so it is kept only for diagnostics. Freed only once the isolate has
+  /// exited, so neither side can touch freed memory.
   final Pointer<Int32> control;
   var hasExited = false;
 
