@@ -92,7 +92,7 @@ async function setup(opts: SetupOptions = {}) {
       origin: ORIGIN,
       'sec-fetch-site': 'same-origin',
     });
-  return { drift, asToken, asDashboard, send, manager, db };
+  return { drift, asToken, asDashboard, send, manager, db, api };
 }
 
 /** A snapshot backend that needs the user to pick a device first. */
@@ -468,5 +468,106 @@ describe('/api/db/:db/schema input', () => {
     const res = await asToken(`/api/db/${'x'.repeat(129)}/schema`);
     expect(res.status).toBe(400);
     expect(drift.extensions.calls.length).toBe(before);
+  });
+});
+
+describe('/api/db/queries and /api/db/device: cookie edges (tester probes)', () => {
+  const memoryQueries = () => {
+    const saved: SavedQuery[][] = [];
+    return {
+      saved,
+      read: () => Promise.resolve(saved.at(-1) ?? []),
+      write: (q: SavedQuery[]) => {
+        saved.push(q);
+        return Promise.resolve();
+      },
+    };
+  };
+  const cookie = { cookie: `deck_session_${PORT}=${SECRET}` };
+
+  it('refuses a cookie GET of saved queries from another site, origin or host', async () => {
+    const queries = memoryQueries();
+    const { send } = await setup({ guard: new FakeSqlGuard(), queries });
+    for (const [label, headers] of [
+      ['cross-site fetch', { ...cookie, 'sec-fetch-site': 'cross-site' }],
+      ['same-site fetch', { ...cookie, 'sec-fetch-site': 'same-site' }],
+      ['typed in the address bar', { ...cookie, 'sec-fetch-site': 'none' }],
+      ['foreign Origin', { ...cookie, origin: 'https://evil.example' }],
+      ['null Origin', { ...cookie, origin: 'null' }],
+      ['other port Origin', { ...cookie, origin: `http://127.0.0.1:${PORT + 1}` }],
+      ['wrong cookie', { cookie: `deck_session_${PORT}=nope` }],
+      ['cookie of another port', { cookie: `deck_session_${PORT + 1}=${SECRET}` }],
+    ] as const) {
+      const res = await send('/api/db/queries', {}, headers);
+      expect([401, 403], label).toContain(res.status);
+    }
+    const rebound = await send(
+      '/api/db/queries',
+      { headers: { host: `evil.example:${PORT}` } },
+      { ...cookie, 'sec-fetch-site': 'same-origin' },
+    );
+    expect(rebound.status, 'DNS rebinding host').toBe(403);
+  });
+
+  it('refuses a PUT of saved queries without the exact Origin, and changes nothing', async () => {
+    const queries = memoryQueries();
+    const { send } = await setup({ guard: new FakeSqlGuard(), queries });
+    const body = { queries: [{ name: 'a', sql: 'SELECT 1' }] };
+    for (const headers of [
+      { ...cookie, 'sec-fetch-site': 'same-origin' },
+      { ...cookie, origin: 'https://evil.example' },
+      { ...cookie, origin: ORIGIN, 'sec-fetch-site': 'cross-site' },
+    ]) {
+      const res = await send('/api/db/queries', { method: 'PUT', body }, headers);
+      expect([401, 403], JSON.stringify(headers)).toContain(res.status);
+    }
+    expect(queries.saved).toEqual([]);
+  });
+
+  it('answers malformed, oversized and wrong-method requests without saving', async () => {
+    const queries = memoryQueries();
+    const { asDashboard, api } = await setup({ guard: new FakeSqlGuard(), queries });
+    const raw = (body: string) =>
+      api.request(`${ORIGIN}/api/db/queries`, {
+        method: 'PUT',
+        body,
+        headers: {
+          host: `127.0.0.1:${PORT}`,
+          'content-type': 'application/json',
+          ...cookie,
+          origin: ORIGIN,
+          'sec-fetch-site': 'same-origin',
+        },
+      });
+    expect((await raw('{"queries": [')).status).toBe(400);
+    expect((await raw('null')).status).toBe(400);
+    expect((await raw('')).status).toBe(400);
+    const big = JSON.stringify({
+      queries: [{ name: 'a', sql: `SELECT '${'x'.repeat(3_000_000)}'` }],
+    });
+    expect((await raw(big)).status).toBe(413);
+    const nul = await asDashboard('/api/db/queries', {
+      method: 'PUT',
+      body: { queries: [{ name: 'a\u0000‮b', sql: 'SELECT 1' }] },
+    });
+    // Odd but harmless names are kept as they are; the dashboard names them visibly.
+    expect(nul.status).toBe(200);
+    const post = await asDashboard('/api/db/queries', { method: 'POST', body: { queries: [] } });
+    expect([404, 405]).toContain(post.status);
+    const del = await asDashboard('/api/db/queries', { method: 'DELETE' });
+    expect([404, 405]).toContain(del.status);
+    expect(queries.saved).toHaveLength(1);
+  });
+
+  it('ignores a device id with shell characters that no device listed', async () => {
+    const choosy = new ChoosyDb();
+    const { asDashboard } = await setup({ guard: new FakeSqlGuard(), extraDb: choosy });
+    const res = await asDashboard('/api/db/device', {
+      body: { source: 'sqlite-file', device: 'emulator-5554;reboot' },
+    });
+    // The route passes it on; the snapshot backend only ever uses an id adb listed
+    // (db-sqlite inspector-choice tests). Here: no crash and a normal answer.
+    expect(res.status).toBe(200);
+    expect(DbListResponse.safeParse(await res.json()).success).toBe(true);
   });
 });

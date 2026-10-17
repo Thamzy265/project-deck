@@ -66,3 +66,40 @@ describe('SavedQueryStore (.flutterdeck/queries.json)', () => {
     expect(await readdir(outside)).toEqual([]);
   });
 });
+
+describe('SavedQueryStore: file mode, races and odd files (tester probes)', () => {
+  (process.platform === 'win32' ? it.skip : it.fails)(
+    'writes queries.json readable by its owner only (0600), like runtime.json',
+    async () => {
+      const { stat } = await import('node:fs/promises');
+      await new SavedQueryStore(projectDir).write([{ name: 'a', sql: 'SELECT 1' }]);
+      expect((await stat(path())).mode & 0o777).toBe(0o600);
+    },
+  );
+
+  it('keeps one whole list when many saves race, with no temp files left', async () => {
+    const store = new SavedQueryStore(projectDir);
+    const lists = Array.from({ length: 20 }, (_, i) => [{ name: `q${i}`, sql: `SELECT ${i}` }]);
+    await Promise.all(lists.map((l) => store.write(l)));
+    const read = await store.read();
+    expect(lists).toContainEqual(read);
+    expect(await readdir(join(projectDir, '.flutterdeck'))).toEqual([QUERIES_FILE]);
+  });
+
+  it('says the file is broken for a directory, a huge file or a wrong version', async () => {
+    await mkdir(join(projectDir, '.flutterdeck'));
+    await mkdir(path());
+    await expect(new SavedQueryStore(projectDir).read()).rejects.toMatchObject({
+      code: 'internal',
+    });
+    await rm(path(), { recursive: true });
+    await writeFile(path(), `{"version":1,"queries":[],"pad":"${'x'.repeat(5 * 1024 * 1024)}"}`);
+    await expect(new SavedQueryStore(projectDir).read()).rejects.toMatchObject({
+      code: 'internal',
+    });
+    await writeFile(path(), JSON.stringify({ version: 2, queries: [] }));
+    await expect(new SavedQueryStore(projectDir).read()).rejects.toMatchObject({
+      code: 'internal',
+    });
+  });
+});
