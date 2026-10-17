@@ -150,6 +150,9 @@ function viewNote(
 const EDIT_TARGET =
   /^\s*(?:UPDATE(?:\s+OR\s+\w+)?|DELETE\s+FROM|(?:INSERT|REPLACE)(?:\s+OR\s+\w+)?\s+INTO)\s+("(?:[^"]|"")+"|[A-Za-z_][\w$]*)/i;
 
+/** An edit that row details builds with the row check: an UPDATE or a DELETE. */
+const CHECKED_EDIT = /^\s*(?:UPDATE|DELETE)\b/i;
+
 /**
  * The table an edit names first, for the Activity entry of a refused edit. The gate
  * refused it, so this reads only the leading words; it says nothing about safety.
@@ -554,6 +557,18 @@ export class DbService {
       result = await execute(edit.db, edit.sql, edit.params, { token });
     } catch (err) {
       throw asDbError(err);
+    }
+    // Every UPDATE and DELETE the dashboard sends comes from row details and matches
+    // the row as it was read (review L3), so one that matched nothing found the row
+    // changed: the change was refused, not made.
+    if (result.changes === 0 && CHECKED_EDIT.test(edit.sql)) {
+      this.opts.bus.emit('db.write', {
+        db: edit.db,
+        tables: edit.tables,
+        allowed: false,
+        reason: 'row-changed',
+      });
+      return result;
     }
     this.opts.bus.emit('db.write', {
       db: edit.db,

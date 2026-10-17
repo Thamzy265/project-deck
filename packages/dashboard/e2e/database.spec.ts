@@ -629,6 +629,10 @@ test.describe('scripted daemon', () => {
     await dialog.getByRole('button', { name: 'Run change' }).click();
     await expect(page.getByText('1 row changed', { exact: true })).toBeVisible();
     expect(await status()).toEqual([]);
+    await page.getByRole('tab', { name: 'Activity' }).click();
+    await expect(page.getByText('Write denied: orders (row changed)')).toHaveCount(2);
+    await expect(page.getByText('Write allowed: orders, 1 row changed')).toHaveCount(1);
+    await expect(page.getByText(/0 rows changed/)).toHaveCount(0);
   });
 
   test('untrusted row values stay text; bidi and control characters are named', async ({

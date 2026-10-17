@@ -8,6 +8,15 @@ describe('ActivityEntrySchema: database entries', () => {
       { id: 2, ts: 2, kind: 'db.diff', db: 'app' },
       { id: 3, ts: 3, kind: 'db.write', db: 'app', tables: ['orders'], allowed: true, changes: 1 },
       { id: 4, ts: 4, kind: 'db.write', db: 'app', tables: ['orders'], allowed: false },
+      {
+        id: 5,
+        ts: 5,
+        kind: 'db.write',
+        db: 'app',
+        tables: ['orders'],
+        allowed: false,
+        reason: 'row-changed',
+      },
     ];
     for (const entry of entries) expect(ActivityEntrySchema.parse(entry)).toEqual(entry);
   });
@@ -32,6 +41,9 @@ describe('ActivityEntrySchema: database entries', () => {
       false,
     );
     expect(ActivityEntrySchema.safeParse({ ...base, tables: [], changes: -1 }).success).toBe(false);
+    expect(ActivityEntrySchema.safeParse({ ...base, tables: [], reason: 'other' }).success).toBe(
+      false,
+    );
     expect(
       ActivityEntrySchema.safeParse({ id: 1, ts: 1, kind: 'db.diff', db: 'x'.repeat(301) }).success,
     ).toBe(false);

@@ -120,13 +120,14 @@ export class ActivityFeed {
       }),
       this.bus.on('db.snapshot', ({ db }) => this.add({ kind: 'db.snapshot', db: cut(db) })),
       this.bus.on('db.diff', ({ db }) => this.add({ kind: 'db.diff', db: cut(db) })),
-      this.bus.on('db.write', ({ db, tables, allowed, changes }) => {
+      this.bus.on('db.write', ({ db, tables, allowed, changes, reason }) => {
         this.add({
           kind: 'db.write',
           db: cut(db),
           tables: tables.slice(0, MAX_ACTIVITY_TABLES).map(cut),
           allowed,
           ...(changes === undefined ? {} : { changes }),
+          ...(reason === undefined ? {} : { reason }),
         });
       }),
     ];

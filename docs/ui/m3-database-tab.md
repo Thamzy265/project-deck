@@ -99,7 +99,7 @@ At ≥ 900 px the table list becomes a left sidebar (tables with row counts) and
 - Foreign-key filter: "Showing <table>.<column> = <value>" · "Clear filter".
 - Device picker (choose-device): the daemon's message ("More than one Android device could be running this app. Pick the one to copy from." or "The app is on more than one booted iOS simulator. Pick the one to copy from.") · label "Device" · "Use this device".
 - An edit the gate refuses (for example the trigger rule) also logs "Write denied: <table>" (lead decision G4).
-- Activity entries: "Snapshot taken: <database>" · "Diff shown: <database>" · "Write allowed: <tables>, N row(s) changed" · "Write denied: <tables>". Names only, never SQL or values.
+- Activity entries: "Snapshot taken: <database>" · "Diff shown: <database>" · "Write allowed: <tables>, N row(s) changed" · "Write denied: <tables>" · an edit from row details that matched no row because the row changed (review L3): "Write denied: <table> (row changed)", never "0 rows changed". The tables are the one the edit writes, not tables it only reads for a foreign-key check. Names only, never SQL or values.
 - Claude never writes: Claude's chat may contain SQL; the SQL editor runs reading queries only; changes are made in the row-details editor, with writes on and a confirm.
 - Snapshot busy: "The app is writing; try Refresh." · iOS on Linux/Windows: option hidden.
 - Diff empty: "No changes since 14:02."

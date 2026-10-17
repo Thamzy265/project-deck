@@ -133,6 +133,18 @@ describe('activityText', () => {
       { id: 1, ts: 0, kind: 'db.write', db: 'app', tables: ['orders'], allowed: false },
       'Write denied: orders',
     ],
+    [
+      {
+        id: 1,
+        ts: 0,
+        kind: 'db.write',
+        db: 'app',
+        tables: ['orders'],
+        allowed: false,
+        reason: 'row-changed',
+      },
+      'Write denied: orders (row changed)',
+    ],
   ];
   it.each(cases)('describes %j', (entry, text) => {
     expect(activityText(entry)).toBe(text);

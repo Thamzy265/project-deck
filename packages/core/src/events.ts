@@ -36,7 +36,14 @@ export interface DeckEvents {
   /** A diff was computed. */
   'db.diff': { db: string };
   /** The user answered an edit's confirm: run (`changes` rows) or cancelled. Never the SQL. */
-  'db.write': { db: string; tables: string[]; allowed: boolean; changes?: number };
+  'db.write': {
+    db: string;
+    tables: string[];
+    allowed: boolean;
+    changes?: number;
+    /** A checked edit (row details) matched no row: the row changed meanwhile. */
+    reason?: 'row-changed';
+  };
   /** A new Activity feed entry, already stored. */
   activity: ActivityEntry;
 }

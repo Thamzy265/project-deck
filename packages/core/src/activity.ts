@@ -71,6 +71,8 @@ export const ActivityEntrySchema = z.discriminatedUnion('kind', [
     tables: z.array(DbName).max(MAX_ACTIVITY_TABLES),
     allowed: z.boolean(),
     changes: z.number().int().nonnegative().optional(),
+    /** Denied because a checked edit matched no row: it changed since it was read. */
+    reason: z.literal('row-changed').optional(),
   }),
 ]);
 export type ActivityEntry = z.infer<typeof ActivityEntrySchema>;

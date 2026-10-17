@@ -94,7 +94,10 @@ export function activityText(entry: ActivityEntry): string {
       // Names come from the app's database: hidden characters are named (TAB-6).
       const tables = visibleText(entry.tables.join(', '));
       // A refused edit whose table couldn't be read from its SQL names none.
-      if (!entry.allowed) return tables === '' ? 'Write denied' : `Write denied: ${tables}`;
+      if (!entry.allowed) {
+        const why = entry.reason === 'row-changed' ? ' (row changed)' : '';
+        return tables === '' ? `Write denied${why}` : `Write denied: ${tables}${why}`;
+      }
       const n = entry.changes ?? 0;
       return `Write allowed: ${tables}, ${n} ${n === 1 ? 'row' : 'rows'} changed`;
     }

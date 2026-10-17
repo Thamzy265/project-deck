@@ -27,8 +27,8 @@ afterEach(async () => {
   await Promise.all(services.splice(0).map((s) => s.close()));
 });
 
-async function setup() {
-  const db = new FakeDbInspector({ app: [orders()] }, undefined, { writable: true });
+async function setup(changes = 1) {
+  const db = new FakeDbInspector({ app: [orders()] }, undefined, { writable: true, changes });
   const registry = new Registry();
   registry.dbInspectors.register({ id: db.id, create: () => Promise.resolve(db) });
   const bus = new EventBus<DeckEvents>();
@@ -100,6 +100,26 @@ describe('DbService: Activity events (design note, Observability)', () => {
     expect(events).toEqual([
       ['db.write', { db: 'app', tables: ['orders'], allowed: true, changes: 1 }],
       ['db.write', { db: 'app', tables: ['orders'], allowed: false }],
+    ]);
+  });
+
+  it('logs a checked edit that matched no row as denied: the row changed (review note)', async () => {
+    const { service, guard, events } = await setup(0);
+    const update = 'UPDATE "orders" SET "status" = ? WHERE "id" IS ? AND "status" IS ?';
+    const remove = 'DELETE FROM "orders" WHERE "id" IS ? AND "status" IS ?';
+    for (const [edit, params] of [
+      [update, ['shipped', 1, 'pending']],
+      [remove, [1, 'pending']],
+    ] as const) {
+      guard.answer(edit, write);
+      const request = await service.requestEdit({ db: 'app', sql: edit, params: [...params] });
+      expect(
+        await service.confirmEdit({ requestId: request.requestId, sql: edit, params: [...params] }),
+      ).toEqual({ changes: 0 });
+    }
+    expect(events).toEqual([
+      ['db.write', { db: 'app', tables: ['orders'], allowed: false, reason: 'row-changed' }],
+      ['db.write', { db: 'app', tables: ['orders'], allowed: false, reason: 'row-changed' }],
     ]);
   });
 
