@@ -18,6 +18,10 @@ Batch 4 of [the M3 design](../design/m3-drift-inspector.md) (`feat/database-tab`
 6. **Editing needs a key that finds one row.** Rows of tables without a primary key, and rows whose key value is null (a rowid table can hold several, TAB-1) or a blob, can't be edited; Edit and Delete row are disabled and their tooltip says why. Integer keys past 2^53 travel as tagged ints (`{type: 'int'}`), which core's parameter schema, the snapshot engine and flutterdeck_drift's `decodeParam` all accept (TAB-2). An "Add row" button in the table toolbar adds rows to any table, empty ones too (lead decision, 17 Oct 2026).
 7. **The table page query** is `LIMIT ? OFFSET ?` in the chosen sort with the key as tie-break, not keyset paging: sorting by any column then works the same way.
 8. **Table exports read by key.** A table with a primary key is exported in key order after the last key read (keyset), not in the grid's sort, so a long export never repeats or skips a row; past a key that can't be compared it goes on by offset. The 50 MB cap counts UTF-8 bytes.
+9. **Edits check the row as it was read** (review L3). Edit and Delete row from row details add the read values to their `WHERE`: Edit adds the edited columns, and Delete adds every column shown. An edit that matches no row is refused as "This row changed since you opened it" and logged as "Write denied: <table> (row changed)". The check is only as good as what the dashboard was sent:
+   - A blob is never sent whole, so it matches only its type, its length and the bytes sent (the whole blob when it is small, else its start). A row replaced under the same key with a blob identical in all three counts as the same row. This is a known limit of the optimistic check.
+   - Within the 999-value cap, a wide table first loses the blob byte check (type and length stay). If it still doesn't fit, the edit is refused and is never sent unchecked.
+   - NaN is left out because SQLite never stores it.
 
 ## Review fix evidence
 
