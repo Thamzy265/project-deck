@@ -149,7 +149,9 @@ export function TableView(p: TableViewProps) {
           setNewRows([]);
           return;
         }
-        const changed = changedRows(key, prev, next);
+        // Rows are told apart by their primary key, or whole when there is none: the
+        // rowid that orders such a table isn't in `SELECT *` (review R3).
+        const changed = changedRows(keyColumns(table), prev, next);
         setFlash(changed);
         const added = total - prev.total;
         if (added > 0)
@@ -167,7 +169,7 @@ export function TableView(p: TableViewProps) {
       cancelled = true;
     };
     // `range` is read when the answer comes (a ref): a scroll must not re-query.
-  }, [client, db, spec, tick, retry, key, table.name, announce]);
+  }, [client, db, spec, tick, retry, table, announce]);
 
   useEffect(() => {
     if (flash.size === 0) return;
