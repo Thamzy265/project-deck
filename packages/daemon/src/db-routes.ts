@@ -11,6 +11,7 @@ import {
   DbExecuteInput,
   DbQueryInput,
   DbRefreshInput,
+  DbSchemaInput,
   DbSnapshotInput,
   McpDbQueryInput,
   isDbError,
@@ -84,7 +85,10 @@ export function registerDbRoutes<E extends object>(api: Hono<E>, ctx: DbRouteCon
 
   api.get('/api/db', async (c) => c.json(await ctx.db.list()));
 
-  api.get('/api/db/:db/schema', async (c) => c.json(await ctx.db.schema(c.req.param('db'))));
+  api.get('/api/db/:db/schema', async (c) => {
+    const { db } = parse(DbSchemaInput, { db: c.req.param('db') });
+    return c.json(await ctx.db.schema(db));
+  });
 
   api.post('/api/db/query', limit, async (c) => {
     const who = caller(c);

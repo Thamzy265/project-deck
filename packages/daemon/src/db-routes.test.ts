@@ -320,3 +320,13 @@ describe('/api/db with the real read-only gate', () => {
     expect(await res.json()).toMatchObject({ code: 'app-gone' });
   });
 });
+
+describe('/api/db/:db/schema input', () => {
+  it('validates the database name with the shared schema before any backend sees it', async () => {
+    const { asToken, drift } = await setup({ guard: new FakeSqlGuard() });
+    const before = drift.extensions.calls.length;
+    const res = await asToken(`/api/db/${'x'.repeat(129)}/schema`);
+    expect(res.status).toBe(400);
+    expect(drift.extensions.calls.length).toBe(before);
+  });
+});
