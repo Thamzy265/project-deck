@@ -323,6 +323,31 @@ describe('Editing (writes on)', () => {
     return { ...t, panel };
   }
 
+  it('Add row in the table toolbar adds a row to an empty table, through the confirm', async () => {
+    const data = writable();
+    data.rows.orders = [];
+    const t = await ordersGrid(data, false);
+    await screen.findByText('No rows yet');
+    await t.user.click(screen.getByRole('button', { name: 'Add row' }));
+    const panel = await screen.findByRole('dialog', { name: 'orders: new row' });
+    await t.user.type(within(panel).getByRole('textbox', { name: /^item/ }), 'Cake');
+    await t.user.click(within(panel).getByRole('button', { name: 'Save' }));
+    expect(t.db.requestEdit).toHaveBeenCalledWith({
+      db: 'app',
+      sql: 'INSERT INTO "orders" ("item") VALUES (?)',
+      params: ['Cake'],
+    });
+    const dialog = await screen.findByRole('alertdialog', { name: 'Run this change?' });
+    await t.user.click(within(dialog).getByRole('button', { name: 'Run change' }));
+    expect(await screen.findByText('1 row changed')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'orders: new row' })).toBeNull();
+  });
+
+  it('no Add row in the toolbar with writes off', async () => {
+    await ordersGrid();
+    expect(screen.queryByRole('button', { name: 'Add row' })).toBeNull();
+  });
+
   it('Writes off: no edit buttons', async () => {
     const t = await ordersGrid();
     await t.user.click(within(grid()).getByText('Coffee'));

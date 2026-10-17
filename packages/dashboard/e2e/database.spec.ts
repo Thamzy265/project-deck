@@ -168,6 +168,24 @@ test.describe('fake mode', () => {
     await expect(page.getByText('Write allowed: orders, 1 row changed')).toBeVisible();
   });
 
+  test('Add row in the toolbar fills an empty table, after the confirm', async ({ page }) => {
+    await openDashboard(page, daemon.url);
+    await page.getByRole('combobox', { name: 'Table' }).selectOption('audit_log');
+    await expect(page.getByText('No rows yet')).toBeVisible();
+    await page.getByRole('button', { name: 'Add row' }).click();
+    const panel = page.getByRole('dialog', { name: 'audit_log: new row' });
+    await panel.getByRole('textbox', { name: /^at/ }).fill('1');
+    await panel.getByRole('textbox', { name: /^note/ }).fill('added by hand');
+    await panel.getByRole('button', { name: 'Save' }).click();
+    const dialog = page.getByRole('alertdialog', { name: 'Run this change?' });
+    await expect(dialog).toContainText('Database: app');
+    await expect(dialog).toContainText('Table: audit_log');
+    await dialog.getByRole('button', { name: 'Run change' }).click();
+    await expect(
+      page.getByRole('grid', { name: 'audit_log rows' }).getByText('added by hand'),
+    ).toBeVisible();
+  });
+
   test('a table with a trigger says why it cannot be changed (QA G2)', async ({ page }) => {
     await openDashboard(page, daemon.url);
     await page.getByRole('combobox', { name: 'Table' }).selectOption('customers');

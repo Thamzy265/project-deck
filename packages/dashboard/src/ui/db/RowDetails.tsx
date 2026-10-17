@@ -28,6 +28,7 @@ type Fresh =
   | { status: 'loading' }
   | { status: 'ready'; columns: string[]; row: Cell[] }
   | { status: 'gone' }
+  | { status: 'new' }
   | { status: 'error'; message: string };
 
 interface FieldState {
@@ -41,7 +42,8 @@ export interface RowDetailsProps {
   db: string;
   table: TableInfo;
   columns: string[];
-  row: Cell[];
+  /** Undefined: a new row, from the table's "Add row" button. */
+  row: Cell[] | undefined;
   writes: WriteMode;
   connected: boolean;
   onClose: () => void;
@@ -69,15 +71,22 @@ function startFields(
 export function RowDetails(p: RowDetailsProps) {
   const client = useDbClient();
   const { db, table } = p;
-  const checked = rowKeyOrReason(table, p.columns, p.row);
-  const key = 'key' in checked ? checked.key : undefined;
-  const noEdit = 'reason' in checked ? checked.reason : undefined;
+  const adding = p.row === undefined;
+  const checked = p.row === undefined ? undefined : rowKeyOrReason(table, p.columns, p.row);
+  const key = checked !== undefined && 'key' in checked ? checked.key : undefined;
+  const noEdit = checked !== undefined && 'reason' in checked ? checked.reason : undefined;
   const [fresh, setFresh] = useState<Fresh>(
-    key === undefined ? { status: 'ready', columns: p.columns, row: p.row } : { status: 'loading' },
+    p.row === undefined
+      ? { status: 'new' }
+      : key === undefined
+        ? { status: 'ready', columns: p.columns, row: p.row }
+        : { status: 'loading' },
   );
   const [retry, setRetry] = useState(0);
-  const [mode, setMode] = useState<Mode>({ kind: 'view' });
-  const [fields, setFields] = useState<FieldState[]>([]);
+  const [mode, setMode] = useState<Mode>(adding ? { kind: 'add' } : { kind: 'view' });
+  const [fields, setFields] = useState<FieldState[]>(() =>
+    adding ? startFields(table.columns, p.columns, undefined) : [],
+  );
   const [saving, setSaving] = useState(false);
   const [editError, setEditError] = useState<string | undefined>();
   const [request, setRequest] = useState<DbEditRequest | undefined>();
@@ -155,7 +164,7 @@ export function RowDetails(p: RowDetailsProps) {
       if (was !== now) values.push({ column: c.name, value });
     });
     if (mode.kind === 'add') {
-      void ask(insertRow(table.name, values), 'view');
+      void ask(insertRow(table.name, values), adding ? 'close' : 'view');
       return;
     }
     if (key === undefined) return;
@@ -173,8 +182,9 @@ export function RowDetails(p: RowDetailsProps) {
     }
   };
 
-  const title =
-    key === undefined
+  const title = adding
+    ? `${table.name}: new row`
+    : key === undefined
       ? `${table.name} row`
       : `${table.name}: ${key.columns.map((c, i) => `${c} ${paramLabel(key.values[i] ?? null)}`).join(', ')}`;
 
@@ -331,7 +341,11 @@ export function RowDetails(p: RowDetailsProps) {
               >
                 {saving ? 'Saving…' : 'Save'}
               </button>
-              <button type="button" className={button} onClick={() => setMode({ kind: 'view' })}>
+              <button
+                type="button"
+                className={button}
+                onClick={() => (adding ? p.onClose() : setMode({ kind: 'view' }))}
+              >
                 Cancel
               </button>
             </div>

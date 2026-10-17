@@ -97,6 +97,7 @@ export function TableView(p: TableViewProps) {
   const [newRows, setNewRows] = useState<number[]>([]);
   const [scrollTo, setScrollTo] = useState<{ index: number; seq: number }>();
   const [details, setDetails] = useState<number | undefined>();
+  const [adding, setAdding] = useState(false);
   const [retry, setRetry] = useState(0);
   const narrow = !useMedia(PANE_QUERY, true);
   const lastPage = useRef<Page | undefined>(undefined);
@@ -186,8 +187,11 @@ export function TableView(p: TableViewProps) {
   };
   const closeDetails = () => {
     setDetails(undefined);
+    setAdding(false);
     returnFocus.current?.focus();
   };
+  // Lead decision, 17 Oct 2026: tables, empty ones too, get rows from the toolbar.
+  const canAdd = p.writes.kind === 'on' && table.kind === 'table';
 
   const followKey = (rowIndex: number, colIndex: number) => {
     const column = gridColumns[colIndex];
@@ -246,6 +250,22 @@ export function TableView(p: TableViewProps) {
             </optgroup>
           ))}
         </select>
+        {canAdd && (
+          <button
+            type="button"
+            className={button}
+            aria-disabled={p.connected ? undefined : true}
+            onClick={() => {
+              if (!p.connected) return;
+              returnFocus.current =
+                document.activeElement instanceof HTMLElement ? document.activeElement : null;
+              setDetails(undefined);
+              setAdding(true);
+            }}
+          >
+            Add row
+          </button>
+        )}
       </div>
       {p.match !== undefined && (
         <p className="flex flex-wrap items-center gap-1 px-2 text-sm">
@@ -344,6 +364,19 @@ export function TableView(p: TableViewProps) {
             setDetails(undefined);
             p.onFollowKey(t, c, v);
           }}
+          onToast={p.onToast}
+        />
+      )}
+      {adding && (
+        <RowDetails
+          db={db}
+          table={table}
+          columns={names}
+          row={undefined}
+          writes={p.writes}
+          connected={p.connected}
+          onClose={closeDetails}
+          onFollowKey={p.onFollowKey}
           onToast={p.onToast}
         />
       )}
