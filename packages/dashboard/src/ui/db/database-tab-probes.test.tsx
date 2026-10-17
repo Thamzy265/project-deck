@@ -188,28 +188,22 @@ describe('untrusted names in announcements and accessible names (abuse cases)', 
     });
   }
 
-  it.fails(
-    'the polite "rows added" announcement names a bidi override instead of acting on it',
-    async () => {
-      const data = bidiData();
-      const t = await open(fakeDbClient(data));
-      const picker = await screen.findByRole('combobox', { name: 'Table' });
-      await t.user.selectOptions(picker, bidiName);
-      await screen.findByText('Coffee');
-      data.rows[bidiName] = [...(data.rows[bidiName] ?? []), [2, 'Tea', 'pending', 1]];
-      await t.send({
-        type: 'db.changed',
-        payload: { source: 'drift', db: 'app', table: bidiName },
-      });
-      await screen.findByText('Tea');
-      const live = document.querySelector('[aria-live="polite"]');
-      await waitFor(() => expect(live?.textContent).toMatch(/1 row added to/));
-      expect(live?.textContent).not.toContain('‮');
-      expect(live?.textContent).toContain('U+202E');
-    },
-  );
+  it('the polite "rows added" announcement names a bidi override instead of acting on it', async () => {
+    const data = bidiData();
+    const t = await open(fakeDbClient(data));
+    const picker = await screen.findByRole('combobox', { name: 'Table' });
+    await t.user.selectOptions(picker, bidiName);
+    await screen.findByText('Coffee');
+    data.rows[bidiName] = [...(data.rows[bidiName] ?? []), [2, 'Tea', 'pending', 1]];
+    await t.send({ type: 'db.changed', payload: { source: 'drift', db: 'app', table: bidiName } });
+    await screen.findByText('Tea');
+    const live = document.querySelector('[aria-live="polite"]');
+    await waitFor(() => expect(live?.textContent).toMatch(/1 row added to/));
+    expect(live?.textContent).not.toContain('‮');
+    expect(live?.textContent).toContain('U+202E');
+  });
 
-  it.fails('accessible names built from a table name show a bidi override as a mark', async () => {
+  it('accessible names built from a table name show a bidi override as a mark', async () => {
     const data = bidiData();
     const db = fakeDbClient(data);
     const t = await open(db);

@@ -137,4 +137,14 @@ describe('activityText', () => {
   it.each(cases)('describes %j', (entry, text) => {
     expect(activityText(entry)).toBe(text);
   });
+
+  it('names hidden characters in database and table names (TAB-6)', () => {
+    const name = `ord${String.fromCodePoint(0x202e)}ers`;
+    expect(activityText({ id: 1, ts: 0, kind: 'db.diff', db: name })).toBe(
+      'Diff shown: ord<U+202E>ers',
+    );
+    expect(
+      activityText({ id: 1, ts: 0, kind: 'db.write', db: 'app', tables: [name], allowed: false }),
+    ).toBe('Write denied: ord<U+202E>ers');
+  });
 });

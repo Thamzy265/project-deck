@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DbApiError } from '../../api/db-client.js';
 import { asDbApiError } from '../../api/db-client.js';
 import type { Param } from '../../db/cells.js';
-import { paramLabel } from '../../db/cells.js';
+import { paramLabel, visibleText } from '../../db/cells.js';
 import { changedRows, keyColumns } from '../../db/keys.js';
 import type { PageSpec } from '../../db/sql-build.js';
 import { countQuery, pageQuery } from '../../db/sql-build.js';
@@ -151,7 +151,8 @@ export function TableView(p: TableViewProps) {
         const changed = changedRows(key, prev, next);
         setFlash(changed);
         const added = total - prev.total;
-        if (added > 0) announce(`${added} ${added === 1 ? 'row' : 'rows'} added to ${table.name}`);
+        if (added > 0)
+          announce(`${added} ${added === 1 ? 'row' : 'rows'} added to ${visibleText(table.name)}`);
         const [first, last] = range.current;
         const away = [...changed].filter((i) => i < first || i > last);
         setNewRows(away);
@@ -239,9 +240,9 @@ export function TableView(p: TableViewProps) {
         >
           <option value="">⇅ Key order</option>
           {names.map((n) => (
-            <optgroup key={n} label={n}>
-              <option value={`asc:${n}`}>{n} ▲</option>
-              <option value={`desc:${n}`}>{n} ▼</option>
+            <optgroup key={n} label={visibleText(n)}>
+              <option value={`asc:${n}`}>{visibleText(n)} ▲</option>
+              <option value={`desc:${n}`}>{visibleText(n)} ▼</option>
             </optgroup>
           ))}
         </select>
@@ -269,7 +270,7 @@ export function TableView(p: TableViewProps) {
       >
         {page !== undefined && page.rows.length > 0 && (
           <DataGrid
-            label={`${table.name} rows`}
+            label={`${visibleText(table.name)} rows`}
             columns={gridColumns}
             rows={page.rows}
             total={total}

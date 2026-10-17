@@ -1,4 +1,5 @@
 import type { ActivityEntry, LogLevel, ReloadResult, RunningApp } from '@project-deck/core';
+import { visibleText } from '../db/cells.js';
 import type { LastResult } from '../state/deck.js';
 
 const pad = (n: number, width = 2) => String(n).padStart(width, '0');
@@ -86,11 +87,12 @@ export function activityText(entry: ActivityEntry): string {
       return entry.message === undefined ? failed : `${failed}: ${entry.message}`;
     }
     case 'db.snapshot':
-      return `Snapshot taken: ${entry.db}`;
+      return `Snapshot taken: ${visibleText(entry.db)}`;
     case 'db.diff':
-      return `Diff shown: ${entry.db}`;
+      return `Diff shown: ${visibleText(entry.db)}`;
     case 'db.write': {
-      const tables = entry.tables.join(', ');
+      // Names come from the app's database: hidden characters are named (TAB-6).
+      const tables = visibleText(entry.tables.join(', '));
       if (!entry.allowed) return `Write denied: ${tables}`;
       const n = entry.changes ?? 0;
       return `Write allowed: ${tables}, ${n} ${n === 1 ? 'row' : 'rows'} changed`;

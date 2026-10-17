@@ -2,6 +2,7 @@ import type { DbDiff } from '@project-deck/core';
 import { useCallback, useEffect, useState } from 'react';
 import { asDbApiError } from '../../api/db-client.js';
 import type { DiffRowModel, DiffTableModel } from '../../db/diff-model.js';
+import { visibleText } from '../../db/cells.js';
 import { diffModel } from '../../db/diff-model.js';
 import { useDbClient } from '../../state/DbProvider.js';
 import { clock } from '../format.js';
@@ -122,7 +123,7 @@ function DiffTable({ table }: { table: DiffTableModel }) {
           <VisibleText text={table.error} />
         </p>
       )}
-      <ul aria-label={`Changes in ${table.table}`}>
+      <ul aria-label={`Changes in ${visibleText(table.table)}`}>
         {table.rows.map((r, i) => (
           <DiffRow key={i} row={r} />
         ))}
