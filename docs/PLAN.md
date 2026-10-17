@@ -456,3 +456,6 @@ One line per deferred item, in the format `- <what> — <why> — trigger: <meas
 - Move the port registry writer (`allocatePort`, `claimConfigPort`, the file lock) from the daemon to `core/node`, so the CLI stops loading daemon code — the CLI imports it from the daemon package today — trigger: `flutterdeck --help` takes > 500 ms (0.25 s on 15 Oct 2026) — noted 2026-10-15 by developer
 - No-setup live path on Drift's own DevTools extension — internal API, no in-app read-only guard — trigger: 5 or more feedback replies asking for live mode without adding a package — noted 2026-10-16 by lead
 - Room / Isar / Hive inspectors — other databases — trigger: 3 user requests for one of them — noted 2026-10-16 by lead
+- Edit rows of tables without a primary key (matched by row id) in the Database tab — Edit and Delete row need a primary key today — trigger: 3 user reports of a table they can't edit — noted 2026-10-17 by developer
+- Export query results past 1,000 rows (the design allows 5,000) — `POST /api/db/query` caps dashboard results at 1,000 — trigger: 2 user requests to export a larger query result — noted 2026-10-17 by developer
+- Keyset paging for Database tab table pages — `OFFSET` reads every skipped row — trigger: a page of a 100,000-row table takes > 1 s on the Android emulator — noted 2026-10-17 by developer
