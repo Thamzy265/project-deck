@@ -7,7 +7,14 @@ import { cellCopyText, cellText, paramLabel, visibleText } from '../../db/cells.
 import { ROW_CHANGED_TEXT, editErrorText } from '../../db/copy.js';
 import { rowKeyOrReason } from '../../db/keys.js';
 import type { Built, ColumnCell, ColumnValue } from '../../db/sql-build.js';
-import { deleteRow, inputParam, insertRow, quoteIdent, updateRow } from '../../db/sql-build.js';
+import {
+  EditTooWideError,
+  deleteRow,
+  inputParam,
+  insertRow,
+  quoteIdent,
+  updateRow,
+} from '../../db/sql-build.js';
 import { useDbClient } from '../../state/DbProvider.js';
 import { trapTab } from '../focus-trap.js';
 import { button, field, linkButton } from '../styles.js';
@@ -176,9 +183,22 @@ export function RowDetails(p: RowDetailsProps) {
   const row = fresh.status === 'ready' ? fresh.row : undefined;
   const canWrite = p.writes.kind === 'on' && table.kind === 'table';
 
-  const ask = async (built: Built, after: 'close' | 'view', checks = false) => {
+  const ask = async (build: () => Built, after: 'close' | 'view', checks = false) => {
     setEditError(undefined);
     setStale(false);
+    let built: Built;
+    try {
+      built = build();
+    } catch (err) {
+      // Too many columns to check the row within the value cap: refused, never run
+      // without the check. Nothing else is expected here; it is shown, not thrown.
+      setEditError(
+        err instanceof EditTooWideError
+          ? err.message
+          : `Couldn't build this change: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return;
+    }
     guarded.current = checks;
     setSaving(true);
     trigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -212,7 +232,7 @@ export function RowDetails(p: RowDetailsProps) {
       if (was !== now) values.push({ column: c.name, value });
     });
     if (mode.kind === 'add') {
-      void ask(insertRow(table.name, values), adding ? 'close' : 'view');
+      void ask(() => insertRow(table.name, values), adding ? 'close' : 'view');
       return;
     }
     if (key === undefined || row === undefined) return;
@@ -225,7 +245,7 @@ export function RowDetails(p: RowDetailsProps) {
       column: v.column,
       cell: row[names.indexOf(v.column)] ?? null,
     }));
-    void ask(updateRow(table.name, key, values, was), 'view', true);
+    void ask(() => updateRow(table.name, key, values, was), 'view', true);
   };
 
   const onKeyDown = (e: KeyboardEvent) => {
@@ -478,7 +498,7 @@ export function RowDetails(p: RowDetailsProps) {
               const was: ColumnCell[] = names
                 .map((column, i) => ({ column, cell: row[i] ?? null }))
                 .filter((c) => !key.columns.includes(c.column));
-              void ask(deleteRow(table.name, key, was), 'close', true);
+              void ask(() => deleteRow(table.name, key, was), 'close', true);
             }}
           >
             Delete row

@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import type { ColumnCell } from './sql-build.js';
 import {
+  EditTooWideError,
+  MAX_EDIT_PARAMS,
   countQuery,
   keysetQuery,
   deleteRow,
@@ -224,6 +227,39 @@ describe('edits that check the row is still the one opened (review L3)', () => {
       sql: 'DELETE FROM "t" WHERE "id" IS ? AND "up" IS 9e999 AND "down" IS -9e999',
       params: [3],
     });
+  });
+
+  it('past the parameter cap, drops the blob bytes first and keeps type and size', () => {
+    // 1 key + 330 columns + a blob: 1 + 330 + 3 = 334 params, so far within the cap.
+    const blob: ColumnCell = {
+      column: 'data',
+      cell: { type: 'blob', bytes: 3, base64: 'AP8Q' },
+    };
+    const many = (n: number): ColumnCell[] =>
+      Array.from({ length: n }, (_, i) => ({ column: `c${i}`, cell: i }));
+    const within = deleteRow('t', key, [...many(330), blob]);
+    expect(within.params).toHaveLength(334);
+    expect(within.sql).toContain('hex(substr("data"');
+    // 1 + 997 + 3 = 1001: over. Without the bytes: 1 + 997 + 1 = 999, the cap.
+    const over = deleteRow('t', key, [...many(997), blob]);
+    expect(over.params).toHaveLength(MAX_EDIT_PARAMS);
+    expect(over.sql).not.toContain('hex(');
+    expect(over.sql).toContain(`typeof("data") = 'blob' AND length("data") IS ?`);
+  });
+
+  it('refuses when even without the blob bytes the check needs too many values', () => {
+    const many: ColumnCell[] = Array.from({ length: 999 }, (_, i) => ({
+      column: `c${i}`,
+      cell: i,
+    }));
+    expect(() => deleteRow('t', key, many)).toThrow(
+      new EditTooWideError(
+        'This table has too many columns to check the row safely; edit it with SQL in your own tools.',
+      ),
+    );
+    expect(() => updateRow('t', key, [{ column: 'a', value: 1 }], many.slice(0, 998))).toThrow(
+      EditTooWideError,
+    );
   });
 
   it('quotes the checked columns like any other name', () => {

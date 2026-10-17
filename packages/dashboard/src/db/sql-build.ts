@@ -154,7 +154,7 @@ function hexOf(base64: string): string {
  * can't be a parameter, so it is the literal SQLite reads as one; NaN is left out,
  * since SQLite stores NaN as NULL and no column can hold it.
  */
-function unchanged(originals: readonly ColumnCell[]): Built {
+function unchanged(originals: readonly ColumnCell[], blobBytes: boolean): Built {
   const parts: string[] = [];
   const params: Param[] = [];
   for (const { column, cell } of originals) {
@@ -168,7 +168,7 @@ function unchanged(originals: readonly ColumnCell[]): Built {
     } else {
       parts.push(`typeof(${c}) = 'blob' AND length(${c}) IS ?`);
       params.push(cell.bytes);
-      if (cell.base64 !== undefined) {
+      if (blobBytes && cell.base64 !== undefined) {
         const hex = hexOf(cell.base64);
         parts.push(`hex(substr(${c}, 1, ?)) IS ?`);
         params.push(hex.length / 2, hex);
@@ -178,6 +178,34 @@ function unchanged(originals: readonly ColumnCell[]): Built {
   return { sql: parts.map((p) => ` AND ${p}`).join(''), params };
 }
 
+/**
+ * The most values one edit may send: the Drift package takes 999 (SQLite's old default
+ * limit), the daemon 1000.
+ */
+export const MAX_EDIT_PARAMS = 999;
+
+/** An edit whose row check can't fit in MAX_EDIT_PARAMS values. */
+export class EditTooWideError extends Error {
+  constructor(
+    message = 'This table has too many columns to check the row safely; edit it with SQL in your own tools.',
+  ) {
+    super(message);
+    this.name = 'EditTooWideError';
+  }
+}
+
+/**
+ * The row check that fits the cap: with every blob's bytes, or else with only the
+ * blobs' type and size. It never runs an edit without the check (review L3).
+ */
+function fitted(before: number, originals: readonly ColumnCell[]): Built {
+  for (const blobBytes of [true, false]) {
+    const same = unchanged(originals, blobBytes);
+    if (before + same.params.length <= MAX_EDIT_PARAMS) return same;
+  }
+  throw new EditTooWideError();
+}
+
 export function updateRow(
   table: string,
   key: RowKeyValues,
@@ -185,7 +213,7 @@ export function updateRow(
   originals: readonly ColumnCell[] = [],
 ): Built {
   const k = keyWhere(key);
-  const same = unchanged(originals);
+  const same = fitted(changes.length + k.params.length, originals);
   return {
     sql: `UPDATE ${quoteIdent(table)} SET ${changes.map((c) => `${quoteIdent(c.column)} = ?`).join(', ')} WHERE ${k.sql}${same.sql}`,
     params: [...changes.map((c) => c.value), ...k.params, ...same.params],
@@ -198,7 +226,7 @@ export function deleteRow(
   originals: readonly ColumnCell[] = [],
 ): Built {
   const k = keyWhere(key);
-  const same = unchanged(originals);
+  const same = fitted(k.params.length, originals);
   return {
     sql: `DELETE FROM ${quoteIdent(table)} WHERE ${k.sql}${same.sql}`,
     params: [...k.params, ...same.params],
