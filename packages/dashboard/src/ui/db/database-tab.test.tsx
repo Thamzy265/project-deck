@@ -470,15 +470,17 @@ describe('Editing (writes on)', () => {
     await t.user.click(within(t.panel).getByRole('button', { name: 'Save' }));
     expect(t.db.requestEdit).toHaveBeenCalledWith({
       db: 'app',
-      sql: 'UPDATE "orders" SET "status" = ? WHERE "id" IS ?',
-      params: ["shipped'; --", 1],
+      sql: 'UPDATE "orders" SET "status" = ? WHERE "id" IS ? AND "status" IS ?',
+      params: ["shipped'; --", 1, 'pending'],
     });
     const dialog = await screen.findByRole('alertdialog', { name: 'Run this change?' });
     expect(within(dialog).getByRole('button', { name: 'Cancel' })).toHaveFocus();
     expect(within(dialog).getByText(/^Database:/)).toHaveTextContent('Database: app');
     expect(within(dialog).getByText(/^Table:/)).toHaveTextContent('Table: orders');
     expect(
-      within(dialog).getByText('UPDATE "orders" SET "status" = ? WHERE "id" IS ?'),
+      within(dialog).getByText(
+        'UPDATE "orders" SET "status" = ? WHERE "id" IS ? AND "status" IS ?',
+      ),
     ).toBeVisible();
     // Written as an SQL literal: the inner quote is doubled, so the value reads one way.
     expect(within(dialog).getByText("'shipped''; --'")).toBeVisible();
@@ -486,10 +488,58 @@ describe('Editing (writes on)', () => {
     await t.user.click(within(dialog).getByRole('button', { name: 'Run change' }));
     expect(t.db.confirmEdit).toHaveBeenCalledWith({
       requestId: 'r'.repeat(32),
-      sql: 'UPDATE "orders" SET "status" = ? WHERE "id" IS ?',
-      params: ["shipped'; --", 1],
+      sql: 'UPDATE "orders" SET "status" = ? WHERE "id" IS ? AND "status" IS ?',
+      params: ["shipped'; --", 1, 'pending'],
     });
     expect(await screen.findByText('1 row changed')).toBeInTheDocument();
+  });
+
+  it('an edit that changes no row says the row changed; Reload row reads it again (review L3)', async () => {
+    const t = await details();
+    await t.user.click(within(t.panel).getByRole('button', { name: 'Edit' }));
+    const status = within(t.panel).getByRole('textbox', { name: /^status/ });
+    await t.user.clear(status);
+    await t.user.type(status, 'shipped');
+    await t.user.click(within(t.panel).getByRole('button', { name: 'Save' }));
+    t.db.confirmEdit.mockResolvedValueOnce({ changes: 0 });
+    const dialog = await screen.findByRole('alertdialog');
+    await t.user.click(within(dialog).getByRole('button', { name: 'Run change' }));
+    expect(await within(t.panel).findByRole('alert')).toHaveTextContent(
+      'This row changed since you opened it. Reload it and try again.',
+    );
+    expect(screen.queryByText('0 rows changed')).toBeNull();
+    // What the user typed stays until they reload.
+    expect(within(t.panel).getByRole('textbox', { name: /^status/ })).toHaveValue('shipped');
+    t.db.query.mockClear();
+    await t.user.click(within(t.panel).getByRole('button', { name: 'Reload row' }));
+    expect(await within(t.panel).findByRole('button', { name: 'Edit' })).toBeVisible();
+    expect(within(t.panel).queryByRole('alert')).toBeNull();
+    expect(t.db.query).toHaveBeenCalledWith(
+      expect.objectContaining({ sql: 'SELECT * FROM "orders" WHERE "id" IS ? LIMIT 1' }),
+    );
+  });
+
+  it('a delete checks every shown column, and stays open when no row matched (review L3)', async () => {
+    const t = await details();
+    t.db.confirmEdit.mockResolvedValueOnce({ changes: 0 });
+    await t.user.click(within(t.panel).getByRole('button', { name: 'Delete row' }));
+    expect(t.db.requestEdit).toHaveBeenLastCalledWith({
+      db: 'app',
+      sql: 'DELETE FROM "orders" WHERE "id" IS ? AND "item" IS ? AND "status" IS ? AND "customer_id" IS ?',
+      params: [1, 'Coffee', 'pending', 1],
+    });
+    const dialog = await screen.findByRole('alertdialog');
+    expect(
+      within(dialog).getByText(
+        'DELETE FROM "orders" WHERE "id" IS ? AND "item" IS ? AND "status" IS ? AND "customer_id" IS ?',
+      ),
+    ).toBeVisible();
+    await t.user.click(within(dialog).getByRole('button', { name: 'Run change' }));
+    expect(await within(t.panel).findByRole('alert')).toHaveTextContent(
+      'This row changed since you opened it. Reload it and try again.',
+    );
+    expect(screen.getByRole('dialog', { name: 'orders: id 1' })).toBeInTheDocument();
+    expect(screen.queryByText('0 rows changed')).toBeNull();
   });
 
   it('Cancel and Escape send cancel and run nothing; Tab stays inside the dialog', async () => {

@@ -250,7 +250,7 @@ test.describe('fake mode', () => {
     const dialog = page.getByRole('alertdialog', { name: 'Run this change?' });
     await expect(dialog.getByRole('button', { name: 'Cancel' })).toBeFocused();
     await expect(
-      dialog.getByText('UPDATE "orders" SET "status" = ? WHERE "id" IS ?'),
+      dialog.getByText('UPDATE "orders" SET "status" = ? WHERE "id" IS ? AND "status" IS ?'),
     ).toBeVisible();
     await screenshotM3(page, 'edit-confirm-420');
     await page.keyboard.press('Escape');
@@ -567,6 +567,68 @@ test.describe('scripted daemon', () => {
     );
     expect(choosy.chosen).toBe('R58M123ABC');
     await expect(page.getByRole('grid', { name: 'orders rows' }).getByText('Coffee')).toBeVisible();
+  });
+
+  test('a row replaced with the same key while open is not changed (review L3)', async ({
+    page,
+  }) => {
+    const db = await FakeLiveDatabase.create('app', [
+      'CREATE TABLE orders (id INTEGER PRIMARY KEY, item TEXT, status TEXT, note TEXT, data BLOB)',
+      "INSERT INTO orders VALUES (1, 'Coffee', 'pending', NULL, x'00ff10')",
+    ]);
+    live.push(db);
+    deck = await startScriptedDaemon(undefined, {
+      dbInspectors: [factory(db)],
+      config: WRITES_ON,
+    });
+    const replace = async (status: string) => {
+      await db.run('DELETE FROM orders WHERE id = 1');
+      await db.run("INSERT INTO orders VALUES (1, 'Coffee', ?, NULL, x'00ff10')", [status]);
+    };
+    const status = async () => (await db.query('app', 'SELECT status FROM orders')).rows;
+    await openDashboard(page, deck.url);
+    const rows = page.getByRole('grid', { name: 'orders rows' });
+    await rows.getByText('Coffee').click();
+    const details = page.getByRole('dialog', { name: 'orders: id 1' });
+    await expect(details.getByText('pending')).toBeVisible();
+    const dialog = page.getByRole('alertdialog', { name: 'Run this change?' });
+    const changed = details.getByRole('alert');
+
+    // Edit: the changed column must still hold what the form started from.
+    await details.getByRole('button', { name: 'Edit' }).click();
+    await details.getByRole('textbox', { name: /^status/ }).fill('shipped');
+    await details.getByRole('button', { name: 'Save' }).click();
+    await expect(
+      dialog.getByText('UPDATE "orders" SET "status" = ? WHERE "id" IS ? AND "status" IS ?'),
+    ).toBeVisible();
+    await replace('cancelled');
+    await dialog.getByRole('button', { name: 'Run change' }).click();
+    await expect(changed).toContainText(
+      'This row changed since you opened it. Reload it and try again.',
+    );
+    expect(await status()).toEqual([['cancelled']]);
+    await changed.getByRole('button', { name: 'Reload row' }).click();
+    await expect(details.getByText('cancelled')).toBeVisible();
+
+    // Delete: the whole row as shown, nulls and the blob included.
+    await details.getByRole('button', { name: 'Delete row' }).click();
+    await expect(
+      dialog.getByText(
+        `DELETE FROM "orders" WHERE "id" IS ? AND "item" IS ? AND "status" IS ? AND "note" IS ? AND typeof("data") = 'blob' AND length("data") IS ? AND hex(substr("data", 1, ?)) IS ?`,
+      ),
+    ).toBeVisible();
+    await replace('refunded');
+    await dialog.getByRole('button', { name: 'Run change' }).click();
+    await expect(changed).toContainText('This row changed since you opened it.');
+    expect(await status()).toEqual([['refunded']]);
+
+    // Unchanged since it was read: the delete runs.
+    await changed.getByRole('button', { name: 'Reload row' }).click();
+    await expect(details.getByText('refunded')).toBeVisible();
+    await details.getByRole('button', { name: 'Delete row' }).click();
+    await dialog.getByRole('button', { name: 'Run change' }).click();
+    await expect(page.getByText('1 row changed', { exact: true })).toBeVisible();
+    expect(await status()).toEqual([]);
   });
 
   test('untrusted row values stay text; bidi and control characters are named', async ({

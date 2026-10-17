@@ -76,3 +76,6 @@ export function editErrorText(err: ErrorInfo): string {
   if (err.code === 'sql-error') return `Couldn't save: ${err.error}`;
   return err.error;
 }
+
+/** An edit or delete from row details that matched no row: it changed meanwhile (L3). */
+export const ROW_CHANGED_TEXT = 'This row changed since you opened it. Reload it and try again.';

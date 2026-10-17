@@ -3,6 +3,7 @@
  * are always quoted and values are always parameters, so neither a table name nor a
  * typed value can become SQL. The daemon's gate still checks every statement.
  */
+import type { Cell } from '@project-deck/core';
 import type { Param } from './cells.js';
 
 export interface Built {
@@ -129,17 +130,79 @@ function keyWhere(key: RowKeyValues): Built {
   };
 }
 
-export function updateRow(table: string, key: RowKeyValues, changes: ColumnValue[]): Built {
+/** A column's value as row details showed it, for the optimistic check (review L3). */
+export interface ColumnCell {
+  column: string;
+  cell: Cell;
+}
+
+function hexOf(base64: string): string {
+  // atob gives one char per byte (0–255), so char codes are the bytes.
+  const bytes = atob(base64);
+  let hex = '';
+  for (let i = 0; i < bytes.length; i++) {
+    hex += bytes.charCodeAt(i).toString(16).padStart(2, '0');
+  }
+  return hex.toUpperCase();
+}
+
+/**
+ * Conditions that hold only while each column still has the value row details read,
+ * so a row deleted and added again with the same key isn't changed by mistake. Values
+ * go in as parameters, tagged ints too. A blob is never sent whole, so it matches its
+ * type, its size and the bytes that were sent (all of them, or the start). An infinity
+ * can't be a parameter, so it is the literal SQLite reads as one; NaN is left out,
+ * since SQLite stores NaN as NULL and no column can hold it.
+ */
+function unchanged(originals: readonly ColumnCell[]): Built {
+  const parts: string[] = [];
+  const params: Param[] = [];
+  for (const { column, cell } of originals) {
+    const c = quoteIdent(column);
+    if (typeof cell !== 'object' || cell === null || cell.type === 'int') {
+      parts.push(`${c} IS ?`);
+      params.push(cell);
+    } else if (cell.type === 'real') {
+      if (cell.value === 'Infinity') parts.push(`${c} IS 9e999`);
+      else if (cell.value === '-Infinity') parts.push(`${c} IS -9e999`);
+    } else {
+      parts.push(`typeof(${c}) = 'blob' AND length(${c}) IS ?`);
+      params.push(cell.bytes);
+      if (cell.base64 !== undefined) {
+        const hex = hexOf(cell.base64);
+        parts.push(`hex(substr(${c}, 1, ?)) IS ?`);
+        params.push(hex.length / 2, hex);
+      }
+    }
+  }
+  return { sql: parts.map((p) => ` AND ${p}`).join(''), params };
+}
+
+export function updateRow(
+  table: string,
+  key: RowKeyValues,
+  changes: ColumnValue[],
+  originals: readonly ColumnCell[] = [],
+): Built {
   const k = keyWhere(key);
+  const same = unchanged(originals);
   return {
-    sql: `UPDATE ${quoteIdent(table)} SET ${changes.map((c) => `${quoteIdent(c.column)} = ?`).join(', ')} WHERE ${k.sql}`,
-    params: [...changes.map((c) => c.value), ...k.params],
+    sql: `UPDATE ${quoteIdent(table)} SET ${changes.map((c) => `${quoteIdent(c.column)} = ?`).join(', ')} WHERE ${k.sql}${same.sql}`,
+    params: [...changes.map((c) => c.value), ...k.params, ...same.params],
   };
 }
 
-export function deleteRow(table: string, key: RowKeyValues): Built {
+export function deleteRow(
+  table: string,
+  key: RowKeyValues,
+  originals: readonly ColumnCell[] = [],
+): Built {
   const k = keyWhere(key);
-  return { sql: `DELETE FROM ${quoteIdent(table)} WHERE ${k.sql}`, params: k.params };
+  const same = unchanged(originals);
+  return {
+    sql: `DELETE FROM ${quoteIdent(table)} WHERE ${k.sql}${same.sql}`,
+    params: [...k.params, ...same.params],
+  };
 }
 
 export function insertRow(table: string, values: ColumnValue[]): Built {

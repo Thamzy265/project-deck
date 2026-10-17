@@ -159,3 +159,76 @@ describe('inputParam', () => {
     expect(inputParam('1e3', 'NUMERIC')).toBe(1000);
   });
 });
+
+describe('edits that check the row is still the one opened (review L3)', () => {
+  const key = { columns: ['id'], values: [3] };
+
+  it('an update also matches the edited columns as they were, nulls with IS', () => {
+    expect(
+      updateRow(
+        'orders',
+        key,
+        [
+          { column: 'status', value: 'shipped' },
+          { column: 'note', value: 'gift' },
+        ],
+        [
+          { column: 'status', cell: 'pending' },
+          { column: 'note', cell: null },
+        ],
+      ),
+    ).toEqual({
+      sql: 'UPDATE "orders" SET "status" = ?, "note" = ? WHERE "id" IS ? AND "status" IS ? AND "note" IS ?',
+      params: ['shipped', 'gift', 3, 'pending', null],
+    });
+  });
+
+  it('a delete matches every column it was shown, after the key', () => {
+    expect(
+      deleteRow('orders', key, [
+        { column: 'item', cell: 'Coffee' },
+        { column: 'qty', cell: 2.5 },
+        { column: 'big', cell: { type: 'int', value: '9007199254740993' } },
+      ]),
+    ).toEqual({
+      sql: 'DELETE FROM "orders" WHERE "id" IS ? AND "item" IS ? AND "qty" IS ? AND "big" IS ?',
+      params: [3, 'Coffee', 2.5, { type: 'int', value: '9007199254740993' }],
+    });
+  });
+
+  it('a blob matches its type, size and the bytes it was sent (all of them, or the start)', () => {
+    expect(
+      deleteRow('t', key, [
+        { column: 'whole', cell: { type: 'blob', bytes: 3, base64: 'AP8Q' } },
+        { column: 'cut', cell: { type: 'blob', bytes: 5000, base64: 'AAE=', truncated: true } },
+        { column: 'bare', cell: { type: 'blob', bytes: 9 } },
+      ]),
+    ).toEqual({
+      sql:
+        'DELETE FROM "t" WHERE "id" IS ?' +
+        ` AND typeof("whole") = 'blob' AND length("whole") IS ? AND hex(substr("whole", 1, ?)) IS ?` +
+        ` AND typeof("cut") = 'blob' AND length("cut") IS ? AND hex(substr("cut", 1, ?)) IS ?` +
+        ` AND typeof("bare") = 'blob' AND length("bare") IS ?`,
+      params: [3, 3, 3, '00FF10', 5000, 2, '0001', 9],
+    });
+  });
+
+  it('infinities match as literals; NaN, which SQLite never stores, is left out', () => {
+    expect(
+      deleteRow('t', key, [
+        { column: 'up', cell: { type: 'real', value: 'Infinity' } },
+        { column: 'down', cell: { type: 'real', value: '-Infinity' } },
+        { column: 'nan', cell: { type: 'real', value: 'NaN' } },
+      ]),
+    ).toEqual({
+      sql: 'DELETE FROM "t" WHERE "id" IS ? AND "up" IS 9e999 AND "down" IS -9e999',
+      params: [3],
+    });
+  });
+
+  it('quotes the checked columns like any other name', () => {
+    expect(deleteRow('t', key, [{ column: 'a"; --', cell: 1 }]).sql).toBe(
+      'DELETE FROM "t" WHERE "id" IS ? AND "a""; --" IS ?',
+    );
+  });
+});

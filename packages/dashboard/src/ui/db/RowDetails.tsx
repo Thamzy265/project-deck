@@ -4,9 +4,9 @@ import { useEffect, useRef, useState } from 'react';
 import { asDbApiError } from '../../api/db-client.js';
 import type { Param } from '../../db/cells.js';
 import { cellCopyText, cellText, paramLabel, visibleText } from '../../db/cells.js';
-import { editErrorText } from '../../db/copy.js';
+import { ROW_CHANGED_TEXT, editErrorText } from '../../db/copy.js';
 import { rowKeyOrReason } from '../../db/keys.js';
-import type { Built, ColumnValue } from '../../db/sql-build.js';
+import type { Built, ColumnCell, ColumnValue } from '../../db/sql-build.js';
 import { deleteRow, inputParam, insertRow, quoteIdent, updateRow } from '../../db/sql-build.js';
 import { useDbClient } from '../../state/DbProvider.js';
 import { trapTab } from '../focus-trap.js';
@@ -92,6 +92,10 @@ export function RowDetails(p: RowDetailsProps) {
   );
   const [saving, setSaving] = useState(false);
   const [editError, setEditError] = useState<string | undefined>();
+  /** The last edit matched no row: the row changed since it was read (review L3). */
+  const [stale, setStale] = useState(false);
+  /** The asked edit carries the row's values as they were read (review L3). */
+  const guarded = useRef(false);
   const [request, setRequest] = useState<DbEditRequest | undefined>();
   const [afterRun, setAfterRun] = useState<'close' | 'view'>('view');
   const heading = useRef<HTMLHeadingElement>(null);
@@ -172,8 +176,10 @@ export function RowDetails(p: RowDetailsProps) {
   const row = fresh.status === 'ready' ? fresh.row : undefined;
   const canWrite = p.writes.kind === 'on' && table.kind === 'table';
 
-  const ask = async (built: Built, after: 'close' | 'view') => {
+  const ask = async (built: Built, after: 'close' | 'view', checks = false) => {
     setEditError(undefined);
+    setStale(false);
+    guarded.current = checks;
     setSaving(true);
     trigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     try {
@@ -209,12 +215,17 @@ export function RowDetails(p: RowDetailsProps) {
       void ask(insertRow(table.name, values), adding ? 'close' : 'view');
       return;
     }
-    if (key === undefined) return;
+    if (key === undefined || row === undefined) return;
     if (values.length === 0) {
       setMode({ kind: 'view' });
       return;
     }
-    void ask(updateRow(table.name, key, values), 'view');
+    // Each edited column must still hold what the form started from (review L3).
+    const was: ColumnCell[] = values.map((v) => ({
+      column: v.column,
+      cell: row[names.indexOf(v.column)] ?? null,
+    }));
+    void ask(updateRow(table.name, key, values, was), 'view', true);
   };
 
   const onKeyDown = (e: KeyboardEvent) => {
@@ -410,6 +421,24 @@ export function RowDetails(p: RowDetailsProps) {
         {editError !== undefined && (
           <p role="alert" className="mt-2 text-error">
             {editError}
+            {stale && (
+              <>
+                {' '}
+                <button
+                  type="button"
+                  className={linkButton}
+                  onClick={() => {
+                    setEditError(undefined);
+                    setStale(false);
+                    setMode({ kind: 'view' });
+                    setRetry((n) => n + 1);
+                    heading.current?.focus();
+                  }}
+                >
+                  Reload row
+                </button>
+              </>
+            )}
           </p>
         )}
       </div>
@@ -439,11 +468,17 @@ export function RowDetails(p: RowDetailsProps) {
           <button
             type="button"
             className={button}
-            aria-disabled={key === undefined || saving || !p.connected ? true : undefined}
+            aria-disabled={
+              row === undefined || key === undefined || saving || !p.connected ? true : undefined
+            }
             title={noEdit}
             onClick={() => {
-              if (key !== undefined && !saving && p.connected)
-                void ask(deleteRow(table.name, key), 'close');
+              if (row === undefined || key === undefined || saving || !p.connected) return;
+              // The whole row as shown must still be there, not one added with its key.
+              const was: ColumnCell[] = names
+                .map((column, i) => ({ column, cell: row[i] ?? null }))
+                .filter((c) => !key.columns.includes(c.column));
+              void ask(deleteRow(table.name, key, was), 'close', true);
             }}
           >
             Delete row
@@ -471,6 +506,13 @@ export function RowDetails(p: RowDetailsProps) {
           onDone={(changes) => {
             setRequest(undefined);
             if (changes === undefined) {
+              const back = trigger.current;
+              (back?.isConnected === true ? back : heading.current)?.focus();
+              return;
+            }
+            if (changes === 0 && guarded.current) {
+              setEditError(ROW_CHANGED_TEXT);
+              setStale(true);
               const back = trigger.current;
               (back?.isConnected === true ? back : heading.current)?.focus();
               return;

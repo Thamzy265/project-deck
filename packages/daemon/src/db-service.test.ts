@@ -480,6 +480,51 @@ describe('DbService: live Drift app', () => {
     ]);
     expect((await service.query({ db: 'app', sql: 'SELECT 1' }, 'claude')).rows).toHaveLength(2);
   });
+
+  it('passes the row check of an edit to the app unchanged, and its 0 changes back (review L3)', async () => {
+    const registry = new Registry();
+    registerDrift(registry);
+    const guard = new FakeSqlGuard();
+    const service = new DbService({
+      registry,
+      bus: new EventBus<DeckEvents>(),
+      guard,
+      settings: { allowWrites: true, hiddenColumns: [] },
+    });
+    services.push(service);
+    const app = fakeApp();
+    const drift = new FakeDriftApp();
+    await service.attach(app, new FakeAppSession(app, { extensions: drift.extensions }));
+    // As row details builds it: the key, then each edited column as it was read.
+    const edit = {
+      db: 'app',
+      sql: 'UPDATE "orders" SET "status" = ? WHERE "id" IS ? AND "status" IS ? AND "note" IS ?',
+      params: ['shipped', { type: 'int' as const, value: '9007199254740993' }, 'pending', null],
+    };
+    guard.answer(edit.sql, {
+      ok: true,
+      kind: 'write',
+      tables: ['orders'],
+      functions: [],
+      recursive: false,
+    });
+    // The app's row was replaced, so its own UPDATE matched nothing.
+    drift.handle('execute', (p) => {
+      drift.executed.push({ db: p.db ?? '', sql: p.sql ?? '', params: p.params });
+      return { changes: 0 };
+    });
+    const request = await service.requestEdit(edit);
+    expect(
+      await service.confirmEdit({
+        requestId: request.requestId,
+        sql: edit.sql,
+        params: edit.params,
+      }),
+    ).toEqual({ changes: 0 });
+    expect(drift.executed).toEqual([
+      { db: 'app', sql: edit.sql, params: JSON.stringify(edit.params) },
+    ]);
+  });
 });
 
 describe('DbService: edit expiry boundary', () => {
