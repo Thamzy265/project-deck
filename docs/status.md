@@ -2,6 +2,17 @@
 
 Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
 
+## 2026-10-17 — M3 batch 4 — Database tab ready to merge
+
+- Merged (lead, 2026-10-17): PR #35 `feat/db-backends` (batch 3) after reviewer approval, CI green and QA pass; PLAN box "db-drift and db-sqlite backends" ticked. Deleted after merge (standing approval): worktree `agent-a68693af0659f700a`, local branches `feat/db-backends` and `worktree-agent-a68693af0659f700a`, remote branch `feat/db-backends`; QA artifacts copied to the main checkout first.
+- Deleted by the batch 4 developer (own items, standing approval): scratch worktrees `wt-verify`, `wt-verify2`, `wt-evidence`; temporary branches `feat/database-tab-before-rewrite-tmp`, `feat/database-tab-rewrite-tmp`, `feat/database-tab-reword-tmp`. The branch history was rewritten before its first push so every commit passes (tester repros as `it.fails`/`test.fail`, flipped in each fix).
+- Changed: `feat/database-tab` adds the dashboard Database tab (grid, row details, diagram, SQL editor with saved queries, snapshot and diff, export, guarded editing with an optimistic row check), the device picker, Activity entries and a real-SQL fake mode. Tester TAB-1..TAB-8 fixed; reviewer R1–R11, N1–N3, L1–L3 fixed over four rounds; QA B4-1..B4-7 fixed. QA PASS (fake mode and real Android; M3 Accept part one: new row flashes in about 220 ms). Evidence in [qa/M3.md](qa/M3.md).
+- Lead decisions (2026-10-17): new-rows chip adds up until seen; gate-refused and "row changed" edits log "Write denied"; fake app cap 500; confirm dialog names the database and only the written table; toolbar Add row; developer copy for the device picker, Activity entries and tooltips confirmed. All in [ui/m3-database-tab.md](ui/m3-database-tab.md).
+- Risk accepted by PM (2026-10-17): accepted: a device picked for an Android snapshot is accepted when its process is the app id or `<app id>.<suffix>` (Flutter flavors), so another debuggable app in the user's own namespace running at the same pid on the picked device could be copied — scope: db-sqlite device pick (review R2 residual) — expiry/review: before the M5 release — PM said: "Accept, review at M5 (Recommended)", whose description read "Recorded with today's date as a known limit, reviewed before M5. Flavors keep working with no setup."
+- Known limit (design, not a defect): the optimistic edit check matches blobs by type, length and the sent prefix only (notes/database-tab.md item 9).
+- Process note: QA and review must not run test suites in the same worktree at once (shared `qa-artifacts/` and CPU load made timing tests flake).
+- Blockers: Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead none · PM: IDE breakpoint check (batch 2 box), optional removal of QA's app from the iPhone 17 simulator.
+
 ## 2026-10-17 — M3 batch 3 — db backends ready to merge
 
 - Merged (lead, 2026-10-17): PR #34 `feat/flutterdeck-drift` (batch 2) after reviewer approval, CI green and QA pass. Deleted after merge (standing approval): worktree `agent-a7e012d8569777d5f`, local branches `feat/flutterdeck-drift` and `worktree-agent-a7e012d8569777d5f`, remote branch `feat/flutterdeck-drift`. QA artifacts copied to the main checkout first.
