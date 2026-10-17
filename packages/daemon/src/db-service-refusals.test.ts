@@ -6,7 +6,7 @@ import { FakeSqlGuard } from '@project-deck/sql-guard/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 import { DbService } from './db-service.js';
 
-const users = (): FakeTable => ({
+const users = (views: string[] = []): FakeTable => ({
   info: {
     name: 'users',
     kind: 'table',
@@ -20,7 +20,7 @@ const users = (): FakeTable => ({
     indexes: [],
   },
   rows: [[1, 'Ada', 's']],
-  extraSql: ['CREATE VIEW user_list AS SELECT id, name, secret FROM users'],
+  extraSql: ['CREATE VIEW user_list AS SELECT id, name, secret FROM users', ...views],
 });
 
 const services: DbService[] = [];
@@ -28,8 +28,8 @@ afterEach(async () => {
   await Promise.all(services.splice(0).map((s) => s.close()));
 });
 
-async function setup(guard: FakeSqlGuard) {
-  const db = new FakeDbInspector({ app: [users()] });
+async function setup(guard: FakeSqlGuard, views: string[] = []) {
+  const db = new FakeDbInspector({ app: [users(views)] });
   const registry = new Registry();
   registry.dbInspectors.register({ id: db.id, create: () => Promise.resolve(db) });
   const service = new DbService({
@@ -64,6 +64,16 @@ describe('DbService: refusals', () => {
       code: 'refused',
       detail: 'hidden-column',
       message: `${HIDDEN} user_list is a view that reads a hidden column, so it can't be read at all, even its other columns.`,
+    });
+  });
+
+  it('adds nothing about a view whose body reads no table with hidden columns (R7)', async () => {
+    const sql = 'SELECT secret FROM users JOIN item_names USING (id)';
+    const service = await setup(new FakeSqlGuard().refuse(sql, 'hidden-column', HIDDEN), [
+      'CREATE VIEW item_names AS SELECT 1 AS id',
+    ]);
+    await expect(service.query({ db: 'app', sql }, 'claude')).rejects.toMatchObject({
+      message: HIDDEN,
     });
   });
 

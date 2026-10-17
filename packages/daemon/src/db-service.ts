@@ -117,18 +117,30 @@ function viewName(sql: string): string | undefined {
   return raw;
 }
 
+/** True when `name` appears in `text` as a whole word (both folded). */
+function namesWord(text: string, name: string): boolean {
+  const escaped = fold(name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|[^\\w$])${escaped}($|[^\\w$])`).test(text);
+}
+
 /**
  * A hidden-column refusal names the base column, which confuses a reader of a view
  * that only selects it (QA G1): SQLite's authorizer reports every column of a view's
- * body, so such a view is refused whole. Says so when the statement names a view.
+ * body, so such a view is refused whole. Says so only for a view the statement names
+ * whose own body names a table with hidden columns (review R7).
  */
-function viewNote(reason: string, sql: string, schemaSql: readonly string[]): string {
+function viewNote(
+  reason: string,
+  sql: string,
+  schemaSql: readonly string[],
+  hiddenTables: readonly string[],
+): string {
   const text = fold(sql);
   for (const statement of schemaSql) {
     const name = viewName(statement);
-    if (name === undefined) continue;
-    const escaped = fold(name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    if (new RegExp(`(^|[^\\w$])${escaped}($|[^\\w$])`).test(text)) {
+    if (name === undefined || !namesWord(text, name)) continue;
+    const body = fold(statement);
+    if (hiddenTables.some((t) => namesWord(body, t))) {
       return `${reason} ${name} is a view that reads a hidden column, so it can't be read at all, even its other columns.`;
     }
   }
@@ -676,7 +688,12 @@ export class DbService {
     if (!verdict.ok) {
       const reason =
         verdict.code === 'hidden-column'
-          ? viewNote(verdict.reason, sql, schemaSql)
+          ? viewNote(
+              verdict.reason,
+              sql,
+              schemaSql,
+              this.hidden().map((h) => h.table),
+            )
           : verdict.reason;
       throw new DbError('refused', reason, { detail: verdict.code });
     }
