@@ -338,7 +338,7 @@ export class DbService {
     this.pending.delete(input.requestId);
     const refused = (why: string): DbError => new DbError('bad-token', `Not run: ${why}.`);
     if (edit === undefined) throw refused('this change was already answered or cancelled');
-    if (this.now() > edit.expiresAt) throw new DbError('timeout', 'Not run: no answer in 60 s.');
+    if (this.now() >= edit.expiresAt) throw new DbError('timeout', 'Not run: no answer in 60 s.');
     const current = this.attached;
     if (current === undefined || !current.sources.includes(edit.source)) throw noApp();
     if (current.epoch !== edit.epoch) throw refused('the app restarted since you asked');

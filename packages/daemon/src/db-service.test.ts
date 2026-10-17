@@ -442,3 +442,21 @@ describe('DbService: live Drift app', () => {
     expect((await service.query({ db: 'app', sql: 'SELECT 1' }, 'claude')).rows).toHaveLength(2);
   });
 });
+
+describe('DbService: edit expiry boundary', () => {
+  it('refuses a confirm at exactly expiresAt', async () => {
+    let now = 5_000_000;
+    const db = new FakeDbInspector({ app: [ordersTable()] }, undefined, { writable: true });
+    const { service } = await attached(db, {
+      settings: { allowWrites: true, hiddenColumns: [] },
+      now: () => now,
+    });
+    const sql = 'DELETE FROM orders WHERE id = 1';
+    const request = await service.requestEdit({ db: 'app', sql });
+    now = request.expiresAt;
+    await expect(service.confirmEdit({ requestId: request.requestId, sql })).rejects.toMatchObject({
+      code: 'timeout',
+    });
+    expect(db.executed).toHaveLength(0);
+  });
+});
