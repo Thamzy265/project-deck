@@ -23,7 +23,7 @@ describe('SavedQueryStore (.flutterdeck/queries.json)', () => {
     const store = new SavedQueryStore(projectDir);
     expect(await store.read()).toEqual([]);
     const queries = [{ name: 'Pending', sql: "SELECT * FROM orders WHERE status = 'pending'" }];
-    await store.write(queries);
+    await store.replace(queries, 'none');
     expect(await store.read()).toEqual(queries);
     expect(JSON.parse(await readFile(path(), 'utf8'))).toEqual({ version: 1, queries });
     // No temp files left behind.
@@ -51,17 +51,19 @@ describe('SavedQueryStore (.flutterdeck/queries.json)', () => {
       await symlink(target, path());
       const store = new SavedQueryStore(projectDir);
       await expect(store.read()).rejects.toMatchObject({ code: 'internal' });
-      await store.write([{ name: 'a', sql: 'SELECT 1' }]);
+      // A file it can't read is never replaced: the link stays, and so do the notes.
+      await expect(store.replace([{ name: 'a', sql: 'SELECT 1' }], 'none')).rejects.toMatchObject({
+        code: 'conflict',
+      });
       expect(await readFile(target, 'utf8')).toBe('my notes\n');
-      expect(await store.read()).toEqual([{ name: 'a', sql: 'SELECT 1' }]);
     },
   );
 
   it.skipIf(process.platform === 'win32')('refuses a .flutterdeck that is a link', async () => {
     await symlink(outside, join(projectDir, '.flutterdeck'));
     const store = new SavedQueryStore(projectDir);
-    await expect(store.write([{ name: 'a', sql: 'SELECT 1' }])).rejects.toMatchObject({
-      code: 'internal',
+    await expect(store.replace([{ name: 'a', sql: 'SELECT 1' }], 'none')).rejects.toMatchObject({
+      code: 'conflict',
     });
     expect(await readdir(outside)).toEqual([]);
   });
@@ -72,7 +74,7 @@ describe('SavedQueryStore: file mode, races and odd files (tester probes)', () =
     'writes queries.json readable by its owner only (0600), like runtime.json',
     async () => {
       const { stat } = await import('node:fs/promises');
-      await new SavedQueryStore(projectDir).write([{ name: 'a', sql: 'SELECT 1' }]);
+      await new SavedQueryStore(projectDir).replace([{ name: 'a', sql: 'SELECT 1' }], 'none');
       expect((await stat(path())).mode & 0o777).toBe(0o600);
     },
   );
@@ -80,7 +82,8 @@ describe('SavedQueryStore: file mode, races and odd files (tester probes)', () =
   it('keeps one whole list when many saves race, with no temp files left', async () => {
     const store = new SavedQueryStore(projectDir);
     const lists = Array.from({ length: 20 }, (_, i) => [{ name: `q${i}`, sql: `SELECT ${i}` }]);
-    await Promise.all(lists.map((l) => store.write(l)));
+    // From one revision: one save wins, the others are refused, none is torn.
+    await Promise.allSettled(lists.map((l) => store.replace(l, 'none')));
     const read = await store.read();
     expect(lists).toContainEqual(read);
     expect(await readdir(join(projectDir, '.flutterdeck'))).toEqual([QUERIES_FILE]);
@@ -138,5 +141,13 @@ describe('SavedQueryStore: revisions (review R1)', () => {
       code: 'conflict',
     });
     expect(await readFile(path(), 'utf8')).toBe('{"broken');
+  });
+});
+
+describe('SavedQueryStore: callers (review N2)', () => {
+  it('offers only the conditional save', () => {
+    const store = new SavedQueryStore(projectDir);
+    // @ts-expect-error -- write() is the store's own: callers save with replace().
+    expect(typeof store.write).toBe('function');
   });
 });

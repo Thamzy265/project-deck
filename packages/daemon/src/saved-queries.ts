@@ -96,7 +96,7 @@ export class SavedQueryStore {
   }
 
   /** Replaces the list whatever is there; answers the text written. */
-  async write(queries: SavedQuery[]): Promise<string> {
+  private async write(queries: SavedQuery[]): Promise<string> {
     const path = this.path();
     const tmp = `${path}.${randomBytes(6).toString('hex')}.tmp`;
     const text = `${JSON.stringify({ version: 1, queries }, null, 2)}\n`;
