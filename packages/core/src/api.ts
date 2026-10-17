@@ -30,8 +30,17 @@ import { TaskStatusTypeSchema } from './tasks.js';
 const DbName = z.string().min(1).max(128);
 const Sql = z.string().min(1).max(MAX_SQL_LENGTH);
 /** Values, and integers past 2^53 as tagged ints, which every backend binds as integers. */
+const INT64_MIN = -(2n ** 63n);
+const INT64_MAX = 2n ** 63n - 1n;
+/** A tagged integer within SQLite's 64-bit range: past it, a bind would wrap (review R5). */
+const Int64Param = BigIntCellSchema.refine((p) => {
+  // Refinements also run on values the regex refused; BigInt would throw on those.
+  if (!/^-?\d{1,20}$/.test(p.value)) return false;
+  const n = BigInt(p.value);
+  return n >= INT64_MIN && n <= INT64_MAX;
+}, 'Not a 64-bit integer');
 const SqlParams = z
-  .array(z.union([z.string(), z.number(), z.boolean(), z.null(), BigIntCellSchema]))
+  .array(z.union([z.string(), z.number(), z.boolean(), z.null(), Int64Param]))
   .max(1000);
 const SnapshotId = z
   .string()

@@ -12,6 +12,16 @@ describe('SQL parameters', () => {
     ).toEqual([big]);
   });
 
+  it('take the whole 64-bit range and nothing past it (review R5)', () => {
+    const at = (value: string) =>
+      DbExecuteInput.safeParse({ db: 'app', sql: 'x', params: [{ type: 'int', value }] }).success;
+    expect(at('9223372036854775807')).toBe(true);
+    expect(at('-9223372036854775808')).toBe(true);
+    expect(at('9223372036854775808')).toBe(false);
+    expect(at('-9223372036854775809')).toBe(false);
+    expect(at('99999999999999999999')).toBe(false);
+  });
+
   it('refuse other objects and malformed tagged ints', () => {
     for (const bad of [
       { type: 'int', value: '1.5' },
