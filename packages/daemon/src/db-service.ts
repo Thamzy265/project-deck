@@ -432,14 +432,8 @@ export class DbService {
     ) {
       verdict = await judge(true);
     }
-    if (!verdict.ok) {
-      throw new DbError(
-        'refused',
-        opts.mode === 'read'
-          ? `Only reading queries run here: ${verdict.reason}`
-          : `This change can't run: ${verdict.reason}`,
-      );
-    }
+    // The gate's reasons are plain words that already say what is allowed.
+    if (!verdict.ok) throw new DbError('refused', verdict.reason);
     return verdict;
   }
 

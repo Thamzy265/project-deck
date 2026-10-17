@@ -131,7 +131,7 @@ describe('DbService: the read-only gate (ADR 0005)', () => {
       service.query({ db: 'app', sql: 'DELETE FROM orders' }, 'dashboard'),
     ).rejects.toMatchObject({
       code: 'refused',
-      message: 'Only reading queries run here: it deletes rows',
+      message: 'it deletes rows',
     });
     expect(query).not.toHaveBeenCalled();
     expect(guard.calls[0]?.opts).toEqual({
