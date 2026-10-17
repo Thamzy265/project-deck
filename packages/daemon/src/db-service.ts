@@ -92,6 +92,9 @@ const noApp = (): DbError =>
     'No app is attached. Start one from your IDE or flutter run, then pick it.',
   );
 
+/** SQLite folds ASCII letters only when it compares names. */
+const fold = (name: string): string => name.replace(/[A-Z]/g, (c) => c.toLowerCase());
+
 /** A name in double quotes, safe in SQL whatever it holds. */
 function quoteIdent(name: string): string {
   return `"${name.replaceAll('"', '""')}"`;
@@ -217,20 +220,80 @@ export class DbService {
   ): Promise<QueryResult> {
     const source = await this.sourceOf(input.db);
     const hiddenColumns = caller === 'claude' ? this.hidden() : undefined;
-    await this.check(source, input.db, input.sql, {
+    const { verdict, schemaSql } = await this.check(source, input.db, input.sql, {
       mode: 'read',
       ...(hiddenColumns === undefined ? {} : { hiddenColumns }),
     });
+    let result: QueryResult;
     try {
-      return await source.inspector.query(
-        input.db,
-        input.sql,
-        input.params ?? [],
-        input.limit === undefined ? {} : { limit: input.limit },
-      );
+      // The backend runs it only on the schema the gate judged (R8).
+      result = await source.inspector.query(input.db, input.sql, input.params ?? [], {
+        ...(input.limit === undefined ? {} : { limit: input.limit }),
+        checkedSchemaSql: schemaSql,
+      });
     } catch (err) {
       throw asDbError(err);
     }
+    if (caller === 'claude' && hiddenColumns !== undefined && hiddenColumns.length > 0) {
+      await this.checkResultColumns(source, input.db, schemaSql, verdict.tables, result.columns);
+    }
+    return result;
+  }
+
+  /**
+   * A last check on what Claude gets back (R8): no result column may be named like a
+   * column the gate hides in a table the statement read, generated ones included. It
+   * fails closed: a gate that can't answer refuses the result.
+   */
+  private async checkResultColumns(
+    source: Source,
+    db: string,
+    schemaSql: string[],
+    tables: readonly string[],
+    columns: readonly string[],
+  ): Promise<void> {
+    const names = new Set(this.hidden().map((h) => fold(h.column)));
+    const refuse = (): DbError =>
+      new DbError('refused', 'The answer would show a hidden column (db.hiddenColumns).');
+    for (const column of columns) {
+      if (names.has(fold(column))) throw refuse();
+      for (const table of tables) {
+        if ((await this.columnVisible(source, db, schemaSql, table, column)) !== true) {
+          throw refuse();
+        }
+      }
+    }
+  }
+
+  /** Whether the gate lets Claude read `table.column`; true also when there is no such column. */
+  private async columnVisible(
+    _source: Source,
+    _db: string,
+    schemaSql: string[],
+    table: string,
+    column: string,
+  ): Promise<boolean | undefined> {
+    let cache = this.visibilityCache.get(schemaSql);
+    if (cache === undefined) {
+      cache = new Map();
+      this.visibilityCache.set(schemaSql, cache);
+    }
+    const key = JSON.stringify(['column', table, column]);
+    const hit = cache.get(key);
+    if (hit !== undefined) return hit.kind === 'all';
+    const v = await this.opts.guard.check(
+      `SELECT ${quoteIdent(column)} FROM ${quoteIdent(table)}`,
+      {
+        schemaSql,
+        mode: 'read',
+        hiddenColumns: this.hidden(),
+      },
+    );
+    if (!v.ok && (v.code === 'unavailable' || v.code === 'timeout')) return undefined;
+    // "No such column" (an alias or an expression) reads nothing of the table.
+    const visible = v.ok || v.code === 'invalid-sql';
+    cache.set(key, visible ? { kind: 'all' } : { kind: 'hidden-table' });
+    return visible;
   }
 
   async snapshot(input: { db: string; label?: string | undefined }) {
@@ -321,7 +384,7 @@ export class DbService {
     if (!source.inspector.writable || source.inspector.execute === undefined) {
       throw new DbError('unsupported', 'Snapshots are read-only.');
     }
-    const verdict = await this.check(source, input.db, input.sql, { mode: 'write' });
+    const { verdict } = await this.check(source, input.db, input.sql, { mode: 'write' });
     const params = input.params ?? [];
     const requestId = randomBytes(24).toString('base64url');
     const expiresAt = this.now() + EDIT_TTL_MS;
@@ -494,9 +557,9 @@ export class DbService {
     db: string,
     sql: string,
     opts: Omit<GuardCheckOptions, 'schemaSql'>,
-  ): Promise<Extract<GuardResult, { ok: true }>> {
+  ): Promise<{ verdict: Extract<GuardResult, { ok: true }>; schemaSql: string[] }> {
+    let schemaSql: string[] = [];
     const judge = async (fresh: boolean): Promise<GuardResult> => {
-      let schemaSql: string[];
       try {
         schemaSql = await this.schemaSql(source, db, fresh);
       } catch (err) {
@@ -515,7 +578,7 @@ export class DbService {
     }
     // The gate's reasons are plain words that already say what is allowed.
     if (!verdict.ok) throw new DbError('refused', verdict.reason);
-    return verdict;
+    return { verdict, schemaSql };
   }
 
   private watchTables(source: Source, db: string, tables: TableInfo[]): void {

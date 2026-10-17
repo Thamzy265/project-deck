@@ -1,5 +1,6 @@
 import type {
   DbInfo,
+  DbQueryOptions,
   DbInspector,
   KeyedRows,
   QueryResult,
@@ -80,11 +81,21 @@ export class SqliteSnapshotInspector implements DbInspector {
     db: string,
     sql: string,
     params: unknown[] = [],
-    opts: { limit?: number } = {},
+    opts: DbQueryOptions = {},
   ): Promise<QueryResult> {
-    return this.use(db, (copy) =>
-      copy.engine.query(sql, params, opts.limit ?? DEFAULT_QUERY_LIMIT),
-    );
+    return this.use(db, async (copy) => {
+      const checked = opts.checkedSchemaSql;
+      if (checked !== undefined) {
+        const now = await cached(copy, 'sqlSchema', () => copy.engine.sqlSchema());
+        if (now.length !== checked.length || now.some((s, i) => s !== checked[i])) {
+          throw new DbError(
+            'busy',
+            'The snapshot changed while the query was checked; run it again.',
+          );
+        }
+      }
+      return copy.engine.query(sql, params, opts.limit ?? DEFAULT_QUERY_LIMIT);
+    });
   }
 
   /** A diff compares with now, so this always takes a fresh copy first. */

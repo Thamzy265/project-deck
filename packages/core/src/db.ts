@@ -216,6 +216,15 @@ export const MAX_KEYS_PER_CALL = 1000;
 /** Most rows per table a diff snapshot holds (D6); larger tables are "too large to diff". */
 export const MAX_DIFF_ROWS_PER_TABLE = 10_000;
 
+export interface DbQueryOptions {
+  limit?: number;
+  /**
+   * The schema SQL the read-only gate judged the statement against. Snapshot backends
+   * refuse to run it on a copy whose schema differs (the copy is pinned, R8).
+   */
+  checkedSchemaSql?: readonly string[];
+}
+
 export interface DbExecuteOptions {
   /**
    * Single-use confirm token (43 base64url characters) the daemon makes for one
@@ -240,12 +249,7 @@ export interface DbInspector {
    */
   schemaSql(db: string): Promise<string[]>;
   /** Callers pass only SQL the read-only gate accepted. */
-  query(
-    db: string,
-    sql: string,
-    params?: unknown[],
-    opts?: { limit?: number },
-  ): Promise<QueryResult>;
+  query(db: string, sql: string, params?: unknown[], opts?: DbQueryOptions): Promise<QueryResult>;
   /** Present only on backends that can write. Callers enforce the write policy first. */
   execute?(
     db: string,

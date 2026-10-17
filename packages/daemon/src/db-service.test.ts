@@ -162,15 +162,18 @@ describe('DbService: the read-only gate (ADR 0005)', () => {
   });
 
   it('applies hidden columns to Claude (token callers), not to the dashboard', async () => {
-    const { service, guard } = await attached(new FakeDbInspector({ app: [ordersTable()] }), {
+    const db = new FakeDbInspector({ app: [ordersTable()] }, () => ({
+      columns: ['id', 'status'],
+      rows: [[1, 'pending']],
+    }));
+    const { service, guard } = await attached(db, {
       settings: { allowWrites: false, hiddenColumns: ['orders.item'] },
     });
-    await service.query({ db: 'app', sql: 'SELECT * FROM orders' }, 'claude');
-    await service.query({ db: 'app', sql: 'SELECT * FROM orders' }, 'dashboard');
-    expect(guard.calls.map((c) => c.opts.hiddenColumns)).toEqual([
-      [{ table: 'orders', column: 'item' }],
-      undefined,
-    ]);
+    await service.query({ db: 'app', sql: 'SELECT id, status FROM orders' }, 'claude');
+    expect(guard.calls[0]?.opts.hiddenColumns).toEqual([{ table: 'orders', column: 'item' }]);
+    const before = guard.calls.length;
+    await service.query({ db: 'app', sql: 'SELECT id, status FROM orders' }, 'dashboard');
+    expect(guard.calls.slice(before).map((c) => c.opts.hiddenColumns)).toEqual([undefined]);
   });
 
   it('fails closed when the gate cannot answer', async () => {
@@ -510,5 +513,34 @@ describe('DbService.list (R10)', () => {
     expect(quickList).toHaveBeenCalled();
     release();
     expect((await listing).databases.map((d) => d.name)).toEqual(['a', 'b']);
+  });
+});
+
+describe('DbService.query result checks (R8)', () => {
+  it('refuses Claude a result whose columns are named like a hidden column', async () => {
+    const db = new FakeDbInspector({ app: [ordersTable()] }, () => ({
+      columns: ['id', 'item'],
+      rows: [[1, 'Coffee']],
+    }));
+    const { service } = await attached(db, {
+      settings: { allowWrites: false, hiddenColumns: ['orders.item'] },
+    });
+    await expect(
+      service.query({ db: 'app', sql: 'SELECT id, item FROM orders' }, 'claude'),
+    ).rejects.toMatchObject({ code: 'refused' });
+    // The dashboard sees hidden columns by design.
+    expect(
+      (await service.query({ db: 'app', sql: 'SELECT id, item FROM orders' }, 'dashboard')).rows,
+    ).toHaveLength(1);
+  });
+
+  it('runs the query on the schema the gate checked (the snapshot copy is pinned)', async () => {
+    const db = new FakeDbInspector({ app: [ordersTable()] });
+    const query = vi.spyOn(db, 'query');
+    const { service } = await attached(db);
+    await service.query({ db: 'app', sql: 'SELECT * FROM orders' }, 'dashboard');
+    expect(query.mock.calls[0]?.[3]).toMatchObject({
+      checkedSchemaSql: ['CREATE TABLE orders(id INTEGER PRIMARY KEY, item TEXT, status TEXT)'],
+    });
   });
 });

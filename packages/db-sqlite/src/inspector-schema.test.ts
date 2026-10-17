@@ -56,3 +56,16 @@ describe('SqliteSnapshotInspector schema (R6)', { timeout: 20_000 }, () => {
     expect(schema).not.toHaveBeenCalled();
   });
 });
+
+describe('SqliteSnapshotInspector query pinning (R8)', { timeout: 20_000 }, () => {
+  it('refuses a query when the copy no longer has the schema the gate checked', async () => {
+    const db = inspector();
+    const checked = await db.schemaSql(NAME);
+    expect((await db.query(NAME, 'SELECT 1', [], { checkedSchemaSql: checked })).rows).toEqual([
+      [1],
+    ]);
+    await expect(
+      db.query(NAME, 'SELECT 1', [], { checkedSchemaSql: ['CREATE TABLE other(x)'] }),
+    ).rejects.toMatchObject({ code: 'busy' });
+  });
+});
