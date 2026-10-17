@@ -208,4 +208,4 @@ Follows [GitHub flow](https://docs.github.com/en/get-started/using-github/github
 
 - **M1 done** (14 Oct 2026): scaffold, `core`, daemon, `connector-dart`, `logs-android`, `.mcp.json` example, sample app, acceptance check.
 - **M2 done** (16 Oct 2026): dashboard, MCP server with masking, CLI (`init`, `start`, `stop`, `open`, `mcp`), plugin with hooks and notifications; PM acceptance check passed.
-- **M3 in progress** (Drift inspector). Plan of record: `docs/design/m3-drift-inspector.md`, `docs/ui/m3-database-tab.md`, ADRs 0004–0005. Batch 1 `feat/db-core` merged (PR #33). Batch 2 `feat/flutterdeck-drift` (in-app Drift helper, sample orders table) in review/merge; PM IDE check pending. Next: batch 3 db backends (`db-drift`, `db-sqlite`, Android/iOS snapshots).
+- **M3 in progress** (Drift inspector). Plan of record: `docs/design/m3-drift-inspector.md`, `docs/ui/m3-database-tab.md`, ADRs 0004–0005. Merged: batch 1 `feat/db-core` (PR #33), batch 2 `feat/flutterdeck-drift` (PR #34). Batch 3 `feat/db-backends` (db-drift, db-sqlite, android-adb, `/api/db` routes) in merge. Next: batch 4 Database tab. PM IDE check for batch 2 pending.
