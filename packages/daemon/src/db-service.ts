@@ -492,6 +492,10 @@ export class DbService {
       }
       throw err;
     }
+    // The confirm and Activity name the table the edit writes, not tables it only
+    // reads (a parent for a foreign-key check). The gate passes an edit only when it
+    // writes exactly one table, and lists that table first (Q2).
+    const written = verdict.tables.slice(0, 1);
     const params = input.params ?? [];
     const requestId = randomBytes(24).toString('base64url');
     const expiresAt = this.now() + EDIT_TTL_MS;
@@ -500,7 +504,7 @@ export class DbService {
       source,
       sql: input.sql,
       params,
-      tables: verdict.tables,
+      tables: written,
       hash: editHash(input.db, input.sql, params),
       expiresAt,
       epoch: current.epoch,
@@ -515,7 +519,7 @@ export class DbService {
       db: input.db,
       sql: input.sql,
       params: params as DbEditRequest['params'],
-      tables: verdict.tables,
+      tables: written,
       expiresAt,
     };
   }

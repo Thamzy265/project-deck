@@ -34,6 +34,12 @@ describe('tables an edit writes (Q2)', () => {
     }
   });
 
+  it('lists the written table first, before a parent read for its foreign key', async () => {
+    const result = await edit('UPDATE lines SET order_id = ? WHERE id IS ?');
+    expect(result).toMatchObject({ ok: true, kind: 'write' });
+    expect(result.ok && result.tables).toEqual(['lines', 'orders']);
+  });
+
   it('keeps the one-table rule for a DELETE with no WHERE', async () => {
     // A cascade to lines and a trigger that writes audit each make a second table.
     expect(await edit('DELETE FROM orders')).toMatchObject({ ok: false, code: 'multiple-tables' });

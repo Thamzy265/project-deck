@@ -87,6 +87,22 @@ describe('DbService: Activity events (design note, Observability)', () => {
     ]);
   });
 
+  it('names only the table an edit writes, not tables it reads for foreign keys (review note)', async () => {
+    const { service, guard, events } = await setup();
+    const fk = 'UPDATE "orders" SET "customer_id" = ? WHERE "id" IS ?';
+    // The gate lists the written table first (Q2), then what the statement reads.
+    guard.answer(fk, { ...write, tables: ['orders', 'customers'] });
+    const request = await service.requestEdit({ db: 'app', sql: fk, params: [2, 1] });
+    expect(request.tables).toEqual(['orders']);
+    await service.confirmEdit({ requestId: request.requestId, sql: fk, params: [2, 1] });
+    const cancelled = await service.requestEdit({ db: 'app', sql: fk, params: [2, 1] });
+    service.cancelEdit(cancelled.requestId);
+    expect(events).toEqual([
+      ['db.write', { db: 'app', tables: ['orders'], allowed: true, changes: 1 }],
+      ['db.write', { db: 'app', tables: ['orders'], allowed: false }],
+    ]);
+  });
+
   it('announces an edit the gate refuses as denied, naming its table (lead decision G4)', async () => {
     const { service, guard, events } = await setup();
     const refused = 'UPDATE "orders" SET "status" = ? WHERE "id" IS ?';
