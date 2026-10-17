@@ -96,22 +96,19 @@ describe('SnapshotEngine lifecycle', { timeout: 30_000 }, () => {
     expect((await e.query('SELECT count(*) FROM orders', [], 1)).rows).toEqual([[2]]);
   });
 
-  it.fails(
-    'DB-9: refuses PRAGMA assignments and transaction control as the second check (ADR 0005, S4)',
-    async () => {
-      const e = make();
-      e.load(plainDbFixture());
-      const accepted: string[] = [];
-      for (const sql of ['PRAGMA query_only = 0', 'PRAGMA writable_schema = 1', 'BEGIN']) {
-        const ok = await e.query(sql, [], 1).then(
-          () => true,
-          () => false,
-        );
-        if (ok) accepted.push(sql);
-      }
-      expect(accepted).toEqual([]);
-    },
-  );
+  it('DB-9: refuses PRAGMA assignments and transaction control as the second check (ADR 0005, S4)', async () => {
+    const e = make();
+    e.load(plainDbFixture());
+    const accepted: string[] = [];
+    for (const sql of ['PRAGMA query_only = 0', 'PRAGMA writable_schema = 1', 'BEGIN']) {
+      const ok = await e.query(sql, [], 1).then(
+        () => true,
+        () => false,
+      );
+      if (ok) accepted.push(sql);
+    }
+    expect(accepted).toEqual([]);
+  });
 
   it('caps a 1 GB value with the length limit, so the worker survives', async () => {
     const e = make();

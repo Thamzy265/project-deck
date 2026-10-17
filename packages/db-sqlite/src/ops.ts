@@ -67,6 +67,13 @@ export function openImage(sqlite: Sqlite3, bytes: Uint8Array): OpenDb {
   capi.sqlite3_limit(pointer, capi.SQLITE_LIMIT_SQL_LENGTH, 100_000);
   capi.sqlite3_limit(pointer, capi.SQLITE_LIMIT_ATTACHED, 0);
   db.exec('PRAGMA query_only = 1');
+  // The second, independent check (ADR 0005): whatever passed the daemon's gate, this
+  // connection never changes a setting, starts a transaction or adds a database.
+  capi.sqlite3_set_authorizer(
+    pointer,
+    (_ctx, action, arg1, arg2) => authorize(action, arg1, arg2),
+    0,
+  );
   try {
     db.exec('SELECT count(*) FROM sqlite_schema');
   } catch {
@@ -74,6 +81,31 @@ export function openImage(sqlite: Sqlite3, bytes: Uint8Array): OpenDb {
     throw new DbError('unsupported', "This file isn't a readable SQLite database.");
   }
   return { sqlite, db };
+}
+
+// Authorizer action codes (sqlite3.h).
+const A_PRAGMA = 19;
+const A_TRANSACTION = 22;
+const A_ATTACH = 24;
+const A_DETACH = 25;
+const A_SAVEPOINT = 32;
+const SQLITE_DENY = 1;
+/** Pragmas that read with an argument, as in the gate's allowlist. */
+const READ_PRAGMAS = new Set([
+  'table_info',
+  'table_xinfo',
+  'index_list',
+  'index_info',
+  'foreign_key_list',
+]);
+
+function authorize(action: number, arg1: string | 0, arg2: string | 0): number {
+  if ([A_TRANSACTION, A_SAVEPOINT, A_ATTACH, A_DETACH].includes(action)) return SQLITE_DENY;
+  if (action === A_PRAGMA && typeof arg2 === 'string') {
+    const name = typeof arg1 === 'string' ? asciiLower(arg1) : '';
+    return READ_PRAGMAS.has(name) ? SQLITE_OK : SQLITE_DENY;
+  }
+  return SQLITE_OK;
 }
 
 export function closeImage(open: OpenDb): void {
@@ -198,7 +230,15 @@ function withStatement<T>(open: OpenDb, sql: string, use: (s: Statement) => T): 
       first = prepare(at);
     }
     stmt = first.stmt;
-    if (first.rc !== SQLITE_OK) throw sqlError(open);
+    if (first.rc !== SQLITE_OK) {
+      if (open.sqlite.capi.sqlite3_errmsg(pointer) === 'not authorized') {
+        throw new DbError(
+          'refused',
+          'Only reading queries run here: this one changes a setting, a transaction or the databases.',
+        );
+      }
+      throw sqlError(open);
+    }
     if (stmt === 0) throw new DbError('refused', 'There is no statement to run.');
     let from = first.tail;
     while (from > 0 && from < end) {
