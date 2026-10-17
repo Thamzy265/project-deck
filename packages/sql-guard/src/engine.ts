@@ -361,7 +361,9 @@ export class GuardEngine {
       return {
         ok: true,
         kind: explain ? 'explain' : seen.pragma ? 'pragma' : readOnly ? 'select' : 'write',
-        tables: [...seen.tables],
+        // An edit's target first: a DELETE with no WHERE or an INSERT reads no column of
+        // it, so only the authorizer's write callback names it (Q2).
+        tables: [...new Set([...seen.written, ...seen.tables])],
         functions: [...seen.functions],
         recursive: seen.recursive,
       };
