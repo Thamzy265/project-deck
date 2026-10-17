@@ -4,9 +4,9 @@ import type { DbApiError } from '../../api/db-client.js';
 import { asDbApiError } from '../../api/db-client.js';
 import type { Param } from '../../db/cells.js';
 import { paramLabel, visibleText } from '../../db/cells.js';
-import { changedRows, keyColumns } from '../../db/keys.js';
+import { changedRows, keyColumns, rowKeyOrReason } from '../../db/keys.js';
 import type { PageSpec } from '../../db/sql-build.js';
-import { countQuery, pageQuery } from '../../db/sql-build.js';
+import { countQuery, keysetQuery, pageQuery } from '../../db/sql-build.js';
 import { useDebounced } from '../../search/useDebounced.js';
 import { useDbClient } from '../../state/DbProvider.js';
 import { Skeleton } from '../Skeleton.js';
@@ -328,7 +328,7 @@ export function TableView(p: TableViewProps) {
         <ExportMenu
           name={table.name}
           disabled={!p.connected || total === 0}
-          rows={async (onProgress) => exportTable(client, db, spec, total, onProgress)}
+          rows={async (onProgress) => exportTable(client, db, table, spec, total, onProgress)}
         />
       </div>
       {selected !== undefined && page !== undefined && (
@@ -402,9 +402,18 @@ export const EXPORT_MAX_ROWS = 100_000;
 const EXPORT_PAGE = 1000;
 const EXPORT_MAX_BYTES = 50 * 1024 * 1024;
 
+const utf8 = new TextEncoder();
+
+/**
+ * Reads the rows to export, 1,000 per call. A table with a primary key is read in key
+ * order after the last key read (keyset), so rows the app adds or removes meanwhile
+ * can't make the export repeat or skip one; past a key that can't be compared (null or
+ * a blob) it goes on by offset. The 50 MB cap counts UTF-8 bytes.
+ */
 async function exportTable(
   client: ReturnType<typeof useDbClient>,
   db: string,
+  table: TableInfo,
   spec: PageSpec,
   total: number,
   onProgress: (rows: number) => void,
@@ -413,17 +422,30 @@ async function exportTable(
   let columns: string[] = [];
   let bytes = 0;
   const wanted = Math.min(total, EXPORT_MAX_ROWS);
-  for (let offset = 0; offset < wanted; offset += EXPORT_PAGE) {
-    const q = pageQuery({ ...spec, offset, limit: Math.min(EXPORT_PAGE, wanted - offset) });
+  const key = table.kind === 'table' ? keyColumns(table) : [];
+  let after: Param[] | undefined;
+  let keyset = key.length > 0;
+  // Tables with a key export in key order, the keyset's order, also when it falls back.
+  const offsetSpec: PageSpec = { ...spec };
+  if (key.length > 0) delete offsetSpec.sort;
+  while (rows.length < wanted) {
+    const limit = Math.min(EXPORT_PAGE, wanted - rows.length);
+    const q = keyset
+      ? keysetQuery({ ...spec, key, limit, ...(after === undefined ? {} : { after }) })
+      : pageQuery({ ...offsetSpec, offset: rows.length, limit });
     const res = await client.query({ db, sql: q.sql, params: q.params, limit: EXPORT_PAGE });
     columns = res.columns;
     for (const row of res.rows) {
-      bytes += JSON.stringify(row).length;
+      bytes += utf8.encode(JSON.stringify(row)).length;
       if (bytes > EXPORT_MAX_BYTES) return { columns, rows, capped: true };
       rows.push(row);
     }
     onProgress(rows.length);
-    if (res.rows.length === 0) break;
+    if (res.rows.length < limit) break;
+    const last = res.rows.at(-1);
+    const next = last === undefined ? undefined : rowKeyOrReason(table, res.columns, last);
+    if (next !== undefined && 'key' in next) after = next.key.values;
+    else keyset = false;
   }
   return { columns, rows, capped: total > rows.length };
 }

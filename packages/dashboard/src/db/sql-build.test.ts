@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   countQuery,
+  keysetQuery,
   deleteRow,
   escapeLike,
   inputParam,
@@ -59,6 +60,34 @@ describe('pageQuery', () => {
     expect(pageQuery({ ...base, key: [] })).toEqual({
       sql: 'SELECT * FROM "orders" LIMIT ? OFFSET ?',
       params: [100, 0],
+    });
+  });
+});
+
+describe('keysetQuery (exports)', () => {
+  const base = { table: 'orders', columns: ['id', 'item'], key: ['id'], limit: 1000 };
+
+  it('reads in key order from the start, then after the last key read', () => {
+    expect(keysetQuery(base)).toEqual({
+      sql: 'SELECT * FROM "orders" ORDER BY "id" LIMIT ?',
+      params: [1000],
+    });
+    expect(keysetQuery({ ...base, after: [42], filter: 'x' })).toEqual({
+      sql: 'SELECT * FROM "orders" WHERE (CAST("id" AS TEXT) LIKE ? ESCAPE \'\\\' OR CAST("item" AS TEXT) LIKE ? ESCAPE \'\\\') AND "id" > ? ORDER BY "id" LIMIT ?',
+      params: ['%x%', '%x%', 42, 1000],
+    });
+  });
+
+  it('compares a composite key as a row value', () => {
+    expect(
+      keysetQuery({
+        ...base,
+        key: ['a', 'b'],
+        after: ['x', { type: 'int', value: '9007199254740993' }],
+      }),
+    ).toEqual({
+      sql: 'SELECT * FROM "orders" WHERE ("a", "b") > (?, ?) ORDER BY "a", "b" LIMIT ?',
+      params: ['x', { type: 'int', value: '9007199254740993' }, 1000],
     });
   });
 });

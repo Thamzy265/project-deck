@@ -29,7 +29,7 @@ export interface RowFilter {
   match?: { column: string; value: Param };
 }
 
-function where(spec: RowFilter): Built {
+function where(spec: RowFilter, extra?: Built): Built {
   const parts: string[] = [];
   const params: Param[] = [];
   if (spec.match !== undefined) {
@@ -47,6 +47,10 @@ function where(spec: RowFilter): Built {
         })
         .join(' OR ')})`,
     );
+  }
+  if (extra !== undefined) {
+    parts.push(extra.sql);
+    params.push(...extra.params);
   }
   return { sql: parts.length === 0 ? '' : ` WHERE ${parts.join(' AND ')}`, params };
 }
@@ -70,6 +74,36 @@ export function pageQuery(spec: PageSpec): Built {
   return {
     sql: `SELECT * FROM ${quoteIdent(spec.table)}${w.sql}${orderBy} LIMIT ? OFFSET ?`,
     params: [...w.params, spec.limit, spec.offset],
+  };
+}
+
+export interface KeysetSpec extends RowFilter {
+  key: readonly string[];
+  /** The key of the last row read; absent for the first page. */
+  after?: readonly Param[];
+  limit: number;
+}
+
+/**
+ * One export page in key order, after the last key read. Unlike OFFSET, rows added or
+ * removed meanwhile can't make the export repeat or skip a row. A composite key is
+ * compared as a row value.
+ */
+export function keysetQuery(spec: KeysetSpec): Built {
+  const keys = spec.key.map(quoteIdent);
+  const after =
+    spec.after === undefined
+      ? undefined
+      : keys.length === 1
+        ? { sql: `${keys.join('')} > ?`, params: [...spec.after] }
+        : {
+            sql: `(${keys.join(', ')}) > (${keys.map(() => '?').join(', ')})`,
+            params: [...spec.after],
+          };
+  const w = where(spec, after);
+  return {
+    sql: `SELECT * FROM ${quoteIdent(spec.table)}${w.sql} ORDER BY ${keys.join(', ')} LIMIT ?`,
+    params: [...w.params, spec.limit],
   };
 }
 

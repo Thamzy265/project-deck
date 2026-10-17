@@ -473,6 +473,39 @@ describe('Editing (writes on)', () => {
   });
 });
 
+describe('Export', () => {
+  it('reads a keyed table after the last key read, never by offset, and counts UTF-8 bytes', async () => {
+    Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:x'), revokeObjectURL: vi.fn() });
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+    const t = await ordersGrid();
+    const page = (from: number) =>
+      Array.from({ length: 1000 }, (_, i) => [from + i, 'é', 'pending', 1]);
+    t.db.query.mockImplementation((input) => {
+      if (input.sql.startsWith('SELECT count(*)')) {
+        return Promise.resolve({ columns: ['n'], rows: [[1500]], truncated: false, durationMs: 1 });
+      }
+      const after = input.sql.includes('"id" > ?');
+      return Promise.resolve({
+        columns: ['id', 'item', 'status', 'customer_id'],
+        rows: after ? page(1000).slice(0, 500) : page(0),
+        truncated: false,
+        durationMs: 1,
+      });
+    });
+    await t.send({ type: 'db.changed', payload: { source: 'drift', db: 'app', table: 'orders' } });
+    await screen.findByText(/of 1,500/);
+    const before = t.db.query.mock.calls.length;
+    await t.user.click(screen.getByRole('button', { name: /^Export/ }));
+    await t.user.click(screen.getByRole('button', { name: 'CSV' }));
+    await waitFor(() => expect(t.db.query.mock.calls.length - before).toBe(2));
+    const [first, second] = t.db.query.mock.calls.slice(before).map((c) => c[0]);
+    expect(first?.sql).toBe('SELECT * FROM "orders" ORDER BY "id" LIMIT ?');
+    expect(second?.sql).toBe('SELECT * FROM "orders" WHERE "id" > ? ORDER BY "id" LIMIT ?');
+    expect(second?.params).toEqual([999, 500]);
+    expect(second?.sql).not.toContain('OFFSET');
+  });
+});
+
 describe('Snapshot and diff', () => {
   it('Disabled before a snapshot; then "Snapshot 14:02 taken" and the changes', async () => {
     const db = fakeDbClient();
