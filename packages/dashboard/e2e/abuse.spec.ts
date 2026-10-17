@@ -7,7 +7,7 @@ import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import type { ScriptedDaemon } from './daemons.js';
 import { startScriptedDaemon } from './daemons.js';
-import { expectNoSidewaysScroll, openDashboard, screenshot, watchPage } from './helpers.js';
+import { expectNoSidewaysScroll, openLogs, screenshot, watchPage } from './helpers.js';
 
 let deck: ScriptedDaemon;
 test.afterEach(async () => {
@@ -49,7 +49,7 @@ test('untrusted log text never runs or becomes markup, and 320 px holds', async 
     void d.dismiss();
   });
   await page.setViewportSize({ width: 320, height: 800 });
-  await openDashboard(page, deck.url);
+  await openLogs(page, deck.url);
   for (const message of PAYLOADS) push({ message, tag: '<b>tag</b>' });
   push({ message: `huge ${'y'.repeat(1024 * 1024)}` });
   const list = page.getByRole('list', { name: 'Log lines' });
@@ -74,7 +74,7 @@ test('untrusted log text never runs or becomes markup, and 320 px holds', async 
 
 test('a 10,000-line burst keeps the page responsive and the list virtual', async ({ page }) => {
   deck = await startScriptedDaemon();
-  await openDashboard(page, deck.url);
+  await openLogs(page, deck.url);
   for (let i = 0; i < 10_000; i++) push({ message: `burst ${i}` });
   await expect(page.getByText('burst 9999')).toBeVisible({ timeout: 10_000 });
   expect(await responsive(page, 1_000)).toBe(true);
@@ -88,7 +88,7 @@ test('a 10,000-line burst keeps the page responsive and the list virtual', async
 test('BUG-M2-T1: typing a catastrophic pattern does not freeze the tab', async ({ page }) => {
   test.setTimeout(30_000);
   deck = await startScriptedDaemon();
-  await openDashboard(page, deck.url);
+  await openLogs(page, deck.url);
   push({ message: `${'a'.repeat(30)}!` });
   await expect(page.getByText('!', { exact: false })).toBeVisible();
   // fill() sets the whole value at once, like a paste; it returns once the page has
@@ -108,7 +108,7 @@ test('BUG-M2-T1: a slow pattern the check misses is stopped in the worker after 
   page.on('response', (r) => {
     if (/\/assets\/search-worker-[\w-]+\.js$/.test(r.url())) workerFiles.push(r.status());
   });
-  await openDashboard(page, deck.url);
+  await openLogs(page, deck.url);
   push({ message: `${'a'.repeat(30)}!` });
   push({ message: 'Tap 1' });
   const list = page.getByRole('list', { name: 'Log lines' });
@@ -133,7 +133,7 @@ test('BUG-M2-T1: a slow pattern the check misses is stopped in the worker after 
 
 test('r in the search box types, r on the page reloads, Escape returns focus', async ({ page }) => {
   deck = await startScriptedDaemon();
-  await openDashboard(page, deck.url);
+  await openLogs(page, deck.url);
   push({ message: 'Tap 1' });
   const search = page.getByRole('searchbox', { name: 'Search logs' });
   await search.click();
@@ -162,9 +162,9 @@ test('r in the search box types, r on the page reloads, Escape returns focus', a
 
 test('two tabs: a reload in one shows in the other', async ({ page, context }) => {
   deck = await startScriptedDaemon();
-  await openDashboard(page, deck.url);
+  await openLogs(page, deck.url);
   const other = await context.newPage();
-  await openDashboard(other, deck.url);
+  await openLogs(other, deck.url);
   await page.getByRole('button', { name: 'Reload' }).click();
   await expect(page.getByRole('banner').getByText(/^Reloaded in \d+ ms$/)).toBeVisible();
   await expect(other.getByRole('banner').getByText(/^Reloaded/)).toBeVisible();
@@ -177,9 +177,9 @@ test('two tabs: a reload in one shows in the other', async ({ page, context }) =
 // Clear button is the delete path in the design note's privacy section.
 test('BUG-M2-T2: two tabs: clearing logs in one clears the other', async ({ page, context }) => {
   deck = await startScriptedDaemon();
-  await openDashboard(page, deck.url);
+  await openLogs(page, deck.url);
   const other = await context.newPage();
-  await openDashboard(other, deck.url);
+  await openLogs(other, deck.url);
   push({ message: 'personal data line' });
   await expect(other.getByText('personal data line')).toBeVisible();
   await page.getByRole('button', { name: 'More log options' }).click();

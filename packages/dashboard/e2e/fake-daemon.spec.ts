@@ -5,7 +5,7 @@ import { spawnFakeDaemon } from './daemons.js';
 import {
   expectAccessible,
   expectNoSidewaysScroll,
-  openDashboard,
+  openLogs,
   screenshot,
   watchPage,
 } from './helpers.js';
@@ -21,7 +21,7 @@ test.afterEach(async () => {
 
 test('logs in within the window and shows the attached fake app', async ({ page }) => {
   const watch = await watchPage(page);
-  await openDashboard(page, daemon.url);
+  await openLogs(page, daemon.url);
   await expect(page.getByRole('combobox', { name: 'App' })).toHaveText(
     /com\.example\.shop · Pixel 9 API 36 · IDE/,
   );
@@ -38,10 +38,12 @@ test('logs in within the window and shows the attached fake app', async ({ page 
 });
 
 test('reloads with the button and with r, restarts with R', async ({ page }) => {
-  await openDashboard(page, daemon.url);
+  await openLogs(page, daemon.url);
   const calls: string[] = [];
   page.on('request', (r) => {
-    if (r.method() === 'POST') calls.push(new URL(r.url()).pathname);
+    const path = new URL(r.url()).pathname;
+    // The Database tab stays mounted and reads its rows with POSTs too.
+    if (r.method() === 'POST' && !path.startsWith('/api/db')) calls.push(path);
   });
   await page.getByRole('button', { name: 'Reload' }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Reloaded in 120 ms' })).toBeVisible();
@@ -55,7 +57,7 @@ test('reloads with the button and with r, restarts with R', async ({ page }) => 
 });
 
 test('the shortcuts switch turns r off, and the choice survives a reload', async ({ page }) => {
-  await openDashboard(page, daemon.url);
+  await openLogs(page, daemon.url);
   await page.getByRole('button', { name: 'More log options' }).click();
   await page.getByRole('switch', { name: /Keyboard shortcuts r \/ R: on/ }).click();
   await expect(page.getByRole('switch', { name: /: off/ })).toHaveAttribute(
@@ -79,7 +81,7 @@ test('the shortcuts switch turns r off, and the choice survives a reload', async
 });
 
 test('Activity shows "Claude is waiting" posted by a hook', async ({ page, request }) => {
-  await openDashboard(page, daemon.url);
+  await openLogs(page, daemon.url);
   await page.getByRole('tab', { name: 'Activity' }).click();
   const res = await request.post(`${daemon.url}/api/events`, {
     headers: { 'x-deck-token': daemon.token },
@@ -94,7 +96,7 @@ test('Activity shows "Claude is waiting" posted by a hook', async ({ page, reque
 test('a daemon restart shows the retry banner, then recovers with one page reload, twice', async ({
   page,
 }) => {
-  await openDashboard(page, daemon.url);
+  await openLogs(page, daemon.url);
   let loads = 0;
   page.on('load', () => loads++);
   for (const round of [1, 2]) {
@@ -115,7 +117,7 @@ for (const width of [420, 320]) {
     test(`${width} px, ${scheme}: no sideways scroll, no serious axe issues`, async ({ page }) => {
       await page.setViewportSize({ width, height: 800 });
       await page.emulateMedia({ colorScheme: scheme });
-      await openDashboard(page, daemon.url);
+      await openLogs(page, daemon.url);
       await expect(page.getByText('Heartbeat from the fake app').first()).toBeVisible({
         timeout: 5000,
       });
@@ -135,7 +137,7 @@ for (const width of [420, 320]) {
 
 test('light and dark themes use different backgrounds', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'light' });
-  await openDashboard(page, daemon.url);
+  await openLogs(page, daemon.url);
   const light = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
   await page.emulateMedia({ colorScheme: 'dark' });
   const dark = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);

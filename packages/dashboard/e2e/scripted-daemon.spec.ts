@@ -9,7 +9,7 @@ import { fakeApp, startScriptedDaemon } from './daemons.js';
 import {
   expectAccessible,
   expectNoSidewaysScroll,
-  openDashboard,
+  openLogs,
   screenshot,
   watchPage,
 } from './helpers.js';
@@ -39,7 +39,7 @@ test('"Login needed" once the 2-minute window has closed; an old cookie still wo
   browser,
 }) => {
   deck = await startScriptedDaemon();
-  await openDashboard(page, deck.url);
+  await openLogs(page, deck.url);
   deck.advance(LOGIN_WINDOW_MS + 1000);
   const late = await browser.newContext();
   const latePage = await late.newPage();
@@ -84,7 +84,7 @@ test('the "Login needed" page is styled within its CSP, light and dark (QA B2-2)
 
 test('a new log line shows in under 250 ms', async ({ page }) => {
   deck = await startScriptedDaemon();
-  await openDashboard(page, deck.url);
+  await openLogs(page, deck.url);
   await page.evaluate(() => {
     const w = window as unknown as { __seenAt?: number };
     new MutationObserver((_, obs) => {
@@ -108,7 +108,7 @@ test('a new log line shows in under 250 ms', async ({ page }) => {
 
 test('filters by level, text, source and tag; invalid patterns are explained', async ({ page }) => {
   deck = await startScriptedDaemon();
-  await openDashboard(page, deck.url);
+  await openLogs(page, deck.url);
   push({ message: 'Tap 1', tag: 'flutter' });
   push({
     message: 'Choreographer skipped frames',
@@ -146,7 +146,7 @@ test('filters by level, text, source and tag; invalid patterns are explained', a
 
 test('several apps: pick one to attach', async ({ page }) => {
   deck = await startScriptedDaemon([fakeApp(), admin]);
-  await openDashboard(page, deck.url);
+  await openLogs(page, deck.url);
   const picker = page.getByRole('combobox', { name: 'App' });
   await expect(picker).toHaveValue('');
   await expect(page.getByRole('button', { name: 'Reload' })).toHaveAttribute(
@@ -163,7 +163,7 @@ test('several apps: pick one to attach', async ({ page }) => {
 
 test('attach errors offer to try again', async ({ page }) => {
   deck = await startScriptedDaemon([fakeApp(), admin]);
-  await openDashboard(page, deck.url);
+  await openLogs(page, deck.url);
   deck.connector.failAttach = 'VM service closed';
   await page.getByRole('combobox', { name: 'App' }).selectOption('app-2');
   await expect(page.getByRole('alert')).toContainText(
@@ -176,7 +176,7 @@ test('attach errors offer to try again', async ({ page }) => {
 
 test('"Finding apps…" until discovery is done, then "No app running"', async ({ page }) => {
   deck = await startScriptedDaemon([], { holdDiscovery: true });
-  await openDashboard(page, deck.url);
+  await openLogs(page, deck.url);
   await expect(page.getByText('Finding apps…')).toBeVisible();
   await expectAccessible(page);
   deck.connector.finishDiscovery();
@@ -186,7 +186,7 @@ test('"Finding apps…" until discovery is done, then "No app running"', async (
 
 test('no app running, then the app starts and is attached', async ({ page }) => {
   deck = await startScriptedDaemon([]);
-  await openDashboard(page, deck.url);
+  await openLogs(page, deck.url);
   await expect(page.getByText('No app running')).toBeVisible();
   await expectAccessible(page);
   await screenshot(page, 'no-app-420');
@@ -196,7 +196,7 @@ test('no app running, then the app starts and is attached', async ({ page }) => 
 
 test('app stopped: the logs stay and it says so', async ({ page }) => {
   deck = await startScriptedDaemon();
-  await openDashboard(page, deck.url);
+  await openLogs(page, deck.url);
   push({ message: 'last words' });
   await expect(page.getByText('last words')).toBeVisible();
   deck.connector.removeApp('app-1');
@@ -208,7 +208,7 @@ test('app stopped: the logs stay and it says so', async ({ page }) => {
 
 test('reload failed: red chip, first error lines, Show in Logs', async ({ page }) => {
   deck = await startScriptedDaemon();
-  await openDashboard(page, deck.url);
+  await openLogs(page, deck.url);
   // As the real connector does: a short message, and the compiler's errors in the logs.
   session().nextReload({
     ok: false,
@@ -243,7 +243,7 @@ test('reload failed: red chip, first error lines, Show in Logs', async ({ page }
 
 test('reloads by Claude or the IDE show in the header and Activity', async ({ page }) => {
   deck = await startScriptedDaemon();
-  await openDashboard(page, deck.url);
+  await openLogs(page, deck.url);
   session().simulateExternalReload();
   await expect(
     page.getByRole('banner').getByText('Reloaded (from Claude or the IDE)'),
@@ -258,7 +258,7 @@ test("Claude's failed reload replaces the VM's success in the header and Activit
   page,
 }) => {
   deck = await startScriptedDaemon();
-  await openDashboard(page, deck.url);
+  await openLogs(page, deck.url);
   session().simulateExternalReload();
   const header = page.getByRole('banner');
   await expect(header.getByText('Reloaded (from Claude or the IDE)')).toBeVisible();
@@ -287,7 +287,7 @@ test('connection loss: banner, then reconnect without a page reload and fill the
     ws.connectToServer();
     sockets.push({ close: () => ws.close() });
   });
-  await openDashboard(page, deck.url);
+  await openLogs(page, deck.url);
   let loads = 0;
   page.on('load', () => loads++);
   // Every socket for the next second is dropped, so the page shows the banner.
@@ -314,7 +314,7 @@ test('connection loss: banner, then reconnect without a page reload and fill the
 test('long unbroken log lines wrap at 320 px', async ({ page }) => {
   deck = await startScriptedDaemon();
   await page.setViewportSize({ width: 320, height: 800 });
-  await openDashboard(page, deck.url);
+  await openLogs(page, deck.url);
   push({ message: `token=${'x'.repeat(400)}` });
   push({
     message: Array.from({ length: 8 }, (_, i) => `#${i} frame at lib/main.dart:${i}`).join('\n'),

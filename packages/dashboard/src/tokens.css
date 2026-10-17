@@ -18,6 +18,14 @@
   --deck-level-info: #1b6b4c;
   --deck-level-warning: #855400;
   --deck-level-error: #b9232b;
+  /* M3 (docs/ui/m3-database-tab.md): diff text and its 12% tint, the row flash tint. */
+  --deck-diff-added: #17713a;
+  --deck-diff-added-tint: #e3eee7;
+  --deck-diff-changed: #855400;
+  --deck-diff-changed-tint: #f0eae0;
+  --deck-diff-removed: #b9232b;
+  --deck-diff-removed-tint: #f7e5e6;
+  --deck-flash: #dde6f5;
 
   --deck-space-1: 0.25rem;
   --deck-space-2: 0.5rem;
@@ -50,5 +58,12 @@
     --deck-level-info: #6fd0a2;
     --deck-level-warning: #e2b24e;
     --deck-level-error: #ff8080;
+    --deck-diff-added: #55c783;
+    --deck-diff-added-tint: #1a2925;
+    --deck-diff-changed: #e2b24e;
+    --deck-diff-changed-tint: #2b271e;
+    --deck-diff-removed: #ff8080;
+    --deck-diff-removed-tint: #2e2124;
+    --deck-flash: #222b3b;
   }
 }

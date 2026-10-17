@@ -36,6 +36,12 @@ export async function openDashboard(page: Page, url: string): Promise<void> {
   await expect(page.getByRole('contentinfo')).toContainText('Connected');
 }
 
+/** The M2 checks are about logs; since M3 the page opens on the Database tab. */
+export async function openLogs(page: Page, url: string): Promise<void> {
+  await openDashboard(page, url);
+  await page.getByRole('tab', { name: 'Logs' }).click();
+}
+
 export async function expectNoSidewaysScroll(page: Page): Promise<void> {
   const overflow = await page.evaluate(
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
@@ -52,6 +58,14 @@ export async function expectAccessible(page: Page): Promise<void> {
     .filter((v) => v.impact === 'serious' || v.impact === 'critical')
     .map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`);
   expect(bad).toEqual([]);
+}
+
+/** M3 Database tab screenshots for QA (qa-artifacts/ is git-ignored). */
+export async function screenshotM3(page: Page, name: string): Promise<void> {
+  await page.screenshot({
+    path: join(ARTIFACTS, '..', 'm3-database-tab', 'screens', `${name}.png`),
+    fullPage: true,
+  });
 }
 
 export async function screenshot(page: Page, name: string): Promise<void> {

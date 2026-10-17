@@ -1,13 +1,13 @@
 import type { LogEntry } from '@project-deck/core';
 import type { ReactNode } from 'react';
-import { createContext, use, useEffect, useMemo, useReducer, useRef } from 'react';
+import { createContext, use, useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
 import type { DeckClient } from '../api/client.js';
 import { HttpError } from '../api/client.js';
 import type { SocketLike, StatusCheck } from '../api/connection.js';
 import { Connection } from '../api/connection.js';
 import type { DeckState } from './deck.js';
 import { deckReducer, initialState } from './deck.js';
-import type { DeckActions } from './ops.js';
+import type { DbEvent, DeckActions } from './ops.js';
 import { createActions, handleMessage } from './ops.js';
 import type { SessionGuard } from './storage.js';
 
@@ -19,6 +19,8 @@ export const LOG_FLUSH_MS = 50;
 interface DeckContextValue {
   state: DeckState;
   actions: DeckActions;
+  /** Database views listen here for changed tables and reconnects. Returns an unsubscribe. */
+  onDbEvent: (cb: (event: DbEvent) => void) => () => void;
 }
 
 const DeckContext = createContext<DeckContextValue | undefined>(undefined);
@@ -42,6 +44,14 @@ export function DeckProvider({ deps, children }: { deps: DeckDeps; children: Rea
     () => createActions(deps.client, dispatch, () => stateRef.current, deps.now),
     [deps],
   );
+  const dbListeners = useRef(new Set<(event: DbEvent) => void>());
+  const onDbEvent = useCallback((cb: (event: DbEvent) => void) => {
+    const set = dbListeners.current;
+    set.add(cb);
+    return () => {
+      set.delete(cb);
+    };
+  }, []);
 
   useEffect(() => {
     let pending: LogEntry[] = [];
@@ -71,12 +81,19 @@ export function DeckProvider({ deps, children }: { deps: DeckDeps; children: Rea
       guard: deps.guard,
       reloadPage: deps.reloadPage,
       onState: (s) => dispatch({ type: 'connection', state: s }),
-      onMessage: (m) => handleMessage(m, dispatch, queueLog, deps.now),
+      onMessage: (m) =>
+        handleMessage(m, dispatch, queueLog, deps.now, (event) => {
+          for (const cb of [...dbListeners.current]) cb(event);
+        }),
       onOpen: (reconnect) => {
         void checkStatus();
         actions.loadLogs(reconnect ? RECONNECT_LOG_LINES : undefined);
         actions.loadActivity();
-        if (reconnect) dispatch({ type: 'activity-local', text: 'Reconnected', at: deps.now() });
+        if (reconnect) {
+          dispatch({ type: 'activity-local', text: 'Reconnected', at: deps.now() });
+          // Live events may have been missed: open views re-query (design, Failure plan).
+          for (const cb of [...dbListeners.current]) cb({ kind: 'reconnected' });
+        }
       },
     });
     connection.start();
@@ -86,7 +103,7 @@ export function DeckProvider({ deps, children }: { deps: DeckDeps; children: Rea
     };
   }, [deps, actions]);
 
-  const value = useMemo(() => ({ state, actions }), [state, actions]);
+  const value = useMemo(() => ({ state, actions, onDbEvent }), [state, actions, onDbEvent]);
   return <DeckContext value={value}>{children}</DeckContext>;
 }
 
