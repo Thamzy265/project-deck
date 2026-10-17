@@ -300,8 +300,11 @@ function bindBlob(open: OpenDb, stmt: number, index: number, bytes: Uint8Array):
 export function bind(open: OpenDb, stmt: number, index: number, value: unknown): void {
   const { capi } = open.sqlite;
   let rc: number;
-  if (value === null || value === undefined) rc = capi.sqlite3_bind_null(stmt, index);
-  else if (typeof value === 'boolean') rc = capi.sqlite3_bind_int64(stmt, index, value ? 1n : 0n);
+  if (value === null || value === undefined) {
+    // This build's sqlite3_bind_null answers undefined instead of SQLITE_OK (TAB-3).
+    const r: unknown = capi.sqlite3_bind_null(stmt, index);
+    rc = typeof r === 'number' ? r : SQLITE_OK;
+  } else if (typeof value === 'boolean') rc = capi.sqlite3_bind_int64(stmt, index, value ? 1n : 0n);
   else if (typeof value === 'number') {
     rc = Number.isSafeInteger(value)
       ? capi.sqlite3_bind_int64(stmt, index, BigInt(value))

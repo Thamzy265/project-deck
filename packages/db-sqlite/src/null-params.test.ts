@@ -28,7 +28,7 @@ async function make(): Promise<FakeLiveDatabase> {
 }
 
 describe('null parameters', { timeout: 20_000 }, () => {
-  it.fails('a confirmed edit can set a value to NULL', async () => {
+  it('a confirmed edit can set a value to NULL', async () => {
     const db = await make();
     await expect(
       db.execute('app', 'UPDATE "codes" SET "v" = ? WHERE "code" IS ?', [null, 'x'], {
@@ -37,7 +37,7 @@ describe('null parameters', { timeout: 20_000 }, () => {
     ).resolves.toEqual({ changes: 1 });
   });
 
-  it.fails('the snapshot engine reads with a NULL parameter', async () => {
+  it('the snapshot engine reads with a NULL parameter', async () => {
     const db = await make();
     const res = await db.query('app', 'SELECT "v" FROM "codes" WHERE "code" IS ?', [null]);
     expect(res.rows).toEqual([['a']]);
