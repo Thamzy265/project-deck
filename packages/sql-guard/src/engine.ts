@@ -364,6 +364,7 @@ export class GuardEngine {
         // An edit's target first: a DELETE with no WHERE or an INSERT reads no column of
         // it, so only the authorizer's write callback names it (Q2).
         tables: [...new Set([...seen.written, ...seen.tables])],
+        ...(mode === 'write' ? { written: [...seen.written] } : {}),
         functions: [...seen.functions],
         recursive: seen.recursive,
       };

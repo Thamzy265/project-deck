@@ -54,6 +54,7 @@ const write: GuardResult = {
   ok: true,
   kind: 'write',
   tables: ['orders'],
+  written: ['orders'],
   functions: [],
   recursive: false,
 };

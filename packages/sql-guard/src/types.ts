@@ -52,6 +52,12 @@ export const GuardResultSchema = z.discriminatedUnion('ok', [
      * caps, time limits, interrupts) live in the backends.
      */
     tables: z.array(z.string()),
+    /**
+     * Write mode only: the tables the edit inserts into, updates or deletes from, its
+     * triggers included. Callers check it holds exactly one table (fail closed) rather
+     * than trusting the order of `tables`.
+     */
+    written: z.array(z.string()).optional(),
     functions: z.array(z.string()),
     /** A recursive CTE, which can run long or forever without a LIMIT. */
     recursive: z.boolean(),

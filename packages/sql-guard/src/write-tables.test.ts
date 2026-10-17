@@ -46,3 +46,23 @@ describe('tables an edit writes (Q2)', () => {
     expect(await edit('DELETE FROM logged')).toMatchObject({ ok: false, code: 'multiple-tables' });
   });
 });
+
+describe('written: the tables an edit writes, as their own field (review Low)', () => {
+  it('names only the written table, not a parent read for its foreign key', async () => {
+    const result = await edit('UPDATE lines SET order_id = ? WHERE id IS ?');
+    expect(result.ok && result.written).toEqual(['lines']);
+  });
+
+  it('names the target of a DELETE with no WHERE and of an INSERT', async () => {
+    for (const sql of ['DELETE FROM audit', 'INSERT INTO audit VALUES (3)']) {
+      const result = await edit(sql);
+      expect(result.ok && result.written, sql).toEqual(['audit']);
+    }
+  });
+
+  it('is absent in read mode', async () => {
+    const result = await guard.check('SELECT * FROM orders', { schemaSql, mode: 'read' });
+    expect(result.ok).toBe(true);
+    expect(result.ok && 'written' in result).toBe(false);
+  });
+});

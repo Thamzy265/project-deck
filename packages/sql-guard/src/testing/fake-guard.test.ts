@@ -17,6 +17,23 @@ describe('FakeSqlGuard', () => {
     expect((guard as FakeSqlGuard).calls).toEqual([{ sql: 'SELECT a FROM t', opts }]);
   });
 
+  it('passes a plain edit of one table in write mode and names it as written', async () => {
+    const guard = new FakeSqlGuard();
+    const write = { ...opts, mode: 'write' } as const;
+    expect(await guard.check('UPDATE "t" SET a = 1', write)).toEqual({
+      ok: true,
+      kind: 'write',
+      tables: ['t'],
+      written: ['t'],
+      functions: [],
+      recursive: false,
+    });
+    expect(await guard.check('SELECT a FROM t', write)).toMatchObject({
+      ok: false,
+      code: 'not-an-edit',
+    });
+  });
+
   it('answers programmed refusals and verdicts for exact SQL', async () => {
     const guard = new FakeSqlGuard()
       .refuse('DELETE FROM t', 'writes-data', 'Only reading is allowed here.')

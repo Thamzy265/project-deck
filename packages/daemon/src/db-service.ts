@@ -497,8 +497,13 @@ export class DbService {
     }
     // The confirm and Activity name the table the edit writes, not tables it only
     // reads (a parent for a foreign-key check). The gate passes an edit only when it
-    // writes exactly one table, and lists that table first (Q2).
-    const written = verdict.tables.slice(0, 1);
+    // writes exactly one table; anything else here fails closed.
+    const written = verdict.written ?? [];
+    if (written.length !== 1) {
+      throw new DbError('refused', 'An edit must insert, update or delete rows of one table.', {
+        detail: 'not-an-edit',
+      });
+    }
     const params = input.params ?? [];
     const requestId = randomBytes(24).toString('base64url');
     const expiresAt = this.now() + EDIT_TTL_MS;
