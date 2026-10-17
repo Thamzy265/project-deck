@@ -108,6 +108,17 @@ export class ActivityFeed {
           ...(message === undefined ? {} : { message }),
         });
       }),
+      this.bus.on('db.snapshot', ({ db }) => this.add({ kind: 'db.snapshot', db })),
+      this.bus.on('db.diff', ({ db }) => this.add({ kind: 'db.diff', db })),
+      this.bus.on('db.write', ({ db, tables, allowed, changes }) => {
+        this.add({
+          kind: 'db.write',
+          db,
+          tables: [...tables],
+          allowed,
+          ...(changes === undefined ? {} : { changes }),
+        });
+      }),
     ];
     return () => {
       for (const off of offs) off();

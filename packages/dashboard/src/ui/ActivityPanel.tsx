@@ -18,6 +18,9 @@ const ICON: Record<string, string> = {
   'app.crashed': '⚠',
   'claude.done': '✓',
   'claude.waiting': '…',
+  'db.snapshot': '◷',
+  'db.diff': '±',
+  'db.write': '✎',
 };
 
 function text(item: ActivityItem): string {

@@ -119,6 +119,20 @@ describe('activityText', () => {
       'Reload failed: Hot reload failed.',
     ],
     [{ id: 1, ts: 0, kind: 'claude.reload', ok: false, reload: 'hot-restart' }, 'Restart failed'],
+    [{ id: 1, ts: 0, kind: 'db.snapshot', db: 'app' }, 'Snapshot taken: app'],
+    [{ id: 1, ts: 0, kind: 'db.diff', db: 'app' }, 'Diff shown: app'],
+    [
+      { id: 1, ts: 0, kind: 'db.write', db: 'app', tables: ['orders'], allowed: true, changes: 1 },
+      'Write allowed: orders, 1 row changed',
+    ],
+    [
+      { id: 1, ts: 0, kind: 'db.write', db: 'app', tables: ['a', 'b'], allowed: true, changes: 3 },
+      'Write allowed: a, b, 3 rows changed',
+    ],
+    [
+      { id: 1, ts: 0, kind: 'db.write', db: 'app', tables: ['orders'], allowed: false },
+      'Write denied: orders',
+    ],
   ];
   it.each(cases)('describes %j', (entry, text) => {
     expect(activityText(entry)).toBe(text);

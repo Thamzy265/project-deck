@@ -85,5 +85,15 @@ export function activityText(entry: ActivityEntry): string {
       const failed = kind === 'reload' ? 'Reload failed' : 'Restart failed';
       return entry.message === undefined ? failed : `${failed}: ${entry.message}`;
     }
+    case 'db.snapshot':
+      return `Snapshot taken: ${entry.db}`;
+    case 'db.diff':
+      return `Diff shown: ${entry.db}`;
+    case 'db.write': {
+      const tables = entry.tables.join(', ');
+      if (!entry.allowed) return `Write denied: ${tables}`;
+      const n = entry.changes ?? 0;
+      return `Write allowed: ${tables}, ${n} ${n === 1 ? 'row' : 'rows'} changed`;
+    }
   }
 }

@@ -72,6 +72,8 @@ interface PendingEdit {
   source: Source;
   sql: string;
   params: unknown[];
+  /** The tables the gate found, for the Activity entry. */
+  tables: string[];
   hash: string;
   expiresAt: number;
   epoch: number;
@@ -310,6 +312,7 @@ export class DbService {
     };
     this.snapshots.push(snapshot);
     if (this.snapshots.length > MAX_SNAPSHOTS) this.snapshots.shift();
+    this.opts.bus.emit('db.snapshot', { db: input.db });
     return {
       id: snapshot.id,
       db: snapshot.db,
@@ -349,6 +352,7 @@ export class DbService {
           ? (table, columns, key) => this.visibility(freshSchema, table, columns, key)
           : undefined,
       );
+      this.opts.bus.emit('db.diff', { db: input.db });
       return {
         db: input.db,
         snapshotId: snapshot.id,
@@ -400,6 +404,7 @@ export class DbService {
       source,
       sql: input.sql,
       params,
+      tables: verdict.tables,
       hash: editHash(input.db, input.sql, params),
       expiresAt,
       epoch: current.epoch,
@@ -444,11 +449,19 @@ export class DbService {
     if (execute === undefined) throw new DbError('unsupported', 'Snapshots are read-only.');
     // 256 random bits per confirm: a repeat is not a practical event, so none is tracked.
     const token = randomBytes(32).toString('base64url');
+    let result: { changes: number };
     try {
-      return await execute(edit.db, edit.sql, edit.params, { token });
+      result = await execute(edit.db, edit.sql, edit.params, { token });
     } catch (err) {
       throw asDbError(err);
     }
+    this.opts.bus.emit('db.write', {
+      db: edit.db,
+      tables: edit.tables,
+      allowed: true,
+      changes: result.changes,
+    });
+    return result;
   }
 
   /** Stops every table watch, e.g. when the last dashboard client has gone (R9). */
@@ -460,7 +473,10 @@ export class DbService {
   }
 
   cancelEdit(requestId: string): void {
+    const edit = this.pending.get(requestId);
+    if (edit === undefined) return;
     this.pending.delete(requestId);
+    this.opts.bus.emit('db.write', { db: edit.db, tables: edit.tables, allowed: false });
   }
 
   async close(): Promise<void> {

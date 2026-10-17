@@ -16,6 +16,10 @@ export const MAX_RELOAD_MESSAGE = 300;
 /** Claude Code session ids are UUIDs; anything longer isn't one. */
 export const MAX_SESSION_ID = 128;
 
+/** Database and table names come from the app; long ones are not real names. */
+const DbName = z.string().max(300);
+const MAX_WRITE_TABLES = 64;
+
 const Base = {
   /** Increases by one per entry for the life of the daemon. */
   id: z.number().int().nonnegative(),
@@ -52,6 +56,18 @@ export const ActivityEntrySchema = z.discriminatedUnion('kind', [
     message: z.string().max(MAX_RELOAD_MESSAGE).optional(),
     appId: z.string().optional(),
     appName: z.string().optional(),
+  }),
+  /** Snapshots, diffs and edits name only the database and tables (design note, Observability). */
+  z.object({ ...Base, kind: z.literal('db.snapshot'), db: DbName }),
+  z.object({ ...Base, kind: z.literal('db.diff'), db: DbName }),
+  /** The user's answer to an edit's confirm dialog. The SQL is never kept. */
+  z.object({
+    ...Base,
+    kind: z.literal('db.write'),
+    db: DbName,
+    tables: z.array(DbName).max(MAX_WRITE_TABLES),
+    allowed: z.boolean(),
+    changes: z.number().int().nonnegative().optional(),
   }),
 ]);
 export type ActivityEntry = z.infer<typeof ActivityEntrySchema>;
