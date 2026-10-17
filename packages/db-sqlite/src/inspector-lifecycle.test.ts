@@ -48,7 +48,7 @@ afterEach(async () => {
 });
 
 describe('SqliteSnapshotInspector lifecycle (tester probes)', { timeout: 30_000 }, () => {
-  it.fails('DB-5: drops a copy that finishes after close: no engine keeps the bytes', async () => {
+  it('DB-5: drops a copy that finishes after close: no engine keeps the bytes', async () => {
     const source = new SlowSource({ [NAME]: plainDbFixture() });
     const db = new SqliteSnapshotInspector(() => Promise.resolve(source), { engine });
     const pending = db.query(NAME, 'SELECT count(*) FROM orders').then(

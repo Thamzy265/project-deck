@@ -38,6 +38,8 @@ export class SqliteSnapshotInspector implements DbInspector {
   readonly writable = false;
   private source: Promise<SnapshotSource> | undefined;
   private readonly copies = new Map<string, Promise<Copy>>();
+  /** The copy each database is waiting for; refresh and close move on from it. */
+  private readonly turns = new Map<string, object>();
   private readonly makeEngine: () => SnapshotEngine;
   private readonly now: () => number;
   private readonly maxBytes: number;
@@ -98,6 +100,7 @@ export class SqliteSnapshotInspector implements DbInspector {
   async refresh(db: string): Promise<void> {
     const pending = this.copies.get(db);
     this.copies.delete(db);
+    this.turns.delete(db);
     const copy = await pending?.catch(() => undefined);
     await copy?.engine.close();
   }
@@ -106,6 +109,7 @@ export class SqliteSnapshotInspector implements DbInspector {
     this.closed = true;
     const copies = [...this.copies.values()];
     this.copies.clear();
+    this.turns.clear();
     await Promise.all(
       copies.map(async (c) => {
         const copy = await c.catch(() => undefined);
@@ -135,8 +139,12 @@ export class SqliteSnapshotInspector implements DbInspector {
       return Promise.reject(new DbError('not-found', `No database named ${db}.`));
     let pending = this.copies.get(db);
     if (pending === undefined) {
+      const turn = {};
+      this.turns.set(db, turn);
       pending = (async () => {
         const image = await copyDatabase(await this.src(), db, this.maxBytes);
+        // Closed or refreshed while copying: drop the bytes, start no engine.
+        if (this.closed || this.turns.get(db) !== turn) throw gone();
         const engine = this.makeEngine();
         engine.load(image);
         return { engine, takenAt: this.now(), schema: undefined };

@@ -29,24 +29,21 @@ afterEach(async () => {
 });
 
 describe('SnapshotEngine lifecycle', { timeout: 30_000 }, () => {
-  it.fails(
-    'DB-5: leaves no worker behind when closed while the worker is still starting',
-    async () => {
-      const e = make();
-      e.load(plainDbFixture());
-      const pending = e.query('SELECT count(*) FROM orders', [], 10).then(
-        () => 'answered after close',
-        (err: unknown) => (err as { code?: string }).code,
-      );
-      // Let the call pass its "is a copy open" check and start the worker, then close.
-      await tick(20);
-      await e.close();
-      const outcome = await pending;
-      await tick(50);
-      expect(workerOf(e), 'a worker holding the copy is still running').toBeUndefined();
-      expect(outcome).not.toBe('answered after close');
-    },
-  );
+  it('DB-5: leaves no worker behind when closed while the worker is still starting', async () => {
+    const e = make();
+    e.load(plainDbFixture());
+    const pending = e.query('SELECT count(*) FROM orders', [], 10).then(
+      () => 'answered after close',
+      (err: unknown) => (err as { code?: string }).code,
+    );
+    // Let the call pass its "is a copy open" check and start the worker, then close.
+    await tick(20);
+    await e.close();
+    const outcome = await pending;
+    await tick(50);
+    expect(workerOf(e), 'a worker holding the copy is still running').toBeUndefined();
+    expect(outcome).not.toBe('answered after close');
+  });
 
   it('refuses calls made after close and starts no worker for them', async () => {
     const e = make();

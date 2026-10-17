@@ -40,6 +40,8 @@ export class SnapshotEngine {
   private readonly workerUrl: URL;
   private bytes: Uint8Array | undefined;
   private worker: Worker | undefined;
+  /** A worker still starting or opening the copy; close() stops it too. */
+  private starting: Worker | undefined;
   private queue: Promise<unknown> = Promise.resolve();
   private nextId = 0;
   private closed = false;
@@ -81,9 +83,18 @@ export class SnapshotEngine {
   }
 
   private drop(): void {
-    const w = this.worker;
+    for (const w of [this.worker, this.starting]) {
+      if (w !== undefined) void w.terminate().catch(() => undefined);
+    }
     this.worker = undefined;
-    if (w !== undefined) void w.terminate().catch(() => undefined);
+    this.starting = undefined;
+  }
+
+  /** After every await: a close in the meantime stops `w`, so no copy outlives close(). */
+  private stillOpen(w: Worker): void {
+    if (!this.closed) return;
+    void w.terminate().catch(() => undefined);
+    throw new DbError('internal', 'The snapshot copy was closed.');
   }
 
   /** Calls run one at a time, so a timeout always belongs to the call that caused it. */
@@ -98,13 +109,17 @@ export class SnapshotEngine {
       throw new DbError('internal', 'No snapshot copy is open; take a snapshot first.');
     }
     const w = await this.ready(this.bytes);
-    return this.ask(w, message, this.budgetMs, TOO_LONG);
+    this.stillOpen(w);
+    const value = await this.ask(w, message, this.budgetMs, TOO_LONG);
+    this.stillOpen(w);
+    return value;
   }
 
   /** The live worker with the copy open, starting one if needed. */
   private async ready(bytes: Uint8Array): Promise<Worker> {
     if (this.worker !== undefined) return this.worker;
     const w = new Worker(this.workerUrl, { execArgv: [] });
+    this.starting = w;
     w.unref();
     // Every worker keeps an error listener; a crash also ends in 'exit'.
     w.on('error', () => undefined);
@@ -126,7 +141,13 @@ export class SnapshotEngine {
         reject(new DbError('internal', 'The snapshot engine stopped.'));
       });
     });
-    await this.ask(w, { op: 'open', bytes }, this.openMs, 'Opening the snapshot took too long.');
+    try {
+      this.stillOpen(w);
+      await this.ask(w, { op: 'open', bytes }, this.openMs, 'Opening the snapshot took too long.');
+      this.stillOpen(w);
+    } finally {
+      if (this.starting === w) this.starting = undefined;
+    }
     this.worker = w;
     return w;
   }
