@@ -19,8 +19,11 @@ export interface SqliteSnapshotFactoryOptions {
   adb?: AdbRunner;
   /** Defaults to /usr/bin/xcrun. */
   xcrun?: XcrunRunner;
-  /** Read on each new app, so a config edit applies to the next attach. */
-  ids?: () => SnapshotIds;
+  /**
+   * Read each time a backend looks for its device (R11), so an edit of config.json
+   * applies without restarting the daemon.
+   */
+  ids?: () => Promise<SnapshotIds>;
   platform?: NodeJS.Platform;
   simulatorRoot?: string;
   engine?: () => SnapshotEngine;
@@ -38,14 +41,14 @@ export class SqliteSnapshotFactory implements DbInspectorFactory {
   constructor(private readonly opts: SqliteSnapshotFactoryOptions = {}) {}
 
   create(app: RunningApp): Promise<DbInspector | undefined> {
-    const ids = this.opts.ids?.() ?? {};
+    const ids = async (): Promise<SnapshotIds> => (await this.opts.ids?.()) ?? {};
     const inspectorOpts = this.opts.engine === undefined ? {} : { engine: this.opts.engine };
     const platform = app.device?.platform;
     if (platform === 'android') {
       const adb = (this.adbRunner ??= this.opts.adb ?? nodeAdb());
       return Promise.resolve(
         new SqliteSnapshotInspector(
-          () => resolveAndroidSource(adb, app, ids.androidApplicationId),
+          async () => resolveAndroidSource(adb, app, (await ids()).androidApplicationId),
           inspectorOpts,
         ),
       );
@@ -61,7 +64,7 @@ export class SqliteSnapshotFactory implements DbInspectorFactory {
       };
       return Promise.resolve(
         new SqliteSnapshotInspector(
-          () => resolveIosSource(xcrun, app, ids.iosBundleId, resolveOpts),
+          async () => resolveIosSource(xcrun, app, (await ids()).iosBundleId, resolveOpts),
           inspectorOpts,
         ),
       );

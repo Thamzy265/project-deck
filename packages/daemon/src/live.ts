@@ -11,7 +11,7 @@ export function registerLive(
   registry: Registry,
   uris: ConnectorUris,
   log: (message: string, err?: unknown) => void,
-  snapshotIds: () => SnapshotIds = () => ({}),
+  snapshotIds: () => Promise<SnapshotIds> = () => Promise.resolve({}),
 ): void {
   // Before the connector: it reads the allowed extension prefixes when it calls one.
   registerDrift(registry);

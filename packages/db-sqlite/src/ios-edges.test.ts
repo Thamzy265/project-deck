@@ -243,7 +243,7 @@ describe('iOS snapshots outside macOS (tester probes)', () => {
       const factory = new SqliteSnapshotFactory({
         platform,
         xcrun,
-        ids: () => ({ iosBundleId: BUNDLE }),
+        ids: () => Promise.resolve({ iosBundleId: BUNDLE }),
       });
       expect(await factory.create(iosApp()), platform).toBeUndefined();
       expect(xcrun.calls).toEqual([]);

@@ -45,12 +45,15 @@ const registry = new Registry();
 if (values.fake) {
   registerFake(registry);
 } else {
-  // A config that can't be read is reported by startDaemon below; here it just means
-  // the snapshot backend has no ids from config.
-  const config = await readConfig(resolve(values.project)).catch(() => undefined);
-  const snapshotIds = {
-    androidApplicationId: config?.android?.applicationId,
-    iosBundleId: config?.ios?.bundleId,
+  // Read on each use, so an edit applies without a restart. A config that can't be
+  // read is reported by startDaemon; here it just means no ids from config.
+  const projectDir = resolve(values.project);
+  const snapshotIds = async () => {
+    const config = await readConfig(projectDir).catch(() => undefined);
+    return {
+      androidApplicationId: config?.android?.applicationId,
+      iosBundleId: config?.ios?.bundleId,
+    };
   };
   const uris = connectorUris(
     { dtdUris: values['dtd-uri'], vmServiceUris: values['vm-service-uri'] },
@@ -60,7 +63,7 @@ if (values.fake) {
     registry,
     uris,
     (message, err) => console.error(message, err instanceof Error ? err.message : ''),
-    () => snapshotIds,
+    snapshotIds,
   );
 }
 
