@@ -130,8 +130,15 @@ describe('/api/db/queries (saved queries)', () => {
         return Promise.resolve();
       },
     };
-    const { asToken, asDashboard } = await setup({ guard: new FakeSqlGuard(), queries });
+    const { asToken, asDashboard, send } = await setup({ guard: new FakeSqlGuard(), queries });
     expect(await (await asDashboard('/api/db/queries')).json()).toEqual({ queries: [] });
+    // The browser sends no Origin with a same-origin GET.
+    const noOrigin = await send(
+      '/api/db/queries',
+      {},
+      { cookie: `deck_session_${PORT}=${SECRET}`, 'sec-fetch-site': 'same-origin' },
+    );
+    expect(noOrigin.status).toBe(200);
     const list = [{ name: 'Pending', sql: 'SELECT 1' }];
     const put = await asDashboard('/api/db/queries', { method: 'PUT', body: { queries: list } });
     expect(put.status).toBe(200);

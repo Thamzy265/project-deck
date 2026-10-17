@@ -123,9 +123,15 @@ export function registerDbRoutes<E extends object>(api: Hono<E>, ctx: DbRouteCon
 
   const queries = ctx.queries;
   if (queries !== undefined) {
+    // A same-origin GET carries no Origin header; the cookie (SameSite=Strict) is enough
+    // to read, and the API's own check still refuses a foreign Origin.
     api.get('/api/db/queries', async (c) => {
-      const refused = dashboardOnly(c);
-      if (refused !== undefined) return refused;
+      if (authenticate((n) => c.req.header(n), ctx.credentials()) !== 'cookie') {
+        return c.json(
+          { error: 'Saved queries are for the dashboard only.', code: 'not-allowed' },
+          403,
+        );
+      }
       return c.json({ queries: await queries.read() });
     });
     const queriesLimit = bodyLimit({
