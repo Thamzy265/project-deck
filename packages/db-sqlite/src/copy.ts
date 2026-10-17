@@ -39,6 +39,8 @@ export async function copyDatabase(
     const wal = walBefore === '' ? undefined : await read(source, walPath, maxBytes - db.length);
     const after = await source.head(name, 100);
     const walAfter = walSalts(await source.head(walPath, 32));
+    // A write that started during the copy leaves a hot journal: the copy may be torn.
+    if (isHotJournal(await source.head(journalPath, 28))) continue;
     const counter = changeCounter(before);
     const consistent =
       counter !== undefined &&

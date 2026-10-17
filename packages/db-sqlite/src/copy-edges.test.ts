@@ -65,7 +65,7 @@ function forgeWal(pageSize: number, frames: { pgno: number; commit: number }[]):
 }
 
 describe('copyDatabase: a rollback-journal write that races the copy', () => {
-  it.fails('DB-4: does not return a copy taken while a hot journal appeared mid-copy', async () => {
+  it('DB-4: does not return a copy taken while a hot journal appeared mid-copy', async () => {
     // The app starts a commit right after the journal check: the journal becomes hot and
     // page 1 (with the new change counter) is written first, so `before`, the copy and
     // `after` all see the same counter while the other pages are still being written.
