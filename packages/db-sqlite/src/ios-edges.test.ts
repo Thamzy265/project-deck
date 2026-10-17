@@ -255,7 +255,7 @@ describe('iOS snapshots outside macOS (tester probes)', () => {
 });
 
 describe('nodeXcrun timeout (tester probes)', { timeout: 20_000 }, () => {
-  it.fails('DB-8: stops xcrun that ignores SIGTERM once its timeout passes', async () => {
+  it('DB-8: stops xcrun that ignores SIGTERM once its timeout passes', async () => {
     const pidFile = join(home, 'pid');
     const script = `require('fs').writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); process.on('SIGTERM', () => {}); setInterval(() => {}, 1000);`;
     try {

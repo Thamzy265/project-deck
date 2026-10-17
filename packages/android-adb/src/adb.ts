@@ -175,6 +175,23 @@ function isNotFound(err: unknown): boolean {
 
 /** Bytes of stderr kept for error detection (run-as messages are one short line). */
 const MAX_STDERR = 4096;
+/** How long a stopped command gets to exit on SIGTERM before SIGKILL. */
+export const KILL_GRACE_MS = 1000;
+
+/** SIGTERM now, SIGKILL after the grace if the process is still there. */
+export function killHard(child: {
+  kill(signal?: NodeJS.Signals): boolean;
+  exitCode: number | null;
+  signalCode: NodeJS.Signals | null;
+  once(event: 'close', cb: () => void): unknown;
+}): void {
+  child.kill();
+  const grace = setTimeout(() => {
+    if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+  }, KILL_GRACE_MS);
+  grace.unref();
+  child.once('close', () => clearTimeout(grace));
+}
 
 /**
  * Runs adb once and collects its stdout, never through a shell. The process is killed
@@ -199,9 +216,12 @@ function collect(
       cwd: homedir(),
       stdio: ['ignore', 'pipe', 'pipe'],
     });
+    // Rejects at once; a process that ignores SIGTERM gets SIGKILL after a short grace.
     const stop = (err: Error): void => {
-      failure ??= err;
-      child.kill();
+      if (failure !== undefined) return;
+      failure = err;
+      finish(err);
+      killHard(child);
     };
     const timer = setTimeout(() => stop(new AdbTimeoutError(timeoutMs)), timeoutMs);
     const finish = (err: Error | undefined): void => {

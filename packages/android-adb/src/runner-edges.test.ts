@@ -30,7 +30,7 @@ afterEach(() => {
 const sleep = (ms: number) => new Promise<string>((r) => setTimeout(() => r('still waiting'), ms));
 
 describe('nodeAdb caps and timeouts (tester probes)', { timeout: REAL_PROCESS_TIMEOUT_MS }, () => {
-  it.fails('DB-8: stops a command that ignores SIGTERM once its timeout passes', async () => {
+  it('DB-8: stops a command that ignores SIGTERM once its timeout passes', async () => {
     dir = mkdtempSync(join(tmpdir(), 'deck-adb-'));
     const pidFile = join(dir, 'pid');
     const script = `require('fs').writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); process.on('SIGTERM', () => {}); setInterval(() => {}, 1000);`;

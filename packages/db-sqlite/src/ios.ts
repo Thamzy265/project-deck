@@ -10,6 +10,7 @@ import { lstat, open, readdir, realpath } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { isAbsolute, join, sep } from 'node:path';
 import type { RunningApp } from '@project-deck/core';
+import { killHard } from '@project-deck/android-adb';
 import { DbError, IOS_BUNDLE_ID } from '@project-deck/core';
 import { z } from 'zod';
 import type { SnapshotSource } from './source.js';
@@ -41,9 +42,13 @@ export function nodeXcrun(path: string = XCRUN_PATH): XcrunRunner {
           cwd: homedir(),
           stdio: ['ignore', 'pipe', 'ignore'],
         });
+        // Rejects at once; an xcrun that ignores SIGTERM gets SIGKILL after a grace.
         const stop = (err: Error): void => {
-          failure ??= err;
-          child.kill();
+          if (failure !== undefined) return;
+          failure = err;
+          clearTimeout(timer);
+          reject(err);
+          killHard(child);
         };
         const timer = setTimeout(() => stop(new Error("xcrun didn't answer")), timeoutMs);
         child.on('error', (err) => {
