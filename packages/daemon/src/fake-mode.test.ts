@@ -4,7 +4,7 @@ import { fakeApp } from '@project-deck/core/testing';
 import { FakeSqlGuard } from '@project-deck/sql-guard/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 import { DbService } from './db-service.js';
-import { registerFake } from './fake-mode.js';
+import { MAX_FAKE_ORDERS, registerFake } from './fake-mode.js';
 
 let service: DbService | undefined;
 afterEach(async () => {
@@ -64,5 +64,10 @@ describe('--fake databases', { timeout: 20_000 }, () => {
       'dashboard',
     );
     expect(triggers.rows).toEqual([['customers_audit']]);
+  });
+
+  it('keeps adding orders for about 40 minutes, so the PM steps work late (lead, B4)', () => {
+    // One order every 5 s from order 3: 500 orders last about 41 minutes.
+    expect(MAX_FAKE_ORDERS).toBe(500);
   });
 });

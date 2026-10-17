@@ -2,7 +2,8 @@ import type { Registry } from '@project-deck/core';
 import { FakeAppConnector, fakeApp } from '@project-deck/core/testing';
 import { FakeLiveDatabase, fakeSnapshotFactory } from '@project-deck/db-sqlite/testing';
 
-const MAX_FAKE_ORDERS = 50;
+/** The fake app stops adding orders here (lead, batch 4 QA: 50 ran out after 4 min). */
+export const MAX_FAKE_ORDERS = 500;
 
 /**
  * The fake app's database: customers, orders that point at them, and an audit table
