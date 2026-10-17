@@ -217,19 +217,31 @@ export async function resolveIosSource(
   const booted = Object.values(listed.devices)
     .flat()
     .filter((d) => d.state === 'Booted' && UDID.test(d.udid));
-  // An app that names its device by an id no booted simulator has runs on a physical
-  // iPhone: never read a simulator's copy of the same app instead.
+  // Which simulator runs the app. connector-dart knows the device only by the name
+  // Flutter shows (its id is 'unknown'), so a known UDID wins, then the name. An app
+  // whose device matches no booted simulator runs on a physical iPhone: never read a
+  // simulator's copy of the same app instead (R5).
+  if (booted.length === 0) throw new DbError('unavailable', 'No iOS simulator is booted.');
   const deviceId = app.device?.id;
+  const deviceName = app.device?.name;
+  const knownId = deviceId !== undefined && UDID.test(deviceId) ? deviceId : undefined;
+  const byId = knownId === undefined ? undefined : booted.filter((d) => d.udid === knownId);
+  const byName =
+    deviceName === undefined || deviceName === ''
+      ? undefined
+      : booted.filter((d) => d.name === deviceName);
+  const idSaysDevice =
+    deviceId !== undefined && deviceId !== '' && deviceId !== 'unknown' && knownId === undefined;
+  const candidates = byId !== undefined && byId.length > 0 ? byId : (byName ?? booted);
   if (
-    deviceId !== undefined &&
-    deviceId !== '' &&
-    deviceId !== 'unknown' &&
-    !booted.some((d) => d.udid === deviceId)
+    idSaysDevice ||
+    (byId !== undefined && byId.length === 0 && byName === undefined) ||
+    candidates.length === 0
   ) {
     throw new DbError('unavailable', 'Snapshots work on the iOS simulator only.');
   }
   const withApp: { udid: string; name: string; container: string }[] = [];
-  for (const sim of booted) {
+  for (const sim of candidates) {
     const out = await xcrun
       .exec(['simctl', 'get_app_container', sim.udid, bundleId, 'data'], IOS_TIMEOUTS.container)
       .catch(() => undefined);
@@ -238,16 +250,14 @@ export async function resolveIosSource(
       withApp.push({ udid: sim.udid, name: sim.name, container });
     }
   }
-  const named = withApp.find((s) => s.udid === app.device?.id);
-  const [only] = withApp;
-  const chosen = named ?? (withApp.length === 1 ? only : undefined);
+  const [chosen] = withApp;
+  if (withApp.length > 1) {
+    throw new DbError(
+      'choose-device',
+      'The app is on more than one booted iOS simulator. Shut down the others to take a snapshot.',
+    );
+  }
   if (chosen === undefined) {
-    if (withApp.length > 1) {
-      throw new DbError(
-        'choose-device',
-        'The app is on more than one booted iOS simulator. Shut down the others to take a snapshot.',
-      );
-    }
     throw new DbError('unavailable', "The app isn't installed on a booted iOS simulator.");
   }
   const root = opts.simulatorRoot ?? join(homedir(), 'Library/Developer/CoreSimulator/Devices');
