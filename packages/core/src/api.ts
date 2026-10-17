@@ -189,6 +189,10 @@ export const DbDiffResponse = z.object({
   /** When the snapshot was taken (epoch milliseconds). */
   takenAt: z.number().int().nonnegative(),
   tables: z.array(TableDiffSchema),
+  /** True when the table cap (Claude: 20) left changed tables out. */
+  truncated: z.boolean(),
+  /** How many tables with changes or errors the cap left out. */
+  tablesOmitted: z.number().int().nonnegative(),
 });
 export type DbDiff = z.infer<typeof DbDiffResponse>;
 

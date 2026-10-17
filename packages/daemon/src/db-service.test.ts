@@ -224,7 +224,13 @@ describe('DbService: snapshots and diff (design note D5)', () => {
     await db.insert('app', 'orders', [3, 'Cake', 'pending']);
     tables.app[0]?.rows.splice(1, 1);
     const diff = await service.diff({ db: 'app' }, 'dashboard');
-    expect(diff).toMatchObject({ db: 'app', snapshotId: snap.id, takenAt: snap.takenAt });
+    expect(diff).toMatchObject({
+      db: 'app',
+      snapshotId: snap.id,
+      takenAt: snap.takenAt,
+      truncated: false,
+      tablesOmitted: 0,
+    });
     expect(diff.tables).toEqual([
       {
         table: 'orders',

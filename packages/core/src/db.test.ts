@@ -204,6 +204,8 @@ describe('database API responses', () => {
       db: 'app',
       snapshotId: 'snap-1',
       takenAt: 1,
+      truncated: false,
+      tablesOmitted: 0,
       tables: [
         {
           table: 'orders',

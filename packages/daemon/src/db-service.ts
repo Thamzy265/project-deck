@@ -246,7 +246,7 @@ export class DbService {
     }
     const now = await this.hashes(source, input.db);
     try {
-      const { tables } = await buildDiff(
+      const { tables, truncated, tablesOmitted } = await buildDiff(
         source.inspector,
         input.db,
         snapshot.hashes,
@@ -254,7 +254,14 @@ export class DbService {
         caller === 'claude' ? CLAUDE_DIFF_CAPS : DASHBOARD_DIFF_CAPS,
         caller === 'claude' ? this.hidden() : undefined,
       );
-      return { db: input.db, snapshotId: snapshot.id, takenAt: snapshot.takenAt, tables };
+      return {
+        db: input.db,
+        snapshotId: snapshot.id,
+        takenAt: snapshot.takenAt,
+        tables,
+        truncated,
+        tablesOmitted,
+      };
     } catch (err) {
       throw asDbError(err);
     }

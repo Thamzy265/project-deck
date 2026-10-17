@@ -144,7 +144,7 @@ describe('buildDiff hidden columns (tester probes)', () => {
 });
 
 describe('DbService.diff truncation (tester probes)', () => {
-  it.fails('DB-6: tells Claude when tables were left out by the 20-table cap', async () => {
+  it('DB-6: tells Claude when tables were left out by the 20-table cap', async () => {
     const names = Array.from({ length: 25 }, (_, i) => `t${String(i).padStart(2, '0')}`);
     const empty: RowHashes = {
       takenAt: 1,
