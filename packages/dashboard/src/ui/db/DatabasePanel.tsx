@@ -8,6 +8,7 @@ import { quoteIdent } from '../../db/sql-build.js';
 import { useDbClient } from '../../state/DbProvider.js';
 import { useDeck } from '../../state/DeckProvider.js';
 import { clock } from '../format.js';
+import { Skeleton } from '../Skeleton.js';
 import { Spinner } from '../Spinner.js';
 import { button, field, linkButton } from '../styles.js';
 import { PANE_QUERY, WIDE_QUERY, useMedia } from '../useMedia.js';
@@ -390,7 +391,9 @@ export function DatabasePanel() {
         <p role="status" className="p-2">
           Drawing…
         </p>
-      ) : null;
+      ) : (
+        <Skeleton label="Loading tables" />
+      );
   else if (view === 'diagram') {
     body = <SchemaDiagram tables={tables} onOpen={(n) => openTable(n)} listByDefault={!pane} />;
   } else if (view === 'sql') {

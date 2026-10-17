@@ -178,6 +178,13 @@ describe('Database picker', () => {
 });
 
 describe('Table picker and grid', () => {
+  it('Loading: skeleton rows while the tables load', async () => {
+    const db = fakeDbClient();
+    db.schema.mockReturnValue(never());
+    await open(db);
+    expect(await screen.findByRole('status', { name: 'Loading tables' })).toBeInTheDocument();
+  });
+
   it('Default: tables with row counts; rows in an ARIA grid with a header row', async () => {
     await ordersGrid();
     const picker = screen.getByRole('combobox', { name: 'Table' });
