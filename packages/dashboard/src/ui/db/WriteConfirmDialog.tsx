@@ -133,7 +133,10 @@ export function WriteConfirmDialog({
           Run this change?
         </h2>
         <p className="text-sm">
-          Changes: <VisibleText text={request.tables.join(', ')} />
+          Database: <VisibleText text={request.db} />
+        </p>
+        <p className="text-sm">
+          Table: <VisibleText text={request.tables.join(', ')} />
         </p>
         <pre
           id="write-confirm-sql"

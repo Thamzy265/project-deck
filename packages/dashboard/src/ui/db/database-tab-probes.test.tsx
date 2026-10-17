@@ -216,34 +216,28 @@ describe('untrusted names in announcements and accessible names (abuse cases)', 
 });
 
 describe('write confirm dialog: what runs where', () => {
-  it.fails(
-    'names the database the change runs in, so two databases with one table name differ',
-    async () => {
-      const list: DbList = {
-        databases: [
-          { name: 'app', backend: 'live', source: 'drift' },
-          { name: 'cache', backend: 'live', source: 'drift' },
-        ],
-        sources: [{ id: 'drift', live: true, writable: true }],
-        writesAllowed: true,
-      };
-      const data = fakeDbData({ list });
-      const t = await open(fakeDbClient(data));
-      await t.user.selectOptions(
-        await screen.findByRole('combobox', { name: 'Database' }),
-        'cache',
-      );
-      await t.user.selectOptions(await screen.findByRole('combobox', { name: 'Table' }), 'orders');
-      await screen.findByRole('grid', { name: 'orders rows' });
-      await t.user.click(within(grid()).getByText('Coffee'));
-      const panel = await screen.findByRole('dialog', { name: 'orders: id 1' });
-      await within(panel).findByText('pending');
-      await t.user.click(within(panel).getByRole('button', { name: 'Delete row' }));
-      const dialog = await screen.findByRole('alertdialog', { name: 'Run this change?' });
-      expect(t.db.requestEdit).toHaveBeenLastCalledWith(expect.objectContaining({ db: 'cache' }));
-      expect(dialog).toHaveTextContent('cache');
-    },
-  );
+  it('names the database the change runs in, so two databases with one table name differ', async () => {
+    const list: DbList = {
+      databases: [
+        { name: 'app', backend: 'live', source: 'drift' },
+        { name: 'cache', backend: 'live', source: 'drift' },
+      ],
+      sources: [{ id: 'drift', live: true, writable: true }],
+      writesAllowed: true,
+    };
+    const data = fakeDbData({ list });
+    const t = await open(fakeDbClient(data));
+    await t.user.selectOptions(await screen.findByRole('combobox', { name: 'Database' }), 'cache');
+    await t.user.selectOptions(await screen.findByRole('combobox', { name: 'Table' }), 'orders');
+    await screen.findByRole('grid', { name: 'orders rows' });
+    await t.user.click(within(grid()).getByText('Coffee'));
+    const panel = await screen.findByRole('dialog', { name: 'orders: id 1' });
+    await within(panel).findByText('pending');
+    await t.user.click(within(panel).getByRole('button', { name: 'Delete row' }));
+    const dialog = await screen.findByRole('alertdialog', { name: 'Run this change?' });
+    expect(t.db.requestEdit).toHaveBeenLastCalledWith(expect.objectContaining({ db: 'cache' }));
+    expect(dialog).toHaveTextContent('cache');
+  });
 });
 
 describe('live refresh (states matrix: Success, Offline)', () => {

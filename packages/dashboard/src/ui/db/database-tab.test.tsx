@@ -344,6 +344,8 @@ describe('Editing (writes on)', () => {
     });
     const dialog = await screen.findByRole('alertdialog', { name: 'Run this change?' });
     expect(within(dialog).getByRole('button', { name: 'Cancel' })).toHaveFocus();
+    expect(within(dialog).getByText(/^Database:/)).toHaveTextContent('Database: app');
+    expect(within(dialog).getByText(/^Table:/)).toHaveTextContent('Table: orders');
     expect(
       within(dialog).getByText('UPDATE "orders" SET "status" = ? WHERE "id" IS ?'),
     ).toBeVisible();
