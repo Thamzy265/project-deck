@@ -121,6 +121,24 @@ describe('DbService: listing and reading', () => {
     expect(seen).toHaveBeenCalledWith({ source: 'fake', db: 'app', table: 'orders' });
   });
 
+  it('watches tables only for the dashboard, and stops when its last client goes (R9)', async () => {
+    const db = new FakeDbInspector({ app: [ordersTable()] });
+    const watch = vi.spyOn(db, 'watch');
+    const { service, bus } = await attached(db);
+    const seen = vi.fn();
+    bus.on('db.changed', seen);
+    await service.schema('app', 'claude');
+    expect(watch).not.toHaveBeenCalled();
+    await service.schema('app', 'dashboard');
+    expect(watch).toHaveBeenCalledOnce();
+    service.releaseWatches();
+    await db.insert('app', 'orders', [3, 'Cake', 'pending']);
+    expect(seen).not.toHaveBeenCalled();
+    // A dashboard that comes back watches again.
+    await service.schema('app', 'dashboard');
+    expect(watch).toHaveBeenCalledTimes(2);
+  });
+
   it("leaves the app's CREATE text out for Claude and says the rest is untrusted app text", async () => {
     const { service } = await attached(new FakeDbInspector({ app: [ordersTable()] }));
     const claude = await service.schema('app', 'claude');

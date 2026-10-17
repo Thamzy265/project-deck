@@ -195,6 +195,7 @@ async function startLocked(opts: DaemonOptions): Promise<Daemon> {
       attached: manager.attachedApp() ?? null,
       discovering: manager.discovering(),
     }),
+    onLastClientGone: () => db.releaseWatches(),
   });
 
   try {

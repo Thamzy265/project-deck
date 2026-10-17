@@ -205,8 +205,11 @@ export class DbService {
     } catch (err) {
       throw asDbError(err);
     }
-    this.watchTables(source, db, tables);
-    if (caller === 'dashboard') return { db, tables };
+    if (caller === 'dashboard') {
+      // Only the dashboard re-queries open tables; watches end with its last client (R9).
+      this.watchTables(source, db, tables);
+      return { db, tables };
+    }
     return {
       db,
       tables: tables.map(({ sql: _sql, ...table }) => table),
@@ -442,6 +445,14 @@ export class DbService {
     } catch (err) {
       throw asDbError(err);
     }
+  }
+
+  /** Stops every table watch, e.g. when the last dashboard client has gone (R9). */
+  releaseWatches(): void {
+    const current = this.attached;
+    if (current === undefined) return;
+    for (const off of current.watches.values()) off();
+    current.watches.clear();
   }
 
   cancelEdit(requestId: string): void {
