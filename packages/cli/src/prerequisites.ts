@@ -5,7 +5,7 @@
  */
 import { execFile } from 'node:child_process';
 import { homedir } from 'node:os';
-import { resolveAdbPath } from '@project-deck/logs-android';
+import { resolveAdbPath } from '@project-deck/android-adb';
 
 export type Tool = 'dart' | 'flutter' | 'adb';
 /** Runs one tool and returns stdout and stderr together; rejects when it can't. */

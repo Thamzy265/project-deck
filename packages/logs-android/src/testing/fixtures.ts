@@ -1,7 +1,9 @@
-/** The app process the fixtures were written for. */
-export const FIXTURE_PID = 4242;
-export const FIXTURE_PACKAGE = 'com.example.shop';
-export const FIXTURE_SERIAL = 'emulator-5554';
+export {
+  ADB_DEVICES_FIXTURE,
+  FIXTURE_PACKAGE,
+  FIXTURE_PID,
+  FIXTURE_SERIAL,
+} from '@project-deck/android-adb/testing';
 
 /**
  * `adb logcat -v threadtime --pid=4242` output for a Flutter app on an emulator.
@@ -48,13 +50,4 @@ export const EPOCH_FIXTURE = `--------- beginning of main
          1697050002.870  4242  4300 E OkHttp  : java.net.SocketTimeoutException: timeout
          1697050002.870  4242  4300 E OkHttp  : 	at okhttp3.internal.http2.Http2Stream.takeHeaders(Http2Stream.kt:143)
          1697050003.460  4242  4242 F libc    : Fatal signal 6 (SIGABRT), code -1 (SI_QUEUE) in tid 4242 (example.shop), pid 4242 (example.shop)
-`;
-
-/** `adb devices` with an emulator, a USB phone, one unauthorized and one offline device. */
-export const ADB_DEVICES_FIXTURE = `List of devices attached
-emulator-5554\tdevice
-R58M123ABC\tdevice
-0123456789ABCDEF\tunauthorized
-192.168.1.20:5555\toffline
-
 `;

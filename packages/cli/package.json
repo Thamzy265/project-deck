@@ -22,9 +22,9 @@
     "start": "node dist/main.js"
   },
   "dependencies": {
+    "@project-deck/android-adb": "workspace:*",
     "@project-deck/core": "workspace:*",
     "@project-deck/daemon": "workspace:*",
-    "@project-deck/logs-android": "workspace:*",
     "@project-deck/mcp": "workspace:*",
     "jsonc-parser": "3.3.1",
     "yaml": "2.9.1"

@@ -1,4 +1,4 @@
-import { execFile, spawn } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { posix, win32 } from 'node:path';
@@ -10,14 +10,42 @@ export class AdbMissingError extends Error {
   }
 }
 
-/** A streaming adb command ended on its own with a failure exit. */
+/** An adb command ended with a failure exit. */
 export class AdbExitError extends Error {
   constructor(
     readonly code: number | null,
     readonly signal: string | null,
+    /** The start of what it printed on stderr (device text: never shown as is). */
+    readonly stderr = '',
   ) {
     super(`adb exited with ${code === null ? `signal ${signal ?? '?'}` : `code ${code}`}`);
   }
+}
+
+/** An adb command ran past its timeout and was killed. */
+export class AdbTimeoutError extends Error {
+  constructor(readonly timeoutMs: number) {
+    super(`adb didn't answer in ${timeoutMs} ms`);
+  }
+}
+
+/** An adb command printed more than its cap and was killed. */
+export class AdbOutputTooLargeError extends Error {
+  constructor(readonly maxBytes: number) {
+    super(`adb printed more than ${maxBytes} bytes`);
+  }
+}
+
+export interface AdbExecOptions {
+  /** Kills the command after this long. Defaults to the runner's timeout. */
+  timeoutMs?: number;
+}
+
+export interface AdbBinaryOptions {
+  /** Kills the command after this long. */
+  timeoutMs: number;
+  /** Kills the command once its stdout passes this many bytes. */
+  maxBytes: number;
 }
 
 export interface AdbStream {
@@ -36,8 +64,10 @@ export interface AdbStreamHandlers {
  * no shell; callers validate every value they put in them.
  */
 export interface AdbRunner {
-  /** Runs a short adb command and resolves to its stdout. */
-  exec(args: readonly string[]): Promise<string>;
+  /** Runs a short adb command and resolves to its stdout (at most 1 MB). */
+  exec(args: readonly string[], opts?: AdbExecOptions): Promise<string>;
+  /** Runs an adb command whose stdout is binary, such as `exec-out … cat`. */
+  execBinary(args: readonly string[], opts: AdbBinaryOptions): Promise<Buffer>;
   /** Starts a long-running adb command, such as logcat. */
   stream(args: readonly string[], handlers: AdbStreamHandlers): AdbStream;
 }
@@ -143,8 +173,73 @@ function isNotFound(err: unknown): boolean {
   return err instanceof Error && 'code' in err && err.code === 'ENOENT';
 }
 
+/** Bytes of stderr kept for error detection (run-as messages are one short line). */
+const MAX_STDERR = 4096;
+
 /**
- * Runs the real adb binary at `path` with execFile/spawn, never a shell, from the home
+ * Runs adb once and collects its stdout, never through a shell. The process is killed
+ * when it passes `timeoutMs` or prints more than `maxBytes`, so a device that stops
+ * answering or a huge file can't hang or exhaust the daemon.
+ */
+function collect(
+  path: string,
+  args: readonly string[],
+  timeoutMs: number,
+  maxBytes: number,
+): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    let stderr = '';
+    let failure: Error | undefined;
+    let settled = false;
+    const child = spawn(path, args, {
+      shell: false,
+      windowsHide: true,
+      cwd: homedir(),
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    const stop = (err: Error): void => {
+      failure ??= err;
+      child.kill();
+    };
+    const timer = setTimeout(() => stop(new AdbTimeoutError(timeoutMs)), timeoutMs);
+    const finish = (err: Error | undefined): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (err === undefined) resolve(Buffer.concat(chunks, size));
+      else reject(err);
+    };
+    child.on('error', (err) => {
+      clearTimeout(timer);
+      finish(isNotFound(err) ? new AdbMissingError(path) : (failure ?? err));
+    });
+    child.stdout.on('data', (chunk: Buffer) => {
+      if (failure !== undefined) return;
+      size += chunk.length;
+      if (size > maxBytes) {
+        stop(new AdbOutputTooLargeError(maxBytes));
+        return;
+      }
+      chunks.push(chunk);
+    });
+    child.stderr.setEncoding('utf8');
+    child.stderr.on('data', (text: string) => {
+      if (stderr.length < MAX_STDERR) stderr = (stderr + text).slice(0, MAX_STDERR);
+    });
+    child.stdout.on('error', (err) => stop(err));
+    child.stderr.on('error', (err) => stop(err));
+    child.on('close', (code, signal) => {
+      if (failure !== undefined) finish(failure);
+      else if (code === 0) finish(undefined);
+      else finish(new AdbExitError(code, signal, stderr));
+    });
+  });
+}
+
+/**
+ * Runs the real adb binary at `path` with spawn, never a shell, from the home
  * directory. `null` means adb wasn't found: every call then fails with AdbMissingError.
  */
 export function nodeAdb(
@@ -153,28 +248,13 @@ export function nodeAdb(
 ): AdbRunner {
   if (path === null) return missingAdb();
   return {
-    exec(args) {
-      return new Promise((resolve, reject) => {
-        const child = execFile(
-          path,
-          args,
-          {
-            shell: false,
-            windowsHide: true,
-            cwd: homedir(),
-            encoding: 'utf8',
-            timeout: opts.timeoutMs ?? DEFAULT_TIMEOUT_MS,
-            maxBuffer: MAX_EXEC_OUTPUT,
-          },
-          (err, stdout) => {
-            if (err === null) resolve(stdout);
-            else if (isNotFound(err)) reject(new AdbMissingError(path));
-            else reject(err instanceof Error ? err : new Error(err.message));
-          },
-        );
-        // execFile's callback already reports spawn errors; this keeps an emitter error from ever being unhandled.
-        child.on('error', () => undefined);
-      });
+    async exec(args, execOpts = {}) {
+      const timeoutMs = execOpts.timeoutMs ?? opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+      return (await collect(path, args, timeoutMs, MAX_EXEC_OUTPUT)).toString('utf8');
+    },
+
+    execBinary(args, binaryOpts) {
+      return collect(path, args, binaryOpts.timeoutMs, binaryOpts.maxBytes);
     },
 
     stream(args, handlers) {
@@ -213,6 +293,7 @@ export function nodeAdb(
 function missingAdb(): AdbRunner {
   return {
     exec: () => Promise.reject(new AdbMissingError('adb')),
+    execBinary: () => Promise.reject(new AdbMissingError('adb')),
     stream(_args, handlers) {
       // Asynchronous like a failed spawn, so callers can finish setting up first.
       setImmediate(() => handlers.onExit(new AdbMissingError('adb')));

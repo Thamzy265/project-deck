@@ -1,11 +1,11 @@
 import type { LogEntry, RunningApp } from '@project-deck/core';
 import { Registry } from '@project-deck/core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { AdbStreamHandlers } from './adb.js';
-import { AdbExitError, AdbMissingError } from './adb.js';
+import type { AdbStreamHandlers } from '@project-deck/android-adb';
+import { AdbExitError, AdbMissingError } from '@project-deck/android-adb';
 import type { AndroidLogFeedOptions } from './feed.js';
 import { AndroidLogFeed } from './feed.js';
-import { FakeAdb, FakeAdbStream } from './testing/fake-adb.js';
+import { FakeAdb, FakeAdbStream } from './testing/index.js';
 import {
   FIXTURE_PACKAGE,
   FIXTURE_PID,

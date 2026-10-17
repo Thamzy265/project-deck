@@ -1,14 +1,12 @@
 import type { LogEntry, LogFeedFactory, RunningApp } from '@project-deck/core';
-import type { AdbRunner } from './adb.js';
+import type { AdbRunner, AppDevice } from '@project-deck/android-adb';
 import {
   AdbExitError,
   AdbMissingError,
-  isPackageName,
+  findDeviceForPid,
   isPid,
   nodeAdb,
-  parseDevices,
-  parsePsName,
-} from './adb.js';
+} from '@project-deck/android-adb';
 import { ThreadtimeParser } from './threadtime.js';
 
 export interface AndroidLogFeedOptions {
@@ -38,15 +36,6 @@ const DEFAULT_DRAIN_QUIET_MS = 200;
 const DEFAULT_DRAIN_MAX_MS = 1000;
 /** `logcat --pid` and `-v epoch` exist from Android 7.0 (API 24). */
 const PID_FILTER_MIN_SDK = 24;
-/** Before Android 8.0 (API 26), `ps` is toolbox, which has no `-o` or `-p <pid>`. */
-const TOYBOX_PS_MIN_SDK = 26;
-
-interface Device {
-  serial: string;
-  sdk: number | undefined;
-  /** Process name at the pid, or '' when ps couldn't say. */
-  process: string;
-}
 export const DEFAULT_DROP_TAGS: readonly string[] = ['flutter'];
 
 function exitDetail(err: Error | undefined): string {
@@ -178,18 +167,10 @@ export class AndroidLogFeed implements LogFeedFactory {
     };
   }
 
-  /**
-   * The online device running `pid`, with its API level. Pids are only unique per
-   * device, so ask each one what runs at that pid. Only a process whose name is an
-   * Android package counts (a system process such as `system_server` rules the device
-   * out), preferring the app's own package name. The connector rarely knows that name,
-   * so with several devices the first package wins: a guess, but a wrong one only shows
-   * another app's logs, and the common case is one emulator.
-   */
-  private async findDevice(pid: number, appName: string): Promise<Device | undefined> {
-    let serials: string[];
+  /** The device running `pid`, or undefined (reported once when adb is missing). */
+  private async findDevice(pid: number, appName: string): Promise<AppDevice | undefined> {
     try {
-      serials = parseDevices(await this.adb.exec(['devices']));
+      return await findDeviceForPid(this.adb, pid, appName);
     } catch (err) {
       if (err instanceof AdbMissingError) {
         if (!this.warnedMissing) {
@@ -199,42 +180,6 @@ export class AndroidLogFeed implements LogFeedFactory {
       } else {
         this.report('Could not list Android devices', err);
       }
-      return undefined;
-    }
-    const devices = await Promise.all(serials.map((serial) => this.probe(serial, pid)));
-    const exact = isPackageName(appName) ? devices.find((d) => d.process === appName) : undefined;
-    const only = devices.length === 1 ? devices[0] : undefined;
-    return (
-      exact ??
-      devices.find((d) => isPackageName(d.process)) ??
-      // ps gave no usable name at all (unsupported); with one device it must be that one.
-      (only?.process === '' ? only : undefined)
-    );
-  }
-
-  /** What runs at `pid` on the device ('' when unknown) and the device's API level. */
-  private async probe(serial: string, pid: number): Promise<Device> {
-    const sdk = await this.sdkLevel(serial);
-    // Toybox ps (API 26+) filters by pid; old toolbox ps takes the pid as an argument.
-    const ps =
-      sdk !== undefined && sdk < TOYBOX_PS_MIN_SDK
-        ? ['ps', String(pid)]
-        : ['ps', '-o', 'NAME=', '-p', String(pid)];
-    const process = await this.adb
-      .exec(['-s', serial, 'shell', ...ps])
-      .then((out) => parsePsName(out, pid))
-      .catch(() => '');
-    return { serial, sdk, process };
-  }
-
-  /** The device's API level, or undefined when it can't be read. */
-  private async sdkLevel(serial: string): Promise<number | undefined> {
-    try {
-      const out = (
-        await this.adb.exec(['-s', serial, 'shell', 'getprop', 'ro.build.version.sdk'])
-      ).trim();
-      return /^\d{1,3}$/.test(out) ? Number(out) : undefined;
-    } catch {
       return undefined;
     }
   }

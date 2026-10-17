@@ -27,7 +27,7 @@ vi.mock('node:child_process', () => ({
   },
 }));
 
-vi.mock('@project-deck/logs-android', () => ({
+vi.mock('@project-deck/android-adb', () => ({
   resolveAdbPath: () => '/sdk/platform-tools/adb',
 }));
 
