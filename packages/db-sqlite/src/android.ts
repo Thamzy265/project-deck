@@ -257,13 +257,22 @@ export async function resolveAndroidSource(
         return new AndroidSource(adb, only.serial, configuredId);
       }
       if (wanted.size === 0 && running.length === 0) throw missingId();
-      // The process at the pid is the app's real id (flavors included), else config's.
+      // On the picked device the process at the pid must be this app: one of its ids or
+      // a flavor of one (`<id>.<suffix>`). Pids repeat across devices, so it may be
+      // another debuggable app, whose database must never be copied (review R2).
       const device = devices.find((d) => d.serial === chosen);
       if (device !== undefined && devices.length > 1) {
-        if (isPackageName(device.process)) {
-          return new AndroidSource(adb, device.serial, device.process);
+        if (device.process === '' && configuredId !== undefined) {
+          return new AndroidSource(adb, device.serial, configuredId);
         }
-        if (configuredId !== undefined) return new AndroidSource(adb, device.serial, configuredId);
+        const id = appIdOf(device.process, wanted);
+        if (id === undefined) {
+          throw new DbError(
+            'unavailable',
+            `The app running on ${device.serial} isn't this app, so FlutterDeck won't copy its database. Set android.applicationId in .flutterdeck/config.json if this is a flavor of it.`,
+          );
+        }
+        return new AndroidSource(adb, device.serial, id);
       }
       if (devices.length > 1) throw chooseDevice(devices.map((d) => d.serial));
       if (devices.length === 1) {
@@ -287,6 +296,17 @@ export async function resolveAndroidSource(
   } catch (err) {
     throw adbError(err);
   }
+}
+
+/**
+ * The package of `process` (without a `:remote`-style process suffix) when it is one of
+ * the `wanted` ids or a flavor of one; undefined otherwise.
+ */
+function appIdOf(process: string, wanted: ReadonlySet<string>): string | undefined {
+  const pkg = process.split(':')[0] ?? '';
+  if (!isPackageName(pkg)) return undefined;
+  for (const id of wanted) if (pkg === id || pkg.startsWith(`${id}.`)) return pkg;
+  return undefined;
 }
 
 function missingId(): DbError {
