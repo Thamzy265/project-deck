@@ -13,21 +13,22 @@ FlutterDeck (working name) is an open-source dashboard and Claude Code plugin fo
 
 TypeScript (strict) pnpm monorepo, Node 22.12+, plus Dart code: one Dart package (M3) and an example Flutter app.
 
-| Path                                      | Purpose                                                                                                       | Status |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------- | ------ |
-| `packages/core`                           | Interfaces, zod schemas, registry, event bus, `RingBufferLogSource`; fakes under `@project-deck/core/testing` | M1     |
-| `packages/daemon`                         | DTD client, app sessions, HTTP + WS API on 127.0.0.1:9147 (or next free), serves dashboard, notifications     | M1     |
-| `packages/connector-dart`                 | `AppConnector` over DTD + VM service                                                                          | M1     |
-| `packages/logs-android`                   | `adb logcat` by PID                                                                                           | M1     |
-| `packages/mcp`                            | stdio MCP server, thin client of the daemon                                                                   | M2     |
-| `packages/dashboard`                      | Vite + React + Tailwind UI, works at 420 px wide                                                              | M2     |
-| `packages/cli`                            | `init`, `start`, `stop`, `doctor`, `mcp`                                                                      | M2     |
-| `packages/sql-guard`                      | Read-only SQL gate: sqlite-wasm in a worker, authorizer + bytecode checks (ADR 0005)                          | M3     |
-| `packages/db-drift`, `packages/db-sqlite` | `DbInspector` backends (live / `sql.js` snapshot)                                                             | M3     |
-| `packages/tasks-linear`                   | `TaskProvider` for Linear GraphQL                                                                             | M4     |
-| `dart/flutterdeck_drift`                  | Debug-only in-app helper exposing Drift via VM service extensions                                             | M3     |
-| `examples/sample_app`                     | Sample Flutter app for PM checks (breakpoint, reload, logs); Drift in M3, demo in M5                          | M1     |
-| `plugin/`                                 | Claude Code plugin: `.mcp.json`, commands, hooks                                                              | M2–M5  |
+| Path                                      | Purpose                                                                                                              | Status |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ------ |
+| `packages/core`                           | Interfaces, zod schemas, registry, event bus, `RingBufferLogSource`; fakes under `@project-deck/core/testing`        | M1     |
+| `packages/daemon`                         | DTD client, app sessions, HTTP + WS API on 127.0.0.1:9147 (or next free), serves dashboard, notifications            | M1     |
+| `packages/connector-dart`                 | `AppConnector` over DTD + VM service                                                                                 | M1     |
+| `packages/logs-android`                   | `adb logcat` by PID                                                                                                  | M1     |
+| `packages/android-adb`                    | Finds adb and runs fixed, validated adb commands (no shell), with timeouts and byte caps; used by logs and snapshots | M3     |
+| `packages/mcp`                            | stdio MCP server, thin client of the daemon                                                                          | M2     |
+| `packages/dashboard`                      | Vite + React + Tailwind UI, works at 420 px wide                                                                     | M2     |
+| `packages/cli`                            | `init`, `start`, `stop`, `doctor`, `mcp`                                                                             | M2     |
+| `packages/sql-guard`                      | Read-only SQL gate: sqlite-wasm in a worker, authorizer + bytecode checks (ADR 0005)                                 | M3     |
+| `packages/db-drift`, `packages/db-sqlite` | `DbInspector` backends (live over app extensions / snapshot read with sqlite-wasm in a worker)                       | M3     |
+| `packages/tasks-linear`                   | `TaskProvider` for Linear GraphQL                                                                                    | M4     |
+| `dart/flutterdeck_drift`                  | Debug-only in-app helper exposing Drift via VM service extensions                                                    | M3     |
+| `examples/sample_app`                     | Sample Flutter app for PM checks (breakpoint, reload, logs); Drift in M3, demo in M5                                 | M1     |
+| `plugin/`                                 | Claude Code plugin: `.mcp.json`, commands, hooks                                                                     | M2–M5  |
 
 Packages are created when their milestone starts, not before.
 
@@ -194,7 +195,7 @@ Follows [GitHub flow](https://docs.github.com/en/get-started/using-github/github
 - Commits are atomic: one logical change each, and the repo builds and passes tests after every commit.
 - Message format: `<type>(<scope>): <imperative summary>`, at most about 72 characters, lower case, no trailing period. Add a body explaining why when it isn't obvious.
   - Types: `feat`, `fix`, `docs`, `test`, `refactor`, `perf`, `build`, `ci`, `chore`, `revert`.
-  - Scope is the package or area: `core`, `daemon`, `connector-dart`, `mcp`, `dashboard`, `cli`, `sql-guard`, `flutterdeck-drift`, `sample-app`, `plugin`, `scripts`, `deps`.
+  - Scope is the package or area: `core`, `daemon`, `connector-dart`, `mcp`, `dashboard`, `cli`, `sql-guard`, `android-adb`, `db-drift`, `db-sqlite`, `flutterdeck-drift`, `sample-app`, `plugin`, `scripts`, `deps`.
   - Breaking changes to a frozen interface use `!` (e.g. `feat(core)!: ...`) plus a `BREAKING CHANGE:` footer.
 - A branch merges into `main` through a pull request. The review gate runs before the PR is opened.
 - **PR descriptions** are written in [ASD-STE100](https://www.asd-ste100.org/) Simplified Technical English:
@@ -207,4 +208,4 @@ Follows [GitHub flow](https://docs.github.com/en/get-started/using-github/github
 
 - **M1 done** (14 Oct 2026): scaffold, `core`, daemon, `connector-dart`, `logs-android`, `.mcp.json` example, sample app, acceptance check.
 - **M2 done** (16 Oct 2026): dashboard, MCP server with masking, CLI (`init`, `start`, `stop`, `open`, `mcp`), plugin with hooks and notifications; PM acceptance check passed.
-- **M3 in progress** (Drift inspector). Plan of record: `docs/design/m3-drift-inspector.md`, `docs/ui/m3-database-tab.md`, ADRs 0004–0005. Batch 1 `feat/db-core` merged (PR #33). Batch 2 `feat/flutterdeck-drift` (in-app Drift helper, sample orders table) in review/merge; PM IDE check pending. Next: batch 3 db backends (`db-drift`, `db-sqlite`, Android/iOS snapshots).
+- **M3 in progress** (Drift inspector). Plan of record: `docs/design/m3-drift-inspector.md`, `docs/ui/m3-database-tab.md`, ADRs 0004–0005. Merged: batch 1 `feat/db-core` (PR #33), batch 2 `feat/flutterdeck-drift` (PR #34). Batch 3 `feat/db-backends` (db-drift, db-sqlite, android-adb, `/api/db` routes) in merge. Next: batch 4 Database tab. PM IDE check for batch 2 pending.

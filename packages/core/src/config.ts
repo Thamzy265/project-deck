@@ -96,6 +96,32 @@ const LogsConfigSchema = z.strictObject({
   rules: z.array(RedactRule).max(MAX_REDACT_RULES).default([]),
 });
 
+export const MAX_HIDDEN_COLUMNS = 200;
+
+/** `table.column`, split at the first dot. Neither side may be empty. */
+const HiddenColumnRef = z
+  .string()
+  .max(257)
+  .regex(/^[^.\s][^.]{0,127}\.[^\s].{0,127}$/, 'Use table.column, for example users.email');
+
+/** A hidden column as the SQL gate takes it. */
+export function parseHiddenColumn(ref: string): { table: string; column: string } {
+  const dot = ref.indexOf('.');
+  return { table: ref.slice(0, dot), column: ref.slice(dot + 1) };
+}
+
+const DbConfigSchema = z.strictObject({
+  /** The user's own edits in the Database tab; Claude never writes (PM, 16 Oct 2026). */
+  allowWrites: z.boolean().default(false),
+  /** Columns Claude never sees (design D2): refused in queries, dropped from diffs. */
+  hiddenColumns: z.array(HiddenColumnRef).max(MAX_HIDDEN_COLUMNS).default([]),
+});
+
+/** Android's application id: the snapshot backend passes it to `adb run-as`. */
+export const ANDROID_APPLICATION_ID = /^[a-zA-Z][\w]*(\.[a-zA-Z][\w]*)+$/;
+/** iOS bundle id: the snapshot backend passes it to `xcrun simctl get_app_container`. */
+export const IOS_BUNDLE_ID = /^[A-Za-z0-9][A-Za-z0-9.-]*$/;
+
 export const DeckConfigSchema = z.strictObject({
   version: z.literal(CONFIG_VERSION),
   /**
@@ -105,6 +131,12 @@ export const DeckConfigSchema = z.strictObject({
   port: z.number().int().min(1024).max(65535).optional(),
   notifications: NotificationsSchema.default(() => NotificationsSchema.parse({})),
   logs: LogsConfigSchema.default(() => LogsConfigSchema.parse({})),
+  db: DbConfigSchema.default(() => DbConfigSchema.parse({})),
+  /** Read for database snapshots when the running app doesn't say. */
+  android: z
+    .strictObject({ applicationId: z.string().max(255).regex(ANDROID_APPLICATION_ID) })
+    .optional(),
+  ios: z.strictObject({ bundleId: z.string().max(155).regex(IOS_BUNDLE_ID) }).optional(),
 });
 export type DeckConfig = z.infer<typeof DeckConfigSchema>;
 

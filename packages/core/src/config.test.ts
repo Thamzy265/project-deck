@@ -8,6 +8,7 @@ describe('DeckConfigSchema', () => {
       version: CONFIG_VERSION,
       notifications: { appCrashed: true, reloadFailed: true, claudeWaiting: true },
       logs: { redact: true, rules: [] },
+      db: { allowWrites: false, hiddenColumns: [] },
     });
   });
 
@@ -17,6 +18,7 @@ describe('DeckConfigSchema', () => {
       port: 9148,
       notifications: { appCrashed: false, reloadFailed: true, claudeWaiting: false },
       logs: { redact: false, rules: ['user-\\d+'] },
+      db: { allowWrites: false, hiddenColumns: ['users.email'] },
     };
     expect(DeckConfigSchema.parse(full)).toEqual(full);
   });

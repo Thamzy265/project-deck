@@ -1,0 +1,31 @@
+{
+  "name": "@project-deck/db-sqlite",
+  "version": "0.0.0",
+  "description": "project-deck SQLite snapshot inspector: copies the app's database off an Android device or the iOS simulator and reads it read-only with sqlite-wasm.",
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing/index.d.ts",
+      "default": "./dist/testing/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src/testing/fixtures"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@project-deck/android-adb": "workspace:*",
+    "@project-deck/core": "workspace:*",
+    "@sqlite.org/sqlite-wasm": "3.53.4-build2",
+    "zod": "^4.6.5"
+  }
+}

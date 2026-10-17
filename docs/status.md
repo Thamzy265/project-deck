@@ -2,6 +2,16 @@
 
 Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
 
+## 2026-10-17 — M3 batch 3 — db backends ready to merge
+
+- Merged (lead, 2026-10-17): PR #34 `feat/flutterdeck-drift` (batch 2) after reviewer approval, CI green and QA pass. Deleted after merge (standing approval): worktree `agent-a7e012d8569777d5f`, local branches `feat/flutterdeck-drift` and `worktree-agent-a7e012d8569777d5f`, remote branch `feat/flutterdeck-drift`. QA artifacts copied to the main checkout first.
+- Deleted by the batch 3 developer (own items, standing approval): temporary branch `db-backends-before-rebuild-tmp`, and throwaway scratchpad worktrees wt-b00, wt-fb5, wt-5f1, wt-4a0, wt-e89, wt-d9d, wt-9e1, wt-e82, wt-a63 and one detached at a72c92a.
+- Changed: `feat/db-backends` adds `packages/android-adb`, `packages/db-drift` (live), `packages/db-sqlite` (Android and iOS simulator snapshots, read with sqlite-wasm), daemon `DbService` and `/api/db/*` routes, two-step dashboard edits and a fake mode. Tester DB-1..DB-10 fixed. Reviewer: two rounds plus a final check; R1–R12 and L1–L3 fixed. QA PASS on the Android emulator and iOS simulator (46/47; daemon-level not-debuggable path not run), Q1–Q2 fixed. Evidence in [qa/M3.md](qa/M3.md).
+- Risk accepted by PM (2026-10-17): accepted: Claude driving the Browser pane uses the dashboard login, so it can read hidden columns from the Database tab page text; hidden columns protect Claude's FlutterDeck tools (db_query, db_diff), not the page — scope: M3 hidden columns (review N1) — expiry/review: before the M5 release — PM said: "Accept, review at M5 (Recommended)", whose description read "Record as a known limit next to the 'Claude could click an edit button' risk you accepted: hidden columns keep values out of Claude's tools (db_query, db_diff); if Claude reads the dashboard page it sees what you see. Reviewed before M5."
+- Plan tasks (lead, 2026-10-17): device picker for `choose-device`, and Activity entries for snapshot, diff and edits → batch 4 (Database tab), owner developer. `flutterdeck init` writing `android.applicationId` / `ios.bundleId` → batch 5 (MCP and CLI), owner developer. Edit `execute` can wait up to 5 s behind a long read → batch 4 shows a busy state.
+- Host note: QA's test app `dev.flutterdeck.qaDriftSample` stays installed on the iPhone 17 simulator (uninstalling needs the PM).
+- Blockers: Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead none · PM: IDE check from batch 2 (not blocking).
+
 ## 2026-10-17 — M3 batch 2 — flutterdeck_drift ready to merge
 
 - Merged (lead, 2026-10-16): PR #33 `feat/db-core` (batch 1) after reviewer approval, CI green (one rerun of the flaky plugin timing test T-P5-2, unrelated) and QA pass. Deleted after merge (standing approval): worktree `agent-a8a1f41ffe996a004`, local branches `feat/db-core` and `worktree-agent-a8a1f41ffe996a004`, remote branch `feat/db-core`. The developer of batch 2 deleted the `refs/original/` backup ref made by its subject-only reword (tree unchanged).

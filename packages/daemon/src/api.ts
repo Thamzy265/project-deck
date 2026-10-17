@@ -15,7 +15,9 @@ import {
 import type { Context, MiddlewareHandler } from 'hono';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
-import type { z } from 'zod';
+import { dbErrorResponse, registerDbRoutes } from './db-routes.js';
+import type { DbService } from './db-service.js';
+import { BadRequest, jsonBody, parse } from './http-input.js';
 import type { ActivityFeed } from './activity.js';
 import type { DashboardAsset, DashboardAssets } from './dashboard-assets.js';
 import type { AppManager } from './app-manager.js';
@@ -57,6 +59,8 @@ export interface ApiContext {
   shutdown: () => void;
   /** Runs `regex` log filters off the main thread; one is made if not given. */
   regexFilter?: RegexFilter | undefined;
+  /** The database layer; without it the `/api/db` routes don't exist. */
+  db?: DbService | undefined;
 }
 
 /**
@@ -64,29 +68,6 @@ export interface ApiContext {
  * waiting message at most), so anything bigger is refused before it is read as JSON.
  */
 export const EVENTS_BODY_LIMIT = 16 * 1024;
-
-class BadRequest extends Error {
-  constructor(
-    message: string,
-    readonly issues?: unknown,
-  ) {
-    super(message);
-  }
-}
-
-function parse<S extends z.ZodType>(schema: S, data: unknown): z.infer<S> {
-  const result = schema.safeParse(data);
-  if (!result.success) throw new BadRequest('Invalid request', result.error.issues);
-  return result.data;
-}
-
-async function jsonBody(req: { json: () => Promise<unknown> }): Promise<unknown> {
-  try {
-    return await req.json();
-  } catch {
-    throw new BadRequest('Body must be JSON');
-  }
-}
 
 const NUMERIC_LOG_PARAMS = new Set(['since', 'limit']);
 
@@ -297,10 +278,19 @@ export function createApi(ctx: ApiContext): Hono<DeckEnv> {
     return c.json({ ok: true });
   });
 
+  if (ctx.db !== undefined) {
+    registerDbRoutes(api, {
+      db: ctx.db,
+      credentials: () => ({ token: ctx.token, sessionSecret: ctx.sessionSecret, port: ctx.port() }),
+    });
+  }
+
   api.notFound((c) => c.json({ error: 'Not found' }, 404));
 
   api.onError((err, c) => {
     if (err instanceof BadRequest) return c.json({ error: err.message, issues: err.issues }, 400);
+    const dbError = dbErrorResponse(c, err);
+    if (dbError !== undefined) return dbError;
     if (err instanceof UnknownAppError) return c.json({ error: err.message }, 404);
     return c.json({ error: err instanceof Error ? err.message : 'Internal error' }, 500);
   });

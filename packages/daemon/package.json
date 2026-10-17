@@ -24,7 +24,10 @@
     "@project-deck/connector-dart": "workspace:*",
     "@project-deck/core": "workspace:*",
     "@project-deck/dashboard": "workspace:*",
+    "@project-deck/db-drift": "workspace:*",
+    "@project-deck/db-sqlite": "workspace:*",
     "@project-deck/logs-android": "workspace:*",
+    "@project-deck/sql-guard": "workspace:*",
     "hono": "^4.13.13",
     "ws": "^8.22.0",
     "zod": "^4.6.5"

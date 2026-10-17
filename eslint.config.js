@@ -33,7 +33,7 @@ export default tseslint.config(
         projectService: {
           allowDefaultProject: ['*.js', '*.ts', 'packages/*/*.ts'],
           // Each package's vitest.config.ts, plus the dashboard's Vite and Playwright configs.
-          maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 16,
+          maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 20,
         },
         tsconfigRootDir: import.meta.dirname,
       },

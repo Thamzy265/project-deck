@@ -30,17 +30,19 @@ importers:
         specifier: ^5.0.3
         version: 5.0.3(@types/node@22.20.5)(jsdom@28.1.0)(vite@8.3.4(@types/node@22.20.5)(jiti@2.7.0)(yaml@2.9.1))
 
+  packages/android-adb: {}
+
   packages/cli:
     dependencies:
+      '@project-deck/android-adb':
+        specifier: workspace:*
+        version: link:../android-adb
       '@project-deck/core':
         specifier: workspace:*
         version: link:../core
       '@project-deck/daemon':
         specifier: workspace:*
         version: link:../daemon
-      '@project-deck/logs-android':
-        specifier: workspace:*
-        version: link:../logs-android
       '@project-deck/mcp':
         specifier: workspace:*
         version: link:../mcp
@@ -91,9 +93,18 @@ importers:
       '@project-deck/dashboard':
         specifier: workspace:*
         version: link:../dashboard
+      '@project-deck/db-drift':
+        specifier: workspace:*
+        version: link:../db-drift
+      '@project-deck/db-sqlite':
+        specifier: workspace:*
+        version: link:../db-sqlite
       '@project-deck/logs-android':
         specifier: workspace:*
         version: link:../logs-android
+      '@project-deck/sql-guard':
+        specifier: workspace:*
+        version: link:../sql-guard
       hono:
         specifier: ^4.13.13
         version: 4.13.13
@@ -166,8 +177,35 @@ importers:
         specifier: 8.3.4
         version: 8.3.4(@types/node@22.20.5)(jiti@2.7.0)(yaml@2.9.1)
 
+  packages/db-drift:
+    dependencies:
+      '@project-deck/core':
+        specifier: workspace:*
+        version: link:../core
+      zod:
+        specifier: ^4.6.5
+        version: 4.6.5
+
+  packages/db-sqlite:
+    dependencies:
+      '@project-deck/android-adb':
+        specifier: workspace:*
+        version: link:../android-adb
+      '@project-deck/core':
+        specifier: workspace:*
+        version: link:../core
+      '@sqlite.org/sqlite-wasm':
+        specifier: 3.53.4-build2
+        version: 3.53.4-build2
+      zod:
+        specifier: ^4.6.5
+        version: 4.6.5
+
   packages/logs-android:
     dependencies:
+      '@project-deck/android-adb':
+        specifier: workspace:*
+        version: link:../android-adb
       '@project-deck/core':
         specifier: workspace:*
         version: link:../core

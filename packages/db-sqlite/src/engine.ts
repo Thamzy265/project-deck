@@ -1,0 +1,232 @@
+import { Worker } from 'node:worker_threads';
+import type { KeyedRows, QueryResult, RowHashes, RowKey, TableInfo } from '@project-deck/core';
+import {
+  DbError,
+  DbErrorCodeSchema,
+  KeyedRowsSchema,
+  QueryResultSchema,
+  RowHashesSchema,
+  TableInfoSchema,
+} from '@project-deck/core';
+import { z } from 'zod';
+
+export interface SnapshotEngineOptions {
+  /** One call, once the copy is open (design: the same 5 s limit as the app). */
+  budgetMs?: number;
+  /**
+   * Diff hashes read every row of every table (up to the caps), so they get their own,
+   * longer budget (L3: 20 s). They are stopped the same way when they pass it.
+   */
+  hashBudgetMs?: number;
+  /** Starting the worker and opening a copy (up to 50 MB). */
+  openMs?: number;
+  /** Test seam: the worker script. Defaults to the built worker next to this file. */
+  workerUrl?: URL;
+}
+
+const Reply = z.union([
+  z.object({ ready: z.literal(true) }),
+  z.object({ id: z.number(), ok: z.literal(true), value: z.unknown() }),
+  z.object({ id: z.number(), ok: z.literal(false), code: DbErrorCodeSchema, message: z.string() }),
+]);
+const SchemaValue = z.object({ tables: z.array(TableInfoSchema), sqlSchema: z.array(z.string()) });
+
+const TOO_LONG = 'That query took too long and was stopped.';
+
+/**
+ * Reads one snapshot copy in a worker thread with a time budget per call. When a call
+ * passes its budget the worker is terminated (a wasm step can't be interrupted from
+ * outside) and the next call starts a fresh worker and opens the same copy again.
+ * The copy lives in memory only and is dropped by close() (design note, Privacy).
+ */
+export class SnapshotEngine {
+  private readonly budgetMs: number;
+  private readonly hashBudgetMs: number;
+  private readonly openMs: number;
+  private readonly workerUrl: URL;
+  private bytes: Uint8Array | undefined;
+  private worker: Worker | undefined;
+  /** Workers that ran out of memory, so their exit answers too-large. */
+  private readonly outOfMemory = new WeakSet<Worker>();
+  /** A worker still starting or opening the copy; close() stops it too. */
+  private starting: Worker | undefined;
+  private queue: Promise<unknown> = Promise.resolve();
+  private nextId = 0;
+  private closed = false;
+
+  constructor(opts: SnapshotEngineOptions = {}) {
+    this.budgetMs = opts.budgetMs ?? 5000;
+    this.hashBudgetMs = opts.hashBudgetMs ?? 20_000;
+    this.openMs = opts.openMs ?? 10_000;
+    this.workerUrl = opts.workerUrl ?? new URL('./worker.js', import.meta.url);
+  }
+
+  /** Replaces the copy this engine reads. */
+  load(bytes: Uint8Array): void {
+    this.bytes = bytes;
+    this.drop();
+  }
+
+  async schema(): Promise<{ tables: TableInfo[]; sqlSchema: string[] }> {
+    return SchemaValue.parse(await this.call({ op: 'schema' }));
+  }
+
+  /** Only the CREATE statements: cheap, for the read-only gate (no row counts). */
+  async sqlSchema(): Promise<string[]> {
+    return SchemaValue.shape.sqlSchema.parse(await this.call({ op: 'sqlSchema' }));
+  }
+
+  async query(sql: string, params: unknown[], limit: number): Promise<QueryResult> {
+    return QueryResultSchema.parse(await this.call({ op: 'query', sql, params, limit }));
+  }
+
+  async hashes(): Promise<RowHashes> {
+    return RowHashesSchema.parse(
+      await this.call(
+        { op: 'hashes' },
+        this.hashBudgetMs,
+        'Taking the diff snapshot took too long.',
+      ),
+    );
+  }
+
+  async rowsByKey(table: string, keys: RowKey[]): Promise<KeyedRows> {
+    return KeyedRowsSchema.parse(await this.call({ op: 'rows', table, keys }));
+  }
+
+  /** Stops the worker and forgets the copy. Later calls refuse. */
+  close(): Promise<void> {
+    this.closed = true;
+    this.bytes = undefined;
+    this.drop();
+    return Promise.resolve();
+  }
+
+  private drop(): void {
+    for (const w of [this.worker, this.starting]) {
+      if (w !== undefined) void w.terminate().catch(() => undefined);
+    }
+    this.worker = undefined;
+    this.starting = undefined;
+  }
+
+  /** After every await: a close in the meantime stops `w`, so no copy outlives close(). */
+  private stillOpen(w: Worker): void {
+    if (!this.closed) return;
+    void w.terminate().catch(() => undefined);
+    throw new DbError('internal', 'The snapshot copy was closed.');
+  }
+
+  /** Calls run one at a time, so a timeout always belongs to the call that caused it. */
+  private call(
+    message: Record<string, unknown>,
+    budgetMs: number = this.budgetMs,
+    overBudget: string = TOO_LONG,
+  ): Promise<unknown> {
+    const run = this.queue.then(() => this.callNow(message, budgetMs, overBudget));
+    this.queue = run.catch(() => undefined);
+    return run;
+  }
+
+  private async callNow(
+    message: Record<string, unknown>,
+    budgetMs: number = this.budgetMs,
+    overBudget: string = TOO_LONG,
+  ): Promise<unknown> {
+    if (this.closed || this.bytes === undefined) {
+      throw new DbError('internal', 'No snapshot copy is open; take a snapshot first.');
+    }
+    const w = await this.ready(this.bytes);
+    this.stillOpen(w);
+    const value = await this.ask(w, message, budgetMs, overBudget);
+    this.stillOpen(w);
+    return value;
+  }
+
+  /** The live worker with the copy open, starting one if needed. */
+  private async ready(bytes: Uint8Array): Promise<Worker> {
+    if (this.worker !== undefined) return this.worker;
+    // A JS heap cap for the worker (R4): strings built from huge values can't take the
+    // daemon down. SQLite's own memory is capped inside the worker (hard_heap_limit).
+    const w = new Worker(this.workerUrl, {
+      execArgv: [],
+      resourceLimits: { maxOldGenerationSizeMb: 256, maxYoungGenerationSizeMb: 32 },
+    });
+    w.on('error', (err: unknown) => {
+      if ((err as { code?: unknown }).code === 'ERR_WORKER_OUT_OF_MEMORY') this.outOfMemory.add(w);
+    });
+    this.starting = w;
+    w.unref();
+    // Every worker keeps an error listener; a crash also ends in 'exit'.
+    w.on('error', () => undefined);
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        void w.terminate().catch(() => undefined);
+        reject(new DbError('timeout', 'The snapshot engine took too long to start.'));
+      }, this.openMs);
+      const onMessage = (raw: unknown): void => {
+        if (Reply.safeParse(raw).data && 'ready' in (raw as object)) {
+          clearTimeout(timer);
+          w.off('message', onMessage);
+          resolve();
+        }
+      };
+      w.on('message', onMessage);
+      w.once('exit', () => {
+        clearTimeout(timer);
+        reject(new DbError('internal', 'The snapshot engine stopped.'));
+      });
+    });
+    try {
+      this.stillOpen(w);
+      await this.ask(w, { op: 'open', bytes }, this.openMs, 'Opening the snapshot took too long.');
+      this.stillOpen(w);
+    } finally {
+      if (this.starting === w) this.starting = undefined;
+    }
+    this.worker = w;
+    return w;
+  }
+
+  private ask(
+    w: Worker,
+    message: Record<string, unknown>,
+    budgetMs: number,
+    overBudget: string,
+  ): Promise<unknown> {
+    const id = this.nextId++;
+    return new Promise((resolve, reject) => {
+      const finish = (fn: () => void): void => {
+        clearTimeout(timer);
+        w.off('message', onMessage);
+        w.off('exit', onExit);
+        fn();
+      };
+      const onMessage = (raw: unknown): void => {
+        const reply = Reply.safeParse(raw);
+        if (!reply.success || !('id' in reply.data) || reply.data.id !== id) return;
+        const data = reply.data;
+        if (data.ok) finish(() => resolve(data.value));
+        else finish(() => reject(new DbError(data.code, data.message)));
+      };
+      const onExit = (): void => {
+        if (this.worker === w) this.worker = undefined;
+        const err = this.outOfMemory.has(w)
+          ? new DbError(
+              'too-large',
+              'That query needed more memory than FlutterDeck allows, so it was stopped.',
+            )
+          : new DbError('internal', 'The snapshot engine stopped.');
+        finish(() => reject(err));
+      };
+      const timer = setTimeout(() => {
+        if (this.worker === w) this.worker = undefined;
+        void w.terminate().catch(() => undefined);
+        finish(() => reject(new DbError('timeout', overBudget)));
+      }, budgetMs);
+      w.on('message', onMessage);
+      w.on('exit', onExit);
+      w.postMessage({ ...message, id });
+    });
+  }
+}

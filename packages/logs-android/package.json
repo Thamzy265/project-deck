@@ -22,6 +22,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@project-deck/android-adb": "workspace:*",
     "@project-deck/core": "workspace:*"
   }
 }

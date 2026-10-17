@@ -22,6 +22,8 @@ export interface WsOptions {
   hello: () => unknown;
   /** Defaults to a 15 s ping and heartbeat message with a 10 s pong timeout. */
   heartbeat?: HeartbeatOptions;
+  /** Called when the last connected client has gone (R9: table watches stop). */
+  onLastClientGone?: () => void;
 }
 
 function reject(socket: Duplex, status: number, text: string): void {
@@ -55,6 +57,9 @@ export function attachWebSocket(opts: WsOptions): { close: () => void } {
   wss.on('connection', (ws) => {
     // Without a listener, a malformed frame's 'error' event would crash the daemon.
     ws.on('error', () => ws.terminate());
+    ws.once('close', () => {
+      if (wss.clients.size === 0) opts.onLastClientGone?.();
+    });
     ws.send(JSON.stringify({ type: 'hello', payload: opts.hello() }));
     startHeartbeat(ws, opts.heartbeat);
   });

@@ -1,8 +1,29 @@
-import type { AdbRunner, AdbStream, AdbStreamHandlers } from '../adb.js';
-import { AdbMissingError } from '../adb.js';
-import { ADB_DEVICES_FIXTURE, FIXTURE_PACKAGE, FIXTURE_PID, FIXTURE_SERIAL } from './fixtures.js';
+import type {
+  AdbBinaryOptions,
+  AdbExecOptions,
+  AdbRunner,
+  AdbStream,
+  AdbStreamHandlers,
+} from '../adb.js';
+import { AdbMissingError, AdbOutputTooLargeError } from '../adb.js';
+import {
+  ADB_DEVICES_FIXTURE,
+  FIXTURE_PACKAGE,
+  FIXTURE_PID,
+  FIXTURE_SERIAL,
+  RUN_AS_NOT_DEBUGGABLE,
+  RUN_AS_UNKNOWN_PACKAGE,
+} from './fixtures.js';
+
+/** Files of one app's private folder by relative path, or how run-as refuses. */
+export type FakeAppFiles = Record<string, Buffer | string> | 'not-debuggable';
 
 export interface FakeAdbOptions {
+  /**
+   * serial → package → files, answered by `exec-out run-as <pkg> ls -1 <dir>`,
+   * `cat -- <path>` and `head -c <n> -- <path>`. Packages not listed are unknown.
+   */
+  files?: Record<string, Record<string, FakeAppFiles>>;
   /** `adb devices` output. */
   devices?: string;
   /** serial → pid → process name, answered by `shell ps -o NAME= -p <pid>`. */
@@ -54,12 +75,79 @@ export class FakeAdb implements AdbRunner {
       processes: opts.processes ?? { [FIXTURE_SERIAL]: { [FIXTURE_PID]: FIXTURE_PACKAGE } },
       sdk: opts.sdk ?? {},
       missing: opts.missing ?? false,
+      files: opts.files ?? {},
     };
   }
 
-  exec(args: readonly string[]): Promise<string> {
+  /** Changes a fake file, as the app writing to its database would. */
+  setFile(serial: string, pkg: string, path: string, content: Buffer | undefined): void {
+    const app = this.opts.files[serial]?.[pkg];
+    if (app === undefined || app === 'not-debuggable') throw new Error('No such fake app');
+    if (content === undefined) Reflect.deleteProperty(app, path);
+    else app[path] = content;
+  }
+
+  execBinary(args: readonly string[], opts: AdbBinaryOptions): Promise<Buffer> {
     this.calls.push(args);
     if (this.opts.missing) return Promise.reject(new AdbMissingError('adb'));
+    try {
+      const out = this.runAs(args);
+      if (out === undefined) throw new Error(`FakeAdb: unexpected command ${args.join(' ')}`);
+      if (out.length > opts.maxBytes) throw new AdbOutputTooLargeError(opts.maxBytes);
+      return Promise.resolve(out);
+    } catch (err) {
+      return Promise.reject(err instanceof Error ? err : new Error(String(err)));
+    }
+  }
+
+  /**
+   * `-s <serial> exec-out run-as <pkg> <ls|cat|head> …`, or undefined for anything else.
+   * Like real `adb exec-out` (no shell protocol): the device's stderr comes back mixed
+   * into stdout and adb exits 0, whatever the command's own exit code.
+   */
+  private runAs(args: readonly string[]): Buffer | undefined {
+    const [s, serial, execOut, runAs, pkg, cmd, ...rest] = args;
+    if (s !== '-s' || execOut !== 'exec-out' || runAs !== 'run-as') return undefined;
+    if (serial === undefined || pkg === undefined) return undefined;
+    const app = this.opts.files[serial]?.[pkg];
+    if (app === undefined) return Buffer.from(RUN_AS_UNKNOWN_PACKAGE);
+    if (app === 'not-debuggable') return Buffer.from(RUN_AS_NOT_DEBUGGABLE);
+    if (cmd === 'ls' && rest.length === 2 && rest[0] === '-1') {
+      const dir = `${rest[1] ?? ''}/`;
+      const names = Object.keys(app)
+        .filter((p) => p.startsWith(dir) && !p.slice(dir.length).includes('/'))
+        .map((p) => p.slice(dir.length))
+        .sort();
+      if (names.length === 0) {
+        return Buffer.from(`ls: ${rest[1] ?? ''}: No such file or directory\n`);
+      }
+      return Buffer.from(names.map((n) => `${n}\n`).join(''));
+    }
+    if (cmd === 'cat' && rest.length === 2 && rest[0] === '--') {
+      const file = app[rest[1] ?? ''];
+      if (file === undefined)
+        return Buffer.from(`cat: ${rest[1] ?? ''}: No such file or directory\n`);
+      return Buffer.from(file);
+    }
+    if (cmd === 'head' && rest.length === 4 && rest[0] === '-c' && rest[2] === '--') {
+      const file = app[rest[3] ?? ''];
+      if (file === undefined) {
+        return Buffer.from(`head: ${rest[3] ?? ''}: No such file or directory\n`);
+      }
+      return Buffer.from(file).subarray(0, Number(rest[1]));
+    }
+    return undefined;
+  }
+
+  exec(args: readonly string[], _opts?: AdbExecOptions): Promise<string> {
+    this.calls.push(args);
+    if (this.opts.missing) return Promise.reject(new AdbMissingError('adb'));
+    try {
+      const out = this.runAs(args);
+      if (out !== undefined) return Promise.resolve(out.toString('utf8'));
+    } catch (err) {
+      return Promise.reject(err instanceof Error ? err : new Error(String(err)));
+    }
     if (args.length === 1 && args[0] === 'devices') return Promise.resolve(this.opts.devices);
     if (args.length === 1 && args[0] === 'version')
       return Promise.resolve('Android Debug Bridge version 1.0.41\n');

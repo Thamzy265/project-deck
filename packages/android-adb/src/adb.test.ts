@@ -4,6 +4,7 @@ import { join, posix, win32 } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import {
   AdbMissingError,
+  AdbTimeoutError,
   isPackageName,
   isPid,
   isSerial,
@@ -248,10 +249,9 @@ describe('nodeAdb edge cases', { timeout: REAL_PROCESS_TIMEOUT_MS }, () => {
 
   it('kills a command that hangs past its timeout', async () => {
     const slow = nodeAdb(process.execPath, { timeoutMs: 200 });
-    await expect(slow.exec(['-e', 'setInterval(() => {}, 1000)'])).rejects.toMatchObject({
-      killed: true,
-      signal: 'SIGTERM',
-    });
+    await expect(slow.exec(['-e', 'setInterval(() => {}, 1000)'])).rejects.toBeInstanceOf(
+      AdbTimeoutError,
+    );
   });
 
   it('rejects output over 1 MB instead of buffering it all', async () => {
