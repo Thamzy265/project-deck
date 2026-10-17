@@ -129,7 +129,7 @@ describe('buildDiff hidden columns (tester probes)', () => {
     expect(tables[0]?.added[0]?.key).toBe(HIDDEN);
   });
 
-  it.fails("DB-7: keeps tables in error within Claude's 20-table cap", async () => {
+  it("DB-7: keeps tables in error within Claude's 20-table cap", async () => {
     const tables = Array.from({ length: 30 }, (_, i) => ({
       name: `t${i}`,
       error: { code: 'too-large', message: `Too large to compare: t${i}` },

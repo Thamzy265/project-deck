@@ -90,7 +90,7 @@ export async function buildDiff(
   after: RowHashes,
   caps: DiffCaps,
   hidden: readonly { table: string; column: string }[] | undefined,
-): Promise<{ tables: TableDiff[]; truncated: boolean }> {
+): Promise<{ tables: TableDiff[]; truncated: boolean; tablesOmitted: number }> {
   const old = new Map(before.tables.map((t) => [t.name, t]));
   const names = [
     ...after.tables.map((t) => t.name),
@@ -98,7 +98,14 @@ export async function buildDiff(
   ];
   const now = new Map(after.tables.map((t) => [t.name, t]));
   const out: TableDiff[] = [];
-  let truncated = false;
+  /** Tables with changes or errors left out by the table cap (D6). */
+  let tablesOmitted = 0;
+  /** Every table shown counts toward the cap, errors included (DB-7). */
+  const full = (): boolean => {
+    if (out.length < caps.tables) return false;
+    tablesOmitted++;
+    return true;
+  };
   for (const name of names) {
     const a = now.get(name);
     const b = old.get(name);
@@ -106,6 +113,7 @@ export async function buildDiff(
       (a !== undefined && 'error' in a ? a.error : undefined) ??
       (b !== undefined && 'error' in b ? b.error : undefined);
     if (problem !== undefined) {
+      if (full()) continue;
       out.push({
         ...empty(name, [], [], false),
         ...(problem.code === 'too-large' ? { tooLarge: true } : {}),
@@ -120,6 +128,7 @@ export async function buildDiff(
     // A table created or dropped since the snapshot: every row added or removed.
     const result = diffTableHashes(bt ?? { ...shape, rows: [] }, at ?? { ...shape, rows: [] });
     if ('error' in result) {
+      if (full()) continue;
       out.push({
         ...empty(name, shape.columns, shape.key, shape.rowid ?? false),
         error: result.error,
@@ -141,10 +150,7 @@ export async function buildDiff(
       changed: changed.length,
     };
     if (counts.added + counts.removed + counts.changed === 0) continue;
-    if (out.length >= caps.tables) {
-      truncated = true;
-      break;
-    }
+    if (full()) continue;
     let room = caps.rowsPerTable;
     const take = <T>(list: T[]): T[] => {
       const shown = list.slice(0, Math.max(room, 0));
@@ -201,5 +207,5 @@ export async function buildDiff(
     };
     out.push(table);
   }
-  return { tables: out, truncated };
+  return { tables: out, truncated: tablesOmitted > 0, tablesOmitted };
 }
