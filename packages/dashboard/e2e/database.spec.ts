@@ -205,6 +205,77 @@ test.describe('fake mode', () => {
     expect(parsed.rows[0]?.[1]).toBe('=HYPERLINK("http://x")');
   });
 
+  test('SQL editor: Cmd/Ctrl+Enter runs, autocomplete knows the tables, Tab leaves', async ({
+    page,
+  }) => {
+    const watch = await watchPage(page);
+    await openDashboard(page, daemon.url);
+    await page.getByRole('button', { name: 'SQL' }).click();
+    const editor = page.getByRole('textbox', { name: 'SQL' });
+    await editor.click();
+    await page.keyboard.type('SELECT item FROM ord');
+    await expect(page.getByRole('listbox').getByRole('option', { name: /orders/ })).toBeVisible();
+    await page.keyboard.press('Enter');
+    await page.keyboard.type(' WHERE id = 1');
+    await page.keyboard.press('ControlOrMeta+Enter');
+    await expect(page.getByText(/^1 row in \d+ ms$/)).toBeVisible();
+    await expect(
+      page.getByRole('grid', { name: 'Query result' }).getByText('Coffee'),
+    ).toBeVisible();
+    await screenshotM3(page, 'sql-420');
+    await editor.click();
+    await page.keyboard.press('Tab');
+    await expect(page.getByRole('button', { name: 'Run', exact: true })).toBeFocused();
+    await editor.click();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('button', { name: 'Run', exact: true })).toBeFocused();
+    expect(watch.cspViolations).toEqual([]);
+    expect(watch.consoleErrors).toEqual([]);
+  });
+
+  test('SQL editor: writes are refused with the reason; errors mark their line', async ({
+    page,
+  }) => {
+    await openDashboard(page, daemon.url);
+    await page.getByRole('button', { name: 'SQL' }).click();
+    const editor = page.getByRole('textbox', { name: 'SQL' });
+    await editor.click();
+    await page.keyboard.type('DELETE FROM orders');
+    await page.getByRole('button', { name: 'Run', exact: true }).click();
+    await expect(page.getByRole('alert')).toHaveText(
+      'Only reading queries run here. This one would change data (it deletes rows).',
+    );
+    await screenshotM3(page, 'sql-refused-420');
+    await editor.click();
+    await page.keyboard.press('ControlOrMeta+a');
+    await page.keyboard.type('SELECT *\nFROM orders\nWHER id = 1');
+    await page.keyboard.press('ControlOrMeta+Enter');
+    await expect(page.getByRole('alert')).toContainText('(line 3)');
+    await expect(page.locator('.cm-deck-error')).toHaveCount(1);
+    await page.getByRole('button', { name: 'Table' }).click();
+    await expect(page.getByRole('combobox', { name: 'Table' })).toBeVisible();
+  });
+
+  test('saved queries: Cmd/Ctrl+S saves to the project and Run runs it again', async ({ page }) => {
+    await openDashboard(page, daemon.url);
+    await page.getByRole('button', { name: 'SQL' }).click();
+    await page.getByRole('textbox', { name: 'SQL' }).click();
+    await page.keyboard.type("SELECT * FROM orders WHERE status = 'shipped'");
+    await page.keyboard.press('ControlOrMeta+s');
+    await expect(page.getByText('Saved', { exact: true })).toBeVisible();
+    await page.reload();
+    await expect(page.getByRole('contentinfo')).toContainText('Connected');
+    await page.getByRole('button', { name: 'More database options' }).click();
+    // Named by its first 40 characters.
+    const run = page.getByRole('button', {
+      name: /^Run saved query: SELECT \* FROM orders WHERE status = 'shi…$/,
+    });
+    await expect(run).toBeVisible();
+    await screenshotM3(page, 'saved-queries-420');
+    await run.click();
+    await expect(page.getByRole('grid', { name: 'Query result' }).getByText('Tea')).toBeVisible();
+  });
+
   for (const width of [320, 420, 900]) {
     for (const scheme of ['light', 'dark'] as const) {
       test(`${width} px, ${scheme}: Database tab has no sideways scroll or serious axe issues`, async ({
@@ -225,7 +296,7 @@ test.describe('fake mode', () => {
         await expectNoSidewaysScroll(page);
         await expectAccessible(page);
         await screenshotM3(page, `table-${width}-${scheme}`);
-        const views = ['Diagram', 'Diff'];
+        const views = ['Diagram', 'SQL', 'Diff'];
         for (const view of views) {
           if (width === 320) await page.getByRole('combobox', { name: 'View' }).selectOption(view);
           else await page.getByRole('button', { name: view }).click();

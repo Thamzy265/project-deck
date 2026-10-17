@@ -15,7 +15,9 @@ import { DevicePicker } from './DevicePicker.js';
 import type { Snapshot } from './DiffView.js';
 import { DiffView } from './DiffView.js';
 import type { WriteMode } from './RowDetails.js';
+import { SavedQueriesMenu, useSavedQueries, withQuery } from './SavedQueries.js';
 import { SchemaDiagram } from './SchemaDiagram.js';
+import { SqlView } from './SqlView.js';
 import { SetupCard } from './SetupCard.js';
 import { TablePicker, TableSidebar } from './TableList.js';
 import type { Match } from './TableView.js';
@@ -23,11 +25,12 @@ import { TableView } from './TableView.js';
 import { useAnnounce } from './useAnnounce.js';
 import { VisibleText } from './VisibleText.js';
 
-export type ViewId = 'table' | 'diagram' | 'diff';
+export type ViewId = 'table' | 'diagram' | 'sql' | 'diff';
 
 const VIEWS: { id: ViewId; label: string }[] = [
   { id: 'table', label: 'Table' },
   { id: 'diagram', label: 'Diagram' },
+  { id: 'sql', label: 'SQL' },
   { id: 'diff', label: 'Diff' },
 ];
 
@@ -81,8 +84,14 @@ export function DatabasePanel() {
   const [snapping, setSnapping] = useState<{ busy: boolean; error?: string }>({ busy: false });
   const [choosing, setChoosing] = useState<{ busy: boolean; error?: string }>({ busy: false });
   const schemaTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const [sql, setSql] = useState('');
+  const [runNow, setRunNow] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuButton = useRef<HTMLButtonElement>(null);
+  const ran = useCallback(() => setRunNow(false), []);
 
   const appId = attached?.id;
+  const saved = useSavedQueries(appId);
   useEffect(() => {
     if (appId === undefined) return;
     let cancelled = false;
@@ -384,6 +393,26 @@ export function DatabasePanel() {
       ) : null;
   else if (view === 'diagram') {
     body = <SchemaDiagram tables={tables} onOpen={(n) => openTable(n)} listByDefault={!pane} />;
+  } else if (view === 'sql') {
+    body = (
+      <SqlView
+        db={current.name}
+        tables={tables}
+        connected={connected}
+        sql={sql}
+        onSqlChange={setSql}
+        runNow={runNow}
+        onRan={ran}
+        onSave={() => {
+          const text = sql.trim();
+          if (text === '') return;
+          const next = withQuery(saved.queries, text);
+          if (next === undefined) setToast("Couldn't save queries");
+          else if (next === saved.queries) setToast('Saved');
+          else void saved.save(next).then((ok) => setToast(ok ? 'Saved' : "Couldn't save queries"));
+        }}
+      />
+    );
   } else if (view === 'diff') {
     body = <DiffView db={current.name} snapshot={snapshot} connected={connected} />;
   } else if (table === undefined) {
@@ -459,7 +488,33 @@ export function DatabasePanel() {
         >
           {snapping.busy ? 'Taking snapshot…' : 'Snapshot'}
         </button>
+        <button
+          ref={menuButton}
+          type="button"
+          className={button}
+          aria-label="More database options"
+          aria-expanded={menuOpen}
+          aria-controls="db-menu"
+          onClick={() => setMenuOpen(!menuOpen)}
+        >
+          <span aria-hidden="true">⋯</span>
+        </button>
       </div>
+      {menuOpen && (
+        <SavedQueriesMenu
+          saved={saved}
+          onClose={() => {
+            setMenuOpen(false);
+            menuButton.current?.focus();
+          }}
+          onRun={(q) => {
+            setMenuOpen(false);
+            setSql(q.sql);
+            setView('sql');
+            setRunNow(true);
+          }}
+        />
+      )}
       {snapshot !== undefined && !snapping.busy && snapping.error === undefined && (
         <p role="status" className="px-2 text-sm">
           Snapshot {clock(snapshot.takenAt, 'minutes')} taken
