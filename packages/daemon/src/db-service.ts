@@ -11,6 +11,7 @@ import type {
   DbEditRequest,
   DbInspector,
   DbList,
+  DbSchema,
   DbSource,
   EventBus,
   QueryResult,
@@ -19,7 +20,7 @@ import type {
   RunningApp,
   TableInfo,
 } from '@project-deck/core';
-import { DbError, isDbError, parseHiddenColumn } from '@project-deck/core';
+import { DB_UNTRUSTED_TEXT, DbError, isDbError, parseHiddenColumn } from '@project-deck/core';
 import type { GuardCheckOptions, GuardResult, SqlGuard } from '@project-deck/sql-guard';
 import { CLAUDE_DIFF_CAPS, DASHBOARD_DIFF_CAPS, buildDiff } from './db-diff.js';
 
@@ -177,7 +178,11 @@ export class DbService {
     return { databases, sources, writesAllowed: this.opts.settings.allowWrites };
   }
 
-  async schema(db: string): Promise<{ db: string; tables: TableInfo[] }> {
+  /**
+   * The tables of `db`. Claude gets no CREATE text (the columns, keys and indexes say
+   * the same, and it is free app text) and a note that the rest is untrusted app text.
+   */
+  async schema(db: string, caller: DbCaller): Promise<DbSchema> {
     const source = await this.sourceOf(db);
     let tables: TableInfo[];
     try {
@@ -186,7 +191,12 @@ export class DbService {
       throw asDbError(err);
     }
     this.watchTables(source, db, tables);
-    return { db, tables };
+    if (caller === 'dashboard') return { db, tables };
+    return {
+      db,
+      tables: tables.map(({ sql: _sql, ...table }) => table),
+      untrusted: DB_UNTRUSTED_TEXT,
+    };
   }
 
   async query(

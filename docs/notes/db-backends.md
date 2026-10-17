@@ -25,6 +25,7 @@ Batch 3 of [the M3 design](../design/m3-drift-inspector.md) (`feat/db-backends`)
 8. **The edit route has two steps.** `POST /api/db/execute` returns a request id and runs nothing. `POST /api/db/execute/confirm` sends the id with the same SQL and parameters. `POST /api/db/execute/cancel` drops it.
 9. **Token callers count as Claude.** Hidden columns and Claude's caps (500 rows per query, 50 rows and 20 tables per diff) apply to every `x-deck-token` caller (MCP server, CLI, curl). Only the dashboard cookie sees full rows.
 10. **Snapshot hashes for a diff always take a fresh copy** on the snapshot backend: a diff compares with now.
+11. **Schema text for Claude.** Token callers get no table `sql` (free CREATE text; the columns, keys and indexes carry the same facts). Column defaults stay, because they help Claude write inserts. Instead the answer carries `untrusted`: core's `DB_UNTRUSTED_TEXT`, which the MCP tool descriptions (batch 5) can reuse word for word.
 
 ## Not in this batch
 

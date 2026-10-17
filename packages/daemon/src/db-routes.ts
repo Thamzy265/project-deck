@@ -87,7 +87,7 @@ export function registerDbRoutes<E extends object>(api: Hono<E>, ctx: DbRouteCon
 
   api.get('/api/db/:db/schema', async (c) => {
     const { db } = parse(DbSchemaInput, { db: c.req.param('db') });
-    return c.json(await ctx.db.schema(db));
+    return c.json(await ctx.db.schema(db, caller(c)));
   });
 
   api.post('/api/db/query', limit, async (c) => {

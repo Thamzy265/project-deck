@@ -1,5 +1,11 @@
 import type { AppSession, DbInspector, DeckEvents, RunningApp } from '@project-deck/core';
-import { DbError, EventBus, Registry } from '@project-deck/core';
+import {
+  DB_UNTRUSTED_TEXT,
+  DbError,
+  DbSchemaResponse,
+  EventBus,
+  Registry,
+} from '@project-deck/core';
 import type { FakeTable } from '@project-deck/core/testing';
 import { FakeAppSession, FakeDbInspector, fakeApp } from '@project-deck/core/testing';
 import { registerDrift } from '@project-deck/db-drift';
@@ -110,14 +116,26 @@ describe('DbService: listing and reading', () => {
     const { service, bus } = await attached(db);
     const seen = vi.fn();
     bus.on('db.changed', seen);
-    expect((await service.schema('app')).tables[0]?.name).toBe('orders');
+    expect((await service.schema('app', 'dashboard')).tables[0]?.name).toBe('orders');
     await db.insert('app', 'orders', [3, 'Cake', 'pending']);
     expect(seen).toHaveBeenCalledWith({ source: 'fake', db: 'app', table: 'orders' });
   });
 
+  it("leaves the app's CREATE text out for Claude and says the rest is untrusted app text", async () => {
+    const { service } = await attached(new FakeDbInspector({ app: [ordersTable()] }));
+    const claude = await service.schema('app', 'claude');
+    expect(claude.tables[0]).not.toHaveProperty('sql');
+    expect(claude.tables[0]?.columns[0]?.name).toBe('id');
+    expect(claude.untrusted).toBe(DB_UNTRUSTED_TEXT);
+    const dashboard = await service.schema('app', 'dashboard');
+    expect(dashboard.tables[0]?.sql).toMatch(/^CREATE TABLE orders/);
+    expect(dashboard).not.toHaveProperty('untrusted');
+    expect(DbSchemaResponse.parse(claude)).toEqual(claude);
+  });
+
   it('answers not-found for an unknown database', async () => {
     const { service } = await attached(new FakeDbInspector({ app: [ordersTable()] }));
-    await expect(service.schema('nope')).rejects.toMatchObject({ code: 'not-found' });
+    await expect(service.schema('nope', 'dashboard')).rejects.toMatchObject({ code: 'not-found' });
   });
 });
 
