@@ -26,6 +26,11 @@ export interface DeckEvents {
     kind: 'hot-reload' | 'hot-restart';
     message?: string;
   };
+  /**
+   * Rows of a table in a live database changed (coalesced to at most one per table per
+   * 250 ms). Names only, never row values: open views re-query.
+   */
+  'db.changed': { source: string; db: string; table: string };
   /** A new Activity feed entry, already stored. */
   activity: ActivityEntry;
 }

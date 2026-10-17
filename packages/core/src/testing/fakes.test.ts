@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { diffTableHashes } from '../db-diff.js';
 import { FakeAppConnector, FakeDbInspector, FakeTaskProvider, fakeApp, fakeTask } from './index.js';
 
 describe('FakeAppConnector', () => {
@@ -122,6 +123,42 @@ describe('FakeDbInspector', () => {
     expect(changed).toHaveBeenCalledOnce();
     expect((await db.query('app', 'select count(*) as n from orders')).rows).toEqual([[3]]);
     await expect(db.query('app', 'delete from orders')).rejects.toThrow(/can't run/);
+  });
+
+  it('hashes rows by primary key and reads them back by key, for diffs', async () => {
+    const db = new FakeDbInspector({ app: [ordersTable()] });
+    const before = await db.rowHashes('app');
+    await db.update('app', 'orders', 0, [1, 'shipped']);
+    await db.insert('app', 'orders', [3, 'pending']);
+    const after = await db.rowHashes('app');
+    const [b] = before.tables;
+    const [a] = after.tables;
+    if (b === undefined || a === undefined || 'error' in b || 'error' in a) throw new Error('x');
+    expect(diffTableHashes(b, a)).toEqual({
+      added: [3],
+      removed: [],
+      changed: [{ key: 1, columns: ['status'] }],
+    });
+    expect(await db.rowsByKey('app', 'orders', [3, 99])).toEqual({
+      columns: ['id', 'status'],
+      key: ['id'],
+      rows: [[3, [3, 'pending']]],
+      missing: [99],
+      truncated: false,
+    });
+  });
+
+  it('records edits only with a confirm token, and only when writable', async () => {
+    const readOnly = new FakeDbInspector({ app: [ordersTable()] });
+    expect(readOnly.writable).toBe(false);
+    expect(readOnly.execute).toBeUndefined();
+    const db = new FakeDbInspector({ app: [ordersTable()] }, undefined, { writable: true });
+    await expect(db.execute?.('app', 'DELETE FROM orders')).rejects.toMatchObject({
+      code: 'bad-token',
+    });
+    const token = 'a'.repeat(43);
+    expect(await db.execute?.('app', 'DELETE FROM orders', [], { token })).toEqual({ changes: 1 });
+    expect(db.executed).toEqual([{ db: 'app', sql: 'DELETE FROM orders', params: [], token }]);
   });
 });
 

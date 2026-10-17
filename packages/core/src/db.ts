@@ -108,6 +108,120 @@ export const MCP_MAX_QUERY_LIMIT = 500;
 /** Longest SQL text accepted anywhere (the gate also enforces this in bytes). */
 export const MAX_SQL_LENGTH = 100_000;
 
+/** Why a database call failed. The daemon maps these to HTTP statuses and UI copy. */
+export const DbErrorCodeSchema = z.enum([
+  /** No such database or table. */
+  'not-found',
+  /** This backend, app or platform can't do it (e.g. queries in Linux apps). */
+  'unsupported',
+  'timeout',
+  /** The app is writing; try again. */
+  'busy',
+  /** Over a size cap (snapshot copy, schema, reply). */
+  'too-large',
+  /** The read-only gate or the app refused the statement. */
+  'refused',
+  /** SQLite reported an error; the message is SQLite's, untrusted app text. */
+  'sql-error',
+  /** A write without a valid single-use confirm token. */
+  'bad-token',
+  /** Writes are off, or this caller may not write. */
+  'not-allowed',
+  /** The app has no flutterdeck_drift: show the setup help. */
+  'setup-needed',
+  /** flutterdeck_drift speaks another protocol version. */
+  'update-needed',
+  /** The app stopped or was detached. */
+  'app-gone',
+  /** Android won't let anyone copy a release (not debuggable) app's files. */
+  'not-debuggable',
+  /** A tool (adb, xcrun) is missing or failed, or no device has the app. */
+  'unavailable',
+  /** More than one device or simulator has the app; the user must pick one. */
+  'choose-device',
+  'internal',
+]);
+export type DbErrorCode = z.infer<typeof DbErrorCodeSchema>;
+
+const DB_ERROR = Symbol.for('project-deck.DbError');
+
+/** A failed database call. `message` is plain words, safe to show the user or Claude. */
+export class DbError extends Error {
+  readonly [DB_ERROR] = true;
+
+  constructor(
+    readonly code: DbErrorCode,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'DbError';
+  }
+}
+
+/** True for a DbError, also one made by another copy of this package. */
+export function isDbError(err: unknown): err is DbError {
+  return typeof err === 'object' && err !== null && DB_ERROR in err;
+}
+
+/**
+ * A row's key: one cell, or one cell per column of a composite key. Blob cells in keys
+ * carry the whole blob, so the key can be sent back to read the row.
+ */
+export const RowKeySchema = z.union([CellSchema, z.array(CellSchema).min(1).max(64)]);
+export type RowKey = z.infer<typeof RowKeySchema>;
+
+/** One 64-bit hash of a value with its SQLite type, as 16 hex digits. */
+export const CellHashSchema = z.string().regex(/^[0-9a-f]{16}$/);
+
+const TableErrorSchema = z.object({ code: z.string().max(64), message: z.string().max(2000) });
+
+/** Per row, its key and one hash per column (design note D5). */
+export const TableHashesSchema = z.object({
+  name: z.string(),
+  columns: z.array(z.string()),
+  /** The key columns, or `rowid` for tables matched by row id. */
+  key: z.array(z.string()).min(1),
+  /** True when rows are matched by row id ("matched by row id" in the UI). */
+  rowid: z.boolean().optional(),
+  rows: z.array(z.tuple([RowKeySchema, z.array(CellHashSchema)])),
+});
+export type TableHashes = z.infer<typeof TableHashesSchema>;
+
+/** A table the backend couldn't hash (too large, no usable key, unreadable). */
+export const TableHashesErrorSchema = z.object({ name: z.string(), error: TableErrorSchema });
+
+/** A diff snapshot: hashes only, never row values (old values are not kept, D5). */
+export const RowHashesSchema = z.object({
+  takenAt: z.number().int().nonnegative(),
+  tables: z.array(z.union([TableHashesSchema, TableHashesErrorSchema])),
+});
+export type RowHashes = z.infer<typeof RowHashesSchema>;
+
+/** Row values read by key, for the added and changed rows of a diff. */
+export const KeyedRowsSchema = z.object({
+  columns: z.array(z.string()),
+  key: z.array(z.string()).min(1),
+  rowid: z.boolean().optional(),
+  rows: z.array(z.tuple([RowKeySchema, z.array(CellSchema)])),
+  missing: z.array(RowKeySchema),
+  /** True when the reply cap stopped the read before every key was answered. */
+  truncated: z.boolean(),
+});
+export type KeyedRows = z.infer<typeof KeyedRowsSchema>;
+
+/** Most keys one `rowsByKey` call takes. */
+export const MAX_KEYS_PER_CALL = 1000;
+/** Most rows per table a diff snapshot holds (D6); larger tables are "too large to diff". */
+export const MAX_DIFF_ROWS_PER_TABLE = 10_000;
+
+export interface DbExecuteOptions {
+  /**
+   * Single-use confirm token (43 base64url characters) the daemon makes for one
+   * confirmed edit. Backends refuse a write without one.
+   */
+  token?: string;
+}
+
 export interface DbInspector {
   /** 'drift' | 'sqlite-file' | later 'room'. */
   readonly id: string;
@@ -131,7 +245,20 @@ export interface DbInspector {
     opts?: { limit?: number },
   ): Promise<QueryResult>;
   /** Present only on backends that can write. Callers enforce the write policy first. */
-  execute?(db: string, sql: string, params?: unknown[]): Promise<{ changes: number }>;
+  execute?(
+    db: string,
+    sql: string,
+    params?: unknown[],
+    opts?: DbExecuteOptions,
+  ): Promise<{ changes: number }>;
   /** Present only on live backends. Returns an unsubscribe function. */
   watch?(db: string, table: string, cb: () => void): () => void;
+  /** Per table, a key and per-column hashes for every row (diff snapshots, D5). */
+  rowHashes?(db: string): Promise<RowHashes>;
+  /** Current values of the rows with these keys (at most MAX_KEYS_PER_CALL). */
+  rowsByKey?(db: string, table: string, keys: RowKey[]): Promise<KeyedRows>;
+  /** Snapshot backends: drop the copy so the next call reads a fresh one. */
+  refresh?(db: string): Promise<void>;
+  /** Releases workers and subscriptions. Never touches the app. */
+  close?(): Promise<void>;
 }

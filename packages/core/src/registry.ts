@@ -1,19 +1,21 @@
-import type { AppConnector, RunningApp } from './apps.js';
+import type { AppConnector, AppSession, RunningApp } from './apps.js';
 import type { DbInspector } from './db.js';
 import { DEFAULT_EXTENSION_PREFIXES, isValidExtensionPrefix } from './extensions.js';
 import type { LogEntry } from './logs.js';
 import type { TaskProvider } from './tasks.js';
 
 /**
- * Creates a database inspector for an app without going through its connector,
- * e.g. the SQLite snapshot backend that pulls the file over adb.
- * Inspectors that need the live session (Drift over the VM service) come from
- * `AppSession.db()` instead; the daemon prefers those and falls back to factories.
+ * Creates a database inspector for an attached app: the SQLite snapshot backend
+ * (copies the file over adb or from the iOS simulator), or Drift over the session's
+ * app extensions (ADR 0004), so neither needs to know the connector.
  */
 export interface DbInspectorFactory {
   readonly id: string;
-  /** Resolves to undefined when this backend can't serve the app. */
-  create(app: RunningApp): Promise<DbInspector | undefined>;
+  /**
+   * Resolves to undefined when this backend can't serve the app. `session` is the
+   * attached session; backends use only its generic parts, such as `extensions`.
+   */
+  create(app: RunningApp, session?: AppSession): Promise<DbInspector | undefined>;
 }
 
 /**

@@ -4,6 +4,7 @@ export * from './apps.js';
 export * from './config.js';
 export * from './constants.js';
 export * from './db.js';
+export * from './db-diff.js';
 export * from './events.js';
 export * from './extensions.js';
 export * from './logs.js';

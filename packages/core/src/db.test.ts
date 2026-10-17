@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   DbDiffInput,
   DbDiffResponse,
+  DbEditConfirmInput,
+  DbEditRequestResponse,
   DbExecuteInput,
+  DbExecuteResponse,
   DbListInput,
   DbListResponse,
   DbQueryInput,
@@ -11,6 +14,7 @@ import {
   DbSnapshotInput,
   DbSnapshotResponse,
   McpDbQueryInput,
+  WsMessageSchema,
   makeDbQueryInput,
 } from './api.js';
 import {
@@ -183,13 +187,16 @@ describe('database API inputs', () => {
 
 describe('database API responses', () => {
   it('list databases and serve a schema', () => {
-    expect(DbListResponse.parse({ databases: [{ name: 'app', backend: 'live' }] })).toEqual({
-      databases: [{ name: 'app', backend: 'live' }],
-    });
+    const list = {
+      databases: [{ name: 'app', backend: 'live', source: 'drift' }],
+      sources: [{ id: 'drift', live: true, writable: true }],
+      writesAllowed: false,
+    };
+    expect(DbListResponse.parse(list)).toEqual(list);
     expect(DbSchemaResponse.parse({ db: 'app', tables: [orders] }).tables).toHaveLength(1);
   });
 
-  it('name a snapshot and report a diff per table', () => {
+  it('name a snapshot and report a diff per table: keys, new values and counts', () => {
     expect(
       DbSnapshotResponse.parse({ id: 'snap-1', db: 'app', takenAt: 1, label: 'before' }),
     ).toMatchObject({ id: 'snap-1' });
@@ -201,22 +208,74 @@ describe('database API responses', () => {
         {
           table: 'orders',
           columns: ['id', 'status'],
-          added: [[3, 'pending']],
-          removed: [],
-          changed: [{ before: [1, 'pending'], after: [1, 'shipped'], columns: ['status'] }],
+          key: ['id'],
+          matchedByRowid: false,
+          added: [{ key: 3, row: [3, 'pending'] }],
+          removed: [{ key: 2 }],
+          changed: [{ key: 1, row: [1, 'shipped'], columns: ['status'] }],
+          counts: { added: 1, removed: 1, changed: 1 },
           truncated: false,
         },
         {
           table: 'events',
           columns: [],
+          key: [],
+          matchedByRowid: false,
           added: [],
           removed: [],
           changed: [],
+          counts: { added: 0, removed: 0, changed: 0 },
           truncated: false,
           tooLarge: true,
+          error: { code: 'too-large', message: 'Too large to compare' },
         },
       ],
     };
     expect(DbDiffResponse.parse(diff)).toEqual(diff);
+    // Old values are never kept (design note D5), so a diff carries no `before` rows.
+    const withBefore = structuredClone(diff);
+    Object.assign(withBefore.tables[0]?.changed[0] ?? {}, { before: [1, 'pending'] });
+    expect(DbDiffResponse.parse(withBefore).tables[0]?.changed[0]).not.toHaveProperty('before');
+  });
+
+  it('list databases with their sources and whether writes are on', () => {
+    const list = {
+      databases: [
+        { name: 'app', backend: 'live', source: 'drift' },
+        { name: 'app_flutter/app.sqlite', backend: 'snapshot', source: 'sqlite-file' },
+      ],
+      sources: [
+        { id: 'drift', live: true, writable: true },
+        {
+          id: 'sqlite-file',
+          live: false,
+          writable: false,
+          error: { code: 'not-debuggable', message: 'Not debuggable' },
+        },
+      ],
+      writesAllowed: false,
+    };
+    expect(DbListResponse.parse(list)).toEqual(list);
+  });
+
+  it('bind an edit to a request id, then confirm it with the same SQL', () => {
+    const pending = {
+      requestId: 'a'.repeat(32),
+      db: 'app',
+      sql: 'UPDATE orders SET status = ? WHERE id = ?',
+      params: ['shipped', 1],
+      tables: ['orders'],
+      expiresAt: 60_000,
+    };
+    expect(DbEditRequestResponse.parse(pending)).toEqual(pending);
+    const confirm = { requestId: pending.requestId, sql: pending.sql, params: pending.params };
+    expect(DbEditConfirmInput.parse(confirm)).toEqual(confirm);
+    expect(DbEditConfirmInput.safeParse({ ...confirm, requestId: 'x' }).success).toBe(false);
+    expect(DbExecuteResponse.parse({ changes: 1 })).toEqual({ changes: 1 });
+  });
+
+  it('carry table changes on the websocket', () => {
+    const msg = { type: 'db.changed', payload: { source: 'drift', db: 'app', table: 'orders' } };
+    expect(WsMessageSchema.parse(msg)).toEqual(msg);
   });
 });
