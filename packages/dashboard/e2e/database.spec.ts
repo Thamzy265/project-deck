@@ -122,15 +122,21 @@ test.describe('fake mode', () => {
     await openOrders(page, daemon.url);
     await page.getByRole('button', { name: 'Diff' }).click();
     await expect(page.getByText('Take a snapshot first, then use the app')).toBeVisible();
+    await page.getByRole('button', { name: 'Table' }).click();
+    await expect(grid(page).getByText('Coffee')).toBeVisible();
+    // The fake app adds an order every 5 s: count the rows when the snapshot is taken.
+    const rows = grid(page).getByRole('row');
+    const before = await rows.count();
     await page.getByRole('button', { name: 'Snapshot' }).click();
     await expect(page.getByText(/^Snapshot \d\d:\d\d taken$/)).toBeVisible();
+    const atSnapshot = await rows.count();
+    expect(atSnapshot).toBeGreaterThanOrEqual(before);
     // Wait for the fake app's next order, then compare.
-    await page.getByRole('button', { name: 'Table' }).click();
-    await expect(grid(page).getByRole('row')).toHaveCount(4, { timeout: 10_000 });
+    await expect(rows).toHaveCount(atSnapshot + 1, { timeout: 10_000 });
     await page.getByRole('button', { name: 'Diff' }).click();
     const changes = page.getByRole('list', { name: 'Changes in orders' });
     await expect(changes.getByRole('listitem').first()).toContainText('+ added');
-    await expect(page.getByText(/1 added, 0 changed, 0 removed/)).toBeVisible();
+    await expect(page.getByText(/\d+ added, 0 changed, 0 removed/)).toBeVisible();
     await screenshotM3(page, 'diff-420');
   });
 
