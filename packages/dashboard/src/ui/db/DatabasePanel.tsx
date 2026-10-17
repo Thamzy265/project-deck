@@ -185,6 +185,19 @@ export function DatabasePanel() {
   );
   useEffect(() => () => clearTimeout(schemaTimer.current), []);
 
+  // A snapshot is dated only once a read has taken its copy, after the first listing
+  // (and again after Refresh): list again then, once per read (QA B4-1).
+  const undated =
+    current?.backend === 'snapshot' && current.takenAt === undefined && schema.status === 'ready';
+  const datedFor = useRef('');
+  useEffect(() => {
+    if (!undated) return;
+    const read = JSON.stringify([currentName, schemaRun]);
+    if (datedFor.current === read) return;
+    datedFor.current = read;
+    setListRun((n) => n + 1);
+  }, [undated, currentName, schemaRun]);
+
   useEffect(() => {
     if (toast === undefined) return;
     const timer = setTimeout(() => setToast(undefined), TOAST_MS);

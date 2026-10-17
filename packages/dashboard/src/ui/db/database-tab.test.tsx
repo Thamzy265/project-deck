@@ -177,6 +177,51 @@ describe('Database picker', () => {
   });
 });
 
+describe('Snapshot time (QA B4-1)', () => {
+  it('shows the copy time once the first read has taken the copy, and after Refresh', async () => {
+    const data = fakeDbData();
+    const listed = (takenAt?: number) => ({
+      databases: [
+        {
+          name: 'app_flutter/app.sqlite',
+          backend: 'snapshot' as const,
+          source: 'sqlite-file',
+          ...(takenAt === undefined ? {} : { takenAt }),
+        },
+      ],
+      sources: [{ id: 'sqlite-file', live: false, writable: false }],
+      writesAllowed: false,
+    });
+    data.list = listed();
+    const db = fakeDbClient(data);
+    // The daemon dates a copy only once a read has taken it: the first listing has no time.
+    let taken: number | undefined;
+    db.list.mockImplementation(() => Promise.resolve(listed(taken)));
+    db.schema.mockImplementation((name) => {
+      taken = new Date(2026, 9, 17, 14, 2).getTime();
+      return Promise.resolve({ db: name, tables: data.tables });
+    });
+    const t = await open(db);
+    expect(
+      await screen.findByText('Snapshot from 14:02 — this is a copy, not live.'),
+    ).toBeVisible();
+    expect(screen.getByText('Snapshot 14:02')).toBeVisible();
+    // Refresh drops the copy; the next read takes a new one at 14:05.
+    db.refresh.mockImplementation(() => {
+      taken = undefined;
+      return Promise.resolve();
+    });
+    db.schema.mockImplementation((name) => {
+      taken = new Date(2026, 9, 17, 14, 5).getTime();
+      return Promise.resolve({ db: name, tables: data.tables });
+    });
+    await t.user.click(screen.getByRole('button', { name: 'Refresh' }));
+    expect(
+      await screen.findByText('Snapshot from 14:05 — this is a copy, not live.'),
+    ).toBeVisible();
+  });
+});
+
 describe('Table picker and grid', () => {
   it('Loading: skeleton rows while the tables load', async () => {
     const db = fakeDbClient();
