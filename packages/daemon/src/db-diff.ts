@@ -99,6 +99,23 @@ interface RowRead {
   truncated: boolean;
 }
 
+/**
+ * What the read-only gate lets Claude read of one table (R1): everything, some
+ * columns, nothing (the table is hidden whole, e.g. FTS while a column is hidden), or
+ * unknown because the gate couldn't answer (fail closed).
+ */
+export type TableVisibility =
+  | { kind: 'all' }
+  | { kind: 'some'; visible: ReadonlySet<string> }
+  | { kind: 'hidden-table' }
+  | { kind: 'unknown' };
+
+export type VisibilityCheck = (
+  table: string,
+  columns: readonly string[],
+  key: readonly string[],
+) => Promise<TableVisibility>;
+
 export async function buildDiff(
   inspector: DbInspector,
   db: string,
@@ -106,6 +123,7 @@ export async function buildDiff(
   after: RowHashes,
   caps: DiffCaps,
   hidden: readonly { table: string; column: string }[] | undefined,
+  visibility?: VisibilityCheck,
 ): Promise<{ tables: TableDiff[]; truncated: boolean; tablesOmitted: number }> {
   const old = new Map(before.tables.map((t) => [t.name, t]));
   const names = [
@@ -151,9 +169,21 @@ export async function buildDiff(
       });
       continue;
     }
-    const hiddenHere = new Set(
-      (hidden ?? []).filter((h) => fold(h.table) === fold(name)).map((h) => fold(h.column)),
-    );
+    // Claude: the gate decides, so generated columns of a hidden column and FTS tables
+    // that index one stay hidden too (R1). The names in config are a second layer.
+    const gate =
+      visibility === undefined ? undefined : await visibility(name, shape.columns, shape.key);
+    if (gate?.kind === 'hidden-table') continue;
+    if (gate?.kind === 'unknown') {
+      if (result.added.length + result.removed.length + result.changed.length > 0) tablesOmitted++;
+      continue;
+    }
+    const hiddenHere = new Set([
+      ...(hidden ?? []).filter((h) => fold(h.table) === fold(name)).map((h) => fold(h.column)),
+      ...(gate?.kind === 'some'
+        ? [...shape.columns, ...shape.key].filter((c) => !gate.visible.has(c)).map(fold)
+        : []),
+    ]);
     const visible = shape.columns.filter((c) => !hiddenHere.has(fold(c))).map((c) => ({ c }));
     const keyHidden = shape.key.some((k) => hiddenHere.has(fold(k)));
     // A change only in hidden columns would tell Claude that hidden data changed.

@@ -22,6 +22,7 @@ import type {
 } from '@project-deck/core';
 import { DB_UNTRUSTED_TEXT, DbError, isDbError, parseHiddenColumn } from '@project-deck/core';
 import type { GuardCheckOptions, GuardResult, SqlGuard } from '@project-deck/sql-guard';
+import type { TableVisibility } from './db-diff.js';
 import { CLAUDE_DIFF_CAPS, DASHBOARD_DIFF_CAPS, buildDiff } from './db-diff.js';
 
 /**
@@ -91,6 +92,11 @@ const noApp = (): DbError =>
     'No app is attached. Start one from your IDE or flutter run, then pick it.',
   );
 
+/** A name in double quotes, safe in SQL whatever it holds. */
+function quoteIdent(name: string): string {
+  return `"${name.replaceAll('"', '""')}"`;
+}
+
 function editHash(db: string, sql: string, params: unknown[]): string {
   return createHash('sha256')
     .update(JSON.stringify([db, sql, params]))
@@ -106,6 +112,8 @@ export class DbService {
   private attached: Attached | undefined;
   private snapshots: Snapshot[] = [];
   private readonly pending = new Map<string, PendingEdit>();
+  /** The gate's per-table visibility for Claude, per schema SQL array (R1). */
+  private readonly visibilityCache = new WeakMap<readonly string[], Map<string, TableVisibility>>();
   private readonly now: () => number;
   private readonly offBus: () => void;
   private closed = false;
@@ -267,6 +275,9 @@ export class DbService {
         now,
         caller === 'claude' ? CLAUDE_DIFF_CAPS : DASHBOARD_DIFF_CAPS,
         caller === 'claude' ? this.hidden() : undefined,
+        caller === 'claude' && this.hidden().length > 0
+          ? (table, columns, key) => this.visibility(source, input.db, table, columns, key)
+          : undefined,
       );
       return {
         db: input.db,
@@ -425,6 +436,56 @@ export class DbService {
       });
     }
     return pending;
+  }
+
+  /**
+   * Which columns of `table` the gate lets Claude read (R1), asked of the gate itself:
+   * `SELECT *` first, then one column at a time. Cached per schema SQL, so a diff of an
+   * unchanged schema asks once. A gate that can't answer gives `unknown`.
+   */
+  private async visibility(
+    source: Source,
+    db: string,
+    table: string,
+    columns: readonly string[],
+    key: readonly string[],
+  ): Promise<TableVisibility> {
+    let schemaSql: string[];
+    try {
+      schemaSql = await this.schemaSql(source, db, false);
+    } catch {
+      return { kind: 'unknown' };
+    }
+    let cache = this.visibilityCache.get(schemaSql);
+    if (cache === undefined) {
+      cache = new Map();
+      this.visibilityCache.set(schemaSql, cache);
+    }
+    const cacheKey = JSON.stringify([table, columns, key]);
+    const hit = cache.get(cacheKey);
+    if (hit !== undefined) return hit;
+    const hiddenColumns = this.hidden();
+    const check = (sql: string) =>
+      this.opts.guard.check(sql, { schemaSql, mode: 'read', hiddenColumns });
+    const cantAnswer = (v: GuardResult): boolean =>
+      !v.ok && (v.code === 'unavailable' || v.code === 'timeout');
+    let verdict: TableVisibility;
+    const all = await check(`SELECT * FROM ${quoteIdent(table)}`);
+    if (all.ok) {
+      verdict = { kind: 'all' };
+    } else if (cantAnswer(all)) {
+      return { kind: 'unknown' };
+    } else {
+      const visible = new Set<string>();
+      for (const column of new Set([...columns, ...key])) {
+        const one = await check(`SELECT ${quoteIdent(column)} FROM ${quoteIdent(table)}`);
+        if (cantAnswer(one)) return { kind: 'unknown' };
+        if (one.ok) visible.add(column);
+      }
+      verdict = visible.size === 0 ? { kind: 'hidden-table' } : { kind: 'some', visible };
+    }
+    cache.set(cacheKey, verdict);
+    return verdict;
   }
 
   /** The gate's verdict, or a `refused` DbError. A gate that can't answer refuses. */
