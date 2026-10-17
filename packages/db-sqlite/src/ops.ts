@@ -34,6 +34,9 @@ export const MAX_REPLY_BYTES = 8 * 1024 * 1024;
 const LENGTH_LIMIT = 16 * 1024 * 1024;
 /** Bytes of a blob sent as base64; the size is always sent. */
 const BLOB_PREVIEW = 64 * 1024;
+/** All of SQLite's memory in the worker: a 50 MB copy and room to read it. */
+const HEAP_LIMIT = 192 * 1024 * 1024;
+const SQLITE_NOMEM = 7;
 /** Diff hashes for all tables together (D6: 50 MB total). */
 const MAX_HASH_BYTES = 50 * 1024 * 1024;
 
@@ -50,6 +53,10 @@ export function openImage(sqlite: Sqlite3, bytes: Uint8Array): OpenDb {
   const { capi, wasm, oo1 } = sqlite;
   const db = new oo1.DB();
   const pointer = db.pointer ?? 0;
+  // Caps all of SQLite's memory in this worker, the copy included, so a query that
+  // builds many large values fails with SQLITE_NOMEM instead of growing the wasm heap
+  // (R4). The build exports no sqlite3_hard_heap_limit64; the pragma sets the same.
+  db.exec(`PRAGMA hard_heap_limit = ${HEAP_LIMIT}`);
   const mem = wasm.allocFromTypedArray(new Uint8Array(bytes));
   const rc = capi.sqlite3_deserialize(
     pointer,
@@ -191,14 +198,6 @@ function encode(value: SqlValue, wholeBlob: boolean): Cell {
   };
 }
 
-/** Rough JSON size of a cell, to keep replies under their byte cap. */
-function cellBytes(cell: Cell): number {
-  if (cell === null) return 4;
-  if (typeof cell === 'string') return Buffer.byteLength(cell, 'utf8') + 2;
-  if (typeof cell === 'number') return 24;
-  return 'base64' in cell ? (cell.base64?.length ?? 0) + 48 : 48;
-}
-
 interface Statement {
   stmt: number;
   columns: string[];
@@ -261,7 +260,14 @@ function withStatement<T>(open: OpenDb, sql: string, use: (s: Statement) => T): 
 }
 
 function sqlError(open: OpenDb): DbError {
-  const message = open.sqlite.capi.sqlite3_errmsg(open.db.pointer ?? 0);
+  const pointer = open.db.pointer ?? 0;
+  if (open.sqlite.capi.sqlite3_errcode(pointer) === SQLITE_NOMEM) {
+    return new DbError(
+      'too-large',
+      'That query needed more memory than FlutterDeck allows, so it was stopped.',
+    );
+  }
+  const message = open.sqlite.capi.sqlite3_errmsg(pointer);
   return new DbError('sql-error', message.slice(0, 500));
 }
 
@@ -333,6 +339,52 @@ function value(open: OpenDb, stmt: number, i: number): SqlValue {
     default:
       return null;
   }
+}
+
+/**
+ * One row for a reply, cell by cell, or undefined when the next cell would pass
+ * `room` bytes. Sizes are read with sqlite3_column_bytes before anything is copied,
+ * and a blob's bytes are copied only up to the preview (R4).
+ */
+function replyRow(
+  open: OpenDb,
+  s: Statement,
+  room: number,
+): { row: Cell[]; bytes: number } | undefined {
+  const { capi, wasm } = open.sqlite;
+  const row: Cell[] = [];
+  let bytes = 2;
+  for (let i = 0; i < s.columns.length; i++) {
+    const type = capi.sqlite3_column_type(s.stmt, i);
+    if (type === T_BLOB) {
+      const n = capi.sqlite3_column_bytes(s.stmt, i);
+      const shown = Math.min(n, BLOB_PREVIEW);
+      bytes += Math.ceil(shown / 3) * 4 + 48;
+      if (bytes > room) return undefined;
+      const p = capi.sqlite3_column_blob(s.stmt, i);
+      const preview = p === 0 ? new Uint8Array(0) : wasm.heap8u().slice(p, p + shown);
+      row.push({
+        type: 'blob',
+        bytes: n,
+        base64: Buffer.from(preview).toString('base64'),
+        ...(shown < n ? { truncated: true } : {}),
+      });
+      continue;
+    }
+    // UTF-8 bytes; JSON adds quotes and escapes, which the slack in the cap covers.
+    bytes += type === T_TEXT ? capi.sqlite3_column_bytes(s.stmt, i) + 2 : 24;
+    if (bytes > room) return undefined;
+    row.push(encode(value(open, s.stmt, i), false));
+  }
+  return { row, bytes };
+}
+
+/** Steps once: true for a row, false when done; throws on an error. */
+function step(open: OpenDb, s: Statement): boolean {
+  const rc = open.sqlite.capi.sqlite3_step(s.stmt);
+  if (rc === SQLITE_ROW) return true;
+  if (rc === SQLITE_DONE) return false;
+  throw sqlError(open);
 }
 
 /** Steps a prepared statement, calling `row` for each row until it returns false. */
@@ -512,20 +564,19 @@ export function query(open: OpenDb, sql: string, params: unknown[], limit: numbe
     const rows: Cell[][] = [];
     let bytes = 0;
     let truncated = false;
-    stepAll(open, s, (values) => {
+    while (step(open, s)) {
       if (rows.length === cap) {
         truncated = true;
-        return false;
+        break;
       }
-      const row = values.map((v) => encode(v, false));
-      bytes += row.reduce<number>((n, c) => n + cellBytes(c), 2);
-      if (bytes > MAX_REPLY_BYTES) {
+      const next = replyRow(open, s, MAX_REPLY_BYTES - bytes);
+      if (next === undefined) {
         truncated = true;
-        return false;
+        break;
       }
-      rows.push(row);
-      return true;
-    });
+      bytes += next.bytes;
+      rows.push(next.row);
+    }
     return { columns: s.columns, rows, truncated, durationMs: performance.now() - started };
   });
 }
@@ -640,21 +691,17 @@ export function rowsByKey(open: OpenDb, table: string, keys: RowKey[]): KeyedRow
       capi.sqlite3_reset(s.stmt);
       capi.sqlite3_clear_bindings(s.stmt);
       parts.forEach((p, i) => bind(open, s.stmt, i + 1, p));
-      let found: Cell[] | undefined;
-      stepAll(open, s, (values) => {
-        found = values.map((v) => encode(v, false));
-        return false;
-      });
-      if (found === undefined) {
+      if (!step(open, s)) {
         missing.push(key);
         continue;
       }
-      bytes += found.reduce<number>((n, c) => n + cellBytes(c), 2);
-      if (bytes > MAX_REPLY_BYTES) {
+      const found = replyRow(open, s, MAX_REPLY_BYTES - bytes);
+      if (found === undefined) {
         truncated = true;
         break;
       }
-      rows.push([key, found]);
+      bytes += found.bytes;
+      rows.push([key, found.row]);
     }
     return {
       columns: shape.columns,

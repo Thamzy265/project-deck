@@ -40,6 +40,8 @@ export class SnapshotEngine {
   private readonly workerUrl: URL;
   private bytes: Uint8Array | undefined;
   private worker: Worker | undefined;
+  /** Workers that ran out of memory, so their exit answers too-large. */
+  private readonly outOfMemory = new WeakSet<Worker>();
   /** A worker still starting or opening the copy; close() stops it too. */
   private starting: Worker | undefined;
   private queue: Promise<unknown> = Promise.resolve();
@@ -123,7 +125,15 @@ export class SnapshotEngine {
   /** The live worker with the copy open, starting one if needed. */
   private async ready(bytes: Uint8Array): Promise<Worker> {
     if (this.worker !== undefined) return this.worker;
-    const w = new Worker(this.workerUrl, { execArgv: [] });
+    // A JS heap cap for the worker (R4): strings built from huge values can't take the
+    // daemon down. SQLite's own memory is capped inside the worker (hard_heap_limit).
+    const w = new Worker(this.workerUrl, {
+      execArgv: [],
+      resourceLimits: { maxOldGenerationSizeMb: 256, maxYoungGenerationSizeMb: 32 },
+    });
+    w.on('error', (err: unknown) => {
+      if ((err as { code?: unknown }).code === 'ERR_WORKER_OUT_OF_MEMORY') this.outOfMemory.add(w);
+    });
     this.starting = w;
     w.unref();
     // Every worker keeps an error listener; a crash also ends in 'exit'.
@@ -180,7 +190,13 @@ export class SnapshotEngine {
       };
       const onExit = (): void => {
         if (this.worker === w) this.worker = undefined;
-        finish(() => reject(new DbError('internal', 'The snapshot engine stopped.')));
+        const err = this.outOfMemory.has(w)
+          ? new DbError(
+              'too-large',
+              'That query needed more memory than FlutterDeck allows, so it was stopped.',
+            )
+          : new DbError('internal', 'The snapshot engine stopped.');
+        finish(() => reject(err));
       };
       const timer = setTimeout(() => {
         if (this.worker === w) this.worker = undefined;
