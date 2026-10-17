@@ -57,3 +57,41 @@ describe('AndroidSource over exec-out, which mixes stderr into stdout (R2)', () 
     await expect(h.head(NAME, 100)).rejects.toMatchObject({ code: 'unavailable' });
   });
 });
+
+/** The old linker on API 24/25 prints this before every command's own output. */
+const LINKER_WARNING =
+  'WARNING: linker: /system/bin/sh: unused DT entry: type 0x6ffffffe arg 0x1234\n';
+
+/** FakeAdb's exec-out output with `prefix` printed first, as some devices do. */
+function withPrefix(prefix: string, files: Record<string, Buffer>): AdbRunner {
+  const adb = new FakeAdb({ files: { [FIXTURE_SERIAL]: { [FIXTURE_PACKAGE]: files } } });
+  return {
+    exec: async (args, opts) => prefix + (await adb.exec(args, opts)),
+    execBinary: async (args, opts) =>
+      Buffer.concat([
+        Buffer.from(prefix),
+        await adb.execBinary(args, { ...opts, maxBytes: opts.maxBytes + prefix.length }),
+      ]),
+    stream: () => ({ kill: () => undefined }),
+  };
+}
+
+describe('AndroidSource with device warnings before the output (L2)', () => {
+  it('skips leading WARNING: lines from ls, head and cat', async () => {
+    const files = { [NAME]: walDbFixture(), [`${NAME}-wal`]: walFixture() };
+    const s = new AndroidSource(withPrefix(LINKER_WARNING, files), FIXTURE_SERIAL, FIXTURE_PACKAGE);
+    expect(await s.list()).toEqual([NAME]);
+    await expect(copyDatabase(s, NAME, 50 * MB)).resolves.toBeDefined();
+  });
+
+  it('says the device printed extra text when something else comes before the database', async () => {
+    const s = new AndroidSource(
+      withPrefix('Some vendor banner\n', { [NAME]: plainDbFixture() }),
+      FIXTURE_SERIAL,
+      FIXTURE_PACKAGE,
+    );
+    await expect(copyDatabase(s, NAME, 50 * MB)).rejects.toMatchObject({
+      message: expect.stringContaining('the device printed extra text') as unknown,
+    });
+  });
+});

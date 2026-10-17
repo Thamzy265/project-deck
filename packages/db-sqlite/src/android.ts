@@ -74,6 +74,7 @@ export class AndroidSource implements SnapshotSource {
         if (missingFile(err)) continue;
         throw adbError(err);
       }
+      out = stripWarnings(Buffer.from(out, 'utf8')).toString('utf8');
       complain(out);
       for (const line of out.split('\n')) {
         const file = line.replace(/\r$/, '');
@@ -86,18 +87,22 @@ export class AndroidSource implements SnapshotSource {
   async head(path: string, bytes: number): Promise<Buffer | undefined> {
     const n = Math.trunc(bytes);
     const args = this.runAs('head', '-c', String(n), '--', checkedPath(path));
+    const isDb = isSnapshotName(path);
     // Room for the device's complaint, which exec-out mixes into stdout (R2); only the
     // bytes asked for are returned.
     const out = await this.binary(args, {
       timeoutMs: ANDROID_TIMEOUTS.head,
       maxBytes: Math.max(n, HEAD_ROOM),
     });
+    if (out !== undefined && isDb) extraText(out);
     return out?.subarray(0, n);
   }
 
   async read(path: string, maxBytes: number): Promise<Buffer | undefined> {
     const args = this.runAs('cat', '--', checkedPath(path));
-    return this.binary(args, { timeoutMs: ANDROID_TIMEOUTS.cat, maxBytes });
+    const out = await this.binary(args, { timeoutMs: ANDROID_TIMEOUTS.cat, maxBytes });
+    if (out !== undefined && isSnapshotName(path)) extraText(out);
+    return out;
   }
 
   private async binary(
@@ -106,7 +111,7 @@ export class AndroidSource implements SnapshotSource {
   ): Promise<Buffer | undefined> {
     let out: Buffer;
     try {
-      out = await this.adb.execBinary(args, opts);
+      out = stripWarnings(await this.adb.execBinary(args, opts));
     } catch (err) {
       if (missingFile(err)) return undefined;
       throw adbError(err);
@@ -123,6 +128,45 @@ export class AndroidSource implements SnapshotSource {
     }
     complain(start);
     return out;
+  }
+}
+
+const WARNING = Buffer.from('WARNING: ');
+/** Most warning lines skipped; more than this is not a warning preamble. */
+const MAX_WARNINGS = 16;
+
+/**
+ * Drops `WARNING: …` lines the device printed before the command's own output: the
+ * old linker on API 24/25 prints one ("unused DT entry") before every command (L2).
+ */
+export function stripWarnings(out: Buffer): Buffer {
+  let rest = out;
+  for (let i = 0; i < MAX_WARNINGS && rest.subarray(0, WARNING.length).equals(WARNING); i++) {
+    const end = rest.subarray(0, 4096).indexOf(0x0a);
+    if (end === -1) break;
+    rest = rest.subarray(end + 1);
+  }
+  return rest;
+}
+
+const SQLITE_MAGIC = Buffer.from('SQLite format 3\0', 'latin1');
+
+/**
+ * A database file that doesn't start with SQLite's header but with readable text: the
+ * device printed something first that isn't a known warning (L2). Said as such, rather
+ * than "not a SQLite database", so the user looks at the device.
+ */
+function extraText(out: Buffer): void {
+  const start = out.subarray(0, 32);
+  if (start.length === 0 || SQLITE_MAGIC.equals(out.subarray(0, 16))) return;
+  const text = start.every(
+    (b) => (b >= 0x20 && b < 0x7f) || b === 0x0a || b === 0x0d || b === 0x09,
+  );
+  if (text) {
+    throw new DbError(
+      'unavailable',
+      "Couldn't read the database: the device printed extra text before it.",
+    );
   }
 }
 
