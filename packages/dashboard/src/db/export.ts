@@ -5,7 +5,12 @@
  */
 import type { Cell } from '@project-deck/core';
 
-const FORMULA = /^[=+\-@\t\r]/;
+/**
+ * A formula lead, also behind leading spaces: spreadsheets that trim fields on import
+ * (Google Sheets, LibreOffice) then run it (TAB-8). `\s` covers no-break and other
+ * Unicode spaces; the zero-width space is added because trims may drop it too.
+ */
+const FORMULA = /^(?:[\t\r]|[\s\u200b]*[=+\-@])/;
 
 function quote(text: string): string {
   return `"${text.replaceAll('"', '""')}"`;

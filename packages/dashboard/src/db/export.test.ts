@@ -14,6 +14,11 @@ describe('csvField (design note U3)', () => {
     }
     expect(csvField('=1+1')).toBe(`"'=1+1"`);
     expect(csvField('a=1')).toBe('"a=1"');
+    // Behind no-break, ideographic and zero-width spaces too (TAB-8).
+    for (const space of ['\u00a0', '\u3000', '\u200b', '\u2003']) {
+      expect(csvField(`${space}=1+1`).startsWith(`"'`), JSON.stringify(space)).toBe(true);
+    }
+    expect(csvField(' a=1')).toBe('" a=1"');
   });
 
   it('leaves numbers as numbers, negative ones included', () => {

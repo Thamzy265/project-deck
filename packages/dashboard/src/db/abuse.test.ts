@@ -22,15 +22,12 @@ describe('CSV export: formula injection (U3)', () => {
     }
   });
 
-  it.fails(
-    'defuses a formula behind leading spaces, which spreadsheets that trim on import run',
-    () => {
-      // Google Sheets and LibreOffice can trim fields on import and then read `=` as a formula.
-      for (const text of [' =HYPERLINK("http://x")', ' =1+1', '  +1+1', ' @SUM(A1)']) {
-        expect(csvField(text).startsWith(`"'`), JSON.stringify(text)).toBe(true);
-      }
-    },
-  );
+  it('defuses a formula behind leading spaces, which spreadsheets that trim on import run', () => {
+    // Google Sheets and LibreOffice can trim fields on import and then read `=` as a formula.
+    for (const text of [' =HYPERLINK("http://x")', ' =1+1', '  +1+1', ' @SUM(A1)']) {
+      expect(csvField(text).startsWith(`"'`), JSON.stringify(text)).toBe(true);
+    }
+  });
 
   it('defuses formula-shaped column names in the header row', () => {
     const csv = toCsv(['=cmd', 'ok'], [[1, 'a']]);
