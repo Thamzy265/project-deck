@@ -48,7 +48,8 @@ export class SqliteSnapshotFactory implements DbInspectorFactory {
       const adb = (this.adbRunner ??= this.opts.adb ?? nodeAdb());
       return Promise.resolve(
         new SqliteSnapshotInspector(
-          async () => resolveAndroidSource(adb, app, (await ids()).androidApplicationId),
+          async (chosen) =>
+            resolveAndroidSource(adb, app, (await ids()).androidApplicationId, chosen),
           inspectorOpts,
         ),
       );
@@ -64,7 +65,8 @@ export class SqliteSnapshotFactory implements DbInspectorFactory {
       };
       return Promise.resolve(
         new SqliteSnapshotInspector(
-          async () => resolveIosSource(xcrun, app, (await ids()).iosBundleId, resolveOpts),
+          async (chosen) =>
+            resolveIosSource(xcrun, app, (await ids()).iosBundleId, { ...resolveOpts, chosen }),
           inspectorOpts,
         ),
       );

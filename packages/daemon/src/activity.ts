@@ -1,5 +1,15 @@
 import type { ActivityEntry, EventBus } from '@project-deck/core';
-import { ACTIVITY_CAPACITY } from '@project-deck/core';
+import { ACTIVITY_CAPACITY, MAX_ACTIVITY_NAME, MAX_ACTIVITY_TABLES } from '@project-deck/core';
+
+/**
+ * A name from the app's database, cut to what an entry keeps: one long name must not
+ * make the whole `/api/activity` answer invalid (review R6). A cut surrogate pair is
+ * dropped whole.
+ */
+function cut(name: string): string {
+  if (name.length <= MAX_ACTIVITY_NAME) return name;
+  return name.slice(0, MAX_ACTIVITY_NAME).replace(/[\uD800-\uDBFF]$/, '');
+}
 
 /**
  * How close a hook result and a VM "success" of the same kind must be to count as one
@@ -106,6 +116,18 @@ export class ActivityFeed {
           kind: 'claude.waiting',
           ...(sessionId === undefined ? {} : { sessionId }),
           ...(message === undefined ? {} : { message }),
+        });
+      }),
+      this.bus.on('db.snapshot', ({ db }) => this.add({ kind: 'db.snapshot', db: cut(db) })),
+      this.bus.on('db.diff', ({ db }) => this.add({ kind: 'db.diff', db: cut(db) })),
+      this.bus.on('db.write', ({ db, tables, allowed, changes, reason }) => {
+        this.add({
+          kind: 'db.write',
+          db: cut(db),
+          tables: tables.slice(0, MAX_ACTIVITY_TABLES).map(cut),
+          allowed,
+          ...(changes === undefined ? {} : { changes }),
+          ...(reason === undefined ? {} : { reason }),
         });
       }),
     ];

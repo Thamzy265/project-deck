@@ -14,6 +14,9 @@ import { SnapshotEngine } from './engine.js';
 import type { SnapshotSource } from './source.js';
 import { isSnapshotName } from './source.js';
 
+/** An adb serial or a simulator UDID: printable, no spaces. */
+const DEVICE_ID = /^[\x21-\x7e]{1,128}$/;
+
 export interface SnapshotInspectorOptions {
   /** Makes the engine for one copy; tests pass one with the built worker. */
   engine?: () => SnapshotEngine;
@@ -48,9 +51,12 @@ export class SqliteSnapshotInspector implements DbInspector {
   private readonly now: () => number;
   private readonly maxBytes: number;
   private closed = false;
+  /** The device the user picked after a `choose-device` answer. */
+  private chosen: string | undefined;
 
   constructor(
-    private readonly resolve: () => Promise<SnapshotSource>,
+    /** Finds the app's files; `chosen` is the device the user picked, if any. */
+    private readonly resolve: (chosen: string | undefined) => Promise<SnapshotSource>,
     opts: SnapshotInspectorOptions = {},
   ) {
     this.makeEngine = opts.engine ?? (() => new SnapshotEngine());
@@ -120,6 +126,20 @@ export class SqliteSnapshotInspector implements DbInspector {
     await copy?.engine.close();
   }
 
+  /**
+   * Copies from this device from now on. The id only narrows the devices the source
+   * finds itself: one that isn't among them is ignored, and the user is asked again.
+   */
+  async chooseDevice(id: string): Promise<void> {
+    if (!DEVICE_ID.test(id) || id.startsWith('-')) {
+      throw new DbError('not-found', 'No such device.');
+    }
+    this.chosen = id;
+    this.source = undefined;
+    const names = [...this.copies.keys()];
+    await Promise.all(names.map((name) => this.refresh(name)));
+  }
+
   async close(): Promise<void> {
     this.closed = true;
     const copies = [...this.copies.values()];
@@ -136,7 +156,7 @@ export class SqliteSnapshotInspector implements DbInspector {
 
   private src(): Promise<SnapshotSource> {
     if (this.closed) return Promise.reject(gone());
-    const pending = (this.source ??= this.resolve());
+    const pending = (this.source ??= this.resolve(this.chosen));
     // A failed lookup (no device yet, adb missing) is tried again next time.
     pending.catch(() => {
       if (this.source === pending) this.source = undefined;

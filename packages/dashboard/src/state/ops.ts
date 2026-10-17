@@ -70,12 +70,17 @@ export function createActions(
   };
 }
 
+/** What open database views hear: a table changed, or the socket came back (re-query). */
+export type DbEvent =
+  { kind: 'changed'; source: string; db: string; table: string } | { kind: 'reconnected' };
+
 /** Turns a daemon message into reducer actions; log lines go through `queueLog`. */
 export function handleMessage(
   msg: WsMessage,
   dispatch: Dispatch<DeckAction>,
   queueLog: (entry: LogEntry) => void,
   now: () => number,
+  onDb: (event: DbEvent) => void = () => undefined,
 ): void {
   switch (msg.type) {
     case 'hello':
@@ -114,6 +119,9 @@ export function handleMessage(
       return;
     case 'activity':
       dispatch({ type: 'activity-add', entry: msg.payload });
+      return;
+    case 'db.changed':
+      onDb({ kind: 'changed', ...msg.payload });
       return;
   }
 }

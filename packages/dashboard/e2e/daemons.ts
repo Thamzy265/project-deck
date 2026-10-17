@@ -8,12 +8,12 @@
  */
 import type { ChildProcess } from 'node:child_process';
 import { spawn } from 'node:child_process';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Registry } from '@project-deck/core';
-import type { RunningApp } from '@project-deck/core';
+import type { DbInspectorFactory, RunningApp } from '@project-deck/core';
 import { FakeAppConnector, fakeApp } from '@project-deck/core/testing';
 import type { Daemon } from '../../daemon/dist/index.js';
 import { readRuntime, startDaemon } from '../../daemon/dist/index.js';
@@ -26,6 +26,15 @@ export const ARTIFACTS = join(REPO, 'qa-artifacts/m2-dashboard');
 
 async function scratch(prefix: string): Promise<string> {
   return mkdtemp(join(tmpdir(), prefix));
+}
+
+/** `.flutterdeck/config.json` in a scratch project, e.g. `{ db: { allowWrites: true } }`. */
+async function writeConfig(project: string, config: Record<string, unknown>): Promise<void> {
+  await mkdir(join(project, '.flutterdeck'), { recursive: true });
+  await writeFile(
+    join(project, '.flutterdeck', 'config.json'),
+    JSON.stringify({ version: 1, ...config }),
+  );
 }
 
 export interface SpawnedDaemon {
@@ -55,9 +64,12 @@ function waitForListening(child: ChildProcess): Promise<void> {
   });
 }
 
-export async function spawnFakeDaemon(): Promise<SpawnedDaemon> {
+export async function spawnFakeDaemon(
+  opts: { config?: Record<string, unknown> } = {},
+): Promise<SpawnedDaemon> {
   const project = await scratch('deck-e2e-proj-');
   const home = await scratch('deck-e2e-home-');
+  if (opts.config !== undefined) await writeConfig(project, opts.config);
   let child: ChildProcess | undefined;
   let port = 0;
   let token = '';
@@ -148,12 +160,18 @@ export class ScriptedConnector extends FakeAppConnector {
 
 export async function startScriptedDaemon(
   apps: RunningApp[] = [fakeApp()],
-  opts: { holdDiscovery?: boolean } = {},
+  opts: {
+    holdDiscovery?: boolean;
+    dbInspectors?: DbInspectorFactory[];
+    config?: Record<string, unknown>;
+  } = {},
 ): Promise<ScriptedDaemon & { connector: ScriptedConnector }> {
   const project = await scratch('deck-e2e-proj-');
   const home = await scratch('deck-e2e-home-');
+  if (opts.config !== undefined) await writeConfig(project, opts.config);
   let offset = 0;
   const registry = new Registry();
+  for (const factory of opts.dbInspectors ?? []) registry.dbInspectors.register(factory);
   const connector = new ScriptedConnector('fake', apps);
   registry.connectors.register(connector);
   if (opts.holdDiscovery === true) connector.holdDiscovery();

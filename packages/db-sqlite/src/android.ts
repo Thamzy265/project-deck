@@ -17,7 +17,7 @@ import {
   parseDevices,
 } from '@project-deck/android-adb';
 import type { RunningApp } from '@project-deck/core';
-import { ANDROID_APPLICATION_ID, DbError, isDbError } from '@project-deck/core';
+import { ANDROID_APPLICATION_ID, DbError, MAX_DB_DEVICES, isDbError } from '@project-deck/core';
 import type { SnapshotSource } from './source.js';
 import { ANDROID_FOLDERS, COMPANIONS, SNAPSHOT_FILE, isSnapshotName } from './source.js';
 
@@ -214,10 +214,11 @@ function adbError(err: unknown): DbError {
   return new DbError('unavailable', "Couldn't read the database: adb failed.");
 }
 
-const chooseDevice = (): DbError =>
+const chooseDevice = (serials: readonly string[]): DbError =>
   new DbError(
     'choose-device',
-    'More than one Android device could be running this app. Disconnect the others to take a snapshot.',
+    'More than one Android device could be running this app. Pick the one to copy from.',
+    { devices: serials.slice(0, MAX_DB_DEVICES).map((serial) => ({ id: serial, name: serial })) },
   );
 
 /**
@@ -232,6 +233,8 @@ export async function resolveAndroidSource(
   adb: AdbRunner,
   app: RunningApp,
   configuredId: string | undefined,
+  /** The serial the user picked after a `choose-device` answer; used only if still listed. */
+  chosen?: string,
 ): Promise<AndroidSource> {
   try {
     if (app.pid !== undefined && isPid(app.pid)) {
@@ -243,7 +246,9 @@ export async function resolveAndroidSource(
       );
       const running = devices.filter((d) => isPackageName(d.process));
       const matches = wanted.size > 0 ? running.filter((d) => wanted.has(d.process)) : running;
-      if (matches.length > 1) throw chooseDevice();
+      const picked = matches.find((d) => d.serial === chosen);
+      if (picked !== undefined) return new AndroidSource(adb, picked.serial, picked.process);
+      if (matches.length > 1) throw chooseDevice(matches.map((d) => d.serial));
       const [match] = matches;
       if (match !== undefined) return new AndroidSource(adb, match.serial, match.process);
       // ps can't name the process (old devices): only one device leaves no doubt.
@@ -252,7 +257,24 @@ export async function resolveAndroidSource(
         return new AndroidSource(adb, only.serial, configuredId);
       }
       if (wanted.size === 0 && running.length === 0) throw missingId();
-      if (devices.length > 1) throw chooseDevice();
+      // On the picked device the process at the pid must be this app: one of its ids or
+      // a flavor of one (`<id>.<suffix>`). Pids repeat across devices, so it may be
+      // another debuggable app, whose database must never be copied (review R2).
+      const device = devices.find((d) => d.serial === chosen);
+      if (device !== undefined && devices.length > 1) {
+        if (device.process === '' && configuredId !== undefined) {
+          return new AndroidSource(adb, device.serial, configuredId);
+        }
+        const id = appIdOf(device.process, wanted);
+        if (id === undefined) {
+          throw new DbError(
+            'unavailable',
+            `The app running on ${device.serial} isn't this app, so FlutterDeck won't copy its database. Set android.applicationId in .flutterdeck/config.json if this is a flavor of it.`,
+          );
+        }
+        return new AndroidSource(adb, device.serial, id);
+      }
+      if (devices.length > 1) throw chooseDevice(devices.map((d) => d.serial));
       if (devices.length === 1) {
         throw new DbError(
           'unavailable',
@@ -266,16 +288,25 @@ export async function resolveAndroidSource(
     if (only === undefined) {
       throw new DbError('unavailable', 'No Android device is connected.');
     }
-    if (serials.length > 1) {
-      throw new DbError(
-        'choose-device',
-        'More than one Android device is connected. Disconnect the others to take a snapshot.',
-      );
+    if (chosen !== undefined && serials.includes(chosen)) {
+      return new AndroidSource(adb, chosen, configuredId);
     }
+    if (serials.length > 1) throw chooseDevice(serials);
     return new AndroidSource(adb, only, configuredId);
   } catch (err) {
     throw adbError(err);
   }
+}
+
+/**
+ * The package of `process` (without a `:remote`-style process suffix) when it is one of
+ * the `wanted` ids or a flavor of one; undefined otherwise.
+ */
+function appIdOf(process: string, wanted: ReadonlySet<string>): string | undefined {
+  const pkg = process.split(':')[0] ?? '';
+  if (!isPackageName(pkg)) return undefined;
+  for (const id of wanted) if (pkg === id || pkg.startsWith(`${id}.`)) return pkg;
+  return undefined;
 }
 
 function missingId(): DbError {

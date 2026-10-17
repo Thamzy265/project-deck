@@ -119,8 +119,47 @@ describe('activityText', () => {
       'Reload failed: Hot reload failed.',
     ],
     [{ id: 1, ts: 0, kind: 'claude.reload', ok: false, reload: 'hot-restart' }, 'Restart failed'],
+    [{ id: 1, ts: 0, kind: 'db.snapshot', db: 'app' }, 'Snapshot taken: app'],
+    [{ id: 1, ts: 0, kind: 'db.diff', db: 'app' }, 'Diff shown: app'],
+    [
+      { id: 1, ts: 0, kind: 'db.write', db: 'app', tables: ['orders'], allowed: true, changes: 1 },
+      'Write allowed: orders, 1 row changed',
+    ],
+    [
+      { id: 1, ts: 0, kind: 'db.write', db: 'app', tables: ['a', 'b'], allowed: true, changes: 3 },
+      'Write allowed: a, b, 3 rows changed',
+    ],
+    [
+      { id: 1, ts: 0, kind: 'db.write', db: 'app', tables: ['orders'], allowed: false },
+      'Write denied: orders',
+    ],
+    [
+      {
+        id: 1,
+        ts: 0,
+        kind: 'db.write',
+        db: 'app',
+        tables: ['orders'],
+        allowed: false,
+        reason: 'row-changed',
+      },
+      'Write denied: orders (row changed)',
+    ],
   ];
   it.each(cases)('describes %j', (entry, text) => {
     expect(activityText(entry)).toBe(text);
+  });
+
+  it('names hidden characters in database and table names (TAB-6)', () => {
+    const name = `ord${String.fromCodePoint(0x202e)}ers`;
+    expect(activityText({ id: 1, ts: 0, kind: 'db.diff', db: name })).toBe(
+      'Diff shown: ord<U+202E>ers',
+    );
+    expect(
+      activityText({ id: 1, ts: 0, kind: 'db.write', db: 'app', tables: [name], allowed: false }),
+    ).toBe('Write denied: ord<U+202E>ers');
+    expect(
+      activityText({ id: 1, ts: 0, kind: 'db.write', db: 'app', tables: [], allowed: false }),
+    ).toBe('Write denied');
   });
 });

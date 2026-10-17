@@ -1,4 +1,5 @@
 import type { ActivityEntry, LogLevel, ReloadResult, RunningApp } from '@project-deck/core';
+import { visibleText } from '../db/cells.js';
 import type { LastResult } from '../state/deck.js';
 
 const pad = (n: number, width = 2) => String(n).padStart(width, '0');
@@ -84,6 +85,21 @@ export function activityText(entry: ActivityEntry): string {
       if (entry.ok) return done(kind, true);
       const failed = kind === 'reload' ? 'Reload failed' : 'Restart failed';
       return entry.message === undefined ? failed : `${failed}: ${entry.message}`;
+    }
+    case 'db.snapshot':
+      return `Snapshot taken: ${visibleText(entry.db)}`;
+    case 'db.diff':
+      return `Diff shown: ${visibleText(entry.db)}`;
+    case 'db.write': {
+      // Names come from the app's database: hidden characters are named (TAB-6).
+      const tables = visibleText(entry.tables.join(', '));
+      // A refused edit whose table couldn't be read from its SQL names none.
+      if (!entry.allowed) {
+        const why = entry.reason === 'row-changed' ? ' (row changed)' : '';
+        return tables === '' ? `Write denied${why}` : `Write denied: ${tables}${why}`;
+      }
+      const n = entry.changes ?? 0;
+      return `Write allowed: ${tables}, ${n} ${n === 1 ? 'row' : 'rows'} changed`;
     }
   }
 }

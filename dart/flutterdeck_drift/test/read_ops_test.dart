@@ -619,6 +619,33 @@ void main() {
       ]);
     });
 
+    test('passes the dashboard\'s guarded UPDATE and DELETE (review L3)', () {
+      // As row details builds them: the key, then each column as it was read.
+      expect(
+        ops.checkWrite(
+          'UPDATE "notes" SET "body" = ? WHERE "rowid" IS ? AND "body" IS ? '
+          'AND typeof("data") = \'blob\' AND length("data") IS ? '
+          'AND hex(substr("data", 1, ?)) IS ?',
+        ),
+        {
+          'table': 'notes',
+          'verb': 'UPDATE',
+          'affected': ['notes'],
+        },
+      );
+      expect(
+        ops.checkWrite(
+          'DELETE FROM "lines" WHERE "order_id" IS ? AND "n" IS ? '
+          'AND "qty" IS 9e999',
+        ),
+        {
+          'table': 'lines',
+          'verb': 'DELETE',
+          'affected': ['lines'],
+        },
+      );
+    });
+
     test('INSERT OR REPLACE and REPLACE report REPLACE', () {
       expect(
         ops.checkWrite(

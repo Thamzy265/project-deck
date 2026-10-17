@@ -72,6 +72,8 @@ interface PendingEdit {
   source: Source;
   sql: string;
   params: unknown[];
+  /** The tables the gate found, for the Activity entry. */
+  tables: string[];
   hash: string;
   expiresAt: number;
   epoch: number;
@@ -100,6 +102,65 @@ const fold = (name: string): string => name.replace(/[A-Z]/g, (c) => c.toLowerCa
 /** A name in double quotes, safe in SQL whatever it holds. */
 function quoteIdent(name: string): string {
   return `"${name.replaceAll('"', '""')}"`;
+}
+
+const VIEW_NAME =
+  /^\s*CREATE\s+(?:TEMP\s+|TEMPORARY\s+)?VIEW\s+(?:IF\s+NOT\s+EXISTS\s+)?("(?:[^"]|"")+"|`[^`]+`|\[[^\]]+\]|[\w$]+)/i;
+
+/** The name in a CREATE VIEW statement, unquoted. */
+function viewName(sql: string): string | undefined {
+  const raw = VIEW_NAME.exec(sql)?.[1];
+  if (raw === undefined) return undefined;
+  const first = raw[0];
+  if (first === '"') return raw.slice(1, -1).replaceAll('""', '"');
+  if (first === '`' || first === '[') return raw.slice(1, -1);
+  return raw;
+}
+
+/** True when `name` appears in `text` as a whole word (both folded). */
+function namesWord(text: string, name: string): boolean {
+  const escaped = fold(name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|[^\\w$])${escaped}($|[^\\w$])`).test(text);
+}
+
+/**
+ * A hidden-column refusal names the base column, which confuses a reader of a view
+ * that only selects it (QA G1): SQLite's authorizer reports every column of a view's
+ * body, so such a view is refused whole. Says so only for a view the statement names
+ * whose own body names a table with hidden columns (review R7).
+ */
+function viewNote(
+  reason: string,
+  sql: string,
+  schemaSql: readonly string[],
+  hiddenTables: readonly string[],
+): string {
+  const text = fold(sql);
+  for (const statement of schemaSql) {
+    const name = viewName(statement);
+    if (name === undefined || !namesWord(text, name)) continue;
+    const body = fold(statement);
+    if (hiddenTables.some((t) => namesWord(body, t))) {
+      return `${reason} ${name} is a view that reads a hidden column, so it can't be read at all, even its other columns.`;
+    }
+  }
+  return reason;
+}
+
+const EDIT_TARGET =
+  /^\s*(?:UPDATE(?:\s+OR\s+\w+)?|DELETE\s+FROM|(?:INSERT|REPLACE)(?:\s+OR\s+\w+)?\s+INTO)\s+("(?:[^"]|"")+"|[A-Za-z_][\w$]*)/i;
+
+/** An edit that row details builds with the row check: an UPDATE or a DELETE. */
+const CHECKED_EDIT = /^\s*(?:UPDATE|DELETE)\b/i;
+
+/**
+ * The table an edit names first, for the Activity entry of a refused edit. The gate
+ * refused it, so this reads only the leading words; it says nothing about safety.
+ */
+function editTarget(sql: string): string | undefined {
+  const raw = EDIT_TARGET.exec(sql)?.[1];
+  if (raw === undefined) return undefined;
+  return raw.startsWith('"') ? raw.slice(1, -1).replaceAll('""', '"') : raw;
 }
 
 function editHash(db: string, sql: string, params: unknown[]): string {
@@ -181,7 +242,15 @@ export class DbService {
         id: inspector.id,
         live: inspector.live,
         writable: inspector.writable,
-        ...(error === undefined ? {} : { error: { code: error.code, message: error.message } }),
+        ...(error === undefined
+          ? {}
+          : {
+              error: {
+                code: error.code,
+                message: error.message,
+                ...(error.devices === undefined ? {} : { devices: error.devices }),
+              },
+            }),
       };
       for (const info of infos) {
         // Names are unique across sources; the first backend registered wins.
@@ -310,6 +379,7 @@ export class DbService {
     };
     this.snapshots.push(snapshot);
     if (this.snapshots.length > MAX_SNAPSHOTS) this.snapshots.shift();
+    this.opts.bus.emit('db.snapshot', { db: input.db });
     return {
       id: snapshot.id,
       db: snapshot.db,
@@ -349,6 +419,7 @@ export class DbService {
           ? (table, columns, key) => this.visibility(freshSchema, table, columns, key)
           : undefined,
       );
+      this.opts.bus.emit('db.diff', { db: input.db });
       return {
         db: input.db,
         snapshotId: snapshot.id,
@@ -357,6 +428,24 @@ export class DbService {
         truncated,
         tablesOmitted,
       };
+    } catch (err) {
+      throw asDbError(err);
+    }
+  }
+
+  /** After a `choose-device` answer: the user picked the device for snapshot backend `id`. */
+  async chooseDevice(id: string, device: string): Promise<void> {
+    const source = this.current().sources.find((s) => s.inspector.id === id);
+    if (source === undefined) throw new DbError('not-found', `No database backend named ${id}.`);
+    const choose = source.inspector.chooseDevice?.bind(source.inspector);
+    if (choose === undefined) {
+      throw new DbError(
+        'unsupported',
+        'This backend reads the running app; there is no device to pick.',
+      );
+    }
+    try {
+      await choose(device);
     } catch (err) {
       throw asDbError(err);
     }
@@ -391,7 +480,25 @@ export class DbService {
     if (!source.inspector.writable || source.inspector.execute === undefined) {
       throw new DbError('unsupported', 'Snapshots are read-only.');
     }
-    const { verdict } = await this.check(source, input.db, input.sql, { mode: 'write' });
+    let verdict: Extract<GuardResult, { ok: true }>;
+    try {
+      ({ verdict } = await this.check(source, input.db, input.sql, { mode: 'write' }));
+    } catch (err) {
+      // A refused edit is a denied write too (lead decision G4): names only, never SQL.
+      if (isDbError(err) && err.code === 'refused') {
+        const table = editTarget(input.sql);
+        this.opts.bus.emit('db.write', {
+          db: input.db,
+          tables: table === undefined ? [] : [table],
+          allowed: false,
+        });
+      }
+      throw err;
+    }
+    // The confirm and Activity name the table the edit writes, not tables it only
+    // reads (a parent for a foreign-key check). The gate passes an edit only when it
+    // writes exactly one table, and lists that table first (Q2).
+    const written = verdict.tables.slice(0, 1);
     const params = input.params ?? [];
     const requestId = randomBytes(24).toString('base64url');
     const expiresAt = this.now() + EDIT_TTL_MS;
@@ -400,6 +507,7 @@ export class DbService {
       source,
       sql: input.sql,
       params,
+      tables: written,
       hash: editHash(input.db, input.sql, params),
       expiresAt,
       epoch: current.epoch,
@@ -414,7 +522,7 @@ export class DbService {
       db: input.db,
       sql: input.sql,
       params: params as DbEditRequest['params'],
-      tables: verdict.tables,
+      tables: written,
       expiresAt,
     };
   }
@@ -444,11 +552,31 @@ export class DbService {
     if (execute === undefined) throw new DbError('unsupported', 'Snapshots are read-only.');
     // 256 random bits per confirm: a repeat is not a practical event, so none is tracked.
     const token = randomBytes(32).toString('base64url');
+    let result: { changes: number };
     try {
-      return await execute(edit.db, edit.sql, edit.params, { token });
+      result = await execute(edit.db, edit.sql, edit.params, { token });
     } catch (err) {
       throw asDbError(err);
     }
+    // Every UPDATE and DELETE the dashboard sends comes from row details and matches
+    // the row as it was read (review L3), so one that matched nothing found the row
+    // changed: the change was refused, not made.
+    if (result.changes === 0 && CHECKED_EDIT.test(edit.sql)) {
+      this.opts.bus.emit('db.write', {
+        db: edit.db,
+        tables: edit.tables,
+        allowed: false,
+        reason: 'row-changed',
+      });
+      return result;
+    }
+    this.opts.bus.emit('db.write', {
+      db: edit.db,
+      tables: edit.tables,
+      allowed: true,
+      changes: result.changes,
+    });
+    return result;
   }
 
   /** Stops every table watch, e.g. when the last dashboard client has gone (R9). */
@@ -460,7 +588,10 @@ export class DbService {
   }
 
   cancelEdit(requestId: string): void {
+    const edit = this.pending.get(requestId);
+    if (edit === undefined) return;
     this.pending.delete(requestId);
+    this.opts.bus.emit('db.write', { db: edit.db, tables: edit.tables, allowed: false });
   }
 
   async close(): Promise<void> {
@@ -600,7 +731,18 @@ export class DbService {
       verdict = await judge(true);
     }
     // The gate's reasons are plain words that already say what is allowed.
-    if (!verdict.ok) throw new DbError('refused', verdict.reason);
+    if (!verdict.ok) {
+      const reason =
+        verdict.code === 'hidden-column'
+          ? viewNote(
+              verdict.reason,
+              sql,
+              schemaSql,
+              this.hidden().map((h) => h.table),
+            )
+          : verdict.reason;
+      throw new DbError('refused', reason, { detail: verdict.code });
+    }
     return { verdict, schemaSql };
   }
 

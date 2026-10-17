@@ -17,10 +17,36 @@ const TEXT = [
   'level-info',
   'level-warning',
   'level-error',
+  'diff-added',
+  'diff-changed',
+  'diff-removed',
 ];
 /** Control borders and the focus ring: 3:1 (WCAG 1.4.11). */
 const UI = ['border', 'focus', 'accent', 'status-ok', 'status-error'];
 const BACKGROUNDS = ['bg', 'surface'];
+
+/** Text on the M3 tints: diff colours on their own tint, body text on every tint. */
+const TINTS: [string, string][] = [
+  ['diff-added', 'diff-added-tint'],
+  ['diff-changed', 'diff-changed-tint'],
+  ['diff-removed', 'diff-removed-tint'],
+  ['text', 'diff-added-tint'],
+  ['text', 'diff-changed-tint'],
+  ['text', 'diff-removed-tint'],
+  ['text', 'flash'],
+  ['text-muted', 'flash'],
+];
+
+describe('M3 tints', () => {
+  for (const [name, theme] of Object.entries(themes)) {
+    for (const [fg, bg] of TINTS) {
+      it(`${name}: ${fg} on ${bg} is at least 4.5:1`, () => {
+        expect(theme[bg]).toBeDefined();
+        expect(contrastRatio(theme[fg] ?? '', theme[bg] ?? '')).toBeGreaterThanOrEqual(4.5);
+      });
+    }
+  }
+});
 
 describe('contrastRatio', () => {
   it('matches the WCAG reference values', () => {

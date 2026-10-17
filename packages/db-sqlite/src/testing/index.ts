@@ -28,3 +28,4 @@ export function fakeSnapshotFactory(): DbInspectorFactory {
       ),
   };
 }
+export * from './fake-live.js';

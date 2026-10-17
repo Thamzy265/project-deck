@@ -11,10 +11,13 @@ import {
 } from './activity.js';
 import { ReloadResultSchema, RunningAppSchema } from './apps.js';
 import {
+  BigIntCellSchema,
   CellSchema,
   DASHBOARD_MAX_QUERY_LIMIT,
+  DbDeviceSchema,
   DbErrorCodeSchema,
   DbInfoSchema,
+  MAX_DB_DEVICES,
   MAX_SQL_LENGTH,
   MCP_MAX_QUERY_LIMIT,
   QueryResultSchema,
@@ -26,7 +29,19 @@ import { TaskStatusTypeSchema } from './tasks.js';
 
 const DbName = z.string().min(1).max(128);
 const Sql = z.string().min(1).max(MAX_SQL_LENGTH);
-const SqlParams = z.array(z.union([z.string(), z.number(), z.boolean(), z.null()])).max(1000);
+/** Values, and integers past 2^53 as tagged ints, which every backend binds as integers. */
+const INT64_MIN = -(2n ** 63n);
+const INT64_MAX = 2n ** 63n - 1n;
+/** A tagged integer within SQLite's 64-bit range: past it, a bind would wrap (review R5). */
+const Int64Param = BigIntCellSchema.refine((p) => {
+  // Refinements also run on values the regex refused; BigInt would throw on those.
+  if (!/^-?\d{1,20}$/.test(p.value)) return false;
+  const n = BigInt(p.value);
+  return n >= INT64_MIN && n <= INT64_MAX;
+}, 'Not a 64-bit integer');
+const SqlParams = z
+  .array(z.union([z.string(), z.number(), z.boolean(), z.null(), Int64Param]))
+  .max(1000);
 const SnapshotId = z
   .string()
   .regex(/^[A-Za-z0-9_-]{1,64}$/)
@@ -85,6 +100,39 @@ export const DbEditConfirmInput = z.object({
 /** `POST /api/db/execute/cancel`: the user pressed "Cancel" or closed the dialog. */
 export const DbEditCancelInput = z.object({ requestId: EditRequestId });
 
+/** One saved query of the SQL editor (`.flutterdeck/queries.json`). */
+export const SavedQuerySchema = z.object({
+  name: z.string().min(1).max(100),
+  sql: Sql,
+});
+export type SavedQuery = z.infer<typeof SavedQuerySchema>;
+
+/** Most saved queries per project. */
+export const MAX_SAVED_QUERIES = 200;
+
+/** A list of saved queries, as in `.flutterdeck/queries.json`. */
+export const SavedQueriesSchema = z.object({
+  queries: z.array(SavedQuerySchema).max(MAX_SAVED_QUERIES),
+});
+
+/**
+ * Names one content of `.flutterdeck/queries.json`: the sha256 of the file, or `none`
+ * when there is no file. A save names the revision it started from (review R1).
+ */
+export const SavedQueriesRevision = z.string().regex(/^(none|[0-9a-f]{64})$/);
+
+/** Answer of `GET` and `PUT /api/db/queries` (dashboard only). */
+export const SavedQueriesResponse = SavedQueriesSchema.extend({ revision: SavedQueriesRevision });
+export type SavedQueriesState = z.infer<typeof SavedQueriesResponse>;
+
+/**
+ * Body of `PUT /api/db/queries`: the whole new list and the revision it was made from.
+ * A stale revision is refused (`conflict`, 409), so one tab never wipes another's.
+ */
+export const SavedQueriesWriteInput = SavedQueriesSchema.extend({
+  revision: SavedQueriesRevision,
+});
+
 /** `POST /api/db/refresh`: snapshot backends take a fresh copy. */
 export const DbRefreshInput = z.object({ db: DbName });
 
@@ -99,7 +147,23 @@ export const DbDiffInput = z.object({
   snapshotId: SnapshotId.optional(),
 });
 
-const DbProblem = z.object({ code: DbErrorCodeSchema, message: z.string() });
+const DbDevices = z.array(DbDeviceSchema).max(MAX_DB_DEVICES);
+
+const DbProblem = z.object({
+  code: DbErrorCodeSchema,
+  message: z.string(),
+  /** With `choose-device`: the devices the user can pick from. */
+  devices: DbDevices.optional(),
+});
+
+/**
+ * `POST /api/db/device`, dashboard only: after a `choose-device` answer, the snapshot
+ * backend `source` copies from this device (an id from that answer's list).
+ */
+export const DbChooseDeviceInput = z.object({
+  source: z.string().min(1).max(64),
+  device: DbDeviceSchema.shape.id,
+});
 
 /** A database backend for the attached app, and why it can't list databases, if so. */
 export const DbSourceSchema = z.object({
@@ -157,7 +221,13 @@ export type DbEditRequest = z.infer<typeof DbEditRequestResponse>;
 export const DbExecuteResponse = z.object({ changes: z.number().int().nonnegative() });
 
 /** Error answers of the `/api/db` routes: the code lets the UI pick its copy. */
-export const DbErrorResponse = z.object({ error: z.string(), code: DbErrorCodeSchema });
+export const DbErrorResponse = z.object({
+  error: z.string(),
+  code: DbErrorCodeSchema,
+  /** A finer reason: for `refused`, the read-only gate's refusal code (such as `attach`). */
+  detail: z.string().max(64).optional(),
+  devices: DbDevices.optional(),
+});
 
 /** Answer of `POST /api/db/snapshot`. */
 export const DbSnapshotResponse = z.object({

@@ -11,7 +11,7 @@ import { homedir } from 'node:os';
 import { isAbsolute, join, sep } from 'node:path';
 import type { RunningApp } from '@project-deck/core';
 import { killHard } from '@project-deck/android-adb';
-import { DbError, IOS_BUNDLE_ID } from '@project-deck/core';
+import { DbError, IOS_BUNDLE_ID, MAX_DB_DEVICES } from '@project-deck/core';
 import { z } from 'zod';
 import type { SnapshotSource } from './source.js';
 import { COMPANIONS, IOS_FOLDERS, SNAPSHOT_FILE, isSnapshotName } from './source.js';
@@ -102,7 +102,7 @@ export class IosSimulatorSource implements SnapshotSource {
 
   constructor(
     /** The container's real path, already checked to be inside the simulators folder. */
-    private readonly containerReal: string,
+    readonly containerReal: string,
     simulatorName: string,
   ) {
     // eslint-disable-next-line no-control-regex
@@ -176,6 +176,8 @@ export class IosSimulatorSource implements SnapshotSource {
 }
 
 export interface IosResolveOptions {
+  /** The simulator UDID the user picked after a `choose-device` answer. */
+  chosen?: string | undefined;
   /** Defaults to ~/Library/Developer/CoreSimulator/Devices. */
   simulatorRoot?: string;
   platform?: NodeJS.Platform;
@@ -250,11 +252,13 @@ export async function resolveIosSource(
       withApp.push({ udid: sim.udid, name: sim.name, container });
     }
   }
-  const [chosen] = withApp;
-  if (withApp.length > 1) {
+  const picked = withApp.filter((sim) => sim.udid === opts.chosen);
+  const [chosen] = picked.length === 1 ? picked : withApp;
+  if (picked.length !== 1 && withApp.length > 1) {
     throw new DbError(
       'choose-device',
-      'The app is on more than one booted iOS simulator. Shut down the others to take a snapshot.',
+      'The app is on more than one booted iOS simulator. Pick the one to copy from.',
+      { devices: withApp.slice(0, MAX_DB_DEVICES).map((s) => ({ id: s.udid, name: s.name })) },
     );
   }
   if (chosen === undefined) {

@@ -299,6 +299,58 @@ void main() {
       ]);
     });
 
+    test('a guarded edit changes the row as read, and 0 rows once it changed '
+        '(review L3)', () async {
+      await app.customStatement(
+        'CREATE TABLE kept (id INTEGER PRIMARY KEY, status TEXT, '
+        'note TEXT, data BLOB, big REAL)',
+      );
+      Future<void> put(String status, String hex) => app.customStatement(
+        'INSERT OR REPLACE INTO kept VALUES '
+        "(1, '$status', NULL, x'$hex', 9e999)",
+      );
+      Future<List<String>> rows() async => [
+        for (final r
+            in await app
+                .customSelect('SELECT status, hex(data) AS h FROM kept')
+                .get())
+          '${r.read<String>('status')} ${r.read<String>('h')}',
+      ];
+      Future<Object?> edit(String sql, List<Object?> params) async =>
+          (await call('execute', {
+            'db': 'app',
+            'sql': sql,
+            'params': jsonEncode(params),
+            'token': freshToken(),
+          }))['changes'];
+
+      // Each edited column must still hold its old value; null matches IS.
+      const update =
+          'UPDATE "kept" SET "status" = ?, "note" = ? '
+          'WHERE "id" IS ? AND "status" IS ? AND "note" IS ?';
+      await put('pending', '00FF10');
+      await put('cancelled', '00FF10'); // replaced with the same key
+      expect(await edit(update, ['shipped', 'x', 1, 'pending', null]), 0);
+      expect(await rows(), ['cancelled 00FF10']);
+      expect(await edit(update, ['shipped', null, 1, 'cancelled', null]), 1);
+      expect(await rows(), ['shipped 00FF10']);
+
+      // A delete matches every column shown: the blob by type, length and
+      // the bytes sent, and an infinity by its literal.
+      const delete =
+          'DELETE FROM "kept" WHERE "id" IS ? AND "status" IS ? '
+          'AND "note" IS ? AND typeof("data") = \'blob\' '
+          'AND length("data") IS ? AND hex(substr("data", 1, ?)) IS ? '
+          'AND "big" IS 9e999';
+      final shown = [1, 'shipped', null, 3, 3, '00FF10'];
+      await put('shipped', '00FF11'); // same size, other bytes
+      expect(await edit(delete, shown), 0);
+      expect(await rows(), ['shipped 00FF11']);
+      await put('shipped', '00FF10');
+      expect(await edit(delete, shown), 1);
+      expect(await rows(), isEmpty);
+    });
+
     test('a token works once', () async {
       final token = freshToken();
       Future<Map<String, Object?>> run() => call('execute', {

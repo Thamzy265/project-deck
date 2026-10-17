@@ -3,8 +3,9 @@
  * every other `/api` route. On top of that, edits accept only the dashboard cookie with
  * the dashboard's exact Origin, never the runtime.json token (design review S1).
  */
-import type { DbErrorCode } from '@project-deck/core';
+import type { DbErrorCode, SavedQueriesState, SavedQuery } from '@project-deck/core';
 import {
+  DbChooseDeviceInput,
   DbDiffInput,
   DbEditCancelInput,
   DbEditConfirmInput,
@@ -14,6 +15,7 @@ import {
   DbSchemaInput,
   DbSnapshotInput,
   McpDbQueryInput,
+  SavedQueriesWriteInput,
   isDbError,
 } from '@project-deck/core';
 import type { Context, Hono } from 'hono';
@@ -36,6 +38,7 @@ const STATUS: Record<DbErrorCode, ContentfulStatusCode> = {
   refused: 422,
   'sql-error': 422,
   'bad-token': 409,
+  conflict: 409,
   'not-allowed': 403,
   'setup-needed': 409,
   'update-needed': 409,
@@ -49,13 +52,24 @@ const STATUS: Record<DbErrorCode, ContentfulStatusCode> = {
 /** A DbError as `{error, code}` with its status; undefined for other errors. */
 export function dbErrorResponse(c: Context, err: unknown): Response | undefined {
   if (!isDbError(err)) return undefined;
-  return c.json({ error: err.message, code: err.code }, STATUS[err.code]);
+  const detail = typeof err.detail === 'string' ? { detail: err.detail.slice(0, 64) } : {};
+  const devices = err.devices === undefined ? {} : { devices: err.devices };
+  return c.json({ error: err.message, code: err.code, ...detail, ...devices }, STATUS[err.code]);
 }
 
 export interface DbRouteContext {
   db: DbService;
   credentials: () => Credentials;
+  /** The SQL editor's saved queries; without it, `/api/db/queries` doesn't exist. */
+  queries?: {
+    state(): Promise<SavedQueriesState>;
+    /** Refuses with `conflict` unless the file is still at `revision`. */
+    replace(queries: SavedQuery[], revision: string): Promise<SavedQueriesState>;
+  };
 }
+
+/** 200 saved queries of a few kB each, with room to spare. */
+export const QUERIES_BODY_LIMIT = 2 * 1024 * 1024;
 
 export function registerDbRoutes<E extends object>(api: Hono<E>, ctx: DbRouteContext): void {
   const limit = bodyLimit({
@@ -110,6 +124,39 @@ export function registerDbRoutes<E extends object>(api: Hono<E>, ctx: DbRouteCon
   api.post('/api/db/refresh', limit, async (c) => {
     await ctx.db.refresh(parse(DbRefreshInput, await jsonBody(c.req)).db);
     return c.json({ ok: true });
+  });
+
+  const queries = ctx.queries;
+  if (queries !== undefined) {
+    // A same-origin GET carries no Origin header; the cookie (SameSite=Strict) is enough
+    // to read, and the API's own check still refuses a foreign Origin.
+    api.get('/api/db/queries', async (c) => {
+      if (authenticate((n) => c.req.header(n), ctx.credentials()) !== 'cookie') {
+        return c.json(
+          { error: 'Saved queries are for the dashboard only.', code: 'not-allowed' },
+          403,
+        );
+      }
+      return c.json(await queries.state());
+    });
+    const queriesLimit = bodyLimit({
+      maxSize: QUERIES_BODY_LIMIT,
+      onError: (c) => c.json({ error: 'Body too large' }, 413),
+    });
+    api.put('/api/db/queries', queriesLimit, async (c) => {
+      const refused = dashboardOnly(c);
+      if (refused !== undefined) return refused;
+      const body = parse(SavedQueriesWriteInput, await jsonBody(c.req));
+      return c.json(await queries.replace(body.queries, body.revision));
+    });
+  }
+
+  api.post('/api/db/device', limit, async (c) => {
+    const refused = dashboardOnly(c);
+    if (refused !== undefined) return refused;
+    const { source, device } = parse(DbChooseDeviceInput, await jsonBody(c.req));
+    await ctx.db.chooseDevice(source, device);
+    return c.json(await ctx.db.list());
   });
 
   api.post('/api/db/execute', limit, async (c) => {

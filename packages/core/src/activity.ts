@@ -16,6 +16,13 @@ export const MAX_RELOAD_MESSAGE = 300;
 /** Claude Code session ids are UUIDs; anything longer isn't one. */
 export const MAX_SESSION_ID = 128;
 
+/** Database and table names come from the app; long ones are not real names. */
+/** Longest database or table name an Activity entry keeps. */
+export const MAX_ACTIVITY_NAME = 300;
+/** Most table names one edit's Activity entry keeps. */
+export const MAX_ACTIVITY_TABLES = 64;
+const DbName = z.string().max(MAX_ACTIVITY_NAME);
+
 const Base = {
   /** Increases by one per entry for the life of the daemon. */
   id: z.number().int().nonnegative(),
@@ -52,6 +59,20 @@ export const ActivityEntrySchema = z.discriminatedUnion('kind', [
     message: z.string().max(MAX_RELOAD_MESSAGE).optional(),
     appId: z.string().optional(),
     appName: z.string().optional(),
+  }),
+  /** Snapshots, diffs and edits name only the database and tables (design note, Observability). */
+  z.object({ ...Base, kind: z.literal('db.snapshot'), db: DbName }),
+  z.object({ ...Base, kind: z.literal('db.diff'), db: DbName }),
+  /** The user's answer to an edit's confirm dialog. The SQL is never kept. */
+  z.object({
+    ...Base,
+    kind: z.literal('db.write'),
+    db: DbName,
+    tables: z.array(DbName).max(MAX_ACTIVITY_TABLES),
+    allowed: z.boolean(),
+    changes: z.number().int().nonnegative().optional(),
+    /** Denied because a checked edit matched no row: it changed since it was read. */
+    reason: z.literal('row-changed').optional(),
   }),
 ]);
 export type ActivityEntry = z.infer<typeof ActivityEntrySchema>;

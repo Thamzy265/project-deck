@@ -16,7 +16,11 @@ import type { StorageLike } from '../state/storage.js';
 import { createSessionGuard } from '../state/storage.js';
 import type { RegexRunner } from '../search/runner.js';
 import { createInlineRunner } from '../search/runner.js';
+import type { TabId } from '../ui/App.js';
 import { App } from '../ui/App.js';
+import { DbProvider } from '../state/DbProvider.js';
+import type { FakeDbClient } from './db-fake.js';
+import { emptyDbClient } from './db-fake.js';
 
 export class FakeSocket implements SocketLike {
   onopen: (() => void) | null = null;
@@ -71,7 +75,10 @@ export function renderDashboard(
   daemon: FakeDaemon = fakeDaemon(),
   prefs = new MemoryStorage(),
   search: RegexRunner = createInlineRunner(),
+  /** The M2 tests start on Logs; the Database tab's tests pass `database` and a fake db. */
+  opts: { tab?: TabId; db?: FakeDbClient } = {},
 ) {
+  const db = opts.db ?? emptyDbClient();
   const sockets: FakeSocket[] = [];
   const client = {
     status: vi.fn<DeckClient['status']>(() => Promise.resolve(daemon.status)),
@@ -107,7 +114,9 @@ export function renderDashboard(
   };
   const view = render(
     <DeckProvider deps={deps}>
-      <App prefs={() => prefs} search={search} />
+      <DbProvider client={db}>
+        <App prefs={() => prefs} search={search} initialTab={opts.tab ?? 'logs'} />
+      </DbProvider>
     </DeckProvider>,
   );
   const socket = (): FakeSocket => {
@@ -118,6 +127,7 @@ export function renderDashboard(
   return {
     ...view,
     client,
+    db,
     reloadPage,
     sockets,
     prefs,

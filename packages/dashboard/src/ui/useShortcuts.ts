@@ -19,7 +19,8 @@ export function useShortcuts(enabled: boolean, run: (kind: ActionKind) => void):
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.repeat) return;
       if (event.ctrlKey || event.metaKey || event.altKey) return;
-      if (isTextField(event.target)) return;
+      // composedPath: inside a shadow root (the SQL editor) `target` is only its host.
+      if (isTextField(event.composedPath()[0] ?? event.target)) return;
       if (document.querySelector('[aria-modal="true"]') !== null) return;
       // Shift decides, not the letter's case: with Caps Lock on, "R" must not restart.
       if (event.key === 'r' && !event.shiftKey) run('reload');

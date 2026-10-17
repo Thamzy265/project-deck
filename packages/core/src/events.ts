@@ -31,6 +31,19 @@ export interface DeckEvents {
    * 250 ms). Names only, never row values: open views re-query.
    */
   'db.changed': { source: string; db: string; table: string };
+  /** A diff snapshot was taken (names only). */
+  'db.snapshot': { db: string };
+  /** A diff was computed. */
+  'db.diff': { db: string };
+  /** The user answered an edit's confirm: run (`changes` rows) or cancelled. Never the SQL. */
+  'db.write': {
+    db: string;
+    tables: string[];
+    allowed: boolean;
+    changes?: number;
+    /** A checked edit (row details) matched no row: the row changed meanwhile. */
+    reason?: 'row-changed';
+  };
   /** A new Activity feed entry, already stored. */
   activity: ActivityEntry;
 }

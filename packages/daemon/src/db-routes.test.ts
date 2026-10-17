@@ -1,5 +1,6 @@
 import type { DeckEvents } from '@project-deck/core';
-import { DbListResponse, EventBus, Registry } from '@project-deck/core';
+import type { SavedQuery } from '@project-deck/core';
+import { DbError, DbListResponse, EventBus, Registry } from '@project-deck/core';
 import { FakeAppConnector, FakeDbInspector, fakeApp } from '@project-deck/core/testing';
 import { registerDrift } from '@project-deck/db-drift';
 import { FakeDriftApp } from '@project-deck/db-drift/testing';
@@ -10,6 +11,7 @@ import { afterAll, describe, expect, it, vi } from 'vitest';
 import { ActivityFeed } from './activity.js';
 import { createApi } from './api.js';
 import { AppManager } from './app-manager.js';
+import type { DbRouteContext } from './db-routes.js';
 import { DB_BODY_LIMIT } from './db-routes.js';
 import type { DbSettings } from './db-service.js';
 import { DbService } from './db-service.js';
@@ -27,6 +29,7 @@ afterAll(async () => {
 });
 
 interface SetupOptions {
+  queries?: DbRouteContext['queries'];
   settings?: Partial<DbSettings>;
   guard?: SqlGuard;
   extraDb?: FakeDbInspector;
@@ -65,6 +68,7 @@ async function setup(opts: SetupOptions = {}) {
     projectId: undefined,
     projectName: 'shop_app',
     db,
+    ...(opts.queries === undefined ? {} : { queries: opts.queries }),
     shutdown: () => undefined,
   });
   type Init = { method?: string; body?: unknown; headers?: Record<string, string> };
@@ -88,8 +92,167 @@ async function setup(opts: SetupOptions = {}) {
       origin: ORIGIN,
       'sec-fetch-site': 'same-origin',
     });
-  return { drift, asToken, asDashboard, send, manager, db };
+  return { drift, asToken, asDashboard, send, manager, db, api };
 }
+
+/** A snapshot backend that needs the user to pick a device first. */
+class ChoosyDb extends FakeDbInspector {
+  chosen: string | undefined;
+  constructor() {
+    super({ 'app_flutter/app.sqlite': [] }, undefined, { id: 'sqlite-file', live: false });
+  }
+  override listDatabases() {
+    if (this.chosen === undefined) {
+      return Promise.reject(
+        new DbError('choose-device', 'Pick one.', {
+          devices: [
+            { id: 'emulator-5554', name: 'emulator-5554' },
+            { id: 'R58M123ABC', name: 'R58M123ABC' },
+          ],
+        }),
+      );
+    }
+    return super.listDatabases();
+  }
+  chooseDevice(id: string): Promise<void> {
+    this.chosen = id;
+    return Promise.resolve();
+  }
+}
+
+/** Saved queries in memory, with the store's revision rule (review R1). */
+function memoryStore() {
+  const saved: SavedQuery[][] = [];
+  const revision = () => (saved.length === 0 ? 'none' : String(saved.length).padStart(64, '0'));
+  return {
+    saved,
+    state: () => Promise.resolve({ queries: saved.at(-1) ?? [], revision: revision() }),
+    replace: (q: SavedQuery[], base: string) => {
+      if (base !== revision()) {
+        return Promise.reject(new DbError('conflict', 'The saved queries changed.'));
+      }
+      saved.push(q);
+      return Promise.resolve({ queries: q, revision: revision() });
+    },
+  };
+}
+
+describe('/api/db/queries (saved queries)', () => {
+  it('reads and replaces the saved queries, from the dashboard only', async () => {
+    const queries = memoryStore();
+    const { saved } = queries;
+    const { asToken, asDashboard, send } = await setup({ guard: new FakeSqlGuard(), queries });
+    expect(await (await asDashboard('/api/db/queries')).json()).toEqual({
+      queries: [],
+      revision: 'none',
+    });
+    // The browser sends no Origin with a same-origin GET.
+    const noOrigin = await send(
+      '/api/db/queries',
+      {},
+      { cookie: `deck_session_${PORT}=${SECRET}`, 'sec-fetch-site': 'same-origin' },
+    );
+    expect(noOrigin.status).toBe(200);
+    const list = [{ name: 'Pending', sql: 'SELECT 1' }];
+    const put = await asDashboard('/api/db/queries', {
+      method: 'PUT',
+      body: { queries: list, revision: 'none' },
+    });
+    expect(put.status).toBe(200);
+    expect(await put.json()).toEqual({ queries: list, revision: '1'.padStart(64, '0') });
+    expect(saved).toEqual([list]);
+    expect((await asToken('/api/db/queries')).status).toBe(403);
+    const byToken = await asToken('/api/db/queries', {
+      method: 'PUT',
+      body: { queries: [], revision: '1'.padStart(64, '0') },
+    });
+    expect(byToken.status).toBe(403);
+    for (const body of [
+      {},
+      { queries: [] },
+      { queries: [], revision: 'latest' },
+      { queries: [{ name: '', sql: 'SELECT 1' }] },
+      { queries: [{ name: 'x'.repeat(101), sql: 'SELECT 1' }] },
+      { queries: Array(201).fill({ name: 'a', sql: 'SELECT 1' }) },
+    ]) {
+      const res = await asDashboard('/api/db/queries', { method: 'PUT', body });
+      expect(res.status).toBe(400);
+    }
+    expect(saved).toHaveLength(1);
+  });
+
+  it('refuses a save from a stale revision with 409, so one tab never wipes another', async () => {
+    const queries = memoryStore();
+    const { asDashboard } = await setup({ guard: new FakeSqlGuard(), queries });
+    const first = await asDashboard('/api/db/queries', {
+      method: 'PUT',
+      body: { queries: [{ name: 'a', sql: 'SELECT 1' }], revision: 'none' },
+    });
+    expect(first.status).toBe(200);
+    const stale = await asDashboard('/api/db/queries', {
+      method: 'PUT',
+      body: { queries: [{ name: 'b', sql: 'SELECT 2' }], revision: 'none' },
+    });
+    expect(stale.status).toBe(409);
+    expect(await stale.json()).toMatchObject({ code: 'conflict' });
+    expect(queries.saved).toEqual([[{ name: 'a', sql: 'SELECT 1' }]]);
+  });
+});
+
+describe('/api/db/device (choose-device)', () => {
+  it('lists the devices to pick from, and lists databases once the user picked', async () => {
+    const choosy = new ChoosyDb();
+    const { asDashboard } = await setup({ guard: new FakeSqlGuard(), extraDb: choosy });
+    const before = DbListResponse.parse(await (await asDashboard('/api/db')).json());
+    expect(before.sources.find((s) => s.id === 'sqlite-file')?.error).toEqual({
+      code: 'choose-device',
+      message: 'Pick one.',
+      devices: [
+        { id: 'emulator-5554', name: 'emulator-5554' },
+        { id: 'R58M123ABC', name: 'R58M123ABC' },
+      ],
+    });
+    const res = await asDashboard('/api/db/device', {
+      body: { source: 'sqlite-file', device: 'R58M123ABC' },
+    });
+    expect(res.status).toBe(200);
+    const after = DbListResponse.parse(await res.json());
+    expect(choosy.chosen).toBe('R58M123ABC');
+    expect(after.databases).toContainEqual({
+      name: 'app_flutter/app.sqlite',
+      backend: 'snapshot',
+      source: 'sqlite-file',
+    });
+  });
+
+  it('takes the choice from the dashboard only, and validates it', async () => {
+    const choosy = new ChoosyDb();
+    const { asToken, asDashboard } = await setup({ guard: new FakeSqlGuard(), extraDb: choosy });
+    const token = await asToken('/api/db/device', {
+      body: { source: 'sqlite-file', device: 'R58M123ABC' },
+    });
+    expect(token.status).toBe(403);
+    for (const body of [
+      {},
+      { source: 'sqlite-file' },
+      { source: 'sqlite-file', device: '' },
+      { source: 'sqlite-file', device: 'x'.repeat(129) },
+    ]) {
+      expect((await asDashboard('/api/db/device', { body })).status, JSON.stringify(body)).toBe(
+        400,
+      );
+    }
+    const unknown = await asDashboard('/api/db/device', {
+      body: { source: 'nope', device: 'R58M123ABC' },
+    });
+    expect(await unknown.json()).toMatchObject({ code: 'not-found' });
+    const live = await asDashboard('/api/db/device', {
+      body: { source: 'drift', device: 'R58M123ABC' },
+    });
+    expect(await live.json()).toMatchObject({ code: 'unsupported' });
+    expect(choosy.chosen).toBeUndefined();
+  });
+});
 
 const queryCalls = (drift: FakeDriftApp) =>
   drift.extensions.calls.filter((c) => c.method === 'ext.flutterdeck.drift.v1.query');
@@ -107,6 +270,8 @@ describe('/api/db security', () => {
       ['/api/db/execute', { db: 'app', sql: 'DELETE FROM orders' }],
       ['/api/db/execute/confirm', { requestId: 'a'.repeat(32), sql: 'x' }],
       ['/api/db/execute/cancel', { requestId: 'a'.repeat(32) }],
+      ['/api/db/device', { source: 'sqlite-file', device: 'emulator-5554' }],
+      ['/api/db/queries', undefined],
     ] as const) {
       const init = body === undefined ? {} : { body };
       expect((await send(path, init, {})).status, `${path} without a token`).toBe(401);
@@ -208,6 +373,20 @@ describe('/api/db with the real read-only gate', () => {
       }
     }
     expect(queryCalls(drift)).toHaveLength(0);
+  });
+
+  it("passes the gate's refusal code on as detail, so the dashboard can say why", async () => {
+    const { asDashboard } = await setup();
+    const cases: [string, string][] = [
+      ['DELETE FROM orders', 'writes-data'],
+      ['SELECT 1; DROP TABLE orders', 'multiple-statements'],
+      ["ATTACH 'other.db' AS x", 'attach'],
+      ['PRAGMA writable_schema = 1', 'pragma'],
+    ];
+    for (const [sql, detail] of cases) {
+      const res = await asDashboard('/api/db/query', { body: { db: 'app', sql } });
+      expect(await res.json(), sql).toMatchObject({ code: 'refused', detail });
+    }
   });
 
   it('refuses a hidden column to Claude (token) and shows it on the dashboard', async () => {
@@ -328,5 +507,96 @@ describe('/api/db/:db/schema input', () => {
     const res = await asToken(`/api/db/${'x'.repeat(129)}/schema`);
     expect(res.status).toBe(400);
     expect(drift.extensions.calls.length).toBe(before);
+  });
+});
+
+describe('/api/db/queries and /api/db/device: cookie edges (tester probes)', () => {
+  const memoryQueries = memoryStore;
+  const cookie = { cookie: `deck_session_${PORT}=${SECRET}` };
+
+  it('refuses a cookie GET of saved queries from another site, origin or host', async () => {
+    const queries = memoryQueries();
+    const { send } = await setup({ guard: new FakeSqlGuard(), queries });
+    for (const [label, headers] of [
+      ['cross-site fetch', { ...cookie, 'sec-fetch-site': 'cross-site' }],
+      ['same-site fetch', { ...cookie, 'sec-fetch-site': 'same-site' }],
+      ['typed in the address bar', { ...cookie, 'sec-fetch-site': 'none' }],
+      ['foreign Origin', { ...cookie, origin: 'https://evil.example' }],
+      ['null Origin', { ...cookie, origin: 'null' }],
+      ['other port Origin', { ...cookie, origin: `http://127.0.0.1:${PORT + 1}` }],
+      ['wrong cookie', { cookie: `deck_session_${PORT}=nope` }],
+      ['cookie of another port', { cookie: `deck_session_${PORT + 1}=${SECRET}` }],
+    ] as const) {
+      const res = await send('/api/db/queries', {}, headers);
+      expect([401, 403], label).toContain(res.status);
+    }
+    const rebound = await send(
+      '/api/db/queries',
+      { headers: { host: `evil.example:${PORT}` } },
+      { ...cookie, 'sec-fetch-site': 'same-origin' },
+    );
+    expect(rebound.status, 'DNS rebinding host').toBe(403);
+  });
+
+  it('refuses a PUT of saved queries without the exact Origin, and changes nothing', async () => {
+    const queries = memoryQueries();
+    const { send } = await setup({ guard: new FakeSqlGuard(), queries });
+    const body = { queries: [{ name: 'a', sql: 'SELECT 1' }], revision: 'none' };
+    for (const headers of [
+      { ...cookie, 'sec-fetch-site': 'same-origin' },
+      { ...cookie, origin: 'https://evil.example' },
+      { ...cookie, origin: ORIGIN, 'sec-fetch-site': 'cross-site' },
+    ]) {
+      const res = await send('/api/db/queries', { method: 'PUT', body }, headers);
+      expect([401, 403], JSON.stringify(headers)).toContain(res.status);
+    }
+    expect(queries.saved).toEqual([]);
+  });
+
+  it('answers malformed, oversized and wrong-method requests without saving', async () => {
+    const queries = memoryQueries();
+    const { asDashboard, api } = await setup({ guard: new FakeSqlGuard(), queries });
+    const raw = (body: string) =>
+      api.request(`${ORIGIN}/api/db/queries`, {
+        method: 'PUT',
+        body,
+        headers: {
+          host: `127.0.0.1:${PORT}`,
+          'content-type': 'application/json',
+          ...cookie,
+          origin: ORIGIN,
+          'sec-fetch-site': 'same-origin',
+        },
+      });
+    expect((await raw('{"queries": [')).status).toBe(400);
+    expect((await raw('null')).status).toBe(400);
+    expect((await raw('')).status).toBe(400);
+    const big = JSON.stringify({
+      queries: [{ name: 'a', sql: `SELECT '${'x'.repeat(3_000_000)}'` }],
+    });
+    expect((await raw(big)).status).toBe(413);
+    const nul = await asDashboard('/api/db/queries', {
+      method: 'PUT',
+      body: { queries: [{ name: 'a\u0000‮b', sql: 'SELECT 1' }], revision: 'none' },
+    });
+    // Odd but harmless names are kept as they are; the dashboard names them visibly.
+    expect(nul.status).toBe(200);
+    const post = await asDashboard('/api/db/queries', { method: 'POST', body: { queries: [] } });
+    expect([404, 405]).toContain(post.status);
+    const del = await asDashboard('/api/db/queries', { method: 'DELETE' });
+    expect([404, 405]).toContain(del.status);
+    expect(queries.saved).toHaveLength(1);
+  });
+
+  it('ignores a device id with shell characters that no device listed', async () => {
+    const choosy = new ChoosyDb();
+    const { asDashboard } = await setup({ guard: new FakeSqlGuard(), extraDb: choosy });
+    const res = await asDashboard('/api/db/device', {
+      body: { source: 'sqlite-file', device: 'emulator-5554;reboot' },
+    });
+    // The route passes it on; the snapshot backend only ever uses an id adb listed
+    // (db-sqlite inspector-choice tests). Here: no crash and a normal answer.
+    expect(res.status).toBe(200);
+    expect(DbListResponse.safeParse(await res.json()).success).toBe(true);
   });
 });

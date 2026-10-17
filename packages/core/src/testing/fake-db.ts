@@ -30,6 +30,8 @@ export interface FakeDbInspectorOptions {
   writable?: boolean;
   id?: string;
   live?: boolean;
+  /** What `execute` reports; 0 stands for an edit whose row changed meanwhile. */
+  changes?: number;
 }
 
 const SELECT_ALL = /^\s*select\s+\*\s+from\s+["`]?(\w+)["`]?\s*;?\s*$/i;
@@ -82,7 +84,7 @@ export class FakeDbInspector implements DbInspector {
           throw new DbError('bad-token', 'Changes need a confirm in the dashboard');
         }
         this.executed.push({ db, sql, params, token });
-        return { changes: 1 };
+        return { changes: opts.changes ?? 1 };
       };
     }
   }

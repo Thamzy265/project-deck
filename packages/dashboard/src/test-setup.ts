@@ -10,6 +10,13 @@ Object.defineProperties(HTMLElement.prototype, {
 });
 HTMLElement.prototype.getBoundingClientRect = () => DOMRect.fromRect({ width: 420, height: 600 });
 
+// CodeMirror measures text ranges, which jsdom doesn't lay out either.
+Range.prototype.getClientRects = () => {
+  const list: DOMRect[] = [];
+  return Object.assign(list, { item: () => null });
+};
+Range.prototype.getBoundingClientRect = () => DOMRect.fromRect({ width: 0, height: 0 });
+
 afterEach(() => {
   cleanup();
 });

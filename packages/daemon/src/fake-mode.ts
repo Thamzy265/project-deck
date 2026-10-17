@@ -1,43 +1,42 @@
 import type { Registry } from '@project-deck/core';
-import type { FakeTable } from '@project-deck/core/testing';
-import { FakeAppConnector, FakeDbInspector, fakeApp } from '@project-deck/core/testing';
-import { fakeSnapshotFactory } from '@project-deck/db-sqlite/testing';
+import { FakeAppConnector, fakeApp } from '@project-deck/core/testing';
+import { FakeLiveDatabase, fakeSnapshotFactory } from '@project-deck/db-sqlite/testing';
 
-const MAX_FAKE_ORDERS = 50;
-
-function ordersTable(): FakeTable {
-  return {
-    info: {
-      name: 'orders',
-      kind: 'table',
-      sql: "CREATE TABLE orders (id INTEGER PRIMARY KEY AUTOINCREMENT, item TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', created INTEGER NOT NULL)",
-      columns: [
-        { name: 'id', type: 'INTEGER', nullable: false, pk: true, pkPosition: 1, default: null },
-        { name: 'item', type: 'TEXT', nullable: false, pk: false, default: null },
-        { name: 'status', type: 'TEXT', nullable: false, pk: false, default: "'pending'" },
-        { name: 'created', type: 'INTEGER', nullable: false, pk: false, default: null },
-      ],
-      foreignKeys: [],
-      indexes: [],
-    },
-    rows: [
-      [1, 'Coffee', 'pending', 1_760_000_000_000],
-      [2, 'Tea', 'shipped', 1_760_000_001_000],
-    ],
-  };
-}
+/** The fake app stops adding orders here (lead, batch 4 QA: 50 ran out after 4 min). */
+export const MAX_FAKE_ORDERS = 500;
 
 /**
- * `--fake`: an in-memory app with a live database (writes allowed by the backend, still
- * subject to db.allowWrites and the confirm) that gains an order every 5 s, and a fake
- * Android device whose database files the snapshot backend reads with the real engine.
- * Lets the API and dashboard be exercised without Flutter or a device.
+ * The fake app's database: customers, orders that point at them, and an audit table
+ * that a trigger on customers writes, so the dashboard can show its "triggers count as
+ * a second table" refusal (QA G2).
+ */
+export const FAKE_DB_SETUP: readonly string[] = [
+  'CREATE TABLE customers (id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT)',
+  "CREATE TABLE orders (id INTEGER PRIMARY KEY AUTOINCREMENT, item TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', created INTEGER NOT NULL, customer_id INTEGER REFERENCES customers(id))",
+  'CREATE TABLE audit_log (id INTEGER PRIMARY KEY, at INTEGER NOT NULL, note TEXT NOT NULL)',
+  "CREATE TRIGGER customers_audit AFTER UPDATE ON customers BEGIN INSERT INTO audit_log (at, note) VALUES (unixepoch(), 'customer changed'); END",
+  "INSERT INTO customers VALUES (1, 'Ada Lovelace', 'ada@example.com'), (2, 'Grace Hopper', NULL)",
+  "INSERT INTO orders VALUES (1, 'Coffee', 'pending', 1760000000000, 1), (2, 'Tea', 'shipped', 1760000001000, 2)",
+];
+
+/**
+ * `--fake`: an in-memory app with a live database (real SQL in memory; writes allowed
+ * by the backend, still subject to db.allowWrites and the confirm) that gains an order
+ * every 5 s, and a fake Android device whose database files the snapshot backend reads
+ * with the real engine. Lets the API and dashboard be exercised without Flutter or a
+ * device. Each attach starts the database afresh.
  */
 export function registerFake(registry: Registry): void {
   const connector = new FakeAppConnector('fake', [fakeApp()]);
   registry.connectors.register(connector);
-  const db = new FakeDbInspector({ app: [ordersTable()] }, undefined, { writable: true });
-  registry.dbInspectors.register({ id: db.id, create: () => Promise.resolve(db) });
+  let live: FakeLiveDatabase | undefined;
+  registry.dbInspectors.register({
+    id: 'fake',
+    create: async () => {
+      live = await FakeLiveDatabase.create('app', FAKE_DB_SETUP);
+      return live;
+    },
+  });
   registry.dbInspectors.register(fakeSnapshotFactory());
   let next = 3;
   setInterval(() => {
@@ -49,8 +48,15 @@ export function registerFake(registry: Registry): void {
     });
   }, 2000).unref();
   setInterval(() => {
-    if (next > MAX_FAKE_ORDERS) return;
-    void db.insert('app', 'orders', [next, `Order ${next}`, 'pending', Date.now()]);
+    if (next > MAX_FAKE_ORDERS || live === undefined) return;
+    live
+      .run('INSERT INTO orders (item, status, created, customer_id) VALUES (?, ?, ?, ?)', [
+        `Order ${next}`,
+        'pending',
+        Date.now(),
+        (next % 2) + 1,
+      ])
+      .catch(() => undefined);
     next++;
   }, 5000).unref();
 }

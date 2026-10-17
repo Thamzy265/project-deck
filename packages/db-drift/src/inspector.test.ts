@@ -127,6 +127,21 @@ describe('DriftInspector over the recorded flutterdeck_drift session', () => {
   });
 });
 
+describe('DriftInspector parameters', () => {
+  it('passes a tagged integer key to the app as is (decodeParam reads it, TAB-2)', async () => {
+    const app = new FakeDriftApp().handle('execute', () => ({ changes: 1 }));
+    const big = { type: 'int', value: '9007199254740993' };
+    await new DriftInspector(app.extensions).execute(
+      'app',
+      'DELETE FROM orders WHERE id IS ?',
+      [big],
+      { token: TOKEN },
+    );
+    const call = app.extensions.calls.find((c) => c.method.endsWith('.execute'));
+    expect(JSON.parse(call?.params['params'] ?? '[]')).toEqual([big]);
+  });
+});
+
 describe('DriftInspector failure paths', () => {
   it('asks for setup when the app has no flutterdeck_drift', async () => {
     const db = new DriftInspector(new FakeAppExtensions());

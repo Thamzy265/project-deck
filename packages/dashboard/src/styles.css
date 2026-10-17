@@ -19,6 +19,13 @@
   --color-level-info: var(--deck-level-info);
   --color-level-warning: var(--deck-level-warning);
   --color-level-error: var(--deck-level-error);
+  --color-diff-added: var(--deck-diff-added);
+  --color-diff-added-tint: var(--deck-diff-added-tint);
+  --color-diff-changed: var(--deck-diff-changed);
+  --color-diff-changed-tint: var(--deck-diff-changed-tint);
+  --color-diff-removed: var(--deck-diff-removed);
+  --color-diff-removed-tint: var(--deck-diff-removed-tint);
+  --color-flash: var(--deck-flash);
   --color-transparent: transparent;
 
   --spacing: 0.25rem;
@@ -45,6 +52,8 @@
   /* From the UI spec: 420 px pane target, 768 px one-row header, 1200 px max width. */
   --breakpoint-pane: 25rem;
   --breakpoint-md: 48rem;
+  /* M3: the Database tab's table sidebar from 900 px. */
+  --breakpoint-lg: 56.25rem;
   --breakpoint-wide: 75rem;
 }
 
@@ -64,6 +73,27 @@
   :focus-visible {
     outline: 2px solid var(--deck-focus);
     outline-offset: 2px;
+  }
+}
+
+/* New or changed rows (UI spec, grid): a 1.5 s tint, or a 2 s outline with reduced motion. */
+@keyframes deck-flash {
+  from {
+    background-color: var(--deck-flash);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+
+.deck-flash {
+  animation: deck-flash 1.5s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .deck-flash {
+    outline: 2px solid var(--deck-accent);
+    outline-offset: -2px;
   }
 }
 

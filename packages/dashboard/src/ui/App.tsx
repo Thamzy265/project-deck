@@ -6,6 +6,7 @@ import { NO_FILTERS } from '../state/logs.js';
 import type { StorageSource } from '../state/storage.js';
 import { readShortcutsEnabled, writeShortcutsEnabled } from '../state/storage.js';
 import { ActivityPanel } from './ActivityPanel.js';
+import { DatabasePanel } from './db/DatabasePanel.js';
 import { Header } from './header/Header.js';
 import { LogsPanel } from './logs/LogsPanel.js';
 import { DaemonDownPage, LoadingPage, LoginNeededPage, ReauthPage } from './PageState.js';
@@ -13,11 +14,20 @@ import { ConnectionBanner, Footer } from './StatusBits.js';
 import { Tabs } from './Tabs.js';
 import { useShortcuts } from './useShortcuts.js';
 
-type TabId = 'logs' | 'activity';
+export type TabId = 'database' | 'logs' | 'activity';
 
-export function App({ prefs, search }: { prefs: StorageSource; search: RegexRunner }) {
+export function App({
+  prefs,
+  search,
+  initialTab = 'database',
+}: {
+  prefs: StorageSource;
+  search: RegexRunner;
+  /** The M3 UI spec opens on Database; tests of the other tabs start there. */
+  initialTab?: TabId;
+}) {
   const { state, actions } = useDeck();
-  const [tab, setTab] = useState<TabId>('logs');
+  const [tab, setTab] = useState<TabId>(initialTab);
   const [filters, setFilters] = useState<LogFilters>(NO_FILTERS);
   const [shortcuts, setShortcuts] = useState(() => readShortcutsEnabled(prefs));
   const listRef = useRef<HTMLDivElement>(null);
@@ -67,6 +77,7 @@ export function App({ prefs, search }: { prefs: StorageSource; search: RegexRunn
             selected={tab}
             onSelect={setTab}
             tabs={[
+              { id: 'database', label: 'Database', panel: <DatabasePanel /> },
               {
                 id: 'logs',
                 label: 'Logs',

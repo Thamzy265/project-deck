@@ -296,12 +296,28 @@ function bindBlob(open: OpenDb, stmt: number, index: number, bytes: Uint8Array):
   return capi.sqlite3_bind_blob(stmt, index, p, bytes.length, capi.SQLITE_WASM_DEALLOC);
 }
 
+const INT64_MIN = -(2n ** 63n);
+const INT64_MAX = 2n ** 63n - 1n;
+
+/** A tagged integer outside SQLite's 64-bit range. */
+function pastInt64(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null || !('type' in value)) return false;
+  const tagged = value as { type: unknown; value?: unknown };
+  if (tagged.type !== 'int' || typeof tagged.value !== 'string') return false;
+  if (!/^-?\d{1,20}$/.test(tagged.value)) return false;
+  const n = BigInt(tagged.value);
+  return n < INT64_MIN || n > INT64_MAX;
+}
+
 /** Binds one parameter: JSON scalars, booleans as 0/1, and tagged int, real and blob cells. */
-function bind(open: OpenDb, stmt: number, index: number, value: unknown): void {
+export function bind(open: OpenDb, stmt: number, index: number, value: unknown): void {
   const { capi } = open.sqlite;
   let rc: number;
-  if (value === null || value === undefined) rc = capi.sqlite3_bind_null(stmt, index);
-  else if (typeof value === 'boolean') rc = capi.sqlite3_bind_int64(stmt, index, value ? 1n : 0n);
+  if (value === null || value === undefined) {
+    // This build's sqlite3_bind_null answers undefined instead of SQLITE_OK (TAB-3).
+    const r: unknown = capi.sqlite3_bind_null(stmt, index);
+    rc = typeof r === 'number' ? r : SQLITE_OK;
+  } else if (typeof value === 'boolean') rc = capi.sqlite3_bind_int64(stmt, index, value ? 1n : 0n);
   else if (typeof value === 'number') {
     rc = Number.isSafeInteger(value)
       ? capi.sqlite3_bind_int64(stmt, index, BigInt(value))
@@ -315,7 +331,12 @@ function bind(open: OpenDb, stmt: number, index: number, value: unknown): void {
       typeof tagged.value === 'string' &&
       /^-?\d{1,20}$/.test(tagged.value)
     ) {
-      rc = capi.sqlite3_bind_int64(stmt, index, BigInt(tagged.value));
+      const n = BigInt(tagged.value);
+      // bind_int64 would wrap a value past 64 bits to another integer (review R5).
+      if (n < INT64_MIN || n > INT64_MAX) {
+        throw new DbError('refused', 'A parameter is past the 64-bit integer range.');
+      }
+      rc = capi.sqlite3_bind_int64(stmt, index, n);
     } else if (tagged.type === 'real' && typeof tagged.value === 'string') {
       const real = { Infinity: Infinity, '-Infinity': -Infinity, NaN: Number.NaN }[tagged.value];
       if (real === undefined) throw new DbError('refused', 'A parameter has an unknown value.');
@@ -726,6 +747,11 @@ export function rowsByKey(open: OpenDb, table: string, keys: RowKey[]): KeyedRow
       const parts = shape.key.length === 1 ? [key] : key;
       if (!Array.isArray(parts) || parts.length !== shape.key.length) {
         throw new DbError('refused', 'A key has the wrong number of values.');
+      }
+      // No row can have a key past the 64-bit range: it is missing, not an error.
+      if (parts.some(pastInt64)) {
+        missing.push(key);
+        continue;
       }
       capi.sqlite3_reset(s.stmt);
       capi.sqlite3_clear_bindings(s.stmt);

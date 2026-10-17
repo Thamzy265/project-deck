@@ -129,6 +129,8 @@ export const DbErrorCodeSchema = z.enum([
   'bad-token',
   /** Writes are off, or this caller may not write. */
   'not-allowed',
+  /** Something changed since the caller read it (a saved-queries revision). */
+  'conflict',
   /** The app has no flutterdeck_drift: show the setup help. */
   'setup-needed',
   /** flutterdeck_drift speaks another protocol version. */
@@ -147,16 +149,40 @@ export type DbErrorCode = z.infer<typeof DbErrorCodeSchema>;
 
 const DB_ERROR = Symbol.for('project-deck.DbError');
 
+/** A device or simulator the user can pick for a snapshot (`choose-device`). */
+export const DbDeviceSchema = z.object({
+  /** The adb serial or the simulator's UDID. */
+  id: z.string().min(1).max(128),
+  /** What the user sees: the serial, or the simulator's name. Untrusted device text. */
+  name: z.string().max(200),
+});
+export type DbDevice = z.infer<typeof DbDeviceSchema>;
+
+/** Most devices one `choose-device` answer lists. */
+export const MAX_DB_DEVICES = 32;
+
+export interface DbErrorExtra {
+  /** A finer reason for the UI's copy, such as the read-only gate's refusal code. */
+  detail?: string;
+  /** With `choose-device`: the devices the user can pick from. */
+  devices?: DbDevice[];
+}
+
 /** A failed database call. `message` is plain words, safe to show the user or Claude. */
 export class DbError extends Error {
   readonly [DB_ERROR] = true;
+  readonly detail: string | undefined;
+  readonly devices: DbDevice[] | undefined;
 
   constructor(
     readonly code: DbErrorCode,
     message: string,
+    extra: DbErrorExtra = {},
   ) {
     super(message);
     this.name = 'DbError';
+    this.detail = extra.detail;
+    this.devices = extra.devices;
   }
 }
 
@@ -263,6 +289,11 @@ export interface DbInspector {
   rowHashes?(db: string): Promise<RowHashes>;
   /** Current values of the rows with these keys (at most MAX_KEYS_PER_CALL). */
   rowsByKey?(db: string, table: string, keys: RowKey[]): Promise<KeyedRows>;
+  /**
+   * Snapshot backends, after a `choose-device` answer: copy from this device (an adb
+   * serial or a simulator UDID from that answer's list) from now on.
+   */
+  chooseDevice?(id: string): Promise<void>;
   /** Snapshot backends: drop the copy so the next call reads a fresh one. */
   refresh?(db: string): Promise<void>;
   /** Releases workers and subscriptions. Never touches the app. */

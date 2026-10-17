@@ -47,6 +47,25 @@ describe('r and R', () => {
     expect(t.client.restart).not.toHaveBeenCalled();
   });
 
+  it('do nothing while typing in a text field inside a shadow root (the SQL editor)', async () => {
+    const t = await ready();
+    const host = document.createElement('div');
+    document.body.append(host);
+    const editor = document.createElement('div');
+    editor.contentEditable = 'true';
+    host.attachShadow({ mode: 'open' }).append(editor);
+    // jsdom has no editing host; the property is what the check reads.
+    Object.defineProperty(editor, 'isContentEditable', { value: true });
+    editor.dispatchEvent(new KeyboardEvent('keydown', { key: 'r', bubbles: true, composed: true }));
+    editor.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'R', shiftKey: true, bubbles: true, composed: true }),
+    );
+    await act(() => Promise.resolve());
+    expect(t.client.reload).not.toHaveBeenCalled();
+    expect(t.client.restart).not.toHaveBeenCalled();
+    host.remove();
+  });
+
   it('do nothing while focus is in the app picker', async () => {
     const t = await ready();
     screen.getByRole('combobox', { name: 'App' }).focus();
@@ -275,18 +294,23 @@ describe('focus order and dialogs', () => {
 describe('tabs', () => {
   it('ArrowLeft wraps, Home and End jump, and only the selected tab is in the Tab order', async () => {
     const t = await ready();
+    const database = screen.getByRole('tab', { name: 'Database' });
     const logs = screen.getByRole('tab', { name: 'Logs' });
     const activity = screen.getByRole('tab', { name: 'Activity' });
     logs.focus();
     await t.user.keyboard('{ArrowLeft}');
-    expect(activity).toHaveFocus();
-    expect(activity).toHaveAttribute('tabindex', '0');
+    expect(database).toHaveFocus();
+    expect(database).toHaveAttribute('tabindex', '0');
     expect(logs).toHaveAttribute('tabindex', '-1');
+    await t.user.keyboard('{ArrowLeft}');
+    expect(activity).toHaveFocus();
     await t.user.keyboard('{Home}');
-    expect(logs).toHaveFocus();
-    expect(logs).toHaveAttribute('aria-selected', 'true');
+    expect(database).toHaveFocus();
+    expect(database).toHaveAttribute('aria-selected', 'true');
     await t.user.keyboard('{End}');
     expect(activity).toHaveFocus();
+    await t.user.keyboard('{ArrowRight}');
+    expect(database).toHaveFocus();
     await t.user.keyboard('{ArrowRight}');
     expect(logs).toHaveFocus();
     // Other keys do nothing.

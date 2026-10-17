@@ -3,8 +3,10 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { dashboardSocketUrl, openBrowserSocket } from './api/browser-socket.js';
 import { createClient } from './api/client.js';
+import { createDbClient } from './api/db-client.js';
 import { openSearchWorker } from './search/browser-worker.js';
 import { createWorkerRunner } from './search/runner.js';
+import { DbProvider } from './state/DbProvider.js';
 import { DeckProvider } from './state/DeckProvider.js';
 import type { DeckDeps } from './state/DeckProvider.js';
 import { createSessionGuard } from './state/storage.js';
@@ -31,7 +33,9 @@ const search = createWorkerRunner(openSearchWorker);
 createRoot(root).render(
   <StrictMode>
     <DeckProvider deps={deps}>
-      <App prefs={() => localStorage} search={search} />
+      <DbProvider client={createDbClient()}>
+        <App prefs={() => localStorage} search={search} />
+      </DbProvider>
     </DeckProvider>
   </StrictMode>,
 );
