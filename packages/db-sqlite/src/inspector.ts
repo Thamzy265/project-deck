@@ -24,6 +24,7 @@ interface Copy {
   engine: SnapshotEngine;
   takenAt: number;
   schema: Promise<{ tables: TableInfo[]; sqlSchema: string[] }> | undefined;
+  sqlSchema: Promise<string[]> | undefined;
 }
 
 /**
@@ -70,7 +71,8 @@ export class SqliteSnapshotInspector implements DbInspector {
   }
 
   async schemaSql(db: string): Promise<string[]> {
-    return [...(await this.schemaOf(db)).sqlSchema];
+    const copy = await this.copy(db);
+    return [...(await cached(copy, 'sqlSchema', () => copy.engine.sqlSchema()))];
   }
 
   async query(
@@ -128,7 +130,7 @@ export class SqliteSnapshotInspector implements DbInspector {
   }
 
   private schemaOf(db: string): Promise<{ tables: TableInfo[]; sqlSchema: string[] }> {
-    return this.copy(db).then((copy) => (copy.schema ??= copy.engine.schema()));
+    return this.copy(db).then((copy) => cached(copy, 'schema', () => copy.engine.schema()));
   }
 
   /** The current copy of `db`, taking one when there is none. One copy at a time per db. */
@@ -148,7 +150,7 @@ export class SqliteSnapshotInspector implements DbInspector {
         engine.load(image);
         const takenAt = this.now();
         this.taken.set(db, takenAt);
-        return { engine, takenAt, schema: undefined };
+        return { engine, takenAt, schema: undefined, sqlSchema: undefined };
       })();
       this.copies.set(db, pending);
       const mine = pending;
@@ -158,6 +160,22 @@ export class SqliteSnapshotInspector implements DbInspector {
     }
     return pending;
   }
+}
+
+/** The copy's cached read, made once; a failed read is dropped so the next call retries (R6). */
+function cached<K extends 'schema' | 'sqlSchema'>(
+  copy: Copy,
+  key: K,
+  read: () => NonNullable<Copy[K]>,
+): NonNullable<Copy[K]> {
+  const existing = copy[key];
+  if (existing !== undefined) return existing;
+  const pending = read();
+  copy[key] = pending;
+  (pending as Promise<unknown>).catch(() => {
+    if (copy[key] === pending) copy[key] = undefined;
+  });
+  return pending;
 }
 
 function gone(): DbError {

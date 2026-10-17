@@ -484,11 +484,14 @@ export function schema(open: OpenDb): { tables: TableInfo[]; sqlSchema: string[]
       });
     }
   }
-  const sqlSchema = select(
-    open,
-    'SELECT sql FROM sqlite_schema WHERE sql IS NOT NULL ORDER BY rowid',
-  ).map(([s]) => text(s));
-  return { tables, sqlSchema };
+  return { tables, sqlSchema: sqlSchema(open) };
+}
+
+/** Every CREATE statement in schema order, for the read-only gate. No row counts. */
+export function sqlSchema(open: OpenDb): string[] {
+  return select(open, 'SELECT sql FROM sqlite_schema WHERE sql IS NOT NULL ORDER BY rowid').map(
+    ([s]) => text(s),
+  );
 }
 
 function errText(err: unknown): string {

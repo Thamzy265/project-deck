@@ -62,6 +62,11 @@ export class SnapshotEngine {
     return SchemaValue.parse(await this.call({ op: 'schema' }));
   }
 
+  /** Only the CREATE statements: cheap, for the read-only gate (no row counts). */
+  async sqlSchema(): Promise<string[]> {
+    return SchemaValue.shape.sqlSchema.parse(await this.call({ op: 'sqlSchema' }));
+  }
+
   async query(sql: string, params: unknown[], limit: number): Promise<QueryResult> {
     return QueryResultSchema.parse(await this.call({ op: 'query', sql, params, limit }));
   }

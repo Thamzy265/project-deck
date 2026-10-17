@@ -6,12 +6,13 @@
 import { parentPort } from 'node:worker_threads';
 import { isDbError } from '@project-deck/core';
 import type { OpenDb } from './ops.js';
-import { closeImage, hashes, openImage, query, rowsByKey, schema } from './ops.js';
+import { closeImage, hashes, openImage, query, rowsByKey, schema, sqlSchema } from './ops.js';
 import { loadSqlite } from './sqlite.js';
 
 type Request =
   | { id: number; op: 'open'; bytes: Uint8Array }
   | { id: number; op: 'schema' }
+  | { id: number; op: 'sqlSchema' }
   | { id: number; op: 'query'; sql: string; params: unknown[]; limit: number }
   | { id: number; op: 'hashes' }
   | { id: number; op: 'rows'; table: string; keys: never[] };
@@ -35,6 +36,8 @@ function run(req: Request): unknown {
       return true;
     case 'schema':
       return schema(needOpen());
+    case 'sqlSchema':
+      return sqlSchema(needOpen());
     case 'query':
       return query(needOpen(), req.sql, req.params, req.limit);
     case 'hashes':
