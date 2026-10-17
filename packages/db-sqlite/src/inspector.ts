@@ -40,6 +40,8 @@ export class SqliteSnapshotInspector implements DbInspector {
   private readonly copies = new Map<string, Promise<Copy>>();
   /** The copy each database is waiting for; refresh and close move on from it. */
   private readonly turns = new Map<string, object>();
+  /** When the current copy of each database was taken, once it is ready. */
+  private readonly taken = new Map<string, number>();
   private readonly makeEngine: () => SnapshotEngine;
   private readonly now: () => number;
   private readonly maxBytes: number;
@@ -56,16 +58,11 @@ export class SqliteSnapshotInspector implements DbInspector {
 
   async listDatabases(): Promise<DbInfo[]> {
     const names = await (await this.src()).list();
-    return Promise.all(
-      names.map(async (name) => {
-        const copy = await this.copies.get(name)?.catch(() => undefined);
-        return {
-          name,
-          backend: 'snapshot' as const,
-          ...(copy === undefined ? {} : { takenAt: copy.takenAt }),
-        };
-      }),
-    );
+    // Only finished copies are dated; a copy still being taken is never waited for (R10).
+    return names.map((name) => {
+      const takenAt = this.taken.get(name);
+      return { name, backend: 'snapshot' as const, ...(takenAt === undefined ? {} : { takenAt }) };
+    });
   }
 
   async schema(db: string): Promise<TableInfo[]> {
@@ -101,6 +98,7 @@ export class SqliteSnapshotInspector implements DbInspector {
     const pending = this.copies.get(db);
     this.copies.delete(db);
     this.turns.delete(db);
+    this.taken.delete(db);
     const copy = await pending?.catch(() => undefined);
     await copy?.engine.close();
   }
@@ -110,6 +108,7 @@ export class SqliteSnapshotInspector implements DbInspector {
     const copies = [...this.copies.values()];
     this.copies.clear();
     this.turns.clear();
+    this.taken.clear();
     await Promise.all(
       copies.map(async (c) => {
         const copy = await c.catch(() => undefined);
@@ -147,7 +146,9 @@ export class SqliteSnapshotInspector implements DbInspector {
         if (this.closed || this.turns.get(db) !== turn) throw gone();
         const engine = this.makeEngine();
         engine.load(image);
-        return { engine, takenAt: this.now(), schema: undefined };
+        const takenAt = this.now();
+        this.taken.set(db, takenAt);
+        return { engine, takenAt, schema: undefined };
       })();
       this.copies.set(db, pending);
       const mine = pending;
