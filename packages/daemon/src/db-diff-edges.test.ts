@@ -61,33 +61,30 @@ const usersAfter: RowHashes = {
 };
 
 describe('buildDiff hidden columns (tester probes)', () => {
-  it.fails(
-    'DB-1: drops the hidden column by name even when rowsByKey answers columns in another order',
-    async () => {
-      // The app's `rows` reply names its own column order (KeyedRows.columns). A schema
-      // change between the two calls, or a backend that orders columns differently,
-      // must not shift a hidden value into a visible slot.
-      const inspector = inspectorWith(() => ({
-        columns: ['id', 'name', 'email'],
-        key: ['id'],
-        rows: [[1, [1, 'Ann', 'ann@example.com']]],
-        missing: [],
-        truncated: false,
-      }));
-      const { tables } = await buildDiff(
-        inspector,
-        'app',
-        usersBefore,
-        usersAfter,
-        CLAUDE_DIFF_CAPS,
-        [{ table: 'users', column: 'email' }],
-      );
-      const text = JSON.stringify(tables);
-      expect(text).not.toContain('ann@example.com');
-      expect(tables[0]?.columns).toEqual(['id', 'name']);
-      expect(tables[0]?.added[0]?.row).toEqual([1, 'Ann']);
-    },
-  );
+  it('DB-1: drops the hidden column by name even when rowsByKey answers columns in another order', async () => {
+    // The app's `rows` reply names its own column order (KeyedRows.columns). A schema
+    // change between the two calls, or a backend that orders columns differently,
+    // must not shift a hidden value into a visible slot.
+    const inspector = inspectorWith(() => ({
+      columns: ['id', 'name', 'email'],
+      key: ['id'],
+      rows: [[1, [1, 'Ann', 'ann@example.com']]],
+      missing: [],
+      truncated: false,
+    }));
+    const { tables } = await buildDiff(
+      inspector,
+      'app',
+      usersBefore,
+      usersAfter,
+      CLAUDE_DIFF_CAPS,
+      [{ table: 'users', column: 'email' }],
+    );
+    const text = JSON.stringify(tables);
+    expect(text).not.toContain('ann@example.com');
+    expect(tables[0]?.columns).toEqual(['id', 'name']);
+    expect(tables[0]?.added[0]?.row).toEqual([1, 'Ann']);
+  });
 
   it('hides the whole key when any part of a composite key is hidden', async () => {
     const before: RowHashes = {

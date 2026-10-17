@@ -49,18 +49,36 @@ function empty(name: string, columns: string[], key: string[], rowid: boolean): 
 const asTable = (t: Hashes | undefined): TableHashes | undefined =>
   t === undefined || 'error' in t ? undefined : t;
 
-/** Values by key for the keys asked, in batches the backends accept. */
+/** The reply's columns don't match the snapshot's: the schema changed mid-diff. */
+class ColumnsChanged extends Error {}
+
+/**
+ * Values by key for the keys asked, in batches the backends accept, each row as a map
+ * from the reply's own column names. A reply whose columns aren't the snapshot's is
+ * refused: mapping by position could put a hidden value in a visible slot (DB-1).
+ */
 async function readRows(
   inspector: DbInspector,
   db: string,
   table: string,
+  columns: readonly string[],
   keys: RowKey[],
-): Promise<Map<string, Cell[]>> {
-  const rows = new Map<string, Cell[]>();
-  if (inspector.rowsByKey === undefined) return rows;
+): Promise<Map<string, Map<string, Cell>>> {
+  const rows = new Map<string, Map<string, Cell>>();
+  if (inspector.rowsByKey === undefined || keys.length === 0) return rows;
+  const expected = [...columns].sort().join('\u0000');
   for (let i = 0; i < keys.length; i += MAX_KEYS_PER_CALL) {
     const reply = await inspector.rowsByKey(db, table, keys.slice(i, i + MAX_KEYS_PER_CALL));
-    for (const [key, cells] of reply.rows) rows.set(rowKeyId(key), cells);
+    if (
+      new Set(reply.columns).size !== reply.columns.length ||
+      [...reply.columns].sort().join('\u0000') !== expected
+    ) {
+      throw new ColumnsChanged();
+    }
+    for (const [key, cells] of reply.rows) {
+      if (cells.length !== reply.columns.length) throw new ColumnsChanged();
+      rows.set(rowKeyId(key), new Map(reply.columns.map((c, j) => [c, cells[j] ?? null])));
+    }
   }
   return rows;
 }
@@ -111,9 +129,7 @@ export async function buildDiff(
     const hiddenHere = new Set(
       (hidden ?? []).filter((h) => fold(h.table) === fold(name)).map((h) => fold(h.column)),
     );
-    const visible = shape.columns
-      .map((c, i) => ({ c, i }))
-      .filter(({ c }) => !hiddenHere.has(fold(c)));
+    const visible = shape.columns.filter((c) => !hiddenHere.has(fold(c))).map((c) => ({ c }));
     const keyHidden = shape.key.some((k) => hiddenHere.has(fold(k)));
     // A change only in hidden columns would tell Claude that hidden data changed.
     const changed = result.changed
@@ -138,12 +154,27 @@ export async function buildDiff(
     const addedKeys = take(result.added);
     const changedShown = take(changed);
     const removedKeys = take(result.removed);
-    const values = await readRows(inspector, db, name, [
-      ...addedKeys,
-      ...changedShown.map((c) => c.key),
-    ]);
-    const row = (key: RowKey): Cell[] | undefined =>
-      values.get(rowKeyId(key))?.filter((_, i) => visible.some((v) => v.i === i));
+    let values: Map<string, Map<string, Cell>>;
+    try {
+      values = await readRows(inspector, db, name, shape.columns, [
+        ...addedKeys,
+        ...changedShown.map((c) => c.key),
+      ]);
+    } catch (err) {
+      if (!(err instanceof ColumnsChanged)) throw err;
+      out.push({
+        ...empty(name, [], [], false),
+        error: {
+          code: 'schema-changed',
+          message: `${name}'s columns changed while comparing; take a new snapshot`,
+        },
+      });
+      continue;
+    }
+    const row = (key: RowKey): Cell[] | undefined => {
+      const cells = values.get(rowKeyId(key));
+      return cells === undefined ? undefined : visible.map((v) => cells.get(v.c) ?? null);
+    };
     const shownKey = (key: RowKey): RowKey => (keyHidden ? HIDDEN : key);
     const table: TableDiff = {
       ...empty(
