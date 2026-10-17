@@ -146,5 +146,8 @@ describe('activityText', () => {
     expect(
       activityText({ id: 1, ts: 0, kind: 'db.write', db: 'app', tables: [name], allowed: false }),
     ).toBe('Write denied: ord<U+202E>ers');
+    expect(
+      activityText({ id: 1, ts: 0, kind: 'db.write', db: 'app', tables: [], allowed: false }),
+    ).toBe('Write denied');
   });
 });

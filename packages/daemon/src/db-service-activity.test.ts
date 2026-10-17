@@ -87,6 +87,23 @@ describe('DbService: Activity events (design note, Observability)', () => {
     ]);
   });
 
+  it('announces an edit the gate refuses as denied, naming its table (lead decision G4)', async () => {
+    const { service, guard, events } = await setup();
+    const refused = 'UPDATE "orders" SET "status" = ? WHERE "id" IS ?';
+    guard.refuse(refused, 'multiple-tables', 'An edit may change one table only.');
+    await expect(
+      service.requestEdit({ db: 'app', sql: refused, params: ['x', 1] }),
+    ).rejects.toMatchObject({ code: 'refused' });
+    guard.refuse('DELETE FROM odd', 'multiple-tables', 'x');
+    await expect(service.requestEdit({ db: 'app', sql: 'DELETE FROM odd' })).rejects.toMatchObject({
+      code: 'refused',
+    });
+    expect(events).toEqual([
+      ['db.write', { db: 'app', tables: ['orders'], allowed: false }],
+      ['db.write', { db: 'app', tables: ['odd'], allowed: false }],
+    ]);
+  });
+
   it('announces a cancelled edit as denied, once, and an unknown id not at all', async () => {
     const { service, guard, events } = await setup();
     guard.answer(sql, write);

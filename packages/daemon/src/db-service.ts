@@ -147,6 +147,19 @@ function viewNote(
   return reason;
 }
 
+const EDIT_TARGET =
+  /^\s*(?:UPDATE(?:\s+OR\s+\w+)?|DELETE\s+FROM|(?:INSERT|REPLACE)(?:\s+OR\s+\w+)?\s+INTO)\s+("(?:[^"]|"")+"|[A-Za-z_][\w$]*)/i;
+
+/**
+ * The table an edit names first, for the Activity entry of a refused edit. The gate
+ * refused it, so this reads only the leading words; it says nothing about safety.
+ */
+function editTarget(sql: string): string | undefined {
+  const raw = EDIT_TARGET.exec(sql)?.[1];
+  if (raw === undefined) return undefined;
+  return raw.startsWith('"') ? raw.slice(1, -1).replaceAll('""', '"') : raw;
+}
+
 function editHash(db: string, sql: string, params: unknown[]): string {
   return createHash('sha256')
     .update(JSON.stringify([db, sql, params]))
@@ -464,7 +477,21 @@ export class DbService {
     if (!source.inspector.writable || source.inspector.execute === undefined) {
       throw new DbError('unsupported', 'Snapshots are read-only.');
     }
-    const { verdict } = await this.check(source, input.db, input.sql, { mode: 'write' });
+    let verdict: Extract<GuardResult, { ok: true }>;
+    try {
+      ({ verdict } = await this.check(source, input.db, input.sql, { mode: 'write' }));
+    } catch (err) {
+      // A refused edit is a denied write too (lead decision G4): names only, never SQL.
+      if (isDbError(err) && err.code === 'refused') {
+        const table = editTarget(input.sql);
+        this.opts.bus.emit('db.write', {
+          db: input.db,
+          tables: table === undefined ? [] : [table],
+          allowed: false,
+        });
+      }
+      throw err;
+    }
     const params = input.params ?? [];
     const requestId = randomBytes(24).toString('base64url');
     const expiresAt = this.now() + EDIT_TTL_MS;
