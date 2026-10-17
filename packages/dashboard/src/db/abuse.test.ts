@@ -137,9 +137,10 @@ describe('edit keys: the WHERE clause must match one row only', () => {
     expect(rowKey(t, ['code', 'v'], [null, 'first'])).toBeUndefined();
   });
 
-  it.fails('a key past 2^53 in a column without numeric affinity is not editable', () => {
-    // The key travels as text; with no type affinity SQLite won't turn it back into the
-    // integer, so `"k" IS '9007199254740993'` matches a text row with those digits instead.
+  it('a key past 2^53 in a column without numeric affinity travels as a tagged integer', () => {
+    // As text, with no type affinity SQLite won't turn it back into the integer, so
+    // `"k" IS '9007199254740993'` would match a text row with those digits instead. The
+    // tagged integer binds as an integer in every backend (lead decision, TAB-2).
     const t: TableInfo = {
       name: 't',
       kind: 'table',
@@ -147,9 +148,11 @@ describe('edit keys: the WHERE clause must match one row only', () => {
       foreignKeys: [],
       indexes: [],
     };
-    expect(
-      rowKey(t, ['k', 'v'], [{ type: 'int', value: '9007199254740993' }, 'x']),
-    ).toBeUndefined();
+    const key = rowKey(t, ['k', 'v'], [{ type: 'int', value: '9007199254740993' }, 'x']);
+    expect(key).toEqual({ columns: ['k'], values: [{ type: 'int', value: '9007199254740993' }] });
+    expect(deleteRow('t', key ?? { columns: [], values: [] }).params).toEqual([
+      { type: 'int', value: '9007199254740993' },
+    ]);
   });
 });
 

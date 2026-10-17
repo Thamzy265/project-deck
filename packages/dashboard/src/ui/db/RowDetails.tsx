@@ -3,7 +3,7 @@ import type { KeyboardEvent } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { asDbApiError } from '../../api/db-client.js';
 import type { Param } from '../../db/cells.js';
-import { cellCopyText, cellText, visibleText } from '../../db/cells.js';
+import { cellCopyText, cellText, paramLabel, visibleText } from '../../db/cells.js';
 import { editErrorText } from '../../db/copy.js';
 import { rowKeyOrReason } from '../../db/keys.js';
 import type { Built, ColumnValue } from '../../db/sql-build.js';
@@ -176,7 +176,7 @@ export function RowDetails(p: RowDetailsProps) {
   const title =
     key === undefined
       ? `${table.name} row`
-      : `${table.name}: ${key.columns.map((c, i) => `${c} ${String(key.values[i])}`).join(', ')}`;
+      : `${table.name}: ${key.columns.map((c, i) => `${c} ${paramLabel(key.values[i] ?? null)}`).join(', ')}`;
 
   return (
     <section
@@ -251,7 +251,7 @@ export function RowDetails(p: RowDetailsProps) {
                             p.onFollowKey(
                               fk.table,
                               fk.to ?? '',
-                              typeof cell === 'object' ? cell.value : cell,
+                              typeof cell === 'object' ? { type: 'int', value: cell.value } : cell,
                             )
                           }
                         >

@@ -62,14 +62,27 @@ export function visibleText(text: string): string {
     .join('');
 }
 
-export type Param = string | number | null;
+/** An integer past 2^53, tagged so it binds as an integer, never as text (TAB-2). */
+export interface IntParam {
+  type: 'int';
+  value: string;
+}
+
+export type Param = string | number | null | IntParam;
+
+/** A parameter as the user reads it: `null`, the digits of a tagged int, or the value. */
+export function paramLabel(p: Param): string {
+  if (p === null) return 'null';
+  if (typeof p === 'object') return p.value;
+  return String(p);
+}
 
 /** A key cell as an SQL parameter. Blobs and odd doubles can't travel as JSON parameters. */
 export function keyParam(cell: Cell): { ok: true; value: Param } | { ok: false } {
   if (cell === null || typeof cell === 'number' || typeof cell === 'string') {
     return { ok: true, value: cell };
   }
-  // Text: the column's integer affinity turns it back into the integer when compared.
-  if (cell.type === 'int') return { ok: true, value: cell.value };
+  // Tagged: as text, a column without integer affinity would compare it as text.
+  if (cell.type === 'int') return { ok: true, value: { type: 'int', value: cell.value } };
   return { ok: false };
 }

@@ -62,10 +62,10 @@ describe('keyParam', () => {
     expect(keyParam(3)).toEqual({ ok: true, value: 3 });
     expect(keyParam('a')).toEqual({ ok: true, value: 'a' });
     expect(keyParam(null)).toEqual({ ok: true, value: null });
-    // Column affinity turns the text back into the integer when SQLite compares.
+    // Tagged, so it binds as an integer whatever the column's affinity (TAB-2).
     expect(keyParam({ type: 'int', value: '9007199254740993' })).toEqual({
       ok: true,
-      value: '9007199254740993',
+      value: { type: 'int', value: '9007199254740993' },
     });
     expect(keyParam({ type: 'blob', bytes: 3, base64: 'AAAA' })).toEqual({ ok: false });
     expect(keyParam({ type: 'real', value: 'NaN' })).toEqual({ ok: false });

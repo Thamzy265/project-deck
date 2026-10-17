@@ -11,6 +11,7 @@ import {
 } from './activity.js';
 import { ReloadResultSchema, RunningAppSchema } from './apps.js';
 import {
+  BigIntCellSchema,
   CellSchema,
   DASHBOARD_MAX_QUERY_LIMIT,
   DbDeviceSchema,
@@ -28,7 +29,10 @@ import { TaskStatusTypeSchema } from './tasks.js';
 
 const DbName = z.string().min(1).max(128);
 const Sql = z.string().min(1).max(MAX_SQL_LENGTH);
-const SqlParams = z.array(z.union([z.string(), z.number(), z.boolean(), z.null()])).max(1000);
+/** Values, and integers past 2^53 as tagged ints, which every backend binds as integers. */
+const SqlParams = z
+  .array(z.union([z.string(), z.number(), z.boolean(), z.null(), BigIntCellSchema]))
+  .max(1000);
 const SnapshotId = z
   .string()
   .regex(/^[A-Za-z0-9_-]{1,64}$/)

@@ -38,7 +38,7 @@ export class DbApiError extends Error {
   }
 }
 
-export type Param = string | number | boolean | null;
+export type Param = string | number | boolean | null | { type: 'int'; value: string };
 
 export interface DbClient {
   list(): Promise<DbList>;

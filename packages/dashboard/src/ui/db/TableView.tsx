@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DbApiError } from '../../api/db-client.js';
 import { asDbApiError } from '../../api/db-client.js';
 import type { Param } from '../../db/cells.js';
+import { paramLabel } from '../../db/cells.js';
 import { changedRows, keyColumns } from '../../db/keys.js';
 import type { PageSpec } from '../../db/sql-build.js';
 import { countQuery, pageQuery } from '../../db/sql-build.js';
@@ -193,7 +194,7 @@ export function TableView(p: TableViewProps) {
     const value = page?.rows[rowIndex]?.[colIndex];
     if (fk === undefined || value === undefined || value === null) return;
     if (typeof value === 'object' && value.type !== 'int') return;
-    const param: Param = typeof value === 'object' ? value.value : value;
+    const param: Param = typeof value === 'object' ? { type: 'int', value: value.value } : value;
     p.onFollowKey(fk.table, fk.to ?? '', param);
   };
 
@@ -249,7 +250,7 @@ export function TableView(p: TableViewProps) {
         <p className="flex flex-wrap items-center gap-1 px-2 text-sm">
           <span>
             Showing <VisibleText text={`${table.name}.${p.match.column}`} /> ={' '}
-            <VisibleText text={String(p.match.value)} />
+            <VisibleText text={paramLabel(p.match.value)} />
           </span>
           <button type="button" className={linkButton} onClick={p.onClearMatch}>
             Clear filter

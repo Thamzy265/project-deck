@@ -11,8 +11,9 @@ import { VisibleText } from './VisibleText.js';
 /** UI spec: an unanswered confirm runs nothing after 60 s. */
 export const CONFIRM_TTL_MS = 60_000;
 
-function paramText(value: string | number | boolean | null): string {
+function paramText(value: DbEditRequest['params'][number]): string {
   if (value === null) return 'null';
+  if (typeof value === 'object') return value.value;
   if (typeof value === 'string') return `'${value}'`;
   return String(value);
 }

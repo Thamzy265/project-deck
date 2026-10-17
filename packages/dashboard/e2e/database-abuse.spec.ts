@@ -162,19 +162,18 @@ test('Delete row on a NULL key deletes that row only, not every NULL-key row', a
   expect(left.rows[0]?.[0]).toBeGreaterThanOrEqual(2);
 });
 
-test.fail(
-  'Delete row on a big integer key deletes that row, not a text row with the same digits',
-  async ({ page }) => {
-    const { db, url } = await start(
-      [
-        'CREATE TABLE ids (k PRIMARY KEY, v TEXT) WITHOUT ROWID',
-        "INSERT INTO ids VALUES (9007199254740993, 'int'), ('9007199254740993', 'text')",
-      ],
-      WRITES_ON,
-    );
-    // Sorted by key, the integer comes first (integers sort before text in SQLite).
-    await deleteFirstRow(page, url, 'ids');
-    const left = await db.query('app', 'SELECT v FROM ids ORDER BY v');
-    expect(left.rows.map((r) => r[0])).toContain('text');
-  },
-);
+test('Delete row on a big integer key deletes that row, not a text row with the same digits', async ({
+  page,
+}) => {
+  const { db, url } = await start(
+    [
+      'CREATE TABLE ids (k PRIMARY KEY, v TEXT) WITHOUT ROWID',
+      "INSERT INTO ids VALUES (9007199254740993, 'int'), ('9007199254740993', 'text')",
+    ],
+    WRITES_ON,
+  );
+  // Sorted by key, the integer comes first (integers sort before text in SQLite).
+  await deleteFirstRow(page, url, 'ids');
+  const left = await db.query('app', 'SELECT v FROM ids ORDER BY v');
+  expect(left.rows.map((r) => r[0])).toContain('text');
+});
