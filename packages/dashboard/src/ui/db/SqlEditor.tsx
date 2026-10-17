@@ -143,6 +143,21 @@ export default function SqlEditor(p: SqlEditorProps) {
           syntaxHighlighting(highlight),
           placeholder(latest.current.placeholderText),
           errorLineField,
+          // Typing over a selection: Chromium's own editing would wrap the new text in a
+          // span with a `style` attribute (to keep the replaced token's colour), which
+          // the CSP blocks and reports (QA B4-4). Replace the selection here instead.
+          EditorView.domEventHandlers({
+            beforeinput(event, view) {
+              if (event.inputType !== 'insertText' || event.data === null) return false;
+              if (view.state.selection.ranges.every((r) => r.empty)) return false;
+              event.preventDefault();
+              view.dispatch(view.state.replaceSelection(event.data), {
+                scrollIntoView: true,
+                userEvent: 'input.type',
+              });
+              return true;
+            },
+          }),
           theme,
           EditorView.lineWrapping,
           EditorView.contentAttributes.of({

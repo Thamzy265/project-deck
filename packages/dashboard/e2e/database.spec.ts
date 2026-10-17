@@ -267,6 +267,20 @@ test.describe('fake mode', () => {
     expect(watch.consoleErrors).toEqual([]);
   });
 
+  test('SQL editor: typing over a selection breaks no CSP rule (QA B4-4)', async ({ page }) => {
+    const watch = await watchPage(page);
+    await openDashboard(page, daemon.url);
+    await page.getByRole('button', { name: 'SQL' }).click();
+    const editor = page.getByRole('textbox', { name: 'SQL' });
+    await editor.click();
+    await page.keyboard.type('SELECT item FROM orders WHERE id = 1');
+    await page.keyboard.press('ControlOrMeta+a');
+    await page.keyboard.type('SELECT 2');
+    await expect(editor).toHaveText('SELECT 2');
+    expect(watch.cspViolations).toEqual([]);
+    expect(watch.consoleErrors).toEqual([]);
+  });
+
   test('SQL editor: writes are refused with the reason; errors mark their line', async ({
     page,
   }) => {
