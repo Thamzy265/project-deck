@@ -101,9 +101,27 @@ export type SavedQuery = z.infer<typeof SavedQuerySchema>;
 /** Most saved queries per project. */
 export const MAX_SAVED_QUERIES = 200;
 
-/** `GET /api/db/queries` and the body of `PUT /api/db/queries` (dashboard only). */
+/** A list of saved queries, as in `.flutterdeck/queries.json`. */
 export const SavedQueriesSchema = z.object({
   queries: z.array(SavedQuerySchema).max(MAX_SAVED_QUERIES),
+});
+
+/**
+ * Names one content of `.flutterdeck/queries.json`: the sha256 of the file, or `none`
+ * when there is no file. A save names the revision it started from (review R1).
+ */
+export const SavedQueriesRevision = z.string().regex(/^(none|[0-9a-f]{64})$/);
+
+/** Answer of `GET` and `PUT /api/db/queries` (dashboard only). */
+export const SavedQueriesResponse = SavedQueriesSchema.extend({ revision: SavedQueriesRevision });
+export type SavedQueriesState = z.infer<typeof SavedQueriesResponse>;
+
+/**
+ * Body of `PUT /api/db/queries`: the whole new list and the revision it was made from.
+ * A stale revision is refused (`conflict`, 409), so one tab never wipes another's.
+ */
+export const SavedQueriesWriteInput = SavedQueriesSchema.extend({
+  revision: SavedQueriesRevision,
 });
 
 /** `POST /api/db/refresh`: snapshot backends take a fresh copy. */

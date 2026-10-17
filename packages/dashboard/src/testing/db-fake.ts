@@ -38,6 +38,8 @@ export interface FakeDbData {
   tables: TableInfo[];
   rows: Record<string, Cell[][]>;
   saved: SavedQuery[];
+  /** The saved queries' revision, 'none' before the first save (review R1). */
+  revision: string;
 }
 
 export function fakeDbData(over: Partial<FakeDbData> = {}): FakeDbData {
@@ -59,6 +61,7 @@ export function fakeDbData(over: Partial<FakeDbData> = {}): FakeDbData {
       ],
     },
     saved: [],
+    revision: 'none',
     ...over,
   };
 }
@@ -70,6 +73,7 @@ const TABLE = /FROM "((?:[^"]|"")+)"/;
  * queries from `data.rows` (no real SQL), so component tests can drive every state.
  */
 export function fakeDbClient(data: FakeDbData = fakeDbData()) {
+  let saves = 0;
   const answer = (sql: string, params: unknown[] = []): QueryResult => {
     const name = TABLE.exec(sql)?.[1]?.replaceAll('""', '"') ?? '';
     const table = data.tables.find((t) => t.name === name);
@@ -136,10 +140,17 @@ export function fakeDbClient(data: FakeDbData = fakeDbData()) {
     confirmEdit: vi.fn<DbClient['confirmEdit']>(() => Promise.resolve({ changes: 1 })),
     cancelEdit: vi.fn<DbClient['cancelEdit']>(() => Promise.resolve()),
     chooseDevice: vi.fn<DbClient['chooseDevice']>(() => Promise.resolve(data.list)),
-    savedQueries: vi.fn<DbClient['savedQueries']>(() => Promise.resolve(data.saved)),
-    saveQueries: vi.fn<DbClient['saveQueries']>((queries) => {
+    savedQueries: vi.fn<DbClient['savedQueries']>(() =>
+      Promise.resolve({ queries: data.saved, revision: data.revision }),
+    ),
+    saveQueries: vi.fn<DbClient['saveQueries']>((queries, revision) => {
+      if (revision !== data.revision) {
+        return Promise.reject(new DbApiError('conflict', 'The saved queries changed.'));
+      }
       data.saved = queries;
-      return Promise.resolve(queries);
+      saves++;
+      data.revision = saves.toString(16).padStart(64, '0');
+      return Promise.resolve({ queries, revision: data.revision });
     }),
   } satisfies DbClient;
   return client;

@@ -5,6 +5,7 @@ import type {
   DbList,
   DbSchema,
   QueryResult,
+  SavedQueriesState,
   SavedQuery,
 } from '@project-deck/core';
 import {
@@ -18,7 +19,7 @@ import {
   DbSnapshotResponse,
   ErrorResponse,
   OkResponse,
-  SavedQueriesSchema,
+  SavedQueriesResponse,
 } from '@project-deck/core';
 import type { z } from 'zod';
 import { HTTP_TIMEOUT_MS } from './client.js';
@@ -56,8 +57,9 @@ export interface DbClient {
   }>;
   cancelEdit(requestId: string): Promise<void>;
   chooseDevice(source: string, device: string): Promise<DbList>;
-  savedQueries(): Promise<SavedQuery[]>;
-  saveQueries(queries: SavedQuery[]): Promise<SavedQuery[]>;
+  savedQueries(): Promise<SavedQueriesState>;
+  /** Refused with `conflict` when the list changed since `revision` was read. */
+  saveQueries(queries: SavedQuery[], revision: string): Promise<SavedQueriesState>;
 }
 
 const NOT_UNDERSTOOD = "FlutterDeck's answer wasn't understood";
@@ -123,9 +125,9 @@ export function createDbClient(fetchFn: typeof fetch = fetch.bind(globalThis)): 
     },
     chooseDevice: (source, device) =>
       call('/api/db/device', DbListResponse, 'POST', { source, device }),
-    savedQueries: async () => (await call('/api/db/queries', SavedQueriesSchema, 'GET')).queries,
-    saveQueries: async (queries) =>
-      (await call('/api/db/queries', SavedQueriesSchema, 'PUT', { queries })).queries,
+    savedQueries: () => call('/api/db/queries', SavedQueriesResponse, 'GET'),
+    saveQueries: (queries, revision) =>
+      call('/api/db/queries', SavedQueriesResponse, 'PUT', { queries, revision }),
   };
 }
 

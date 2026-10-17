@@ -3,7 +3,7 @@
  * every other `/api` route. On top of that, edits accept only the dashboard cookie with
  * the dashboard's exact Origin, never the runtime.json token (design review S1).
  */
-import type { DbErrorCode, SavedQuery } from '@project-deck/core';
+import type { DbErrorCode, SavedQueriesState, SavedQuery } from '@project-deck/core';
 import {
   DbChooseDeviceInput,
   DbDiffInput,
@@ -15,7 +15,7 @@ import {
   DbSchemaInput,
   DbSnapshotInput,
   McpDbQueryInput,
-  SavedQueriesSchema,
+  SavedQueriesWriteInput,
   isDbError,
 } from '@project-deck/core';
 import type { Context, Hono } from 'hono';
@@ -38,6 +38,7 @@ const STATUS: Record<DbErrorCode, ContentfulStatusCode> = {
   refused: 422,
   'sql-error': 422,
   'bad-token': 409,
+  conflict: 409,
   'not-allowed': 403,
   'setup-needed': 409,
   'update-needed': 409,
@@ -60,7 +61,11 @@ export interface DbRouteContext {
   db: DbService;
   credentials: () => Credentials;
   /** The SQL editor's saved queries; without it, `/api/db/queries` doesn't exist. */
-  queries?: { read(): Promise<SavedQuery[]>; write(queries: SavedQuery[]): Promise<void> };
+  queries?: {
+    state(): Promise<SavedQueriesState>;
+    /** Refuses with `conflict` unless the file is still at `revision`. */
+    replace(queries: SavedQuery[], revision: string): Promise<SavedQueriesState>;
+  };
 }
 
 /** 200 saved queries of a few kB each, with room to spare. */
@@ -132,7 +137,7 @@ export function registerDbRoutes<E extends object>(api: Hono<E>, ctx: DbRouteCon
           403,
         );
       }
-      return c.json({ queries: await queries.read() });
+      return c.json(await queries.state());
     });
     const queriesLimit = bodyLimit({
       maxSize: QUERIES_BODY_LIMIT,
@@ -141,9 +146,8 @@ export function registerDbRoutes<E extends object>(api: Hono<E>, ctx: DbRouteCon
     api.put('/api/db/queries', queriesLimit, async (c) => {
       const refused = dashboardOnly(c);
       if (refused !== undefined) return refused;
-      const body = parse(SavedQueriesSchema, await jsonBody(c.req));
-      await queries.write(body.queries);
-      return c.json({ queries: body.queries });
+      const body = parse(SavedQueriesWriteInput, await jsonBody(c.req));
+      return c.json(await queries.replace(body.queries, body.revision));
     });
   }
 

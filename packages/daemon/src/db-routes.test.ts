@@ -120,18 +120,32 @@ class ChoosyDb extends FakeDbInspector {
   }
 }
 
+/** Saved queries in memory, with the store's revision rule (review R1). */
+function memoryStore() {
+  const saved: SavedQuery[][] = [];
+  const revision = () => (saved.length === 0 ? 'none' : String(saved.length).padStart(64, '0'));
+  return {
+    saved,
+    state: () => Promise.resolve({ queries: saved.at(-1) ?? [], revision: revision() }),
+    replace: (q: SavedQuery[], base: string) => {
+      if (base !== revision()) {
+        return Promise.reject(new DbError('conflict', 'The saved queries changed.'));
+      }
+      saved.push(q);
+      return Promise.resolve({ queries: q, revision: revision() });
+    },
+  };
+}
+
 describe('/api/db/queries (saved queries)', () => {
   it('reads and replaces the saved queries, from the dashboard only', async () => {
-    const saved: SavedQuery[][] = [];
-    const queries = {
-      read: () => Promise.resolve(saved.at(-1) ?? []),
-      write: (q: SavedQuery[]) => {
-        saved.push(q);
-        return Promise.resolve();
-      },
-    };
+    const queries = memoryStore();
+    const { saved } = queries;
     const { asToken, asDashboard, send } = await setup({ guard: new FakeSqlGuard(), queries });
-    expect(await (await asDashboard('/api/db/queries')).json()).toEqual({ queries: [] });
+    expect(await (await asDashboard('/api/db/queries')).json()).toEqual({
+      queries: [],
+      revision: 'none',
+    });
     // The browser sends no Origin with a same-origin GET.
     const noOrigin = await send(
       '/api/db/queries',
@@ -140,15 +154,23 @@ describe('/api/db/queries (saved queries)', () => {
     );
     expect(noOrigin.status).toBe(200);
     const list = [{ name: 'Pending', sql: 'SELECT 1' }];
-    const put = await asDashboard('/api/db/queries', { method: 'PUT', body: { queries: list } });
+    const put = await asDashboard('/api/db/queries', {
+      method: 'PUT',
+      body: { queries: list, revision: 'none' },
+    });
     expect(put.status).toBe(200);
-    expect(await put.json()).toEqual({ queries: list });
+    expect(await put.json()).toEqual({ queries: list, revision: '1'.padStart(64, '0') });
     expect(saved).toEqual([list]);
     expect((await asToken('/api/db/queries')).status).toBe(403);
-    const byToken = await asToken('/api/db/queries', { method: 'PUT', body: { queries: [] } });
+    const byToken = await asToken('/api/db/queries', {
+      method: 'PUT',
+      body: { queries: [], revision: '1'.padStart(64, '0') },
+    });
     expect(byToken.status).toBe(403);
     for (const body of [
       {},
+      { queries: [] },
+      { queries: [], revision: 'latest' },
       { queries: [{ name: '', sql: 'SELECT 1' }] },
       { queries: [{ name: 'x'.repeat(101), sql: 'SELECT 1' }] },
       { queries: Array(201).fill({ name: 'a', sql: 'SELECT 1' }) },
@@ -157,6 +179,23 @@ describe('/api/db/queries (saved queries)', () => {
       expect(res.status).toBe(400);
     }
     expect(saved).toHaveLength(1);
+  });
+
+  it('refuses a save from a stale revision with 409, so one tab never wipes another', async () => {
+    const queries = memoryStore();
+    const { asDashboard } = await setup({ guard: new FakeSqlGuard(), queries });
+    const first = await asDashboard('/api/db/queries', {
+      method: 'PUT',
+      body: { queries: [{ name: 'a', sql: 'SELECT 1' }], revision: 'none' },
+    });
+    expect(first.status).toBe(200);
+    const stale = await asDashboard('/api/db/queries', {
+      method: 'PUT',
+      body: { queries: [{ name: 'b', sql: 'SELECT 2' }], revision: 'none' },
+    });
+    expect(stale.status).toBe(409);
+    expect(await stale.json()).toMatchObject({ code: 'conflict' });
+    expect(queries.saved).toEqual([[{ name: 'a', sql: 'SELECT 1' }]]);
   });
 });
 
@@ -472,17 +511,7 @@ describe('/api/db/:db/schema input', () => {
 });
 
 describe('/api/db/queries and /api/db/device: cookie edges (tester probes)', () => {
-  const memoryQueries = () => {
-    const saved: SavedQuery[][] = [];
-    return {
-      saved,
-      read: () => Promise.resolve(saved.at(-1) ?? []),
-      write: (q: SavedQuery[]) => {
-        saved.push(q);
-        return Promise.resolve();
-      },
-    };
-  };
+  const memoryQueries = memoryStore;
   const cookie = { cookie: `deck_session_${PORT}=${SECRET}` };
 
   it('refuses a cookie GET of saved queries from another site, origin or host', async () => {
@@ -512,7 +541,7 @@ describe('/api/db/queries and /api/db/device: cookie edges (tester probes)', () 
   it('refuses a PUT of saved queries without the exact Origin, and changes nothing', async () => {
     const queries = memoryQueries();
     const { send } = await setup({ guard: new FakeSqlGuard(), queries });
-    const body = { queries: [{ name: 'a', sql: 'SELECT 1' }] };
+    const body = { queries: [{ name: 'a', sql: 'SELECT 1' }], revision: 'none' };
     for (const headers of [
       { ...cookie, 'sec-fetch-site': 'same-origin' },
       { ...cookie, origin: 'https://evil.example' },
@@ -548,7 +577,7 @@ describe('/api/db/queries and /api/db/device: cookie edges (tester probes)', () 
     expect((await raw(big)).status).toBe(413);
     const nul = await asDashboard('/api/db/queries', {
       method: 'PUT',
-      body: { queries: [{ name: 'a\u0000‮b', sql: 'SELECT 1' }] },
+      body: { queries: [{ name: 'a\u0000‮b', sql: 'SELECT 1' }], revision: 'none' },
     });
     // Odd but harmless names are kept as they are; the dashboard names them visibly.
     expect(nul.status).toBe(200);

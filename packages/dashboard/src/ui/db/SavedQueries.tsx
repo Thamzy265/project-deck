@@ -1,32 +1,48 @@
-import type { SavedQuery } from '@project-deck/core';
+import type { SavedQueriesState, SavedQuery } from '@project-deck/core';
 import { MAX_SAVED_QUERIES } from '@project-deck/core';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { asDbApiError } from '../../api/db-client.js';
 import { visibleText } from '../../db/cells.js';
 import { useDbClient } from '../../state/DbProvider.js';
-import { button, field } from '../styles.js';
+import { Skeleton } from '../Skeleton.js';
+import { button, field, linkButton } from '../styles.js';
 import { VisibleText } from './VisibleText.js';
 
 const NAME_LENGTH = 40;
 
 export interface SavedQueries {
-  queries: SavedQuery[];
+  /** Null until the list has loaded: nothing can be saved before (review R1). */
+  queries: SavedQuery[] | null;
+  /** Why the list couldn't be read or saved. */
   error: string | undefined;
-  /** Replaces the list in `.flutterdeck/queries.json`; resolves false when it failed. */
-  save: (queries: SavedQuery[]) => Promise<boolean>;
+  /** Reads the list again after a failed load. */
+  reload: () => void;
+  /**
+   * Changes the list in `.flutterdeck/queries.json`: `change` gets the current list and
+   * answers the new one (or undefined for no room). The save names the revision it was
+   * made from; when another tab saved since, the list is read again and `change` runs
+   * on it once more, so neither tab's queries are lost. Resolves true when it saved.
+   */
+  update: (change: (queries: SavedQuery[]) => SavedQuery[] | undefined) => Promise<boolean>;
 }
 
 /** The project's saved queries, read once per attach. */
 export function useSavedQueries(appId: string | undefined): SavedQueries {
   const client = useDbClient();
-  const [queries, setQueries] = useState<SavedQuery[]>([]);
+  const [state, setState] = useState<SavedQueriesState | null>(null);
   const [error, setError] = useState<string | undefined>();
+  const [run, setRun] = useState(0);
+  const latest = useRef<SavedQueriesState | null>(null);
+  latest.current = state;
   useEffect(() => {
     if (appId === undefined) return;
     let cancelled = false;
+    setState(null);
     client.savedQueries().then(
-      (q) => {
-        if (!cancelled) setQueries(q);
+      (s) => {
+        if (cancelled) return;
+        setState(s);
+        setError(undefined);
       },
       (err: unknown) => {
         if (!cancelled) setError(asDbApiError(err).message);
@@ -35,21 +51,44 @@ export function useSavedQueries(appId: string | undefined): SavedQueries {
     return () => {
       cancelled = true;
     };
-  }, [client, appId]);
-  const save = useCallback(
-    async (next: SavedQuery[]) => {
-      try {
-        setQueries(await client.saveQueries(next));
-        setError(undefined);
-        return true;
-      } catch {
-        setError("Couldn't save queries");
+  }, [client, appId, run]);
+  const update = useCallback(
+    async (change: (queries: SavedQuery[]) => SavedQuery[] | undefined) => {
+      let base = latest.current;
+      if (base === null) {
+        // Keep the load error: it says why there is nothing to save to.
+        setError((e) => e ?? "Couldn't save queries");
         return false;
       }
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const next = change(base.queries);
+        if (next === undefined) {
+          setError("Couldn't save queries");
+          return false;
+        }
+        if (next === base.queries) return true;
+        try {
+          const saved = await client.saveQueries(next, base.revision);
+          setState(saved);
+          setError(undefined);
+          return true;
+        } catch (err) {
+          if (asDbApiError(err).code !== 'conflict' || attempt > 0) break;
+          try {
+            base = await client.savedQueries();
+            setState(base);
+          } catch {
+            break;
+          }
+        }
+      }
+      setError("Couldn't save queries");
+      return false;
     },
     [client],
   );
-  return { queries, error, save };
+  const reload = useCallback(() => setRun((n) => n + 1), []);
+  return { queries: state?.queries ?? null, error, reload, update };
 }
 
 /** A name from the query's first line, unique in the list. */
@@ -95,7 +134,15 @@ export function SavedQueriesMenu({
           {saved.error}
         </p>
       )}
-      {queries.length === 0 ? (
+      {queries === null ? (
+        saved.error === undefined ? (
+          <Skeleton label="Loading saved queries" />
+        ) : (
+          <button type="button" className={linkButton} onClick={saved.reload}>
+            Retry
+          </button>
+        )
+      ) : queries.length === 0 ? (
         <p>No saved queries. Save the current query with Cmd/Ctrl+S</p>
       ) : (
         <ul className="flex flex-col gap-1">
@@ -110,9 +157,14 @@ export function SavedQueriesMenu({
                       e.preventDefault();
                       const next = draft.trim();
                       if (next === '') return;
+                      // By name and SQL, not position: after a conflict the list is new.
                       void saved
-                        .save(
-                          queries.map((x, j) => (j === i ? { ...x, name: next.slice(0, 100) } : x)),
+                        .update((list) =>
+                          list.map((x) =>
+                            x.name === q.name && x.sql === q.sql
+                              ? { ...x, name: next.slice(0, 100) }
+                              : x,
+                          ),
                         )
                         .then(() => setRenaming(undefined));
                     }}
@@ -166,7 +218,11 @@ export function SavedQueriesMenu({
                   type="button"
                   className={button}
                   aria-label={`Delete saved query: ${name}`}
-                  onClick={() => void saved.save(queries.filter((_, j) => j !== i))}
+                  onClick={() =>
+                    void saved.update((list) =>
+                      list.filter((x) => !(x.name === q.name && x.sql === q.sql)),
+                    )
+                  }
                 >
                   Delete
                 </button>

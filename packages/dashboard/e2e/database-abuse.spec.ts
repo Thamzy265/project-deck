@@ -114,6 +114,8 @@ test('hostile saved query names and SQLite messages stay text', async ({ page })
             sql: 'SELECT * FROM "<img src=x onerror=window.__pwned=1>"',
           },
         ],
+        // A new project has no saved queries file yet (review R1).
+        revision: 'none',
       }),
     });
     return res.status;

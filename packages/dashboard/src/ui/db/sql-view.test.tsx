@@ -53,16 +53,20 @@ describe('Saved queries (⋯ menu)', () => {
     await t.user.clear(input);
     await t.user.type(input, 'People{Enter}');
     await waitFor(() =>
-      expect(t.db.saveQueries).toHaveBeenLastCalledWith([
-        { name: 'All orders', sql: 'SELECT * FROM "orders"' },
-        { name: 'People', sql: 'SELECT * FROM "customers"' },
-      ]),
+      expect(t.db.saveQueries).toHaveBeenLastCalledWith(
+        [
+          { name: 'All orders', sql: 'SELECT * FROM "orders"' },
+          { name: 'People', sql: 'SELECT * FROM "customers"' },
+        ],
+        'none',
+      ),
     );
     await t.user.click(screen.getByRole('button', { name: 'Delete saved query: People' }));
     await waitFor(() =>
-      expect(t.db.saveQueries).toHaveBeenLastCalledWith([
-        { name: 'All orders', sql: 'SELECT * FROM "orders"' },
-      ]),
+      expect(t.db.saveQueries).toHaveBeenLastCalledWith(
+        [{ name: 'All orders', sql: 'SELECT * FROM "orders"' }],
+        expect.stringMatching(/^[0-9a-f]{64}$/),
+      ),
     );
     await t.user.click(screen.getByRole('button', { name: 'Run saved query: All orders' }));
     expect(screen.getByRole('button', { name: 'SQL' })).toHaveAttribute('aria-pressed', 'true');

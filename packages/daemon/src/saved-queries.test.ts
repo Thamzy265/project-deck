@@ -103,3 +103,40 @@ describe('SavedQueryStore: file mode, races and odd files (tester probes)', () =
     });
   });
 });
+
+describe('SavedQueryStore: revisions (review R1)', () => {
+  it('names the file by a revision, and replaces it only from that revision', async () => {
+    const store = new SavedQueryStore(projectDir);
+    const empty = await store.state();
+    expect(empty).toEqual({ queries: [], revision: 'none' });
+    const a = await store.replace([{ name: 'a', sql: 'SELECT 1' }], empty.revision);
+    expect(a.queries).toEqual([{ name: 'a', sql: 'SELECT 1' }]);
+    expect(a.revision).toMatch(/^[0-9a-f]{64}$/);
+    expect(await store.state()).toEqual(a);
+    // A tab that read the empty list can't overwrite what another tab saved since.
+    await expect(store.replace([{ name: 'b', sql: 'SELECT 2' }], 'none')).rejects.toMatchObject({
+      code: 'conflict',
+    });
+    expect((await store.state()).queries).toEqual([{ name: 'a', sql: 'SELECT 1' }]);
+  });
+
+  it('lets one of two saves from the same revision win, and refuses the other', async () => {
+    const store = new SavedQueryStore(projectDir);
+    const results = await Promise.allSettled([
+      store.replace([{ name: 'a', sql: 'SELECT 1' }], 'none'),
+      store.replace([{ name: 'b', sql: 'SELECT 2' }], 'none'),
+    ]);
+    expect(results.map((r) => r.status).sort()).toEqual(['fulfilled', 'rejected']);
+  });
+
+  it('never replaces a file it can not read', async () => {
+    await mkdir(join(projectDir, '.flutterdeck'));
+    await writeFile(path(), '{"broken');
+    const store = new SavedQueryStore(projectDir);
+    await expect(store.state()).rejects.toMatchObject({ code: 'internal' });
+    await expect(store.replace([{ name: 'a', sql: 'SELECT 1' }], 'none')).rejects.toMatchObject({
+      code: 'conflict',
+    });
+    expect(await readFile(path(), 'utf8')).toBe('{"broken');
+  });
+});

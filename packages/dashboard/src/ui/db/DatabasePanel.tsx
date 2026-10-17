@@ -409,10 +409,10 @@ export function DatabasePanel() {
         onSave={() => {
           const text = sql.trim();
           if (text === '') return;
-          const next = withQuery(saved.queries, text);
-          if (next === undefined) setToast("Couldn't save queries");
-          else if (next === saved.queries) setToast('Saved');
-          else void saved.save(next).then((ok) => setToast(ok ? 'Saved' : "Couldn't save queries"));
+          // Nothing is saved before the list has loaded (review R1).
+          void saved
+            .update((list) => withQuery(list, text))
+            .then((ok) => setToast(ok ? 'Saved' : "Couldn't save queries"));
         }}
       />
     );

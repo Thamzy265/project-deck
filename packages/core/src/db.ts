@@ -129,6 +129,8 @@ export const DbErrorCodeSchema = z.enum([
   'bad-token',
   /** Writes are off, or this caller may not write. */
   'not-allowed',
+  /** Something changed since the caller read it (a saved-queries revision). */
+  'conflict',
   /** The app has no flutterdeck_drift: show the setup help. */
   'setup-needed',
   /** flutterdeck_drift speaks another protocol version. */
