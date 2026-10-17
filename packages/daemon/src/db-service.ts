@@ -104,6 +104,37 @@ function quoteIdent(name: string): string {
   return `"${name.replaceAll('"', '""')}"`;
 }
 
+const VIEW_NAME =
+  /^\s*CREATE\s+(?:TEMP\s+|TEMPORARY\s+)?VIEW\s+(?:IF\s+NOT\s+EXISTS\s+)?("(?:[^"]|"")+"|`[^`]+`|\[[^\]]+\]|[\w$]+)/i;
+
+/** The name in a CREATE VIEW statement, unquoted. */
+function viewName(sql: string): string | undefined {
+  const raw = VIEW_NAME.exec(sql)?.[1];
+  if (raw === undefined) return undefined;
+  const first = raw[0];
+  if (first === '"') return raw.slice(1, -1).replaceAll('""', '"');
+  if (first === '`' || first === '[') return raw.slice(1, -1);
+  return raw;
+}
+
+/**
+ * A hidden-column refusal names the base column, which confuses a reader of a view
+ * that only selects it (QA G1): SQLite's authorizer reports every column of a view's
+ * body, so such a view is refused whole. Says so when the statement names a view.
+ */
+function viewNote(reason: string, sql: string, schemaSql: readonly string[]): string {
+  const text = fold(sql);
+  for (const statement of schemaSql) {
+    const name = viewName(statement);
+    if (name === undefined) continue;
+    const escaped = fold(name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (new RegExp(`(^|[^\\w$])${escaped}($|[^\\w$])`).test(text)) {
+      return `${reason} ${name} is a view that reads a hidden column, so it can't be read at all, even its other columns.`;
+    }
+  }
+  return reason;
+}
+
 function editHash(db: string, sql: string, params: unknown[]): string {
   return createHash('sha256')
     .update(JSON.stringify([db, sql, params]))
@@ -616,7 +647,13 @@ export class DbService {
       verdict = await judge(true);
     }
     // The gate's reasons are plain words that already say what is allowed.
-    if (!verdict.ok) throw new DbError('refused', verdict.reason);
+    if (!verdict.ok) {
+      const reason =
+        verdict.code === 'hidden-column'
+          ? viewNote(verdict.reason, sql, schemaSql)
+          : verdict.reason;
+      throw new DbError('refused', reason, { detail: verdict.code });
+    }
     return { verdict, schemaSql };
   }
 

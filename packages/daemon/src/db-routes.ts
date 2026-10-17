@@ -49,7 +49,8 @@ const STATUS: Record<DbErrorCode, ContentfulStatusCode> = {
 /** A DbError as `{error, code}` with its status; undefined for other errors. */
 export function dbErrorResponse(c: Context, err: unknown): Response | undefined {
   if (!isDbError(err)) return undefined;
-  return c.json({ error: err.message, code: err.code }, STATUS[err.code]);
+  const detail = typeof err.detail === 'string' ? { detail: err.detail.slice(0, 64) } : {};
+  return c.json({ error: err.message, code: err.code, ...detail }, STATUS[err.code]);
 }
 
 export interface DbRouteContext {

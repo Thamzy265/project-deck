@@ -147,16 +147,24 @@ export type DbErrorCode = z.infer<typeof DbErrorCodeSchema>;
 
 const DB_ERROR = Symbol.for('project-deck.DbError');
 
+export interface DbErrorExtra {
+  /** A finer reason for the UI's copy, such as the read-only gate's refusal code. */
+  detail?: string;
+}
+
 /** A failed database call. `message` is plain words, safe to show the user or Claude. */
 export class DbError extends Error {
   readonly [DB_ERROR] = true;
+  readonly detail: string | undefined;
 
   constructor(
     readonly code: DbErrorCode,
     message: string,
+    extra: DbErrorExtra = {},
   ) {
     super(message);
     this.name = 'DbError';
+    this.detail = extra.detail;
   }
 }
 

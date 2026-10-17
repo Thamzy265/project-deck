@@ -157,7 +157,12 @@ export type DbEditRequest = z.infer<typeof DbEditRequestResponse>;
 export const DbExecuteResponse = z.object({ changes: z.number().int().nonnegative() });
 
 /** Error answers of the `/api/db` routes: the code lets the UI pick its copy. */
-export const DbErrorResponse = z.object({ error: z.string(), code: DbErrorCodeSchema });
+export const DbErrorResponse = z.object({
+  error: z.string(),
+  code: DbErrorCodeSchema,
+  /** A finer reason: for `refused`, the read-only gate's refusal code (such as `attach`). */
+  detail: z.string().max(64).optional(),
+});
 
 /** Answer of `POST /api/db/snapshot`. */
 export const DbSnapshotResponse = z.object({

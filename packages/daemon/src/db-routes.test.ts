@@ -210,6 +210,20 @@ describe('/api/db with the real read-only gate', () => {
     expect(queryCalls(drift)).toHaveLength(0);
   });
 
+  it("passes the gate's refusal code on as detail, so the dashboard can say why", async () => {
+    const { asDashboard } = await setup();
+    const cases: [string, string][] = [
+      ['DELETE FROM orders', 'writes-data'],
+      ['SELECT 1; DROP TABLE orders', 'multiple-statements'],
+      ["ATTACH 'other.db' AS x", 'attach'],
+      ['PRAGMA writable_schema = 1', 'pragma'],
+    ];
+    for (const [sql, detail] of cases) {
+      const res = await asDashboard('/api/db/query', { body: { db: 'app', sql } });
+      expect(await res.json(), sql).toMatchObject({ code: 'refused', detail });
+    }
+  });
+
   it('refuses a hidden column to Claude (token) and shows it on the dashboard', async () => {
     const { asToken, asDashboard, drift } = await setup({
       settings: { hiddenColumns: ['orders.item'] },
