@@ -274,11 +274,24 @@ test.describe('fake mode', () => {
     const editor = page.getByRole('textbox', { name: 'SQL' });
     await editor.click();
     await page.keyboard.type('SELECT item FROM orders WHERE id = 1');
+    await expect(editor).toHaveText('SELECT item FROM orders WHERE id = 1');
     await page.keyboard.press('ControlOrMeta+a');
     await page.keyboard.type('SELECT 2');
     await expect(editor).toHaveText('SELECT 2');
     expect(watch.cspViolations).toEqual([]);
     expect(watch.consoleErrors).toEqual([]);
+  });
+
+  test('SQL editor: a click anywhere in the box focuses the editor (QA B4-5)', async ({ page }) => {
+    await openDashboard(page, daemon.url);
+    await page.getByRole('button', { name: 'SQL' }).click();
+    const editor = page.getByRole('textbox', { name: 'SQL' });
+    await expect(editor).toBeVisible();
+    const box = await page.locator('.cm-editor').boundingBox();
+    if (box === null) throw new Error('no editor box');
+    // Low in the box, well below the one line of text.
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height - 6);
+    await expect(editor).toBeFocused();
   });
 
   test('SQL editor: writes are refused with the reason; errors mark their line', async ({

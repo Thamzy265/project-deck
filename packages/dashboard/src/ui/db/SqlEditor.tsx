@@ -75,7 +75,12 @@ const theme = EditorView.theme({
   },
   '&.cm-focused': { outline: '2px solid var(--deck-focus)', outlineOffset: '2px' },
   '.cm-scroller': { fontFamily: 'var(--deck-font-mono)', overflow: 'auto' },
-  '.cm-content': { caretColor: 'var(--deck-text)', padding: '0.25rem 0' },
+  // The text area fills the box, so a click anywhere in it focuses the editor (QA B4-5).
+  '.cm-content': {
+    caretColor: 'var(--deck-text)',
+    padding: '0.25rem 0',
+    minHeight: 'calc(6rem - 2px)',
+  },
   '.cm-placeholder': { color: 'var(--deck-text-muted)' },
   '.cm-deck-error': { backgroundColor: 'var(--deck-diff-removed-tint)' },
   '.cm-tooltip': {
