@@ -157,7 +157,14 @@ export class DriftInspector implements DbInspector {
     this.offEvents ??= this.ext.onEvent(TABLES_EVENT, (data) => this.onTables(data));
     return () => {
       set.delete(cb);
-      if (set.size === 0) this.watchers.delete(key);
+      if (set.size > 0 || this.watchers.get(key) !== set) return;
+      this.watchers.delete(key);
+      // Nobody watches any more: stop taking the app's events until the next watch.
+      if (this.watchers.size === 0) {
+        this.offEvents?.();
+        this.offEvents = undefined;
+        this.coalescer.clear();
+      }
     };
   }
 

@@ -349,4 +349,30 @@ describe('watch', () => {
     app.emitTables('app', [{ name: 'orders' }]);
     expect(cb).toHaveBeenCalledTimes(1);
   });
+
+  it('stops listening to the app when the last watcher leaves, and listens again on the next', () => {
+    const app = new FakeDriftApp();
+    const unsubscribed = vi.fn();
+    const onEvent = app.extensions.onEvent.bind(app.extensions);
+    const subscribe = vi.spyOn(app.extensions, 'onEvent').mockImplementation((kind, cb) => {
+      const off = onEvent(kind, cb);
+      return () => {
+        unsubscribed();
+        off();
+      };
+    });
+    const db = new DriftInspector(app.extensions);
+    const offA = db.watch('app', 'orders', vi.fn());
+    const offB = db.watch('app', 'lines', vi.fn());
+    expect(subscribe).toHaveBeenCalledTimes(1);
+    offA();
+    expect(unsubscribed).not.toHaveBeenCalled();
+    offB();
+    expect(unsubscribed).toHaveBeenCalledOnce();
+    const cb = vi.fn();
+    db.watch('app', 'orders', cb);
+    expect(subscribe).toHaveBeenCalledTimes(2);
+    app.emitTables('app', [{ name: 'orders' }]);
+    expect(cb).toHaveBeenCalledOnce();
+  });
 });
