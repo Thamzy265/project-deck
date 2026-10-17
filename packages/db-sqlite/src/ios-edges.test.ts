@@ -172,7 +172,7 @@ describe('resolveIosSource: which device the app runs on (tester probes)', () =>
 });
 
 describe('IosSimulatorSource: links the app could plant (tester probes)', () => {
-  it.fails('DB-10: refuses a database file that is a hard link to a file elsewhere', async () => {
+  it('DB-10: refuses a database file that is a hard link to a file elsewhere', async () => {
     // lstat can't tell a hard link from the file, but the link count can. A simulator
     // app could hard-link another SQLite file of the user's (same volume) into Documents.
     const dir = container(UDID_A);

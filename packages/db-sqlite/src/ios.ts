@@ -157,6 +157,9 @@ export class IosSimulatorSource implements SnapshotSource {
     try {
       const info = await handle.stat();
       if (!info.isFile()) return undefined;
+      // lstat can't see a hard link, but the link count can: an app could hard-link
+      // another file of the user's into its container.
+      if (info.nlink !== 1) throw new DbError('not-found', 'No such database in the app.');
       if (!head && info.size > limit) {
         throw new DbError('too-large', 'The database is over 50 MB, too large to copy.');
       }
