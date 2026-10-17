@@ -148,22 +148,19 @@ async function deleteFirstRow(page: Page, url: string, table: string): Promise<v
   await expect(confirm).toBeHidden();
 }
 
-test.fail(
-  'Delete row on a NULL key deletes that row only, not every NULL-key row',
-  async ({ page }) => {
-    // SQLite lets a non-INTEGER primary key of a rowid table hold NULL more than once.
-    const { db, url } = await start(
-      [
-        'CREATE TABLE codes (code TEXT PRIMARY KEY, v TEXT)',
-        "INSERT INTO codes VALUES (NULL, 'first'), (NULL, 'second'), ('x', 'third')",
-      ],
-      WRITES_ON,
-    );
-    await deleteFirstRow(page, url, 'codes');
-    const left = await db.query('app', 'SELECT count(*) FROM codes');
-    expect(left.rows[0]?.[0]).toBeGreaterThanOrEqual(2);
-  },
-);
+test('Delete row on a NULL key deletes that row only, not every NULL-key row', async ({ page }) => {
+  // SQLite lets a non-INTEGER primary key of a rowid table hold NULL more than once.
+  const { db, url } = await start(
+    [
+      'CREATE TABLE codes (code TEXT PRIMARY KEY, v TEXT)',
+      "INSERT INTO codes VALUES (NULL, 'first'), (NULL, 'second'), ('x', 'third')",
+    ],
+    WRITES_ON,
+  );
+  await deleteFirstRow(page, url, 'codes');
+  const left = await db.query('app', 'SELECT count(*) FROM codes');
+  expect(left.rows[0]?.[0]).toBeGreaterThanOrEqual(2);
+});
 
 test.fail(
   'Delete row on a big integer key deletes that row, not a text row with the same digits',

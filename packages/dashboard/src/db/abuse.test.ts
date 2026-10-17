@@ -124,21 +124,18 @@ describe('edit keys: the WHERE clause must match one row only', () => {
     });
   });
 
-  it.fails(
-    'a NULL key value is not editable: SQLite allows many NULL keys in a rowid table',
-    () => {
-      // `CREATE TABLE t (code TEXT PRIMARY KEY, v)` accepts two rows with code NULL, and
-      // `DELETE FROM "t" WHERE "code" IS ?` with null then deletes both.
-      const t: TableInfo = {
-        name: 't',
-        kind: 'table',
-        columns: [col('code', 'TEXT', 1), col('v', 'TEXT', undefined)],
-        foreignKeys: [],
-        indexes: [],
-      };
-      expect(rowKey(t, ['code', 'v'], [null, 'first'])).toBeUndefined();
-    },
-  );
+  it('a NULL key value is not editable: SQLite allows many NULL keys in a rowid table', () => {
+    // `CREATE TABLE t (code TEXT PRIMARY KEY, v)` accepts two rows with code NULL, and
+    // `DELETE FROM "t" WHERE "code" IS ?` with null then deletes both.
+    const t: TableInfo = {
+      name: 't',
+      kind: 'table',
+      columns: [col('code', 'TEXT', 1), col('v', 'TEXT', undefined)],
+      foreignKeys: [],
+      indexes: [],
+    };
+    expect(rowKey(t, ['code', 'v'], [null, 'first'])).toBeUndefined();
+  });
 
   it.fails('a key past 2^53 in a column without numeric affinity is not editable', () => {
     // The key travels as text; with no type affinity SQLite won't turn it back into the

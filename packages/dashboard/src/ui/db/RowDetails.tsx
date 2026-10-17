@@ -5,7 +5,7 @@ import { asDbApiError } from '../../api/db-client.js';
 import type { Param } from '../../db/cells.js';
 import { cellCopyText, cellText, visibleText } from '../../db/cells.js';
 import { editErrorText } from '../../db/copy.js';
-import { rowKey } from '../../db/keys.js';
+import { rowKeyOrReason } from '../../db/keys.js';
 import type { Built, ColumnValue } from '../../db/sql-build.js';
 import { deleteRow, inputParam, insertRow, quoteIdent, updateRow } from '../../db/sql-build.js';
 import { useDbClient } from '../../state/DbProvider.js';
@@ -69,7 +69,9 @@ function startFields(
 export function RowDetails(p: RowDetailsProps) {
   const client = useDbClient();
   const { db, table } = p;
-  const key = rowKey(table, p.columns, p.row);
+  const checked = rowKeyOrReason(table, p.columns, p.row);
+  const key = 'key' in checked ? checked.key : undefined;
+  const noEdit = 'reason' in checked ? checked.reason : undefined;
   const [fresh, setFresh] = useState<Fresh>(
     key === undefined ? { status: 'ready', columns: p.columns, row: p.row } : { status: 'loading' },
   );
@@ -353,7 +355,7 @@ export function RowDetails(p: RowDetailsProps) {
             aria-disabled={
               row === undefined || key === undefined || !p.connected ? true : undefined
             }
-            title={key === undefined ? 'This row has no primary key to find it by' : undefined}
+            title={noEdit}
             onClick={() => {
               if (row === undefined || key === undefined || !p.connected) return;
               setFields(startFields(table.columns, names, row));
@@ -366,6 +368,7 @@ export function RowDetails(p: RowDetailsProps) {
             type="button"
             className={button}
             aria-disabled={key === undefined || saving || !p.connected ? true : undefined}
+            title={noEdit}
             onClick={() => {
               if (key !== undefined && !saving && p.connected)
                 void ask(deleteRow(table.name, key), 'close');

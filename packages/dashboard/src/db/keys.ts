@@ -10,23 +10,49 @@ export function keyColumns(table: TableInfo): string[] {
     .map((c) => c.name);
 }
 
-/** The key of a row as parameters, or undefined when it can't be sent (no key, blob keys). */
+export interface RowKeyValues {
+  columns: string[];
+  values: Param[];
+}
+
+/** Why a row can't be edited: the tooltip of the disabled Edit and Delete row buttons. */
+export const NO_KEY = 'This row has no primary key to find it by';
+export const NULL_KEY = 'Its primary key is null, which can match more than one row';
+export const ODD_KEY = "Its primary key can't be sent: it is a blob or an odd number";
+
+/**
+ * The key of a row as parameters, or why it can't find this row only: no key, or a key
+ * value that may match more rows. SQLite lets a rowid table hold NULL in a non-INTEGER
+ * primary key more than once, so `"k" IS NULL` would match them all (TAB-1).
+ */
+export function rowKeyOrReason(
+  table: TableInfo,
+  columns: readonly string[],
+  row: readonly Cell[],
+): { key: RowKeyValues } | { reason: string } {
+  const key = keyColumns(table);
+  if (key.length === 0 || table.kind !== 'table') return { reason: NO_KEY };
+  const values: Param[] = [];
+  for (const name of key) {
+    const at = columns.indexOf(name);
+    if (at === -1) return { reason: NO_KEY };
+    const cell = row[at] ?? null;
+    if (cell === null) return { reason: NULL_KEY };
+    const param = keyParam(cell);
+    if (!param.ok) return { reason: ODD_KEY };
+    values.push(param.value);
+  }
+  return { key: { columns: key, values } };
+}
+
+/** The key of a row as parameters, or undefined when it can't find this row only. */
 export function rowKey(
   table: TableInfo,
   columns: readonly string[],
   row: readonly Cell[],
-): { columns: string[]; values: Param[] } | undefined {
-  const key = keyColumns(table);
-  if (key.length === 0 || table.kind !== 'table') return undefined;
-  const values: Param[] = [];
-  for (const name of key) {
-    const at = columns.indexOf(name);
-    if (at === -1) return undefined;
-    const param = keyParam(row[at] ?? null);
-    if (!param.ok) return undefined;
-    values.push(param.value);
-  }
-  return { columns: key, values };
+): RowKeyValues | undefined {
+  const r = rowKeyOrReason(table, columns, row);
+  return 'key' in r ? r.key : undefined;
 }
 
 /** Text that is equal exactly when two rows have the same key (or, without one, the same cells). */
