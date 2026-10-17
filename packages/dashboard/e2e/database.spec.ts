@@ -148,6 +148,34 @@ test.describe('fake mode', () => {
     await expect(panel).toBeHidden();
   });
 
+  test('crossing 900 px with focus in the table moves it into row details (review L2)', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1024, height: 800 });
+    await openOrders(page, daemon.url);
+    const filter = page.getByRole('searchbox', { name: 'Filter rows' });
+    await filter.fill('Coffee');
+    await grid(page).getByText('Coffee').click();
+    const panel = page.getByRole('dialog', { name: 'orders: id 1' });
+    await expect(panel.getByText('pending')).toBeVisible();
+    await expect(panel).toHaveAttribute('aria-modal', 'false');
+    await filter.focus();
+    await page.setViewportSize({ width: 420, height: 800 });
+    await expect(panel).toHaveAttribute('aria-modal', 'true');
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const dialog = document.querySelector('[role="dialog"]');
+          return dialog !== null && dialog.contains(document.activeElement);
+        }),
+      )
+      .toBe(true);
+    // Back across: focus stays in the panel, never on the page body.
+    await page.setViewportSize({ width: 1024, height: 800 });
+    await expect(panel).toHaveAttribute('aria-modal', 'false');
+    expect(await page.evaluate(() => document.activeElement === document.body)).toBe(false);
+  });
+
   test('a foreign-key value opens the customer it points at', async ({ page }) => {
     await openOrders(page, daemon.url);
     await page.getByRole('searchbox', { name: 'Filter rows' }).fill('Coffee');

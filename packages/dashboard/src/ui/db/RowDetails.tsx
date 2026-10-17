@@ -95,6 +95,7 @@ export function RowDetails(p: RowDetailsProps) {
   const [request, setRequest] = useState<DbEditRequest | undefined>();
   const [afterRun, setAfterRun] = useState<'close' | 'view'>('view');
   const heading = useRef<HTMLHeadingElement>(null);
+  const panel = useRef<HTMLElement>(null);
   /** The button that opened the confirm dialog: focus goes back to it (UI spec). */
   const trigger = useRef<HTMLElement | null>(null);
   const keyText = JSON.stringify(key?.values);
@@ -121,6 +122,14 @@ export function RowDetails(p: RowDetailsProps) {
   useEffect(() => {
     if (!adding) heading.current?.focus();
   }, [adding]);
+  // When the window narrows past 900 px the table goes inert under the panel, and
+  // focus that was there would fall to the page body: it comes into the panel (L2).
+  const modal = p.modal === true;
+  useEffect(() => {
+    const box = panel.current;
+    if (!modal || box === null || box.contains(document.activeElement)) return;
+    heading.current?.focus();
+  }, [modal]);
 
   // Without a usable key the row is shown as the page has it. This also ends a read
   // that the row changing (a live re-read moved another row here) left waiting:
@@ -208,7 +217,6 @@ export function RowDetails(p: RowDetailsProps) {
     void ask(updateRow(table.name, key, values), 'view');
   };
 
-  const panel = useRef<HTMLElement>(null);
   const onKeyDown = (e: KeyboardEvent) => {
     // The confirm dialog inside keeps its own keys.
     if (request !== undefined || e.defaultPrevented) return;
