@@ -93,9 +93,18 @@ importers:
       '@project-deck/dashboard':
         specifier: workspace:*
         version: link:../dashboard
+      '@project-deck/db-drift':
+        specifier: workspace:*
+        version: link:../db-drift
+      '@project-deck/db-sqlite':
+        specifier: workspace:*
+        version: link:../db-sqlite
       '@project-deck/logs-android':
         specifier: workspace:*
         version: link:../logs-android
+      '@project-deck/sql-guard':
+        specifier: workspace:*
+        version: link:../sql-guard
       hono:
         specifier: ^4.13.13
         version: 4.13.13
