@@ -71,8 +71,9 @@ export class SqliteSnapshotInspector implements DbInspector {
   }
 
   async schemaSql(db: string): Promise<string[]> {
-    const copy = await this.copy(db);
-    return [...(await cached(copy, 'sqlSchema', () => copy.engine.sqlSchema()))];
+    return this.use(db, async (copy) => [
+      ...(await cached(copy, 'sqlSchema', () => copy.engine.sqlSchema())),
+    ]);
   }
 
   async query(
@@ -81,19 +82,22 @@ export class SqliteSnapshotInspector implements DbInspector {
     params: unknown[] = [],
     opts: { limit?: number } = {},
   ): Promise<QueryResult> {
-    const copy = await this.copy(db);
-    return copy.engine.query(sql, params, opts.limit ?? DEFAULT_QUERY_LIMIT);
+    return this.use(db, (copy) =>
+      copy.engine.query(sql, params, opts.limit ?? DEFAULT_QUERY_LIMIT),
+    );
   }
 
   /** A diff compares with now, so this always takes a fresh copy first. */
   async rowHashes(db: string): Promise<RowHashes> {
     await this.refresh(db);
-    const copy = await this.copy(db);
-    return { ...(await copy.engine.hashes()), takenAt: copy.takenAt };
+    return this.use(db, async (copy) => ({
+      ...(await copy.engine.hashes()),
+      takenAt: copy.takenAt,
+    }));
   }
 
   async rowsByKey(db: string, table: string, keys: RowKey[]): Promise<KeyedRows> {
-    return (await this.copy(db)).engine.rowsByKey(table, keys);
+    return this.use(db, (copy) => copy.engine.rowsByKey(table, keys));
   }
 
   async refresh(db: string): Promise<void> {
@@ -130,7 +134,26 @@ export class SqliteSnapshotInspector implements DbInspector {
   }
 
   private schemaOf(db: string): Promise<{ tables: TableInfo[]; sqlSchema: string[] }> {
-    return this.copy(db).then((copy) => cached(copy, 'schema', () => copy.engine.schema()));
+    return this.use(db, (copy) => cached(copy, 'schema', () => copy.engine.schema()));
+  }
+
+  /**
+   * Runs `fn` on the current copy. When Refresh (or another diff) replaces that copy
+   * while `fn` waits or runs, it runs again on the new one (R3): only close() answers
+   * app-gone.
+   */
+  private async use<T>(db: string, fn: (copy: Copy) => Promise<T>): Promise<T> {
+    for (let attempt = 0; ; attempt++) {
+      const pending = this.copy(db);
+      try {
+        return await fn(await pending);
+      } catch (err) {
+        const superseded = this.copies.get(db) !== pending;
+        if (this.closed || !superseded || attempt >= MAX_RETRIES) {
+          throw err instanceof Superseded ? gone() : err;
+        }
+      }
+    }
   }
 
   /** The current copy of `db`, taking one when there is none. One copy at a time per db. */
@@ -145,7 +168,8 @@ export class SqliteSnapshotInspector implements DbInspector {
       pending = (async () => {
         const image = await copyDatabase(await this.src(), db, this.maxBytes);
         // Closed or refreshed while copying: drop the bytes, start no engine.
-        if (this.closed || this.turns.get(db) !== turn) throw gone();
+        if (this.closed) throw gone();
+        if (this.turns.get(db) !== turn) throw new Superseded();
         const engine = this.makeEngine();
         engine.load(image);
         const takenAt = this.now();
@@ -177,6 +201,12 @@ function cached<K extends 'schema' | 'sqlSchema'>(
   });
   return pending;
 }
+
+/** Copies one call may go through when each is replaced by a newer one. */
+const MAX_RETRIES = 3;
+
+/** This copy was replaced before it was ready; callers move to the new one. */
+class Superseded extends Error {}
 
 function gone(): DbError {
   return new DbError('app-gone', 'The app was detached, so its snapshots were dropped.');
