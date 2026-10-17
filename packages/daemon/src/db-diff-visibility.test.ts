@@ -164,3 +164,77 @@ describe("Claude's diff hides what the gate hides (R1)", { timeout: 30_000 }, ()
     expect(diff.truncated).toBe(true);
   });
 });
+
+describe("Claude's diff when the schema changed at runtime (L1)", { timeout: 30_000 }, () => {
+  // Before the migration users has no hidden column, so SELECT * passes on this schema.
+  const V1 = ['CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)'];
+  const V2 = [
+    'CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, ssn TEXT, ssn_last4 TEXT GENERATED ALWAYS AS (substr(ssn, -4)) STORED)',
+  ];
+  const cols = ['id', 'name', 'ssn', 'ssn_last4'];
+
+  /** An app whose schema is V1 until `migrate()`, with ssn_last4 in its hashes. */
+  function app(schemaAfter: string[]) {
+    let schema = V1;
+    let snapshots = 0;
+    const drift = new FakeDriftApp();
+    drift.handle('schema', () => ({ tables: [], sqlSchema: schema }));
+    drift.handle('snapshot', () => ({
+      takenAt: snapshots,
+      tables: [
+        {
+          name: 'users',
+          columns: cols,
+          key: ['id'],
+          rows: [[1, snapshots++ === 0 ? [H(1), H(2), H(3), H(4)] : [H(1), H(2), H(5), H(6)]]],
+        },
+      ],
+    }));
+    drift.handle('rows', () => ({
+      columns: cols,
+      key: ['id'],
+      rows: [[1, [1, 'Ann', '123-45-6789', '6789']]],
+      missing: [],
+      truncated: false,
+    }));
+    return {
+      drift,
+      migrate: () => {
+        schema = schemaAfter;
+      },
+    };
+  }
+
+  async function diffAfterMigration(schemaAfter: string[]) {
+    const { drift, migrate } = app(schemaAfter);
+    const registry = new Registry();
+    const inspector = new DriftInspector(drift.extensions);
+    registry.dbInspectors.register({ id: 'drift', create: () => Promise.resolve(inspector) });
+    const service = new DbService({
+      registry,
+      bus: new EventBus<DeckEvents>(),
+      guard: realGuard,
+      settings: { allowWrites: false, hiddenColumns: ['users.ssn'] },
+    });
+    services.push(service);
+    const fake = fakeApp();
+    await service.attach(fake, new FakeAppSession(fake));
+    // A first query caches the V1 schema for the gate.
+    await service.query({ db: 'app', sql: 'SELECT id, name FROM users' }, 'claude');
+    const snap = await service.snapshot({ db: 'app' });
+    migrate();
+    return service.diff({ db: 'app', snapshotId: snap.id }, 'claude');
+  }
+
+  it('reads the schema fresh, so a generated column of a hidden one added at runtime stays hidden', async () => {
+    const diff = await diffAfterMigration(V2);
+    expect(JSON.stringify(diff)).not.toMatch(/6789/);
+    expect(diff.tables).toEqual([]);
+  });
+
+  it("treats a hash column the gate's schema doesn't know as hidden", async () => {
+    // The app's schema reply lags behind its data: the column is unknown to the gate.
+    const diff = await diffAfterMigration(V1);
+    expect(JSON.stringify(diff)).not.toMatch(/6789/);
+  });
+});

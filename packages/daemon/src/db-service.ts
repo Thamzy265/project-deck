@@ -51,6 +51,8 @@ export const MAX_SNAPSHOTS = 20;
 /** An unanswered confirm dialog expires (UI spec: "Not run: no answer in 60 s"). */
 export const EDIT_TTL_MS = 60_000;
 const MAX_PENDING_EDITS = 10;
+/** Schemas whose column visibility for Claude is kept (L1). */
+const MAX_VISIBILITY_SCHEMAS = 8;
 
 interface Source {
   inspector: DbInspector;
@@ -116,7 +118,7 @@ export class DbService {
   private snapshots: Snapshot[] = [];
   private readonly pending = new Map<string, PendingEdit>();
   /** The gate's per-table visibility for Claude, per schema SQL array (R1). */
-  private readonly visibilityCache = new WeakMap<readonly string[], Map<string, TableVisibility>>();
+  private readonly visibilityCache = new Map<string, Map<string, TableVisibility>>();
   private readonly now: () => number;
   private readonly offBus: () => void;
   private closed = false;
@@ -276,11 +278,7 @@ export class DbService {
     table: string,
     column: string,
   ): Promise<boolean | undefined> {
-    let cache = this.visibilityCache.get(schemaSql);
-    if (cache === undefined) {
-      cache = new Map();
-      this.visibilityCache.set(schemaSql, cache);
-    }
+    const cache = this.visibilityFor(schemaSql);
     const key = JSON.stringify(['column', table, column]);
     const hit = cache.get(key);
     if (hit !== undefined) return hit.kind === 'all';
@@ -333,6 +331,12 @@ export class DbService {
       throw new DbError('not-found', 'Take a snapshot first, then use the app.');
     }
     const now = await this.hashes(source, input.db);
+    // Claude's columns are judged against the schema as it is now, read once per diff:
+    // a cached schema can miss columns the app added since (L1).
+    const freshSchema =
+      caller === 'claude' && this.hidden().length > 0
+        ? await this.schemaSql(source, input.db, true).catch(() => undefined)
+        : undefined;
     try {
       const { tables, truncated, tablesOmitted } = await buildDiff(
         source.inspector,
@@ -342,7 +346,7 @@ export class DbService {
         caller === 'claude' ? CLAUDE_DIFF_CAPS : DASHBOARD_DIFF_CAPS,
         caller === 'claude' ? this.hidden() : undefined,
         caller === 'claude' && this.hidden().length > 0
-          ? (table, columns, key) => this.visibility(source, input.db, table, columns, key)
+          ? (table, columns, key) => this.visibility(freshSchema, table, columns, key)
           : undefined,
       );
       return {
@@ -513,53 +517,61 @@ export class DbService {
   }
 
   /**
-   * Which columns of `table` the gate lets Claude read (R1), asked of the gate itself:
-   * `SELECT *` first, then one column at a time. Cached per schema SQL, so a diff of an
-   * unchanged schema asks once. A gate that can't answer gives `unknown`.
+   * Which columns of `table` the gate lets Claude read (R1, L1), asked of the gate one
+   * column at a time against `schemaSql`, which the diff reads fresh. A column the
+   * gate's schema doesn't know (invalid-sql) counts as hidden: the app's data may be
+   * ahead of its schema reply. Cached per schema text, so an unchanged schema asks once.
+   * `schemaSql` undefined (the schema couldn't be read) or a gate that can't answer
+   * gives `unknown`.
    */
   private async visibility(
-    source: Source,
-    db: string,
+    schemaSql: string[] | undefined,
     table: string,
     columns: readonly string[],
     key: readonly string[],
   ): Promise<TableVisibility> {
-    let schemaSql: string[];
-    try {
-      schemaSql = await this.schemaSql(source, db, false);
-    } catch {
-      return { kind: 'unknown' };
-    }
-    let cache = this.visibilityCache.get(schemaSql);
-    if (cache === undefined) {
-      cache = new Map();
-      this.visibilityCache.set(schemaSql, cache);
-    }
+    if (schemaSql === undefined) return { kind: 'unknown' };
+    const cache = this.visibilityFor(schemaSql);
     const cacheKey = JSON.stringify([table, columns, key]);
     const hit = cache.get(cacheKey);
     if (hit !== undefined) return hit;
     const hiddenColumns = this.hidden();
-    const check = (sql: string) =>
-      this.opts.guard.check(sql, { schemaSql, mode: 'read', hiddenColumns });
-    const cantAnswer = (v: GuardResult): boolean =>
-      !v.ok && (v.code === 'unavailable' || v.code === 'timeout');
-    let verdict: TableVisibility;
-    const all = await check(`SELECT * FROM ${quoteIdent(table)}`);
-    if (all.ok) {
-      verdict = { kind: 'all' };
-    } else if (cantAnswer(all)) {
-      return { kind: 'unknown' };
-    } else {
-      const visible = new Set<string>();
-      for (const column of new Set([...columns, ...key])) {
-        const one = await check(`SELECT ${quoteIdent(column)} FROM ${quoteIdent(table)}`);
-        if (cantAnswer(one)) return { kind: 'unknown' };
-        if (one.ok) visible.add(column);
+    const wanted = [...new Set([...columns, ...key])];
+    const visible = new Set<string>();
+    for (const column of wanted) {
+      const one = await this.opts.guard.check(
+        `SELECT ${quoteIdent(column)} FROM ${quoteIdent(table)}`,
+        { schemaSql, mode: 'read', hiddenColumns },
+      );
+      if (!one.ok && (one.code === 'unavailable' || one.code === 'timeout')) {
+        return { kind: 'unknown' };
       }
-      verdict = visible.size === 0 ? { kind: 'hidden-table' } : { kind: 'some', visible };
+      if (one.ok) visible.add(column);
     }
+    const verdict: TableVisibility =
+      visible.size === 0
+        ? { kind: 'hidden-table' }
+        : visible.size === wanted.length
+          ? { kind: 'all' }
+          : { kind: 'some', visible };
     cache.set(cacheKey, verdict);
     return verdict;
+  }
+
+  /** The visibility cache for one schema text; a few schemas are kept, oldest dropped. */
+  private visibilityFor(schemaSql: readonly string[]): Map<string, TableVisibility> {
+    const id = createHash('sha256').update(schemaSql.join('\u0000')).digest('hex');
+    let cache = this.visibilityCache.get(id);
+    if (cache === undefined) {
+      cache = new Map();
+      this.visibilityCache.set(id, cache);
+      while (this.visibilityCache.size > MAX_VISIBILITY_SCHEMAS) {
+        const oldest = this.visibilityCache.keys().next().value;
+        if (oldest === undefined) break;
+        this.visibilityCache.delete(oldest);
+      }
+    }
+    return cache;
   }
 
   /** The gate's verdict, or a `refused` DbError. A gate that can't answer refuses. */
