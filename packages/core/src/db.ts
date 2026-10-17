@@ -67,7 +67,9 @@ export const BigIntCellSchema = z.object({
 /** A double JSON can't carry (Infinity, -Infinity, NaN), as text. */
 export const RealCellSchema = z.object({
   type: z.literal('real'),
-  value: z.enum(['Infinity', '-Infinity', 'NaN']),
+  // Literals, not z.enum: the enum's declaration file names '-Infinity' as a computed
+  // key ([-Infinity]), which drops that value from the type packages see.
+  value: z.union([z.literal('Infinity'), z.literal('-Infinity'), z.literal('NaN')]),
 });
 
 /** A blob is never sent whole: its size, and optionally the start of it as base64. */
