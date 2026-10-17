@@ -1,5 +1,5 @@
 import type { DeckEvents } from '@project-deck/core';
-import { EventBus } from '@project-deck/core';
+import { ActivityListSchema, EventBus } from '@project-deck/core';
 import { describe, expect, it } from 'vitest';
 import { ActivityFeed } from './activity.js';
 
@@ -18,6 +18,23 @@ describe('ActivityFeed: database entries', () => {
       { id: 2, ts: 5, kind: 'db.write', db: 'app', tables: ['orders'], allowed: true, changes: 2 },
       { id: 3, ts: 5, kind: 'db.write', db: 'app', tables: ['orders'], allowed: false },
     ]);
+  });
+
+  it('cuts long names and many tables, so one entry never breaks /api/activity (R6)', () => {
+    const bus = new EventBus<DeckEvents>();
+    const feed = new ActivityFeed(bus);
+    feed.start();
+    const long = 'x'.repeat(5000);
+    bus.emit('db.snapshot', { db: long });
+    bus.emit('db.write', {
+      db: long,
+      tables: Array.from({ length: 100 }, (_, i) => `${long}${i}`),
+      allowed: true,
+      changes: 1,
+    });
+    expect(ActivityListSchema.safeParse({ entries: feed.list() }).success).toBe(true);
+    const write = feed.list()[1];
+    expect(write?.kind === 'db.write' ? write.tables.length : 0).toBe(64);
   });
 
   it('keeps nothing beyond the schema from a write event (no SQL)', () => {

@@ -17,8 +17,11 @@ export const MAX_RELOAD_MESSAGE = 300;
 export const MAX_SESSION_ID = 128;
 
 /** Database and table names come from the app; long ones are not real names. */
-const DbName = z.string().max(300);
-const MAX_WRITE_TABLES = 64;
+/** Longest database or table name an Activity entry keeps. */
+export const MAX_ACTIVITY_NAME = 300;
+/** Most table names one edit's Activity entry keeps. */
+export const MAX_ACTIVITY_TABLES = 64;
+const DbName = z.string().max(MAX_ACTIVITY_NAME);
 
 const Base = {
   /** Increases by one per entry for the life of the daemon. */
@@ -65,7 +68,7 @@ export const ActivityEntrySchema = z.discriminatedUnion('kind', [
     ...Base,
     kind: z.literal('db.write'),
     db: DbName,
-    tables: z.array(DbName).max(MAX_WRITE_TABLES),
+    tables: z.array(DbName).max(MAX_ACTIVITY_TABLES),
     allowed: z.boolean(),
     changes: z.number().int().nonnegative().optional(),
   }),
