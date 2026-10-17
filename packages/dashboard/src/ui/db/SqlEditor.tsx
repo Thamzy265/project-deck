@@ -163,6 +163,19 @@ export default function SqlEditor(p: SqlEditorProps) {
               view.dispatch(view.state.replaceSelection(''), { userEvent: 'delete.selection' });
               return false;
             },
+            // Text that comes with no keydown (an IME or dictation commit, a typing tool)
+            // gets the same treatment just before it goes in (QA B4-4b). A typed key has
+            // already removed the selection above, so this runs only for that text.
+            beforeinput(event, view) {
+              if (event.inputType !== 'insertText' && event.inputType !== 'insertReplacementText') {
+                return false;
+              }
+              if (event.isComposing || view.state.selection.ranges.every((r) => r.empty)) {
+                return false;
+              }
+              view.dispatch(view.state.replaceSelection(''), { userEvent: 'delete.selection' });
+              return false;
+            },
           }),
           theme,
           EditorView.lineWrapping,

@@ -312,6 +312,32 @@ test.describe('fake mode', () => {
     expect(watch.consoleErrors).toEqual([]);
   });
 
+  test('SQL editor: text inserted with no key over a selection breaks no CSP rule (QA B4-4b)', async ({
+    page,
+  }) => {
+    const watch = await watchPage(page);
+    await openDashboard(page, daemon.url);
+    await page.getByRole('button', { name: 'SQL' }).click();
+    const editor = page.getByRole('textbox', { name: 'SQL' });
+    await editor.click();
+    await page.keyboard.type('SELECT item FROM orders WHERE id = 1');
+    await expect(editor).toHaveText('SELECT item FROM orders WHERE id = 1');
+    // IME commits, dictation and the Browser pane's typing tool send insertText with no keydown.
+    for (const text of ['SELECT 2', 'SELECT id FROM orders', 'x']) {
+      await page.keyboard.press('ControlOrMeta+a');
+      await page.keyboard.insertText(text);
+      await expect(editor).toHaveText(text);
+    }
+    // Part of a line too, and then more typing after it.
+    await page.keyboard.press('Home');
+    await page.keyboard.press('Shift+End');
+    await page.keyboard.insertText('SELECT 3');
+    await page.keyboard.insertText(' AS n');
+    await expect(editor).toHaveText('SELECT 3 AS n');
+    expect(watch.cspViolations).toEqual([]);
+    expect(watch.consoleErrors).toEqual([]);
+  });
+
   test('SQL editor: a click anywhere in the box focuses the editor (QA B4-5)', async ({ page }) => {
     await openDashboard(page, daemon.url);
     await page.getByRole('button', { name: 'SQL' }).click();
