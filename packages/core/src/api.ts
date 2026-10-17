@@ -13,8 +13,10 @@ import { ReloadResultSchema, RunningAppSchema } from './apps.js';
 import {
   CellSchema,
   DASHBOARD_MAX_QUERY_LIMIT,
+  DbDeviceSchema,
   DbErrorCodeSchema,
   DbInfoSchema,
+  MAX_DB_DEVICES,
   MAX_SQL_LENGTH,
   MCP_MAX_QUERY_LIMIT,
   QueryResultSchema,
@@ -99,7 +101,23 @@ export const DbDiffInput = z.object({
   snapshotId: SnapshotId.optional(),
 });
 
-const DbProblem = z.object({ code: DbErrorCodeSchema, message: z.string() });
+const DbDevices = z.array(DbDeviceSchema).max(MAX_DB_DEVICES);
+
+const DbProblem = z.object({
+  code: DbErrorCodeSchema,
+  message: z.string(),
+  /** With `choose-device`: the devices the user can pick from. */
+  devices: DbDevices.optional(),
+});
+
+/**
+ * `POST /api/db/device`, dashboard only: after a `choose-device` answer, the snapshot
+ * backend `source` copies from this device (an id from that answer's list).
+ */
+export const DbChooseDeviceInput = z.object({
+  source: z.string().min(1).max(64),
+  device: DbDeviceSchema.shape.id,
+});
 
 /** A database backend for the attached app, and why it can't list databases, if so. */
 export const DbSourceSchema = z.object({
@@ -162,6 +180,7 @@ export const DbErrorResponse = z.object({
   code: DbErrorCodeSchema,
   /** A finer reason: for `refused`, the read-only gate's refusal code (such as `attach`). */
   detail: z.string().max(64).optional(),
+  devices: DbDevices.optional(),
 });
 
 /** Answer of `POST /api/db/snapshot`. */

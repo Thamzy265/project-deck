@@ -114,6 +114,29 @@ describe('resolveIosSource', () => {
     await expect(resolveIosSource(xcrun, named, BUNDLE, opts())).resolves.toBeDefined();
   });
 
+  it('names the simulators to pick from, and uses the one the user chose', async () => {
+    const xcrun = new FakeXcrun([UDID_A, UDID_B], {
+      [UDID_A]: container(UDID_A),
+      [UDID_B]: container(UDID_B),
+    });
+    const err: unknown = await resolveIosSource(xcrun, iosApp(), BUNDLE, opts()).catch(
+      (e: unknown) => e,
+    );
+    expect(err).toMatchObject({
+      code: 'choose-device',
+      devices: [
+        { id: UDID_A, name: 'iPhone 17' },
+        { id: UDID_B, name: 'iPhone 17' },
+      ],
+    });
+    const chosen = await resolveIosSource(xcrun, iosApp(), BUNDLE, { ...opts(), chosen: UDID_B });
+    expect(chosen.containerReal).toBe(realpathSync(container(UDID_B)));
+    // A choice that no longer has the app is not used: the user picks again.
+    await expect(
+      resolveIosSource(xcrun, iosApp(), BUNDLE, { ...opts(), chosen: UDID_A.replace('5B', '7D') }),
+    ).rejects.toMatchObject({ code: 'choose-device' });
+  });
+
   it('needs ios.bundleId, macOS and a booted simulator with the app', async () => {
     const xcrun = new FakeXcrun([UDID_A], {});
     await expect(resolveIosSource(xcrun, iosApp(), undefined, opts())).rejects.toMatchObject({

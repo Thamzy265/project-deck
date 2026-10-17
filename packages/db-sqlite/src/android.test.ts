@@ -170,6 +170,50 @@ describe('resolveAndroidSource', () => {
     ).rejects.toMatchObject({ code: 'choose-device' });
   });
 
+  it('names the devices to pick from, and uses the one the user chose', async () => {
+    const err: unknown = await resolveAndroidSource(
+      new FakeAdb(),
+      appWithoutPid(),
+      FIXTURE_PACKAGE,
+    ).catch((e: unknown) => e);
+    expect(err).toMatchObject({
+      code: 'choose-device',
+      devices: [
+        { id: FIXTURE_SERIAL, name: FIXTURE_SERIAL },
+        { id: 'R58M123ABC', name: 'R58M123ABC' },
+      ],
+    });
+    const source = await resolveAndroidSource(
+      new FakeAdb(),
+      appWithoutPid(),
+      FIXTURE_PACKAGE,
+      'R58M123ABC',
+    );
+    expect(source.serial).toBe('R58M123ABC');
+    // A choice that is gone is not used: the user picks again.
+    await expect(
+      resolveAndroidSource(new FakeAdb(), appWithoutPid(), FIXTURE_PACKAGE, 'emulator-5556'),
+    ).rejects.toMatchObject({ code: 'choose-device' });
+  });
+
+  it('uses the chosen device when the app pid matches on several', async () => {
+    const adb = new FakeAdb({
+      processes: {
+        [FIXTURE_SERIAL]: { [FIXTURE_PID]: FIXTURE_PACKAGE },
+        R58M123ABC: { [FIXTURE_PID]: FIXTURE_PACKAGE },
+      },
+    });
+    await expect(resolveAndroidSource(adb, androidApp(), undefined)).rejects.toMatchObject({
+      code: 'choose-device',
+      devices: [
+        { id: FIXTURE_SERIAL, name: FIXTURE_SERIAL },
+        { id: 'R58M123ABC', name: 'R58M123ABC' },
+      ],
+    });
+    const source = await resolveAndroidSource(adb, androidApp(), undefined, 'R58M123ABC');
+    expect(source.serial).toBe('R58M123ABC');
+  });
+
   it('says what is missing without a device or an app id', async () => {
     await expect(
       resolveAndroidSource(

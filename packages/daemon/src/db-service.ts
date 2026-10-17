@@ -214,7 +214,15 @@ export class DbService {
         id: inspector.id,
         live: inspector.live,
         writable: inspector.writable,
-        ...(error === undefined ? {} : { error: { code: error.code, message: error.message } }),
+        ...(error === undefined
+          ? {}
+          : {
+              error: {
+                code: error.code,
+                message: error.message,
+                ...(error.devices === undefined ? {} : { devices: error.devices }),
+              },
+            }),
       };
       for (const info of infos) {
         // Names are unique across sources; the first backend registered wins.
@@ -392,6 +400,24 @@ export class DbService {
         truncated,
         tablesOmitted,
       };
+    } catch (err) {
+      throw asDbError(err);
+    }
+  }
+
+  /** After a `choose-device` answer: the user picked the device for snapshot backend `id`. */
+  async chooseDevice(id: string, device: string): Promise<void> {
+    const source = this.current().sources.find((s) => s.inspector.id === id);
+    if (source === undefined) throw new DbError('not-found', `No database backend named ${id}.`);
+    const choose = source.inspector.chooseDevice?.bind(source.inspector);
+    if (choose === undefined) {
+      throw new DbError(
+        'unsupported',
+        'This backend reads the running app; there is no device to pick.',
+      );
+    }
+    try {
+      await choose(device);
     } catch (err) {
       throw asDbError(err);
     }

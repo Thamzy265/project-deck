@@ -1,5 +1,5 @@
 import type { DeckEvents } from '@project-deck/core';
-import { DbListResponse, EventBus, Registry } from '@project-deck/core';
+import { DbError, DbListResponse, EventBus, Registry } from '@project-deck/core';
 import { FakeAppConnector, FakeDbInspector, fakeApp } from '@project-deck/core/testing';
 import { registerDrift } from '@project-deck/db-drift';
 import { FakeDriftApp } from '@project-deck/db-drift/testing';
@@ -91,6 +91,86 @@ async function setup(opts: SetupOptions = {}) {
   return { drift, asToken, asDashboard, send, manager, db };
 }
 
+/** A snapshot backend that needs the user to pick a device first. */
+class ChoosyDb extends FakeDbInspector {
+  chosen: string | undefined;
+  constructor() {
+    super({ 'app_flutter/app.sqlite': [] }, undefined, { id: 'sqlite-file', live: false });
+  }
+  override listDatabases() {
+    if (this.chosen === undefined) {
+      return Promise.reject(
+        new DbError('choose-device', 'Pick one.', {
+          devices: [
+            { id: 'emulator-5554', name: 'emulator-5554' },
+            { id: 'R58M123ABC', name: 'R58M123ABC' },
+          ],
+        }),
+      );
+    }
+    return super.listDatabases();
+  }
+  chooseDevice(id: string): Promise<void> {
+    this.chosen = id;
+    return Promise.resolve();
+  }
+}
+
+describe('/api/db/device (choose-device)', () => {
+  it('lists the devices to pick from, and lists databases once the user picked', async () => {
+    const choosy = new ChoosyDb();
+    const { asDashboard } = await setup({ guard: new FakeSqlGuard(), extraDb: choosy });
+    const before = DbListResponse.parse(await (await asDashboard('/api/db')).json());
+    expect(before.sources.find((s) => s.id === 'sqlite-file')?.error).toEqual({
+      code: 'choose-device',
+      message: 'Pick one.',
+      devices: [
+        { id: 'emulator-5554', name: 'emulator-5554' },
+        { id: 'R58M123ABC', name: 'R58M123ABC' },
+      ],
+    });
+    const res = await asDashboard('/api/db/device', {
+      body: { source: 'sqlite-file', device: 'R58M123ABC' },
+    });
+    expect(res.status).toBe(200);
+    const after = DbListResponse.parse(await res.json());
+    expect(choosy.chosen).toBe('R58M123ABC');
+    expect(after.databases).toContainEqual({
+      name: 'app_flutter/app.sqlite',
+      backend: 'snapshot',
+      source: 'sqlite-file',
+    });
+  });
+
+  it('takes the choice from the dashboard only, and validates it', async () => {
+    const choosy = new ChoosyDb();
+    const { asToken, asDashboard } = await setup({ guard: new FakeSqlGuard(), extraDb: choosy });
+    const token = await asToken('/api/db/device', {
+      body: { source: 'sqlite-file', device: 'R58M123ABC' },
+    });
+    expect(token.status).toBe(403);
+    for (const body of [
+      {},
+      { source: 'sqlite-file' },
+      { source: 'sqlite-file', device: '' },
+      { source: 'sqlite-file', device: 'x'.repeat(129) },
+    ]) {
+      expect((await asDashboard('/api/db/device', { body })).status, JSON.stringify(body)).toBe(
+        400,
+      );
+    }
+    const unknown = await asDashboard('/api/db/device', {
+      body: { source: 'nope', device: 'R58M123ABC' },
+    });
+    expect(await unknown.json()).toMatchObject({ code: 'not-found' });
+    const live = await asDashboard('/api/db/device', {
+      body: { source: 'drift', device: 'R58M123ABC' },
+    });
+    expect(await live.json()).toMatchObject({ code: 'unsupported' });
+    expect(choosy.chosen).toBeUndefined();
+  });
+});
+
 const queryCalls = (drift: FakeDriftApp) =>
   drift.extensions.calls.filter((c) => c.method === 'ext.flutterdeck.drift.v1.query');
 
@@ -107,6 +187,7 @@ describe('/api/db security', () => {
       ['/api/db/execute', { db: 'app', sql: 'DELETE FROM orders' }],
       ['/api/db/execute/confirm', { requestId: 'a'.repeat(32), sql: 'x' }],
       ['/api/db/execute/cancel', { requestId: 'a'.repeat(32) }],
+      ['/api/db/device', { source: 'sqlite-file', device: 'emulator-5554' }],
     ] as const) {
       const init = body === undefined ? {} : { body };
       expect((await send(path, init, {})).status, `${path} without a token`).toBe(401);

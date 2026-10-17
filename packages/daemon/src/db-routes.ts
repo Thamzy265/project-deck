@@ -5,6 +5,7 @@
  */
 import type { DbErrorCode } from '@project-deck/core';
 import {
+  DbChooseDeviceInput,
   DbDiffInput,
   DbEditCancelInput,
   DbEditConfirmInput,
@@ -50,7 +51,8 @@ const STATUS: Record<DbErrorCode, ContentfulStatusCode> = {
 export function dbErrorResponse(c: Context, err: unknown): Response | undefined {
   if (!isDbError(err)) return undefined;
   const detail = typeof err.detail === 'string' ? { detail: err.detail.slice(0, 64) } : {};
-  return c.json({ error: err.message, code: err.code, ...detail }, STATUS[err.code]);
+  const devices = err.devices === undefined ? {} : { devices: err.devices };
+  return c.json({ error: err.message, code: err.code, ...detail, ...devices }, STATUS[err.code]);
 }
 
 export interface DbRouteContext {
@@ -111,6 +113,14 @@ export function registerDbRoutes<E extends object>(api: Hono<E>, ctx: DbRouteCon
   api.post('/api/db/refresh', limit, async (c) => {
     await ctx.db.refresh(parse(DbRefreshInput, await jsonBody(c.req)).db);
     return c.json({ ok: true });
+  });
+
+  api.post('/api/db/device', limit, async (c) => {
+    const refused = dashboardOnly(c);
+    if (refused !== undefined) return refused;
+    const { source, device } = parse(DbChooseDeviceInput, await jsonBody(c.req));
+    await ctx.db.chooseDevice(source, device);
+    return c.json(await ctx.db.list());
   });
 
   api.post('/api/db/execute', limit, async (c) => {
