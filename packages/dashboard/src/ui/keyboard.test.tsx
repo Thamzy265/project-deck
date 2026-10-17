@@ -47,6 +47,25 @@ describe('r and R', () => {
     expect(t.client.restart).not.toHaveBeenCalled();
   });
 
+  it('do nothing while typing in a text field inside a shadow root (the SQL editor)', async () => {
+    const t = await ready();
+    const host = document.createElement('div');
+    document.body.append(host);
+    const editor = document.createElement('div');
+    editor.contentEditable = 'true';
+    host.attachShadow({ mode: 'open' }).append(editor);
+    // jsdom has no editing host; the property is what the check reads.
+    Object.defineProperty(editor, 'isContentEditable', { value: true });
+    editor.dispatchEvent(new KeyboardEvent('keydown', { key: 'r', bubbles: true, composed: true }));
+    editor.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'R', shiftKey: true, bubbles: true, composed: true }),
+    );
+    await act(() => Promise.resolve());
+    expect(t.client.reload).not.toHaveBeenCalled();
+    expect(t.client.restart).not.toHaveBeenCalled();
+    host.remove();
+  });
+
   it('do nothing while focus is in the app picker', async () => {
     const t = await ready();
     screen.getByRole('combobox', { name: 'App' }).focus();
