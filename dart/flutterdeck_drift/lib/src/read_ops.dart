@@ -255,9 +255,13 @@ final class ReadOps {
     // is torn down mid-copy (a hot restart kills each isolate on its own),
     // only this connection can be left as a zombie: one descriptor and a
     // few KB, never the live connection or its cache.
+    beforeCopySourceOpen?.call();
     final Database source;
     try {
-      source = _openCopySource();
+      // Its setup reads the schema, which takes a shared lock: an app
+      // commit at that moment answers SQLITE_BUSY, so it is retried by wall
+      // clock like every other lock-taking step (F2).
+      source = _retryBusy(_openCopySource, spent);
     } on Object {
       control?[1] = 0;
       rethrow;
@@ -359,6 +363,9 @@ final class ReadOps {
       'Turn on WAL (PRAGMA journal_mode = WAL) to read it live.',
     );
   }
+
+  /// Test hook: runs just before a copy opens its source connection.
+  static void Function()? beforeCopySourceOpen;
 
   /// Test hook: runs after each copy step.
   static void Function()? afterCopyStep;

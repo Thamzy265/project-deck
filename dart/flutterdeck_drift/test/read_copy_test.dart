@@ -3,8 +3,11 @@
 // signals cut SQLite's busy-handler sleeps short, so an app write that meets
 // a long inspector read fails at once (QA finding F1). Reading a copy made in
 // small backup steps means the inspector holds no lock while a query runs.
+import 'dart:ffi';
 import 'dart:io';
+import 'dart:isolate';
 
+import 'package:ffi/ffi.dart';
 import 'package:flutterdeck_drift/src/protocol.dart';
 import 'package:flutterdeck_drift/src/read_ops.dart';
 import 'package:sqlite3/sqlite3.dart';
@@ -14,6 +17,26 @@ import 'fds.dart';
 
 Matcher refusedWith(String code) =>
     throwsA(isA<DriftDeckError>().having((e) => e.code, 'code', code));
+
+/// The app in another isolate: on "lock" it takes an exclusive lock on the
+/// database, says so through [state] (1), holds it 150 ms, then lets go (2).
+void _lockingApp(List<Object> args) {
+  final path = args[0] as String;
+  final state = Pointer<Int32>.fromAddress(args[1] as int);
+  final reply = args[2] as SendPort;
+  final inbox = ReceivePort();
+  reply.send(inbox.sendPort);
+  inbox.listen((_) {
+    final app = sqlite3.open(path);
+    app.execute('BEGIN EXCLUSIVE');
+    state.value = 1;
+    sleep(const Duration(milliseconds: 150));
+    app.execute('ROLLBACK');
+    app.close();
+    state.value = 2;
+    inbox.close();
+  });
+}
 
 void main() {
   late Directory dir;
@@ -58,6 +81,29 @@ void main() {
     );
     expect(openDescriptors(path), before);
   });
+
+  test(
+    'the app committing as a copy starts makes the copy wait (F2)',
+    () async {
+      final state = calloc<Int32>();
+      addTearDown(() => calloc.free(state));
+      final ready = ReceivePort();
+      await Isolate.spawn(_lockingApp, [path, state.address, ready.sendPort]);
+      final lock = await ready.first as SendPort;
+      // Just before the copy's source connection opens, the app takes an
+      // exclusive lock (as when it commits) and keeps it for 150 ms.
+      ReadOps.beforeCopySourceOpen = () {
+        lock.send('lock');
+        while (state.value == 0) {}
+      };
+      addTearDown(() => ReadOps.beforeCopySourceOpen = null);
+      final r = ops.query('SELECT count(*) FROM orders', const [], 10);
+      expect(r['rows'], [
+        [2],
+      ]);
+      expect(state.value, 2, reason: 'the read waited for the app to let go');
+    },
+  );
 
   test('each copy reads through its own short-lived connection (R4-1)', () {
     final baseline = openDescriptors(path);
