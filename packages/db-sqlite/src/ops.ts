@@ -297,7 +297,7 @@ function bindBlob(open: OpenDb, stmt: number, index: number, bytes: Uint8Array):
 }
 
 /** Binds one parameter: JSON scalars, booleans as 0/1, and tagged int, real and blob cells. */
-function bind(open: OpenDb, stmt: number, index: number, value: unknown): void {
+export function bind(open: OpenDb, stmt: number, index: number, value: unknown): void {
   const { capi } = open.sqlite;
   let rc: number;
   if (value === null || value === undefined) rc = capi.sqlite3_bind_null(stmt, index);
