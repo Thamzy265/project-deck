@@ -1,0 +1,28 @@
+{
+  "name": "@project-deck/db-drift",
+  "version": "0.0.0",
+  "description": "project-deck live Drift inspector: reads the app's database through flutterdeck_drift's service extensions.",
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing/index.d.ts",
+      "default": "./dist/testing/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@project-deck/core": "workspace:*",
+    "zod": "^4.6.5"
+  }
+}

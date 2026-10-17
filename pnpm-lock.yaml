@@ -168,6 +168,15 @@ importers:
         specifier: 8.3.4
         version: 8.3.4(@types/node@22.20.5)(jiti@2.7.0)(yaml@2.9.1)
 
+  packages/db-drift:
+    dependencies:
+      '@project-deck/core':
+        specifier: workspace:*
+        version: link:../core
+      zod:
+        specifier: ^4.6.5
+        version: 4.6.5
+
   packages/logs-android:
     dependencies:
       '@project-deck/android-adb':
