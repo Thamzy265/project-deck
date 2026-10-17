@@ -2,6 +2,15 @@
 
 Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
 
+## 2026-10-17 — M3 batch 2 — flutterdeck_drift ready to merge
+
+- Merged (lead, 2026-10-16): PR #33 `feat/db-core` (batch 1) after reviewer approval, CI green (one rerun of the flaky plugin timing test T-P5-2, unrelated) and QA pass. Deleted after merge (standing approval): worktree `agent-a8a1f41ffe996a004`, local branches `feat/db-core` and `worktree-agent-a8a1f41ffe996a004`, remote branch `feat/db-core`. The developer of batch 2 deleted the `refs/original/` backup ref made by its subject-only reword (tree unchanged).
+- Changed: `feat/flutterdeck-drift` adds the debug-only `dart/flutterdeck_drift` package, the sample app's Drift `orders` table, a CI job and a recorded fixture. Tester FD-1..FD-12 fixed. Reviewer: four rounds plus a final check (S1, CR-1..CR-6, D-2, D-3, R3-1..R3-5, R4-1 mitigated, R4-2 fixed). QA on the Android emulator: F1 (writes lost during reads) fixed by the PM's "Read a copy" decision, F2 (busy on copy setup) fixed; final runs pass, evidence in [qa/M3.md](qa/M3.md). The schema reply now carries `sqlSchema` for the gate.
+- Risk accepted by PM (2026-10-16): accepted: a hot restart that lands during an inspector copy (10–40 ms) leaves the copy's short-lived source connection open until the app exits — one file descriptor and at most about 64 KB of cache, debug builds only, no exposure, app writes unaffected — scope: `flutterdeck_drift` read copies (review R3-1/R4-1) — expiry/review: before the M5 release — PM said: "Accept, review at M5 (Recommended)", whose description read "Recorded with today's date as a known limit in docs/status.md, to be reviewed before the M5 release (a later pure-Dart fix using serialize/deserialize is listed as an option). Step 2 can merge once QA's final run passes."
+- Notes for batch 3: when `sqlSchemaTruncated` is set the daemon gate must refuse queries (fail closed); schema entries may carry `error`; CREATE text is untrusted app text.
+- PM check pending: IDE breakpoint plus Add order during a long read ([qa/M3.md](qa/M3.md), "PM check (batch 2)"); the PLAN box for `flutterdeck_drift` is ticked after it.
+- Blockers: Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead none · PM: IDE check (not blocking the merge).
+
 ## 2026-10-16 — M3 batch 2 — PM decision on reads of apps not using WAL
 
 - Changed: QA finding F1 (Android): an app write during a long inspector read failed at once with "database is locked", because the Dart profiler's signals cut SQLite's busy-handler sleeps short. Root cause and evidence in [notes/flutterdeck-drift.md](notes/flutterdeck-drift.md).
