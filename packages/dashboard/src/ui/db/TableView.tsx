@@ -396,7 +396,7 @@ export function TableView(p: TableViewProps) {
         <ExportMenu
           name={table.name}
           disabled={!p.connected || total === 0}
-          rows={async (onProgress) => exportTable(client, db, table, spec, total, onProgress)}
+          rows={async (onProgress) => exportTable(client, db, table, spec, onProgress)}
         />
       </div>
       {selected !== undefined && page !== undefined && (
@@ -486,7 +486,8 @@ const EXPORT_MAX_BYTES = 50 * 1024 * 1024;
 const utf8 = new TextEncoder();
 
 /**
- * Reads the rows to export, 1,000 per call. A table with a primary key is read in key
+ * Reads the rows to export, 1,000 per call, until a short page or a cap: the row count
+ * shown may be stale (review R10), so it decides nothing here. A table with a primary key is read in key
  * order after the last key read (keyset), so rows the app adds or removes meanwhile
  * can't make the export repeat or skip one; past a key that can't be compared (null or
  * a blob) it goes on by offset. The 50 MB cap counts UTF-8 bytes.
@@ -496,21 +497,21 @@ async function exportTable(
   db: string,
   table: TableInfo,
   spec: PageSpec,
-  total: number,
   onProgress: (rows: number) => void,
 ): Promise<{ columns: string[]; rows: Cell[][]; capped: boolean }> {
   const rows: Cell[][] = [];
   let columns: string[] = [];
   let bytes = 0;
-  const wanted = Math.min(total, EXPORT_MAX_ROWS);
   const key = table.kind === 'table' ? keyColumns(table) : [];
   let after: Param[] | undefined;
   let keyset = key.length > 0;
   // Tables with a key export in key order, the keyset's order, also when it falls back.
   const offsetSpec: PageSpec = { ...spec };
   if (key.length > 0) delete offsetSpec.sort;
-  while (rows.length < wanted) {
-    const limit = Math.min(EXPORT_PAGE, wanted - rows.length);
+  for (;;) {
+    // The row cap was hit with a full last page: there may be more, so it says so.
+    if (rows.length >= EXPORT_MAX_ROWS) return { columns, rows, capped: true };
+    const limit = Math.min(EXPORT_PAGE, EXPORT_MAX_ROWS - rows.length);
     const q = keyset
       ? keysetQuery({ ...spec, key, limit, ...(after === undefined ? {} : { after }) })
       : pageQuery({ ...offsetSpec, offset: rows.length, limit });
@@ -522,11 +523,10 @@ async function exportTable(
       rows.push(row);
     }
     onProgress(rows.length);
-    if (res.rows.length < limit) break;
+    if (res.rows.length < limit) return { columns, rows, capped: false };
     const last = res.rows.at(-1);
     const next = last === undefined ? undefined : rowKeyOrReason(table, res.columns, last);
     if (next !== undefined && 'key' in next) after = next.key.values;
     else keyset = false;
   }
-  return { columns, rows, capped: total > rows.length };
 }

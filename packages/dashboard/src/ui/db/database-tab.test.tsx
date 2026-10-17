@@ -557,8 +557,36 @@ describe('Export', () => {
     const [first, second] = t.db.query.mock.calls.slice(before).map((c) => c[0]);
     expect(first?.sql).toBe('SELECT * FROM "orders" ORDER BY "id" LIMIT ?');
     expect(second?.sql).toBe('SELECT * FROM "orders" WHERE "id" > ? ORDER BY "id" LIMIT ?');
-    expect(second?.params).toEqual([999, 500]);
+    expect(second?.params).toEqual([999, 1000]);
     expect(second?.sql).not.toContain('OFFSET');
+  });
+
+  it('reads until a short page, whatever the row count said, and is not capped (R10)', async () => {
+    Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:x'), revokeObjectURL: vi.fn() });
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+    const t = await ordersGrid();
+    const before = t.db.query.mock.calls.length;
+    // The count said 2 rows; the app added 1,498 more since.
+    t.db.query.mockImplementation((input) => {
+      const after = input.sql.includes('"id" > ?');
+      const rows = Array.from({ length: after ? 500 : 1000 }, (_, i) => [
+        (after ? 1000 : 0) + i,
+        'x',
+        'pending',
+        1,
+      ]);
+      return Promise.resolve({
+        columns: ['id', 'item', 'status', 'customer_id'],
+        rows,
+        truncated: false,
+        durationMs: 1,
+      });
+    });
+    await t.user.click(screen.getByRole('button', { name: /^Export/ }));
+    await t.user.click(screen.getByRole('button', { name: 'CSV' }));
+    await waitFor(() => expect(t.db.query.mock.calls.length - before).toBe(2));
+    await waitFor(() => expect(screen.queryByText('Preparing…')).toBeNull());
+    expect(screen.queryByText(/Exported the first/)).toBeNull();
   });
 });
 
