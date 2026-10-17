@@ -478,3 +478,37 @@ describe('DbService: edit expiry boundary', () => {
     expect(db.executed).toHaveLength(0);
   });
 });
+
+describe('DbService.list (R10)', () => {
+  it('asks every backend at once, so a slow one does not hold up the others', async () => {
+    const slow = new FakeDbInspector({ a: [ordersTable()] }, undefined, { id: 'slow' });
+    const quick = new FakeDbInspector({ b: [ordersTable()] }, undefined, { id: 'quick' });
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    const slowList = slow.listDatabases.bind(slow);
+    vi.spyOn(slow, 'listDatabases').mockImplementation(async () => {
+      await gate;
+      return slowList();
+    });
+    const quickList = vi.spyOn(quick, 'listDatabases');
+    const registry = new Registry();
+    registry.dbInspectors.register({ id: 'slow', create: () => Promise.resolve(slow) });
+    registry.dbInspectors.register({ id: 'quick', create: () => Promise.resolve(quick) });
+    const service = new DbService({
+      registry,
+      bus: new EventBus<DeckEvents>(),
+      guard: new FakeSqlGuard(),
+      settings: { allowWrites: false, hiddenColumns: [] },
+    });
+    services.push(service);
+    const app = fakeApp();
+    await service.attach(app, new FakeAppSession(app));
+    const listing = service.list();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(quickList).toHaveBeenCalled();
+    release();
+    expect((await listing).databases.map((d) => d.name)).toEqual(['a', 'b']);
+  });
+});

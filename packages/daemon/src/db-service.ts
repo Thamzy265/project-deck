@@ -152,26 +152,32 @@ export class DbService {
     const databases: DbList['databases'] = [];
     const sources: DbSource[] = [];
     const byName = new Map<string, Source>();
-    for (const source of current.sources) {
+    // All backends at once: a slow device must not hold up a live database (R10).
+    const listed = await Promise.all(
+      current.sources.map((s) =>
+        s.inspector.listDatabases().then(
+          (infos) => ({ infos, error: undefined }),
+          (err: unknown) => ({ infos: [], error: asDbError(err) }),
+        ),
+      ),
+    );
+    current.sources.forEach((source, i) => {
       const { inspector } = source;
+      const { infos, error } = listed[i] ?? { infos: [], error: undefined };
       const entry: DbSource = {
         id: inspector.id,
         live: inspector.live,
         writable: inspector.writable,
+        ...(error === undefined ? {} : { error: { code: error.code, message: error.message } }),
       };
-      try {
-        for (const info of await inspector.listDatabases()) {
-          // Names are unique across sources; the first backend registered wins.
-          if (byName.has(info.name)) continue;
-          byName.set(info.name, source);
-          databases.push({ ...info, source: inspector.id });
-        }
-      } catch (err) {
-        const { code, message } = asDbError(err);
-        entry.error = { code, message };
+      for (const info of infos) {
+        // Names are unique across sources; the first backend registered wins.
+        if (byName.has(info.name)) continue;
+        byName.set(info.name, source);
+        databases.push({ ...info, source: inspector.id });
       }
       sources.push(entry);
-    }
+    });
     if (this.attached === current) current.byName = byName;
     return { databases, sources, writesAllowed: this.opts.settings.allowWrites };
   }
