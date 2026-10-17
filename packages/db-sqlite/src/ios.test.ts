@@ -130,7 +130,7 @@ describe('resolveIosSource', () => {
       ],
     });
     const chosen = await resolveIosSource(xcrun, iosApp(), BUNDLE, { ...opts(), chosen: UDID_B });
-    expect(chosen.containerReal).toBe(realpathSync(container(UDID_B)));
+    expect(chosen.containerReal).toBe(realpathSync.native(container(UDID_B)));
     // A choice that no longer has the app is not used: the user picks again.
     await expect(
       resolveIosSource(xcrun, iosApp(), BUNDLE, { ...opts(), chosen: UDID_A.replace('5B', '7D') }),
