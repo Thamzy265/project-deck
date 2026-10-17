@@ -25,6 +25,8 @@ import { ANDROID_FOLDERS, COMPANIONS, SNAPSHOT_FILE, isSnapshotName } from './so
 export const ANDROID_TIMEOUTS = { ls: 10_000, cat: 60_000, head: 10_000 } as const;
 
 const NOT_DEBUGGABLE = /not debuggable/i;
+/** head's cap must leave room for a complaint such as "head: …: No such file …". */
+const HEAD_ROOM = 4096;
 const UNKNOWN_PACKAGE = /unknown package|package .* is unknown/i;
 const NO_SUCH_FILE = /no such file/i;
 
@@ -82,8 +84,15 @@ export class AndroidSource implements SnapshotSource {
   }
 
   async head(path: string, bytes: number): Promise<Buffer | undefined> {
-    const args = this.runAs('head', '-c', String(Math.trunc(bytes)), '--', checkedPath(path));
-    return this.binary(args, { timeoutMs: ANDROID_TIMEOUTS.head, maxBytes: bytes });
+    const n = Math.trunc(bytes);
+    const args = this.runAs('head', '-c', String(n), '--', checkedPath(path));
+    // Room for the device's complaint, which exec-out mixes into stdout (R2); only the
+    // bytes asked for are returned.
+    const out = await this.binary(args, {
+      timeoutMs: ANDROID_TIMEOUTS.head,
+      maxBytes: Math.max(n, HEAD_ROOM),
+    });
+    return out?.subarray(0, n);
   }
 
   async read(path: string, maxBytes: number): Promise<Buffer | undefined> {
@@ -102,10 +111,16 @@ export class AndroidSource implements SnapshotSource {
       if (missingFile(err)) return undefined;
       throw adbError(err);
     }
-    // exec-out without the shell protocol puts the device's complaints on stdout and
-    // exits 0. A database (or its WAL or journal) never starts with this text.
+    // exec-out has no shell protocol: the device's stderr comes back inside stdout and
+    // adb exits 0. A SQLite file starts with "SQLite format 3", a WAL with its binary
+    // magic and a hot journal with its own, so none of them starts with these words.
+    // Anything else that does is not a file the backend could use (the header and WAL
+    // checks would refuse it), so treating it as the device's complaint loses nothing.
     const start = out.subarray(0, 200).toString('latin1');
-    if (/^(cat|head): /.test(start) && NO_SUCH_FILE.test(start)) return undefined;
+    if (/^(cat|head): /.test(start)) {
+      if (NO_SUCH_FILE.test(start)) return undefined;
+      throw new DbError('unavailable', "Couldn't read the database: the device refused.");
+    }
     complain(start);
     return out;
   }

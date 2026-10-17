@@ -50,7 +50,7 @@ describe('AndroidSource', () => {
     expect(execBinary.mock.calls).toEqual([
       [
         [...runAs, 'head', '-c', '100', '--', 'app_flutter/app.sqlite'],
-        { timeoutMs: 10_000, maxBytes: 100 },
+        { timeoutMs: 10_000, maxBytes: 4096 },
       ],
       [[...runAs, 'cat', '--', 'app_flutter/app.sqlite'], { timeoutMs: 60_000, maxBytes: 10_000 }],
     ]);

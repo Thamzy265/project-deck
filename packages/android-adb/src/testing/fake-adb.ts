@@ -5,7 +5,7 @@ import type {
   AdbStream,
   AdbStreamHandlers,
 } from '../adb.js';
-import { AdbExitError, AdbMissingError, AdbOutputTooLargeError } from '../adb.js';
+import { AdbMissingError, AdbOutputTooLargeError } from '../adb.js';
 import {
   ADB_DEVICES_FIXTURE,
   FIXTURE_PACKAGE,
@@ -100,31 +100,40 @@ export class FakeAdb implements AdbRunner {
     }
   }
 
-  /** `-s <serial> exec-out run-as <pkg> <ls|cat|head> …`, or undefined for anything else. */
+  /**
+   * `-s <serial> exec-out run-as <pkg> <ls|cat|head> …`, or undefined for anything else.
+   * Like real `adb exec-out` (no shell protocol): the device's stderr comes back mixed
+   * into stdout and adb exits 0, whatever the command's own exit code.
+   */
   private runAs(args: readonly string[]): Buffer | undefined {
     const [s, serial, execOut, runAs, pkg, cmd, ...rest] = args;
     if (s !== '-s' || execOut !== 'exec-out' || runAs !== 'run-as') return undefined;
     if (serial === undefined || pkg === undefined) return undefined;
     const app = this.opts.files[serial]?.[pkg];
-    if (app === undefined) throw new AdbExitError(1, null, RUN_AS_UNKNOWN_PACKAGE);
-    if (app === 'not-debuggable') throw new AdbExitError(1, null, RUN_AS_NOT_DEBUGGABLE);
-    const missing = (path: string) => new AdbExitError(1, null, `cat: ${path}: No such file`);
+    if (app === undefined) return Buffer.from(RUN_AS_UNKNOWN_PACKAGE);
+    if (app === 'not-debuggable') return Buffer.from(RUN_AS_NOT_DEBUGGABLE);
     if (cmd === 'ls' && rest.length === 2 && rest[0] === '-1') {
       const dir = `${rest[1] ?? ''}/`;
       const names = Object.keys(app)
         .filter((p) => p.startsWith(dir) && !p.slice(dir.length).includes('/'))
         .map((p) => p.slice(dir.length))
         .sort();
+      if (names.length === 0) {
+        return Buffer.from(`ls: ${rest[1] ?? ''}: No such file or directory\n`);
+      }
       return Buffer.from(names.map((n) => `${n}\n`).join(''));
     }
     if (cmd === 'cat' && rest.length === 2 && rest[0] === '--') {
       const file = app[rest[1] ?? ''];
-      if (file === undefined) throw missing(rest[1] ?? '');
+      if (file === undefined)
+        return Buffer.from(`cat: ${rest[1] ?? ''}: No such file or directory\n`);
       return Buffer.from(file);
     }
     if (cmd === 'head' && rest.length === 4 && rest[0] === '-c' && rest[2] === '--') {
       const file = app[rest[3] ?? ''];
-      if (file === undefined) throw missing(rest[3] ?? '');
+      if (file === undefined) {
+        return Buffer.from(`head: ${rest[3] ?? ''}: No such file or directory\n`);
+      }
       return Buffer.from(file).subarray(0, Number(rest[1]));
     }
     return undefined;

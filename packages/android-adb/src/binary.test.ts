@@ -71,9 +71,15 @@ describe('FakeAdb run-as files', () => {
   const runAs = ['-s', FIXTURE_SERIAL, 'exec-out', 'run-as', FIXTURE_PACKAGE];
 
   it('lists a folder and serves a file with cat and head', async () => {
-    expect(await adb.exec([...runAs, 'ls', '-1', 'app_flutter'])).toBe('app.sqlite\nnotes.txt\n');
-    expect(await adb.exec([...runAs, 'ls', '-1', 'databases'])).toBe('');
     const opts = { timeoutMs: 1000, maxBytes: 1000 };
+    expect(await adb.exec([...runAs, 'ls', '-1', 'app_flutter'])).toBe('app.sqlite\nnotes.txt\n');
+    // exec-out mixes the device's stderr into stdout and exits 0.
+    expect(await adb.exec([...runAs, 'ls', '-1', 'databases'])).toBe(
+      'ls: databases: No such file or directory\n',
+    );
+    expect(
+      (await adb.execBinary([...runAs, 'head', '-c', '28', '--', 'x.db-journal'], opts)).toString(),
+    ).toBe('head: x.db-journal: No such file or directory\n');
     expect(await adb.execBinary([...runAs, 'cat', '--', 'app_flutter/app.sqlite'], opts)).toEqual(
       db,
     );
@@ -82,14 +88,10 @@ describe('FakeAdb run-as files', () => {
     ).toEqual(db.subarray(0, 6));
   });
 
-  it('answers like run-as for an app that is not debuggable', async () => {
+  it('answers like run-as through exec-out for an app that is not debuggable', async () => {
     const release = new FakeAdb({
       files: { [FIXTURE_SERIAL]: { [FIXTURE_PACKAGE]: 'not-debuggable' } },
     });
-    const err: unknown = await release
-      .exec([...runAs, 'ls', '-1', 'app_flutter'])
-      .catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(AdbExitError);
-    expect((err as AdbExitError).stderr).toBe(RUN_AS_NOT_DEBUGGABLE);
+    expect(await release.exec([...runAs, 'ls', '-1', 'app_flutter'])).toBe(RUN_AS_NOT_DEBUGGABLE);
   });
 });
