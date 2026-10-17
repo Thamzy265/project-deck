@@ -1,0 +1,301 @@
+// Reads from an in-memory copy for apps not using WAL (PM decision,
+// 2026-10-16: "Read a copy (Recommended)"). On Android the Dart profiler's
+// signals cut SQLite's busy-handler sleeps short, so an app write that meets
+// a long inspector read fails at once (QA finding F1). Reading a copy made in
+// small backup steps means the inspector holds no lock while a query runs.
+import 'dart:ffi';
+import 'dart:io';
+import 'dart:isolate';
+
+import 'package:ffi/ffi.dart';
+import 'package:flutterdeck_drift/src/protocol.dart';
+import 'package:flutterdeck_drift/src/read_ops.dart';
+import 'package:sqlite3/sqlite3.dart';
+import 'package:test/test.dart';
+
+import 'fds.dart';
+
+Matcher refusedWith(String code) =>
+    throwsA(isA<DriftDeckError>().having((e) => e.code, 'code', code));
+
+/// The app in another isolate: on "lock" it takes an exclusive lock on the
+/// database, says so through [state] (1), holds it 150 ms, then lets go (2).
+void _lockingApp(List<Object> args) {
+  final path = args[0] as String;
+  final state = Pointer<Int32>.fromAddress(args[1] as int);
+  final reply = args[2] as SendPort;
+  final inbox = ReceivePort();
+  reply.send(inbox.sendPort);
+  inbox.listen((_) {
+    final app = sqlite3.open(path);
+    app.execute('BEGIN EXCLUSIVE');
+    state.value = 1;
+    sleep(const Duration(milliseconds: 150));
+    app.execute('ROLLBACK');
+    app.close();
+    state.value = 2;
+    inbox.close();
+  });
+}
+
+void main() {
+  late Directory dir;
+  late String path;
+  late Database app;
+  late ReadOps ops;
+
+  setUp(() {
+    dir = Directory.systemTemp.createTempSync('flutterdeck_drift_copy');
+    path = '${dir.path}/app.sqlite';
+    app = sqlite3.open(path);
+    app.execute('''
+      CREATE TABLE orders (id INTEGER PRIMARY KEY, item TEXT, n REAL);
+      CREATE INDEX orders_item ON orders (item);
+      CREATE TABLE pairs (a TEXT NOT NULL, b INTEGER NOT NULL, v,
+        PRIMARY KEY (a, b)) WITHOUT ROWID;
+      CREATE VIEW teas AS SELECT * FROM orders WHERE item = 'Tea';
+      INSERT INTO orders (item, n) VALUES ('Coffee', 1.5), ('Tea', NULL);
+      INSERT INTO pairs VALUES ('x', 1, x'0102'), ('y', 2, 'two');
+    ''');
+    ops = ReadOps.open(path);
+  });
+
+  tearDown(() {
+    ReadOps.copyCap = 50 * 1024 * 1024;
+    ReadOps.copyBudget = readBudget;
+    ReadOps.readLive = false;
+    ops.close();
+    app.close();
+    dir.deleteSync(recursive: true);
+  });
+
+  test('a failed copy-connection setup closes the file connection (R3-5)', () {
+    final before = openDescriptors(path);
+    ReadOps.openCopy = () => throw StateError('no memory for the copy');
+    addTearDown(() => ReadOps.openCopy = sqlite3.openInMemory);
+    expect(
+      () => ReadOps.open(path),
+      throwsA(
+        isA<DriftDeckError>().having((e) => e.code, 'code', ErrorCode.internal),
+      ),
+    );
+    expect(openDescriptors(path), before);
+  });
+
+  test(
+    'the app committing as a copy starts makes the copy wait (F2)',
+    () async {
+      final state = calloc<Int32>();
+      addTearDown(() => calloc.free(state));
+      final ready = ReceivePort();
+      await Isolate.spawn(_lockingApp, [path, state.address, ready.sendPort]);
+      final lock = await ready.first as SendPort;
+      // Just before the copy's source connection opens, the app takes an
+      // exclusive lock (as when it commits) and keeps it for 150 ms.
+      ReadOps.beforeCopySourceOpen = () {
+        lock.send('lock');
+        // Wait for the lock. The sleep keeps the compiler from hoisting the
+        // read out of the loop (a bare spin hung once it was optimised).
+        final waited = Stopwatch()..start();
+        while (state.value == 0 &&
+            waited.elapsed < const Duration(seconds: 10)) {
+          sleep(const Duration(milliseconds: 1));
+        }
+      };
+      addTearDown(() => ReadOps.beforeCopySourceOpen = null);
+      final r = ops.query('SELECT count(*) FROM orders', const [], 10);
+      expect(r['rows'], [
+        [2],
+      ]);
+      expect(state.value, 2, reason: 'the read waited for the app to let go');
+    },
+  );
+
+  test('each copy reads through its own short-lived connection (R4-1)', () {
+    final baseline = openDescriptors(path);
+    final during = <int>[];
+    ReadOps.afterCopyStep = () {
+      if (during.isEmpty) during.add(openDescriptors(path));
+    };
+    addTearDown(() => ReadOps.afterCopyStep = null);
+    ops.query('SELECT 1', const [], 1);
+    // One more descriptor while copying: the copy's own source connection,
+    // not the live one; closed again right after the copy.
+    expect(during, [baseline + 1]);
+    expect(openDescriptors(path), baseline);
+
+    app.execute("INSERT INTO orders (item) VALUES ('Cake')");
+    during.clear();
+    ops.query('SELECT 1', const [], 1);
+    expect(during, [baseline + 1]);
+    expect(openDescriptors(path), baseline);
+  });
+
+  test('a rollback-journal database is read from a copy', () {
+    final r = ops.query('SELECT item FROM orders ORDER BY id', const [], 10);
+    expect(r['rows'], [
+      ['Coffee'],
+      ['Tea'],
+    ]);
+    expect(ops.lastReadFromCopy, isTrue);
+  });
+
+  test('the copy is reused until the database changes', () {
+    final before = ops.copies;
+    ops.query('SELECT 1', const [], 10);
+    ops.schema();
+    ops.snapshot();
+    expect(ops.copies - before, 1);
+
+    app.execute("INSERT INTO orders (item) VALUES ('Cake')");
+    final r = ops.query('SELECT count(*) FROM orders', const [], 10);
+    expect(r['rows'], [
+      [3],
+    ]);
+    expect(ops.copies - before, 2);
+  });
+
+  test('a database over the copy cap is too large, with a WAL hint', () {
+    ReadOps.copyCap = 4096;
+    expect(
+      () => ops.query('SELECT 1', const [], 10),
+      throwsA(
+        isA<DriftDeckError>()
+            .having((e) => e.code, 'code', ErrorCode.tooLarge)
+            .having((e) => e.message, 'message', contains('WAL')),
+      ),
+    );
+  });
+
+  test('a database that grows over the cap during a copy is too large (R3-4)', () {
+    app.execute(
+      'WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c '
+      "WHERE x < 1000) INSERT INTO orders (item) SELECT printf('%.500c', 'x') "
+      'FROM c',
+    );
+    final size = File(path).lengthSync();
+    ReadOps.copyCap = size + 64 * 1024;
+    var grown = false;
+    ReadOps.afterCopyStep = () {
+      if (grown) return;
+      grown = true;
+      // The app adds about 1 MB between two copy steps.
+      app.execute(
+        'WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c '
+        "WHERE x < 2000) INSERT INTO orders (item) SELECT printf('%.500c', 'y') "
+        'FROM c',
+      );
+    };
+    addTearDown(() => ReadOps.afterCopyStep = null);
+    expect(
+      () => ops.query('SELECT count(*) FROM orders', const [], 10),
+      throwsA(
+        isA<DriftDeckError>()
+            .having((e) => e.code, 'code', ErrorCode.tooLarge)
+            .having((e) => e.message, 'message', contains('WAL')),
+      ),
+    );
+    expect(grown, isTrue);
+  });
+
+  test('an app that writes all the time gets busy with a WAL hint (R3-3)', () {
+    app.execute(
+      'WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c '
+      "WHERE x < 1000) INSERT INTO orders (item) SELECT printf('%.500c', 'x') "
+      'FROM c',
+    );
+    ReadOps.copyBudget = const Duration(milliseconds: 300);
+    // A churning writer: the app commits between every two copy steps, so
+    // SQLite restarts the copy each time.
+    ReadOps.afterCopyStep = () =>
+        app.execute("UPDATE orders SET n = n + 1 WHERE id = 1");
+    addTearDown(() => ReadOps.afterCopyStep = null);
+    expect(
+      () => ops.query('SELECT 1', const [], 10),
+      throwsA(
+        isA<DriftDeckError>()
+            .having((e) => e.code, 'code', ErrorCode.busy)
+            .having((e) => e.message, 'message', contains('WAL')),
+      ),
+    );
+  });
+
+  test('a page size change resets the read connection (R3-2)', () {
+    ops.query('SELECT 1', const [], 10);
+    app.execute('PRAGMA page_size = 8192');
+    app.execute('VACUUM');
+    // SQLite can't copy into an in-memory database with another page size
+    // (SQLITE_READONLY); a fresh connection can.
+    expect(
+      () => ops.query('SELECT count(*) FROM orders', const [], 10),
+      throwsA(
+        isA<DriftDeckError>()
+            .having((e) => e.code, 'code', ErrorCode.internal)
+            .having((e) => e.message, 'message', contains('reset')),
+      ),
+    );
+    expect(ops.broken, isTrue);
+    ops.close();
+    ops = ReadOps.open(path);
+    expect(ops.query('SELECT count(*) FROM orders', const [], 10)['rows'], [
+      [2],
+    ]);
+  });
+
+  test('a copy that runs out of time stops and holds no lock', () {
+    app.execute(
+      'WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c '
+      "WHERE x < 20000) INSERT INTO orders (item) SELECT printf('%.500c', 'x') "
+      'FROM c',
+    );
+    ReadOps.copyBudget = Duration.zero;
+    expect(
+      () => ops.query('SELECT 1', const [], 10),
+      refusedWith(ErrorCode.timeout),
+    );
+    // No lock left behind: the app can write with no busy timeout.
+    app.execute("INSERT INTO orders (item) VALUES ('after')");
+    ReadOps.copyBudget = readBudget;
+    expect(ops.query('SELECT count(*) FROM orders', const [], 10)['rows'], [
+      [20003],
+    ]);
+  });
+
+  test('the copy answers exactly like the live database', () {
+    Map<String, Object?> all() {
+      final query = ops.query(
+        'SELECT * FROM orders o LEFT JOIN pairs p ON p.b = o.id ORDER BY o.id',
+        const [],
+        100,
+      )..remove('durationMs');
+      final snapshot = ops.snapshot()..remove('takenAt');
+      return {
+        'schema': ops.schema(),
+        'query': query,
+        'snapshot': snapshot,
+        'rows': ops.rows('pairs', [
+          ['x', 1],
+          ['y', 2],
+        ]),
+      };
+    }
+
+    final fromCopy = all();
+    expect(ops.lastReadFromCopy, isTrue);
+    ReadOps.readLive = true;
+    final live = all();
+    expect(ops.lastReadFromCopy, isFalse);
+    expect(fromCopy, live);
+  });
+
+  test('a WAL database is read live', () {
+    ops.close();
+    app.execute('PRAGMA journal_mode = WAL');
+    ops = ReadOps.open(path);
+    final r = ops.query('SELECT count(*) FROM orders', const [], 10);
+    expect(r['rows'], [
+      [2],
+    ]);
+    expect(ops.lastReadFromCopy, isFalse);
+  });
+}

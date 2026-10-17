@@ -1,0 +1,315 @@
+/// A second, token-level guard in front of SQLite's own checks.
+///
+/// The read connection is opened read-only with `query_only`, and every read
+/// must report `isReadOnly`. SQLite still calls `BEGIN`, `ATTACH` and some
+/// `PRAGMA` writes read-only, so those are refused here by their leading
+/// keywords. Tokens are only used for that and for finding a write's target
+/// table: whether SQL is valid is always SQLite's decision.
+library;
+
+/// One SQL token. Comments and whitespace are dropped.
+final class SqlToken {
+  const SqlToken(this.text);
+
+  final String text;
+
+  /// The token as a keyword (upper case), or '' for quoted text.
+  String get word {
+    final first = text.codeUnitAt(0);
+    return _isWordStart(first) ? text.toUpperCase() : '';
+  }
+
+  @override
+  String toString() => text;
+}
+
+bool _isWordStart(int c) =>
+    (c >= 0x41 && c <= 0x5a) ||
+    (c >= 0x61 && c <= 0x7a) ||
+    c == 0x5f ||
+    c >= 0x80;
+
+bool _isWordPart(int c) =>
+    _isWordStart(c) || (c >= 0x30 && c <= 0x39) || c == 0x24;
+
+bool _isSpace(int c) =>
+    c == 0x20 || c == 0x09 || c == 0x0a || c == 0x0d || c == 0x0c;
+
+/// Splits [sql] into tokens the way SQLite's tokenizer groups them, closely
+/// enough to read leading keywords and identifiers.
+List<SqlToken> tokenize(String sql) {
+  final tokens = <SqlToken>[];
+  var i = 0;
+  final n = sql.length;
+  while (i < n) {
+    final c = sql.codeUnitAt(i);
+    if (_isSpace(c)) {
+      i++;
+    } else if (c == 0x2d && i + 1 < n && sql.codeUnitAt(i + 1) == 0x2d) {
+      final end = sql.indexOf('\n', i);
+      i = end < 0 ? n : end + 1;
+    } else if (c == 0x2f && i + 1 < n && sql.codeUnitAt(i + 1) == 0x2a) {
+      final end = sql.indexOf('*/', i + 2);
+      i = end < 0 ? n : end + 2;
+    } else if (c == 0x27 || c == 0x22 || c == 0x60) {
+      final end = _closeQuote(sql, i, c);
+      tokens.add(SqlToken(sql.substring(i, end)));
+      i = end;
+    } else if (c == 0x5b) {
+      final end = sql.indexOf(']', i);
+      final stop = end < 0 ? n : end + 1;
+      tokens.add(SqlToken(sql.substring(i, stop)));
+      i = stop;
+    } else if (_isWordPart(c)) {
+      var j = i + 1;
+      while (j < n && _isWordPart(sql.codeUnitAt(j))) {
+        j++;
+      }
+      tokens.add(SqlToken(sql.substring(i, j)));
+      i = j;
+    } else {
+      tokens.add(SqlToken(sql[i]));
+      i++;
+    }
+  }
+  return tokens;
+}
+
+int _closeQuote(String sql, int start, int quote) {
+  var i = start + 1;
+  while (i < sql.length) {
+    if (sql.codeUnitAt(i) == quote) {
+      if (i + 1 < sql.length && sql.codeUnitAt(i + 1) == quote) {
+        i += 2;
+        continue;
+      }
+      return i + 1;
+    }
+    i++;
+  }
+  return sql.length;
+}
+
+const _transactionWords = {
+  'BEGIN',
+  'COMMIT',
+  'END',
+  'ROLLBACK',
+  'SAVEPOINT',
+  'RELEASE',
+};
+
+/// Pragmas a read may use, and only in the `name(argument)` form (ADR 0005).
+const _readPragmas = {
+  'TABLE_INFO',
+  'TABLE_XINFO',
+  'INDEX_LIST',
+  'INDEX_INFO',
+  'FOREIGN_KEY_LIST',
+};
+
+/// Table-valued sources a read may not name: the database list holds the
+/// absolute file path, and dbstat and sqlite_dbpage expose raw pages.
+const _hiddenSources = {'pragma_database_list', 'dbstat', 'sqlite_dbpage'};
+
+/// The pragma table-valued functions a read may use (ADR 0005, amended).
+final _readPragmaFunctions = {
+  for (final p in _readPragmas) 'pragma_${p.toLowerCase()}',
+};
+
+String? _nameOrString(String token) {
+  if (token.length >= 2 && token.startsWith("'") && token.endsWith("'")) {
+    return token.substring(1, token.length - 1).replaceAll("''", "'");
+  }
+  return unquoteIdent(token);
+}
+
+/// Lower case for ASCII letters only, the way SQLite compares names.
+String asciiLower(String s) {
+  final units = s.codeUnits.toList();
+  for (var i = 0; i < units.length; i++) {
+    final c = units[i];
+    if (c >= 0x41 && c <= 0x5a) units[i] = c + 0x20;
+  }
+  return String.fromCharCodes(units);
+}
+
+List<SqlToken> _skipEmptyStatements(List<SqlToken> tokens) {
+  var i = 0;
+  while (i < tokens.length && tokens[i].text == ';') {
+    i++;
+  }
+  return i == 0 ? tokens : tokens.sublist(i);
+}
+
+/// Returns why [sql] may not run as a read, or null when the token check
+/// passes. SQLite's `isReadOnly` check still follows.
+String? readGuard(String sql) {
+  // SQLite skips empty statements (a lone `;`) when it prepares, so the
+  // statement that runs is the first one after them.
+  var tokens = _skipEmptyStatements(tokenize(sql));
+  if (tokens.isEmpty) return 'the query is empty';
+  if (tokens.first.word == 'EXPLAIN') {
+    tokens = tokens.sublist(1);
+    if (tokens.length >= 2 &&
+        tokens[0].word == 'QUERY' &&
+        tokens[1].word == 'PLAN') {
+      tokens = tokens.sublist(2);
+    }
+    tokens = _skipEmptyStatements(tokens);
+    if (tokens.isEmpty) return 'the query is empty';
+  }
+  for (final t in tokens) {
+    // SQLite also takes a string literal where it expects a table name
+    // (S1), so single-quoted text counts as a name here. Plain strings that
+    // hold these words are refused too; the guard can't tell them apart.
+    final name = _nameOrString(t.text);
+    if (name == null) continue;
+    final lower = asciiLower(name);
+    if (_hiddenSources.contains(lower)) {
+      return 'it reads database files or raw pages';
+    }
+    if (lower.startsWith('pragma_') && !_readPragmaFunctions.contains(lower)) {
+      return 'it reads or changes a setting';
+    }
+  }
+  final first = tokens.first.word;
+  if (_transactionWords.contains(first)) {
+    return 'it controls a transaction';
+  }
+  if (first == 'ATTACH' || first == 'DETACH') return 'it adds a database';
+  if (first == 'PRAGMA') {
+    if (tokens.last.text == ';') tokens = tokens.sublist(0, tokens.length - 1);
+    final ok =
+        tokens.length >= 4 &&
+        _readPragmas.contains(tokens[1].word) &&
+        tokens[2].text == '(' &&
+        tokens.last.text == ')';
+    if (!ok || tokens.any((t) => t.text == '=')) {
+      return 'it reads or changes a setting';
+    }
+  }
+  return null;
+}
+
+/// The table a write changes, or why the write is refused.
+final class WriteTarget {
+  const WriteTarget.table(String this.table, String this.verb) : error = null;
+  const WriteTarget.refused(String this.error) : table = null, verb = null;
+
+  final String? table;
+
+  /// The statement's own verb: INSERT, REPLACE, UPDATE or DELETE, read at
+  /// its position, never from a function name such as replace() (FD-11).
+  final String? verb;
+  final String? error;
+}
+
+const _onlyEdits = 'only INSERT, UPDATE and DELETE on one table run as edits';
+
+/// Finds the target of a single-row edit from the dashboard. Only `INSERT`,
+/// `REPLACE`, `UPDATE` and `DELETE` (optionally after a `WITH` clause) on a
+/// table named without a schema pass; schema changes, `ATTACH`, `VACUUM`,
+/// `PRAGMA` and transaction control never do (ADR 0005).
+WriteTarget writeTarget(String sql) {
+  final tokens = tokenize(sql);
+  var i = 0;
+  if (tokens.isNotEmpty && tokens.first.word == 'WITH') {
+    var depth = 0;
+    i = 1;
+    for (; i < tokens.length; i++) {
+      final t = tokens[i].text;
+      if (t == '(') depth++;
+      if (t == ')') depth--;
+      if (depth == 0 &&
+          const {
+            'INSERT',
+            'REPLACE',
+            'UPDATE',
+            'DELETE',
+            'SELECT',
+          }.contains(tokens[i].word)) {
+        break;
+      }
+    }
+  }
+  if (i >= tokens.length) return const WriteTarget.refused(_onlyEdits);
+  final nameAt = _tableAfterVerb(tokens, i);
+  if (nameAt == null || nameAt >= tokens.length) {
+    return const WriteTarget.refused(_onlyEdits);
+  }
+  if (nameAt + 1 < tokens.length && tokens[nameAt + 1].text == '.') {
+    return const WriteTarget.refused('name the table without a schema');
+  }
+  final name = unquoteIdent(tokens[nameAt].text);
+  if (name == null) return const WriteTarget.refused(_onlyEdits);
+  final verb = tokens[i].word;
+  // INSERT OR REPLACE deletes clashing rows like REPLACE does.
+  final orReplace =
+      verb == 'INSERT' &&
+      i + 2 < tokens.length &&
+      tokens[i + 1].word == 'OR' &&
+      tokens[i + 2].word == 'REPLACE';
+  return WriteTarget.table(name, orReplace ? 'REPLACE' : verb);
+}
+
+/// The index of the table name after the verb at [i] (INSERT, REPLACE,
+/// UPDATE or DELETE), or null when [i] holds no such verb.
+int? _tableAfterVerb(List<SqlToken> tokens, int i) {
+  String? word(int k) => k < tokens.length ? tokens[k].word : null;
+  switch (word(i)) {
+    case 'INSERT':
+      var k = i + 1;
+      if (word(k) == 'OR') k += 2;
+      if (word(k) == 'INTO') return k + 1;
+    case 'REPLACE':
+      if (word(i + 1) == 'INTO') return i + 2;
+    case 'UPDATE':
+      var k = i + 1;
+      if (word(k) == 'OR') k += 2;
+      return k;
+    case 'DELETE':
+      if (word(i + 1) == 'FROM') return i + 2;
+  }
+  return null;
+}
+
+/// Tables the statements in a trigger's body write to, as written (a
+/// `main.` or `temp.` prefix dropped). Only the body after BEGIN is read, so
+/// the trigger's own `AFTER UPDATE ON t` never counts.
+Set<String> triggerTargets(String createTrigger) {
+  final tokens = tokenize(createTrigger);
+  final begin = tokens.indexWhere((t) => t.word == 'BEGIN');
+  final names = <String>{};
+  if (begin < 0) return names;
+  for (var i = begin + 1; i < tokens.length; i++) {
+    var at = _tableAfterVerb(tokens, i);
+    if (at == null || at >= tokens.length) continue;
+    if (at + 2 < tokens.length && tokens[at + 1].text == '.') at += 2;
+    final name = unquoteIdent(tokens[at].text);
+    if (name != null) names.add(name);
+  }
+  return names;
+}
+
+/// The identifier a token names, or null if the token is not one.
+String? unquoteIdent(String token) {
+  if (token.isEmpty) return null;
+  final c = token.codeUnitAt(0);
+  if (c == 0x22 || c == 0x60) {
+    if (token.length < 2 || token.codeUnitAt(token.length - 1) != c) {
+      return null;
+    }
+    final q = String.fromCharCode(c);
+    return token.substring(1, token.length - 1).replaceAll('$q$q', q);
+  }
+  if (c == 0x5b) {
+    if (!token.endsWith(']')) return null;
+    return token.substring(1, token.length - 1);
+  }
+  if (_isWordStart(c)) return token;
+  return null;
+}
+
+/// Quotes an identifier for SQL text.
+String quoteIdent(String name) => '"${name.replaceAll('"', '""')}"';

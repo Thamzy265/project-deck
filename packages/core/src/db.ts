@@ -39,6 +39,12 @@ export const TableInfoSchema = z.object({
   rowCount: z.number().int().nonnegative().optional(),
   foreignKeys: z.array(ForeignKeySchema),
   indexes: z.array(IndexInfoSchema),
+  /**
+   * Set when the backend could read this entry only in part: for example a view that calls an
+   * app-defined function (columns empty), or a table too big to count (no rowCount). The
+   * message is untrusted app text. Other tables are unaffected.
+   */
+  error: z.object({ code: z.string(), message: z.string() }).optional(),
 });
 export type TableInfo = z.infer<typeof TableInfoSchema>;
 

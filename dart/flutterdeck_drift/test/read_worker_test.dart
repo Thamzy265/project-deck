@@ -1,0 +1,461 @@
+import 'dart:async';
+import 'dart:io';
+
+import 'package:drift/drift.dart' show driftRuntimeOptions;
+import 'package:flutterdeck_drift/src/native.dart';
+import 'package:flutterdeck_drift/src/protocol.dart';
+import 'package:flutterdeck_drift/src/read_worker.dart';
+import 'package:flutterdeck_drift/src/service.dart' show ensureAppBusyTimeout;
+import 'package:sqlite3/sqlite3.dart' show SqliteException, sqlite3;
+import 'package:test/test.dart';
+
+import 'support.dart';
+
+/// Reads `orders` forever: holds a read lock on the table while it runs.
+const runaway =
+    'WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c) '
+    'SELECT count(*) FROM c, orders';
+
+Matcher failsWith(String code) =>
+    throwsA(isA<DriftDeckError>().having((e) => e.code, 'code', code));
+
+void main() {
+  setUpAll(() => driftRuntimeOptions.dontWarnAboutMultipleDatabases = true);
+
+  late Directory dir;
+  late String path;
+
+  setUp(() {
+    dir = Directory.systemTemp.createTempSync('flutterdeck_drift_worker');
+    path = '${dir.path}/app.sqlite';
+  });
+
+  tearDown(() => dir.deleteSync(recursive: true));
+
+  Future<AppDb> openApp({required bool wal}) async {
+    final app = openAppDb(path, wal: wal);
+    await app.addOrder('Coffee');
+    // As the service does before the first read (see service.dart).
+    await ensureAppBusyTimeout(app);
+    return app;
+  }
+
+  test(
+    'the bundled SQLite exports sqlite3_interrupt and sqlite3_limit',
+    skip: noInterrupt,
+    () {
+      final db = sqlite3.openInMemory();
+      addTearDown(db.close);
+      // Interrupting an idle connection does nothing; this checks the lookup.
+      expect(interruptConnection(db.handle.address), isTrue);
+      // SQLite never lets the length limit go below 30.
+      expect(limitLength(db.handle, 100), isTrue);
+      expect(
+        () => db.select("SELECT printf('%.*c', 200, 'x')"),
+        throwsA(isA<SqliteException>()),
+      );
+    },
+  );
+
+  test(
+    'runs reads in the isolate and answers with the result',
+    skip: noInterrupt,
+    () async {
+      final app = await openApp(wal: false);
+      final reader = DbReader(path);
+      addTearDown(() async {
+        await reader.close();
+        await app.close();
+      });
+
+      final r = await reader.call('query', {
+        'sql': 'SELECT item FROM orders',
+        'params': const <Object?>[],
+        'limit': 10,
+      });
+      expect(r['rows'], [
+        ['Coffee'],
+      ]);
+      await expectLater(
+        reader.call('query', {
+          'sql': 'DELETE FROM orders',
+          'params': const <Object?>[],
+          'limit': 10,
+        }),
+        failsWith(ErrorCode.notReadOnly),
+      );
+    },
+  );
+
+  for (final wal in [false, true]) {
+    final mode = wal ? 'WAL' : 'rollback journal';
+
+    test(
+      '$mode: a runaway read stops in about 5 s and the app writes after',
+      skip: noInterrupt,
+      () async {
+        final app = await openApp(wal: wal);
+        final reader = DbReader(path);
+        addTearDown(() async {
+          await reader.close();
+          await app.close();
+        });
+
+        final watch = Stopwatch()..start();
+        await expectLater(
+          reader.call('query', {
+            'sql': runaway,
+            'params': const <Object?>[],
+            'limit': 10,
+          }),
+          failsWith(ErrorCode.timeout),
+        );
+        final took = watch.elapsed;
+        expect(took, greaterThanOrEqualTo(readBudget));
+        expect(took, lessThan(readBudget + interruptGrace));
+
+        await app.addOrder('Tea');
+        expect(await app.count(), 2);
+
+        // A fresh reader takes over and sees the write.
+        final r = await reader.call('query', {
+          'sql': 'SELECT count(*) FROM orders',
+          'params': const <Object?>[],
+          'limit': 10,
+        });
+        expect(r['rows'], [
+          [2],
+        ]);
+      },
+      timeout: const Timeout(Duration(seconds: 30)),
+    );
+
+    test(
+      '$mode: the app writes while inspector reads run',
+      skip: noInterrupt,
+      () async {
+        final app = await openApp(wal: wal);
+        final reader = DbReader(path);
+        addTearDown(() async {
+          await reader.close();
+          await app.close();
+        });
+
+        var stop = false;
+        var reads = 0;
+        final reading = () async {
+          while (!stop) {
+            await reader.call('query', {
+              'sql': 'SELECT * FROM orders',
+              'params': const <Object?>[],
+              'limit': 1000,
+            });
+            reads++;
+          }
+        }();
+        for (var i = 0; i < 50; i++) {
+          await app.addOrder('Item $i');
+        }
+        stop = true;
+        await reading;
+        expect(await app.count(), 51);
+        expect(reads, greaterThan(0));
+      },
+      timeout: const Timeout(Duration(seconds: 30)),
+    );
+  }
+
+  test(
+    'non-WAL: a long query holds no lock; the app writes at once (F1)',
+    skip: noInterrupt,
+    () async {
+      final app = await openApp(wal: false);
+      final reader = DbReader(path);
+      addTearDown(() async {
+        await reader.close();
+        await app.close();
+      });
+      final read = reader.call('query', {
+        'sql': runaway,
+        'params': const <Object?>[],
+        'limit': 10,
+      }, budget: const Duration(seconds: 3));
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+
+      // Another connection with no busy timeout at all: on Android the
+      // busy handler's sleeps are cut short, so only "no lock" is safe.
+      final writer = sqlite3.open(path);
+      addTearDown(writer.close);
+      writer.execute('PRAGMA busy_timeout = 0');
+      final watch = Stopwatch()..start();
+      writer.execute("INSERT INTO orders (item) VALUES ('during the read')");
+      expect(watch.elapsed, lessThan(const Duration(milliseconds: 200)));
+
+      await expectLater(read, failsWith(ErrorCode.timeout));
+      expect(await app.count(), 2);
+    },
+    timeout: const Timeout(Duration(seconds: 30)),
+  );
+
+  test(
+    'an isolate that never returns is killed after the grace time',
+    () async {
+      final app = await openApp(wal: false);
+      final worker = await ReadWorker.spawn(path);
+      addTearDown(() async {
+        await worker.close();
+        await app.close();
+      });
+      final interrupted = <int>[];
+      final real = ReadWorker.interrupt;
+      ReadWorker.interrupt = (h) {
+        interrupted.add(h);
+        return true;
+      };
+      addTearDown(() => ReadWorker.interrupt = real);
+
+      final watch = Stopwatch()..start();
+      await expectLater(
+        worker.call('sleep', {
+          'ms': 4000,
+        }, budget: const Duration(milliseconds: 200)),
+        failsWith(ErrorCode.timeout),
+      );
+      // The budget (0.2 s) plus the grace period (1 s), well before the
+      // 4 s the isolate would take; loose enough for a loaded machine.
+      expect(watch.elapsed, lessThan(const Duration(milliseconds: 3500)));
+      // Both connections (the file and its in-memory copy), interrupted
+      // again and again until the grace period ends (R5-1).
+      expect(interrupted.toSet(), hasLength(2));
+      expect(interrupted.length, greaterThan(2));
+      expect(worker.isDead, isTrue);
+      await expectLater(
+        worker.call('schema', const {}),
+        failsWith(ErrorCode.internal),
+      );
+    },
+  );
+
+  test('reads queue one at a time and each gets its own budget', () async {
+    final app = await openApp(wal: false);
+    final worker = await ReadWorker.spawn(path);
+    addTearDown(() async {
+      await worker.close();
+      await app.close();
+    });
+    final first = worker.call('sleep', {'ms': 300});
+    final second = worker.call('query', {
+      'sql': 'SELECT 1',
+      'params': const <Object?>[],
+      'limit': 1,
+    }, budget: const Duration(milliseconds: 250));
+    await first;
+    expect((await second)['rows'], [
+      [1],
+    ]);
+  });
+
+  test(
+    'a closed reader answers "stopped" and starts no new isolate',
+    skip: noInterrupt,
+    () async {
+      final app = await openApp(wal: false);
+      final reader = DbReader(path);
+      addTearDown(app.close);
+      final slow = reader.call('query', {
+        'sql': runaway,
+        'params': const <Object?>[],
+        'limit': 10,
+      });
+      final stopped = expectLater(slow, failsWith(ErrorCode.internal));
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      await reader.close();
+      await stopped;
+      await expectLater(
+        reader.call('schema', const {}),
+        failsWith(ErrorCode.internal),
+      );
+    },
+  );
+
+  test(
+    'a reset connection is marked dead before its reply arrives (CR-2)',
+    () async {
+      final app = await openApp(wal: false);
+      final worker = await ReadWorker.spawn(path);
+      addTearDown(() async {
+        await worker.close();
+        await app.close();
+      });
+      final interrupted = <int>[];
+      final real = ReadWorker.interrupt;
+      ReadWorker.interrupt = (h) {
+        interrupted.add(h);
+        return true;
+      };
+      addTearDown(() => ReadWorker.interrupt = real);
+
+      // The isolate frees its connection only after the controller knows, so
+      // no interrupt can ever reach a freed sqlite3*.
+      await worker.call('breakForTest', const {});
+      expect(worker.isDead, isTrue);
+      await worker.close();
+      expect(interrupted, isEmpty);
+    },
+  );
+
+  test(
+    'with this SQLite build lacking sqlite3_interrupt, queries are '
+    'unsupported and tables still read',
+    // Runs where the symbol is hidden (package:sqlite3 on Linux); the test
+    // below forces the same path with a hook everywhere else.
+    skip: noInterrupt == null
+        ? 'this SQLite build exports sqlite3_interrupt'
+        : false,
+    () async {
+      expect(interruptAvailable(), isFalse);
+      final app = await openApp(wal: false);
+      final reader = DbReader(path);
+      addTearDown(() async {
+        await reader.close();
+        await app.close();
+      });
+      await expectLater(
+        reader.call('query', {
+          'sql': 'SELECT 1',
+          'params': const <Object?>[],
+          'limit': 1,
+        }),
+        throwsA(
+          isA<DriftDeckError>()
+              .having((e) => e.code, 'code', ErrorCode.unsupported)
+              .having(
+                (e) => e.message,
+                'message',
+                contains('sqlite3_interrupt'),
+              ),
+        ),
+      );
+      final schema = await reader.call('schema', const {});
+      expect(
+        (schema['tables']! as List).map((t) => (t as Map)['name']),
+        contains('orders'),
+      );
+      expect((await reader.call('snapshot', const {}))['tables'], isNotEmpty);
+    },
+  );
+
+  test('without sqlite3_interrupt, queries are unsupported (D-2)', () async {
+    final app = await openApp(wal: false);
+    final reader = DbReader(path);
+    addTearDown(() async {
+      await reader.close();
+      await app.close();
+    });
+    final real = ReadWorker.canInterrupt;
+    ReadWorker.canInterrupt = () => false;
+    addTearDown(() => ReadWorker.canInterrupt = real);
+
+    await expectLater(
+      reader.call('query', {
+        'sql': 'SELECT 1',
+        'params': const <Object?>[],
+        'limit': 1,
+      }),
+      throwsA(
+        isA<DriftDeckError>()
+            .having((e) => e.code, 'code', ErrorCode.unsupported)
+            .having((e) => e.message, 'message', contains('stop')),
+      ),
+    );
+    // The package's own bounded reads still work.
+    expect((await reader.call('schema', const {}))['tables'], isNotEmpty);
+  });
+
+  test(
+    'a page size change is answered by a fresh reader (R3-2)',
+    skip: noInterrupt,
+    () async {
+      final app = await openApp(wal: false);
+      final reader = DbReader(path);
+      addTearDown(() async {
+        await reader.close();
+        await app.close();
+      });
+      const count = {
+        'sql': 'SELECT count(*) FROM orders',
+        'params': <Object?>[],
+        'limit': 1,
+      };
+      expect((await reader.call('query', count))['rows'], [
+        [1],
+      ]);
+      await app.customStatement('PRAGMA page_size = 8192');
+      await app.customStatement('VACUUM');
+      expect((await reader.call('query', count))['rows'], [
+        [1],
+      ]);
+    },
+  );
+
+  group('DbReader starts one isolate at a time (CR-1)', skip: noInterrupt, () {
+    const quick = {
+      'sql': 'SELECT count(*) FROM orders',
+      'params': <Object?>[],
+      'limit': 10,
+    };
+
+    Future<DbReader> timedOutReader() async {
+      final reader = DbReader(path);
+      await expectLater(
+        reader.call('query', {
+          'sql': runaway,
+          'params': const <Object?>[],
+          'limit': 10,
+        }, budget: const Duration(milliseconds: 200)),
+        failsWith(ErrorCode.timeout),
+      );
+      return reader;
+    }
+
+    test('two calls after a timeout share one new isolate', () async {
+      final app = await openApp(wal: false);
+      addTearDown(app.close);
+      final reader = await timedOutReader();
+      addTearDown(reader.close);
+      final before = ReadWorker.spawnCount;
+      final results = await Future.wait([
+        reader.call('query', quick),
+        reader.call('query', quick),
+      ]);
+      expect(results.map((r) => r['rows']), [
+        [
+          [1],
+        ],
+        [
+          [1],
+        ],
+      ]);
+      expect(ReadWorker.spawnCount - before, 1);
+    });
+
+    test('a call waiting during close starts no isolate', () async {
+      final app = await openApp(wal: false);
+      addTearDown(app.close);
+      final reader = await timedOutReader();
+      final before = ReadWorker.spawnCount;
+      final waiting = expectLater(
+        reader.call('query', quick),
+        failsWith(ErrorCode.internal),
+      );
+      await reader.close();
+      await waiting;
+      expect(ReadWorker.spawnCount - before, 0);
+    });
+  });
+
+  test('an unreadable file fails to start with unsupported', () async {
+    File(path).writeAsStringSync('not a database at all' * 300);
+    await expectLater(ReadWorker.spawn(path), failsWith(ErrorCode.unsupported));
+  });
+}

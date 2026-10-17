@@ -194,7 +194,7 @@ Follows [GitHub flow](https://docs.github.com/en/get-started/using-github/github
 - Commits are atomic: one logical change each, and the repo builds and passes tests after every commit.
 - Message format: `<type>(<scope>): <imperative summary>`, at most about 72 characters, lower case, no trailing period. Add a body explaining why when it isn't obvious.
   - Types: `feat`, `fix`, `docs`, `test`, `refactor`, `perf`, `build`, `ci`, `chore`, `revert`.
-  - Scope is the package or area: `core`, `daemon`, `connector-dart`, `mcp`, `dashboard`, `cli`, `sql-guard`, `plugin`, `scripts`, `deps`.
+  - Scope is the package or area: `core`, `daemon`, `connector-dart`, `mcp`, `dashboard`, `cli`, `sql-guard`, `flutterdeck-drift`, `sample-app`, `plugin`, `scripts`, `deps`.
   - Breaking changes to a frozen interface use `!` (e.g. `feat(core)!: ...`) plus a `BREAKING CHANGE:` footer.
 - A branch merges into `main` through a pull request. The review gate runs before the PR is opened.
 - **PR descriptions** are written in [ASD-STE100](https://www.asd-ste100.org/) Simplified Technical English:
@@ -207,4 +207,4 @@ Follows [GitHub flow](https://docs.github.com/en/get-started/using-github/github
 
 - **M1 done** (14 Oct 2026): scaffold, `core`, daemon, `connector-dart`, `logs-android`, `.mcp.json` example, sample app, acceptance check.
 - **M2 done** (16 Oct 2026): dashboard, MCP server with masking, CLI (`init`, `start`, `stop`, `open`, `mcp`), plugin with hooks and notifications; PM acceptance check passed.
-- **M3 in progress** (Drift inspector). Plan of record: `docs/design/m3-drift-inspector.md`, `docs/ui/m3-database-tab.md`, ADRs 0004–0005. Next: batch 1 `feat/db-core` (core DB schemas, app extensions, SQL guard).
+- **M3 in progress** (Drift inspector). Plan of record: `docs/design/m3-drift-inspector.md`, `docs/ui/m3-database-tab.md`, ADRs 0004–0005. Batch 1 `feat/db-core` merged (PR #33). Batch 2 `feat/flutterdeck-drift` (in-app Drift helper, sample orders table) in review/merge; PM IDE check pending. Next: batch 3 db backends (`db-drift`, `db-sqlite`, Android/iOS snapshots).
