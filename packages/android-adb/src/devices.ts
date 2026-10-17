@@ -38,6 +38,15 @@ async function probe(adb: AdbRunner, serial: string, pid: number): Promise<AppDe
 }
 
 /**
+ * Every online device, with its API level and the process name at `pid` there ('' when
+ * unknown). Rejects when `adb devices` fails, for example with AdbMissingError.
+ */
+export async function probeDevices(adb: AdbRunner, pid: number): Promise<AppDevice[]> {
+  const serials = parseDevices(await adb.exec(['devices']));
+  return Promise.all(serials.map((serial) => probe(adb, serial, pid)));
+}
+
+/**
  * The online device running `pid`, with its API level and the process name there.
  * Pids are only unique per device, so ask each one what runs at that pid. Only a
  * process whose name is an Android package counts (a system process such as
@@ -51,8 +60,7 @@ export async function findDeviceForPid(
   pid: number,
   appName: string,
 ): Promise<AppDevice | undefined> {
-  const serials = parseDevices(await adb.exec(['devices']));
-  const devices = await Promise.all(serials.map((serial) => probe(adb, serial, pid)));
+  const devices = await probeDevices(adb, pid);
   const exact = isPackageName(appName) ? devices.find((d) => d.process === appName) : undefined;
   const only = devices.length === 1 ? devices[0] : undefined;
   return (

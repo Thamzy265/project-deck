@@ -18,48 +18,42 @@ const PHONE = 'R58M123ABC';
 const TWO_DEVICES = `List of devices attached\n${PHONE}\tdevice\n${EMULATOR}\tdevice\n\n`;
 
 describe('resolveAndroidSource with several devices (tester probes)', () => {
-  it.fails(
-    "DB-2: does not read another app's database when the pid is reused on another device",
-    async () => {
-      // Flutter reports the app's name ('shop'), not its package. The phone, listed first,
-      // runs a different debuggable app at the same pid. config.json names the real id.
-      const adb = new FakeAdb({
-        devices: TWO_DEVICES,
-        processes: {
-          [PHONE]: { [FIXTURE_PID]: 'com.other.debugapp' },
-          [EMULATOR]: { [FIXTURE_PID]: 'com.example.shop' },
-        },
-        files: {
-          [PHONE]: { 'com.other.debugapp': { 'databases/other.db': plainDbFixture() } },
-          [EMULATOR]: { 'com.example.shop': { 'databases/shop.db': plainDbFixture() } },
-        },
-      });
-      const app = fakeApp({ name: 'shop', pid: FIXTURE_PID, device });
-      const outcome = await resolveAndroidSource(adb, app, 'com.example.shop').then(
-        (s) => `${s.serial}/${s.packageName}`,
-        (err: unknown) => (err as { code?: string }).code,
-      );
-      expect(outcome).not.toBe(`${PHONE}/com.other.debugapp`);
-      expect([`${EMULATOR}/com.example.shop`, 'choose-device']).toContain(outcome);
-    },
-  );
+  it("DB-2: does not read another app's database when the pid is reused on another device", async () => {
+    // Flutter reports the app's name ('shop'), not its package. The phone, listed first,
+    // runs a different debuggable app at the same pid. config.json names the real id.
+    const adb = new FakeAdb({
+      devices: TWO_DEVICES,
+      processes: {
+        [PHONE]: { [FIXTURE_PID]: 'com.other.debugapp' },
+        [EMULATOR]: { [FIXTURE_PID]: 'com.example.shop' },
+      },
+      files: {
+        [PHONE]: { 'com.other.debugapp': { 'databases/other.db': plainDbFixture() } },
+        [EMULATOR]: { 'com.example.shop': { 'databases/shop.db': plainDbFixture() } },
+      },
+    });
+    const app = fakeApp({ name: 'shop', pid: FIXTURE_PID, device });
+    const outcome = await resolveAndroidSource(adb, app, 'com.example.shop').then(
+      (s) => `${s.serial}/${s.packageName}`,
+      (err: unknown) => (err as { code?: string }).code,
+    );
+    expect(outcome).not.toBe(`${PHONE}/com.other.debugapp`);
+    expect([`${EMULATOR}/com.example.shop`, 'choose-device']).toContain(outcome);
+  });
 
-  it.fails(
-    'DB-2: asks the user to pick when two devices run a package at the pid and none is named',
-    async () => {
-      const adb = new FakeAdb({
-        devices: TWO_DEVICES,
-        processes: {
-          [PHONE]: { [FIXTURE_PID]: 'com.other.debugapp' },
-          [EMULATOR]: { [FIXTURE_PID]: 'com.example.shop' },
-        },
-      });
-      const app = fakeApp({ name: 'shop', pid: FIXTURE_PID, device });
-      await expect(resolveAndroidSource(adb, app, undefined)).rejects.toMatchObject({
-        code: 'choose-device',
-      });
-    },
-  );
+  it('DB-2: asks the user to pick when two devices run a package at the pid and none is named', async () => {
+    const adb = new FakeAdb({
+      devices: TWO_DEVICES,
+      processes: {
+        [PHONE]: { [FIXTURE_PID]: 'com.other.debugapp' },
+        [EMULATOR]: { [FIXTURE_PID]: 'com.example.shop' },
+      },
+    });
+    const app = fakeApp({ name: 'shop', pid: FIXTURE_PID, device });
+    await expect(resolveAndroidSource(adb, app, undefined)).rejects.toMatchObject({
+      code: 'choose-device',
+    });
+  });
 
   it('uses the device whose process name is the app name when Flutter reports a package', async () => {
     const adb = new FakeAdb({

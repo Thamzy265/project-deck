@@ -10,7 +10,7 @@ import {
   AdbMissingError,
   AdbOutputTooLargeError,
   AdbTimeoutError,
-  findDeviceForPid,
+  probeDevices,
   isPackageName,
   isPid,
   isSerial,
@@ -155,12 +155,19 @@ function adbError(err: unknown): DbError {
   return new DbError('unavailable', "Couldn't read the database: adb failed.");
 }
 
+const chooseDevice = (): DbError =>
+  new DbError(
+    'choose-device',
+    'More than one Android device could be running this app. Disconnect the others to take a snapshot.',
+  );
+
 /**
- * The device and package for an attached Android app. The device is the one whose
- * process at the app's pid is a package (the running app tells us its own id, which
- * also covers flavors with an id suffix); `android.applicationId` from config.json is
- * the fallback. With several possible devices the user must pick: FlutterDeck never
- * guesses which device to copy from.
+ * The device and package for an attached Android app. Pids repeat across devices, so
+ * a device counts only when the process at the app's pid is the app: its id from
+ * `android.applicationId` or a package-shaped app name. Without either, the one device
+ * that runs any package at that pid (its process name is the id, flavor suffix
+ * included). When more than one device is still possible the user must pick:
+ * FlutterDeck never guesses which device to copy from.
  */
 export async function resolveAndroidSource(
   adb: AdbRunner,
@@ -169,11 +176,29 @@ export async function resolveAndroidSource(
 ): Promise<AndroidSource> {
   try {
     if (app.pid !== undefined && isPid(app.pid)) {
-      const device = await findDeviceForPid(adb, app.pid, app.name);
-      if (device !== undefined) {
-        const pkg = isPackageName(device.process) ? device.process : configuredId;
-        if (pkg === undefined) throw missingId();
-        return new AndroidSource(adb, device.serial, pkg);
+      const devices = await probeDevices(adb, app.pid);
+      const wanted = new Set(
+        [configuredId, app.name].filter(
+          (id): id is string => id !== undefined && isPackageName(id),
+        ),
+      );
+      const running = devices.filter((d) => isPackageName(d.process));
+      const matches = wanted.size > 0 ? running.filter((d) => wanted.has(d.process)) : running;
+      if (matches.length > 1) throw chooseDevice();
+      const [match] = matches;
+      if (match !== undefined) return new AndroidSource(adb, match.serial, match.process);
+      // ps can't name the process (old devices): only one device leaves no doubt.
+      const [only] = devices;
+      if (devices.length === 1 && only?.process === '' && configuredId !== undefined) {
+        return new AndroidSource(adb, only.serial, configuredId);
+      }
+      if (wanted.size === 0 && running.length === 0) throw missingId();
+      if (devices.length > 1) throw chooseDevice();
+      if (devices.length === 1) {
+        throw new DbError(
+          'unavailable',
+          "FlutterDeck couldn't find this app on the device. Set android.applicationId in .flutterdeck/config.json.",
+        );
       }
     }
     if (configuredId === undefined) throw missingId();
