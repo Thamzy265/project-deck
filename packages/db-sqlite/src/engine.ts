@@ -13,6 +13,11 @@ import { z } from 'zod';
 export interface SnapshotEngineOptions {
   /** One call, once the copy is open (design: the same 5 s limit as the app). */
   budgetMs?: number;
+  /**
+   * Diff hashes read every row of every table (up to the caps), so they get their own,
+   * longer budget (L3: 20 s). They are stopped the same way when they pass it.
+   */
+  hashBudgetMs?: number;
   /** Starting the worker and opening a copy (up to 50 MB). */
   openMs?: number;
   /** Test seam: the worker script. Defaults to the built worker next to this file. */
@@ -36,6 +41,7 @@ const TOO_LONG = 'That query took too long and was stopped.';
  */
 export class SnapshotEngine {
   private readonly budgetMs: number;
+  private readonly hashBudgetMs: number;
   private readonly openMs: number;
   private readonly workerUrl: URL;
   private bytes: Uint8Array | undefined;
@@ -50,6 +56,7 @@ export class SnapshotEngine {
 
   constructor(opts: SnapshotEngineOptions = {}) {
     this.budgetMs = opts.budgetMs ?? 5000;
+    this.hashBudgetMs = opts.hashBudgetMs ?? 20_000;
     this.openMs = opts.openMs ?? 10_000;
     this.workerUrl = opts.workerUrl ?? new URL('./worker.js', import.meta.url);
   }
@@ -74,7 +81,13 @@ export class SnapshotEngine {
   }
 
   async hashes(): Promise<RowHashes> {
-    return RowHashesSchema.parse(await this.call({ op: 'hashes' }));
+    return RowHashesSchema.parse(
+      await this.call(
+        { op: 'hashes' },
+        this.hashBudgetMs,
+        'Taking the diff snapshot took too long.',
+      ),
+    );
   }
 
   async rowsByKey(table: string, keys: RowKey[]): Promise<KeyedRows> {
@@ -105,19 +118,27 @@ export class SnapshotEngine {
   }
 
   /** Calls run one at a time, so a timeout always belongs to the call that caused it. */
-  private call(message: Record<string, unknown>): Promise<unknown> {
-    const run = this.queue.then(() => this.callNow(message));
+  private call(
+    message: Record<string, unknown>,
+    budgetMs: number = this.budgetMs,
+    overBudget: string = TOO_LONG,
+  ): Promise<unknown> {
+    const run = this.queue.then(() => this.callNow(message, budgetMs, overBudget));
     this.queue = run.catch(() => undefined);
     return run;
   }
 
-  private async callNow(message: Record<string, unknown>): Promise<unknown> {
+  private async callNow(
+    message: Record<string, unknown>,
+    budgetMs: number = this.budgetMs,
+    overBudget: string = TOO_LONG,
+  ): Promise<unknown> {
     if (this.closed || this.bytes === undefined) {
       throw new DbError('internal', 'No snapshot copy is open; take a snapshot first.');
     }
     const w = await this.ready(this.bytes);
     this.stillOpen(w);
-    const value = await this.ask(w, message, this.budgetMs, TOO_LONG);
+    const value = await this.ask(w, message, budgetMs, overBudget);
     this.stillOpen(w);
     return value;
   }

@@ -137,8 +137,17 @@ class Fnv {
     this.lo = loProduct >>> 0;
   }
 
-  addBytes(bytes: Uint8Array): void {
-    for (const b of bytes) this.add(b);
+  addBytes(bytes: Uint8Array, from = 0, to = bytes.length): void {
+    // The same steps as add(), inlined: this loop runs for every byte of a diff (L3).
+    let { hi, lo } = this;
+    for (let i = from; i < to; i++) {
+      const x = (lo ^ (bytes[i] ?? 0)) >>> 0;
+      const product = x * 0x1b3;
+      hi = (Math.imul(hi, 0x1b3) + Math.floor(product / 0x1_0000_0000) + (x << 8)) >>> 0;
+      lo = product >>> 0;
+    }
+    this.hi = hi;
+    this.lo = lo;
   }
 
   hex(): string {
@@ -600,6 +609,37 @@ function keyOf(open: OpenDb, e: Entity): KeyShape {
   throw new DbError('unsupported', `${e.name} has no primary key and hides its row id`);
 }
 
+/**
+ * cellHash of column `i` of the current row, read straight from SQLite's memory: text
+ * and blobs are hashed as their bytes, never decoded to JS strings or copied (L3).
+ */
+function columnHash(open: OpenDb, stmt: number, i: number): string {
+  const { capi, wasm } = open.sqlite;
+  const type = capi.sqlite3_column_type(stmt, i);
+  if (type !== T_TEXT && type !== T_BLOB) return cellHash(value(open, stmt, i));
+  // column_blob on a TEXT value gives its UTF-8 bytes, the same bytes cellHash hashes.
+  const p = capi.sqlite3_column_blob(stmt, i);
+  const n = capi.sqlite3_column_bytes(stmt, i);
+  const h = new Fnv();
+  h.add(type === T_TEXT ? 3 : 4);
+  if (p !== 0) h.addBytes(wasm.heap8u(), p, p + n);
+  return h.hex();
+}
+
+/** Steps a statement, handing `row` the first `count` values of each row only. */
+function stepKeys(
+  open: OpenDb,
+  s: Statement,
+  count: number,
+  row: (values: SqlValue[]) => boolean,
+): void {
+  for (;;) {
+    if (!step(open, s)) return;
+    const values = Array.from({ length: count }, (_, i) => value(open, s.stmt, i));
+    if (!row(values)) return;
+  }
+}
+
 function keyCell(values: SqlValue[]): RowKey {
   const cells = values.map((v) => encode(v, true));
   return cells.length === 1 ? (cells[0] ?? null) : cells;
@@ -617,15 +657,14 @@ export function hashes(open: OpenDb): RowHashes {
       const rows: [RowKey, string[]][] = [];
       const scan = { tooLarge: false };
       withStatement(open, sql, (s) =>
-        stepAll(open, s, (values) => {
+        stepKeys(open, s, shape.key.length, (values) => {
           if (rows.length === MAX_DIFF_ROWS_PER_TABLE) {
             scan.tooLarge = true;
             return false;
           }
-          const keyValues = values.slice(0, shape.key.length);
           const entry: [RowKey, string[]] = [
-            keyCell(keyValues),
-            values.slice(shape.key.length).map(cellHash),
+            keyCell(values),
+            shape.columns.map((_, i) => columnHash(open, s.stmt, shape.key.length + i)),
           ];
           total += JSON.stringify(entry[0]).length + entry[1].length * 19;
           if (total > MAX_HASH_BYTES) {
