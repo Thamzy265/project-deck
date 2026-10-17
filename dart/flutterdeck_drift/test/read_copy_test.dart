@@ -94,7 +94,13 @@ void main() {
       // exclusive lock (as when it commits) and keeps it for 150 ms.
       ReadOps.beforeCopySourceOpen = () {
         lock.send('lock');
-        while (state.value == 0) {}
+        // Wait for the lock. The sleep keeps the compiler from hoisting the
+        // read out of the loop (a bare spin hung once it was optimised).
+        final waited = Stopwatch()..start();
+        while (state.value == 0 &&
+            waited.elapsed < const Duration(seconds: 10)) {
+          sleep(const Duration(milliseconds: 1));
+        }
       };
       addTearDown(() => ReadOps.beforeCopySourceOpen = null);
       final r = ops.query('SELECT count(*) FROM orders', const [], 10);

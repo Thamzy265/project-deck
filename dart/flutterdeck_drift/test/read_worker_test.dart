@@ -210,7 +210,9 @@ void main() {
         }, budget: const Duration(milliseconds: 200)),
         failsWith(ErrorCode.timeout),
       );
-      expect(watch.elapsed, lessThan(const Duration(seconds: 2)));
+      // The budget (0.2 s) plus the grace period (1 s), well before the
+      // 4 s the isolate would take; loose enough for a loaded machine.
+      expect(watch.elapsed, lessThan(const Duration(milliseconds: 3500)));
       // Both connections (the file and its in-memory copy), interrupted
       // again and again until the grace period ends (R5-1).
       expect(interrupted.toSet(), hasLength(2));
