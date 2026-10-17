@@ -119,6 +119,35 @@ test.describe('fake mode', () => {
     await expect(panel).toBeHidden();
   });
 
+  test('420 px: Tab and Shift+Tab stay inside modal row details (review L1, QA B4-7)', async ({
+    page,
+  }) => {
+    await openOrders(page, daemon.url);
+    await page.getByRole('searchbox', { name: 'Filter rows' }).fill('Coffee');
+    await grid(page).getByText('Coffee').click();
+    const panel = page.getByRole('dialog', { name: 'orders: id 1' });
+    await expect(panel.getByText('pending')).toBeVisible();
+    await expect(panel).toHaveAttribute('aria-modal', 'true');
+    const outside = async () =>
+      page.evaluate(() => {
+        const el = document.activeElement;
+        const dialog = document.querySelector('[role="dialog"]');
+        if (el !== null && dialog !== null && dialog.contains(el)) return '';
+        return el === null ? 'nothing' : `${el.tagName} ${el.textContent}`.slice(0, 60);
+      });
+    const left: string[] = [];
+    for (const key of ['Tab', 'Shift+Tab']) {
+      for (let i = 0; i < 30; i++) {
+        await page.keyboard.press(key);
+        const where = await outside();
+        if (where !== '') left.push(`${key} ${i + 1}: ${where}`);
+      }
+    }
+    expect(left).toEqual([]);
+    await page.keyboard.press('Escape');
+    await expect(panel).toBeHidden();
+  });
+
   test('a foreign-key value opens the customer it points at', async ({ page }) => {
     await openOrders(page, daemon.url);
     await page.getByRole('searchbox', { name: 'Filter rows' }).fill('Coffee');

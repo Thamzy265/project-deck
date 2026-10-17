@@ -9,6 +9,7 @@ import { rowKeyOrReason } from '../../db/keys.js';
 import type { Built, ColumnValue } from '../../db/sql-build.js';
 import { deleteRow, inputParam, insertRow, quoteIdent, updateRow } from '../../db/sql-build.js';
 import { useDbClient } from '../../state/DbProvider.js';
+import { trapTab } from '../focus-trap.js';
 import { button, field, linkButton } from '../styles.js';
 import { VisibleText } from './VisibleText.js';
 import { WriteConfirmDialog } from './WriteConfirmDialog.js';
@@ -207,11 +208,17 @@ export function RowDetails(p: RowDetailsProps) {
     void ask(updateRow(table.name, key, values), 'view');
   };
 
+  const panel = useRef<HTMLElement>(null);
   const onKeyDown = (e: KeyboardEvent) => {
-    if (e.key === 'Escape' && request === undefined) {
+    // The confirm dialog inside keeps its own keys.
+    if (request !== undefined || e.defaultPrevented) return;
+    if (e.key === 'Escape') {
       e.preventDefault();
       p.onClose();
+      return;
     }
+    // Modal (below 900 px): Tab stays inside, as aria-modal says (review L1, QA B4-7).
+    if (p.modal === true && panel.current !== null) trapTab(e, panel.current);
   };
 
   const title = adding
@@ -222,6 +229,7 @@ export function RowDetails(p: RowDetailsProps) {
 
   return (
     <section
+      ref={panel}
       role="dialog"
       aria-modal={p.modal === true}
       aria-labelledby="row-details-title"
