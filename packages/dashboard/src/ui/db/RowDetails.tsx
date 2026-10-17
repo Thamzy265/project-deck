@@ -46,6 +46,8 @@ export interface RowDetailsProps {
   row: Cell[] | undefined;
   writes: WriteMode;
   connected: boolean;
+  /** Below 900 px the panel covers the table, which is then inert: a modal dialog. */
+  modal?: boolean;
   onClose: () => void;
   onFollowKey: (table: string, column: string, value: Param) => void;
   onToast: (text: string) => void;
@@ -214,7 +216,7 @@ export function RowDetails(p: RowDetailsProps) {
   return (
     <section
       role="dialog"
-      aria-modal="false"
+      aria-modal={p.modal === true}
       aria-labelledby="row-details-title"
       onKeyDown={onKeyDown}
       className="absolute inset-0 z-10 flex flex-col border-border bg-bg lg:left-auto lg:w-96 lg:border-l"

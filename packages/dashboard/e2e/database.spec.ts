@@ -89,6 +89,36 @@ test.describe('fake mode', () => {
     await expect(grid(page).getByRole('gridcell', { name: 'Coffee' })).toBeFocused();
   });
 
+  test('420 px: with row details open, no Tab stop hides behind the panel (QA B4-3)', async ({
+    page,
+  }) => {
+    await openOrders(page, daemon.url);
+    await page.getByRole('searchbox', { name: 'Filter rows' }).fill('Coffee');
+    await grid(page).getByText('Coffee').click();
+    const panel = page.getByRole('dialog', { name: 'orders: id 1' });
+    await expect(panel.getByText('pending')).toBeVisible();
+    const hidden: string[] = [];
+    for (let i = 0; i < 30; i++) {
+      await page.keyboard.press('Tab');
+      const covered = await page.evaluate(() => {
+        const el = document.activeElement;
+        const dialog = document.querySelector('[role="dialog"]');
+        if (el === null || el === document.body || dialog === null || dialog.contains(el)) {
+          return '';
+        }
+        const a = el.getBoundingClientRect();
+        const d = dialog.getBoundingClientRect();
+        const overlap =
+          a.left < d.right && a.right > d.left && a.top < d.bottom && a.bottom > d.top;
+        return overlap ? `${el.tagName} ${el.getAttribute('aria-label') ?? el.textContent}` : '';
+      });
+      if (covered !== '') hidden.push(covered);
+    }
+    expect(hidden).toEqual([]);
+    await page.keyboard.press('Escape');
+    await expect(panel).toBeHidden();
+  });
+
   test('a foreign-key value opens the customer it points at', async ({ page }) => {
     await openOrders(page, daemon.url);
     await page.getByRole('searchbox', { name: 'Filter rows' }).fill('Coffee');

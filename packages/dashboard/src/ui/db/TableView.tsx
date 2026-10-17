@@ -11,7 +11,7 @@ import { useDebounced } from '../../search/useDebounced.js';
 import { useDbClient } from '../../state/DbProvider.js';
 import { Skeleton } from '../Skeleton.js';
 import { button, field, linkButton } from '../styles.js';
-import { PANE_QUERY, useMedia } from '../useMedia.js';
+import { PANE_QUERY, WIDE_QUERY, useMedia } from '../useMedia.js';
 import type { GridColumn, SortDir } from './DataGrid.js';
 import { DataGrid } from './DataGrid.js';
 import { ExportMenu } from './ExportMenu.js';
@@ -225,11 +225,21 @@ export function TableView(p: TableViewProps) {
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setDetails(index);
   };
+  const focusBack = useRef(false);
   const closeDetails = () => {
     setDetails(undefined);
     setAdding(false);
-    returnFocus.current?.focus();
+    focusBack.current = true;
   };
+  const wide = useMedia(WIDE_QUERY, false);
+  const covered = (details !== undefined || adding) && !wide;
+  // After the panel has gone and the table is no longer inert, focus goes back.
+  const open = details !== undefined || adding;
+  useEffect(() => {
+    if (open || !focusBack.current) return;
+    focusBack.current = false;
+    returnFocus.current?.focus();
+  }, [open]);
   // Lead decision, 17 Oct 2026: tables, empty ones too, get rows from the toolbar.
   const canAdd = p.writes.kind === 'on' && table.kind === 'table';
 
@@ -259,145 +269,149 @@ export function TableView(p: TableViewProps) {
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
-      <div className="flex flex-wrap items-center gap-2 p-2">
-        <label htmlFor="db-filter" className="sr-only">
-          Filter rows
-        </label>
-        <input
-          id="db-filter"
-          type="search"
-          className={`${field} min-w-0 flex-1 basis-40`}
-          placeholder="Filter rows…"
-          maxLength={500}
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-        />
-        <label htmlFor="db-sort" className="sr-only">
-          Sort by
-        </label>
-        <select
-          id="db-sort"
-          className={`${field} max-w-40`}
-          value={sort === undefined ? '' : `${sort.dir}:${sort.column}`}
-          onChange={(e) => {
-            const v = e.target.value;
-            const at = v.indexOf(':');
-            const dir = v.slice(0, at);
-            setSort(
-              at === -1 || (dir !== 'asc' && dir !== 'desc')
-                ? undefined
-                : { dir, column: v.slice(at + 1) },
-            );
+      {/* Below 900 px row details cover the table: what is under it can't take focus
+          (QA B4-3, WCAG 2.4.11), as in a modal. From 900 px it sits beside the rows. */}
+      <div className="flex min-h-0 flex-1 flex-col" inert={covered}>
+        <div className="flex flex-wrap items-center gap-2 p-2">
+          <label htmlFor="db-filter" className="sr-only">
+            Filter rows
+          </label>
+          <input
+            id="db-filter"
+            type="search"
+            className={`${field} min-w-0 flex-1 basis-40`}
+            placeholder="Filter rows…"
+            maxLength={500}
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+          />
+          <label htmlFor="db-sort" className="sr-only">
+            Sort by
+          </label>
+          <select
+            id="db-sort"
+            className={`${field} max-w-40`}
+            value={sort === undefined ? '' : `${sort.dir}:${sort.column}`}
+            onChange={(e) => {
+              const v = e.target.value;
+              const at = v.indexOf(':');
+              const dir = v.slice(0, at);
+              setSort(
+                at === -1 || (dir !== 'asc' && dir !== 'desc')
+                  ? undefined
+                  : { dir, column: v.slice(at + 1) },
+              );
+            }}
+          >
+            <option value="">⇅ Key order</option>
+            {names.map((n) => (
+              <optgroup key={n} label={visibleText(n)}>
+                <option value={`asc:${n}`}>{visibleText(n)} ▲</option>
+                <option value={`desc:${n}`}>{visibleText(n)} ▼</option>
+              </optgroup>
+            ))}
+          </select>
+          {canAdd && (
+            <button
+              type="button"
+              className={button}
+              aria-disabled={p.connected ? undefined : true}
+              onClick={() => {
+                if (!p.connected) return;
+                returnFocus.current =
+                  document.activeElement instanceof HTMLElement ? document.activeElement : null;
+                setDetails(undefined);
+                setAdding(true);
+              }}
+            >
+              Add row
+            </button>
+          )}
+        </div>
+        {p.match !== undefined && (
+          <p className="flex flex-wrap items-center gap-1 px-2 text-sm">
+            <span>
+              Showing <VisibleText text={`${table.name}.${p.match.column}`} /> ={' '}
+              <VisibleText text={paramLabel(p.match.value)} />
+            </span>
+            <button type="button" className={linkButton} onClick={p.onClearMatch}>
+              Clear filter
+            </button>
+          </p>
+        )}
+        <TableBody
+          load={load}
+          page={page}
+          filtered={filtered}
+          onClearFilter={() => {
+            setFilter('');
+            p.onClearMatch();
           }}
+          onRetry={() => setRetry((n) => n + 1)}
         >
-          <option value="">⇅ Key order</option>
-          {names.map((n) => (
-            <optgroup key={n} label={visibleText(n)}>
-              <option value={`asc:${n}`}>{visibleText(n)} ▲</option>
-              <option value={`desc:${n}`}>{visibleText(n)} ▼</option>
-            </optgroup>
-          ))}
-        </select>
-        {canAdd && (
+          {page !== undefined && page.rows.length > 0 && (
+            <DataGrid
+              label={`${visibleText(table.name)} rows`}
+              columns={gridColumns}
+              rows={page.rows}
+              total={total}
+              offset={pageIndex * PAGE_SIZE}
+              sort={sort}
+              onSort={(c) => setSort(nextSort(sort, c))}
+              onOpenRow={openRow}
+              onFollowKey={followKey}
+              flash={flashRows}
+              narrow={narrow}
+              onRange={onRange}
+              scrollTo={scrollTo}
+            />
+          )}
+        </TableBody>
+        {newRows.length > 0 && (
+          <button
+            type="button"
+            className={`${button} absolute bottom-12 left-1/2 -translate-x-1/2 bg-surface`}
+            onClick={() => {
+              setScrollTo({ index: newRows[0] ?? 0, seq: Date.now() });
+              setNewRows([]);
+            }}
+          >
+            {newRows.length} new {newRows.length === 1 ? 'row' : 'rows'}
+          </button>
+        )}
+        <div className="flex flex-wrap items-center gap-2 border-t border-border px-2 py-1 text-sm">
+          <span aria-live="off">
+            {from.toLocaleString('en')}–{to.toLocaleString('en')} of {total.toLocaleString('en')}
+          </span>
           <button
             type="button"
             className={button}
-            aria-disabled={p.connected ? undefined : true}
+            aria-label="Previous page"
+            aria-disabled={pageIndex === 0 ? true : undefined}
             onClick={() => {
-              if (!p.connected) return;
-              returnFocus.current =
-                document.activeElement instanceof HTMLElement ? document.activeElement : null;
-              setDetails(undefined);
-              setAdding(true);
+              if (pageIndex > 0) setPageIndex(pageIndex - 1);
             }}
           >
-            Add row
+            ◀
           </button>
-        )}
-      </div>
-      {p.match !== undefined && (
-        <p className="flex flex-wrap items-center gap-1 px-2 text-sm">
-          <span>
-            Showing <VisibleText text={`${table.name}.${p.match.column}`} /> ={' '}
-            <VisibleText text={paramLabel(p.match.value)} />
-          </span>
-          <button type="button" className={linkButton} onClick={p.onClearMatch}>
-            Clear filter
+          <button
+            type="button"
+            className={button}
+            aria-label="Next page"
+            aria-disabled={to >= total ? true : undefined}
+            onClick={() => {
+              if (to < total) setPageIndex(pageIndex + 1);
+            }}
+          >
+            ▶
           </button>
-        </p>
-      )}
-      <TableBody
-        load={load}
-        page={page}
-        filtered={filtered}
-        onClearFilter={() => {
-          setFilter('');
-          p.onClearMatch();
-        }}
-        onRetry={() => setRetry((n) => n + 1)}
-      >
-        {page !== undefined && page.rows.length > 0 && (
-          <DataGrid
-            label={`${visibleText(table.name)} rows`}
-            columns={gridColumns}
-            rows={page.rows}
-            total={total}
-            offset={pageIndex * PAGE_SIZE}
-            sort={sort}
-            onSort={(c) => setSort(nextSort(sort, c))}
-            onOpenRow={openRow}
-            onFollowKey={followKey}
-            flash={flashRows}
-            narrow={narrow}
-            onRange={onRange}
-            scrollTo={scrollTo}
+          <span className="flex-1" />
+          <ExportMenu
+            name={table.name}
+            disabled={!p.connected || total === 0}
+            rows={async (onProgress) => exportTable(client, db, table, spec, onProgress)}
           />
-        )}
-      </TableBody>
-      {newRows.length > 0 && (
-        <button
-          type="button"
-          className={`${button} absolute bottom-12 left-1/2 -translate-x-1/2 bg-surface`}
-          onClick={() => {
-            setScrollTo({ index: newRows[0] ?? 0, seq: Date.now() });
-            setNewRows([]);
-          }}
-        >
-          {newRows.length} new {newRows.length === 1 ? 'row' : 'rows'}
-        </button>
-      )}
-      <div className="flex flex-wrap items-center gap-2 border-t border-border px-2 py-1 text-sm">
-        <span aria-live="off">
-          {from.toLocaleString('en')}–{to.toLocaleString('en')} of {total.toLocaleString('en')}
-        </span>
-        <button
-          type="button"
-          className={button}
-          aria-label="Previous page"
-          aria-disabled={pageIndex === 0 ? true : undefined}
-          onClick={() => {
-            if (pageIndex > 0) setPageIndex(pageIndex - 1);
-          }}
-        >
-          ◀
-        </button>
-        <button
-          type="button"
-          className={button}
-          aria-label="Next page"
-          aria-disabled={to >= total ? true : undefined}
-          onClick={() => {
-            if (to < total) setPageIndex(pageIndex + 1);
-          }}
-        >
-          ▶
-        </button>
-        <span className="flex-1" />
-        <ExportMenu
-          name={table.name}
-          disabled={!p.connected || total === 0}
-          rows={async (onProgress) => exportTable(client, db, table, spec, onProgress)}
-        />
+        </div>
       </div>
       {selected !== undefined && page !== undefined && (
         <RowDetails
@@ -407,6 +421,7 @@ export function TableView(p: TableViewProps) {
           row={selected}
           writes={p.writes}
           connected={p.connected}
+          modal={covered}
           onClose={closeDetails}
           onFollowKey={(t, c, v) => {
             setDetails(undefined);
@@ -423,6 +438,7 @@ export function TableView(p: TableViewProps) {
           row={undefined}
           writes={p.writes}
           connected={p.connected}
+          modal={covered}
           onClose={closeDetails}
           onFollowKey={p.onFollowKey}
           onToast={p.onToast}
