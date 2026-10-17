@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cellText, formatBytes, keyParam, visibleSegments } from './cells.js';
+import { cellText, formatBytes, keyParam, visibleSegments, visibleText } from './cells.js';
 
 describe('cellText', () => {
   it('shows each cell type as one line of text', () => {
@@ -54,6 +54,21 @@ describe('visibleSegments', () => {
       { mark: 'U+000A' },
       { text: 'b' },
     ]);
+  });
+});
+
+describe('visibleText: other default-ignorable characters (TAB-5)', () => {
+  it('names invisible operators, text variation selectors and Hangul fillers', () => {
+    for (const cp of [0x2061, 0x206f, 0xfe00, 0xfe0d, 0xffa0, 0x1160, 0x1d173, 0xe007f]) {
+      const ch = String.fromCodePoint(cp);
+      const name = `U+${cp.toString(16).toUpperCase().padStart(4, '0')}`;
+      expect(visibleText(`a${ch}b`)).toBe(`a<${name}>b`);
+    }
+  });
+
+  it('keeps the emoji and text style selectors, which only pick how a symbol looks', () => {
+    const heart = `\u2764${String.fromCodePoint(0xfe0f)}`;
+    expect(visibleText(heart)).toBe(heart);
   });
 });
 

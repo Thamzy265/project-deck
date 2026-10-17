@@ -27,9 +27,16 @@ export function cellCopyText(cell: Cell): string {
 
 export type Segment = { text: string } | { mark: string };
 
-// Bidi embeddings, overrides, isolates and marks; zero-width characters; C0, DEL, C1.
-// eslint-disable-next-line no-control-regex
-const HIDDEN = /[\u0000-\u001f\u007f-\u009f\u061c\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]/;
+// Characters that change how text reads or show as nothing: C0, DEL, C1; soft hyphen;
+// combining grapheme joiner; Arabic letter mark; Hangul fillers; Khmer inherent vowels;
+// Mongolian variation selectors and vowel separator; zero-width and bidi marks; line
+// and paragraph separators; embeddings, overrides, isolates; word joiner and invisible
+// operators; text variation selectors (not FE0E/FE0F, which pick emoji or text style);
+// BOM; interlinear annotation; musical formatting; tag characters (TAB-5).
+/* eslint-disable no-control-regex, no-misleading-character-class -- named on purpose */
+const HIDDEN =
+  /[\u0000-\u001f\u007f-\u009f\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180b-\u180e\u200b-\u200f\u2028-\u202e\u2060-\u206f\u3164\ufe00-\ufe0d\ufeff\uffa0\ufff9-\ufffb\u{1d173}-\u{1d17a}\u{e0000}-\u{e007f}]/u;
+/* eslint-enable no-control-regex, no-misleading-character-class */
 const KEEP_MULTILINE = new Set(['\n', '\t']);
 
 const mark = (ch: string): string =>

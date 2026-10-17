@@ -74,28 +74,25 @@ describe('visible marks for characters that act unseen (abuse cases)', () => {
     }
   });
 
-  it.fails(
-    'names the other invisible characters too: tags, soft hyphen, separators, fillers',
-    () => {
-      // Each renders as nothing (or as an unexpected line break) in Chromium, so a value or
-      // the confirm dialog's SQL could carry text the user never sees.
-      const invisible = [
-        '\u{E0041}', // TAG LATIN CAPITAL LETTER A ("ASCII smuggling")
-        '\u{E0001}', // LANGUAGE TAG
-        '­', // SOFT HYPHEN
-        '͏', // COMBINING GRAPHEME JOINER
-        '᠎', // MONGOLIAN VOWEL SEPARATOR
-        ' ', // LINE SEPARATOR
-        ' ', // PARAGRAPH SEPARATOR
-        'ᅟ', // HANGUL CHOSEONG FILLER
-        'ㅤ', // HANGUL FILLER
-        '￹', // INTERLINEAR ANNOTATION ANCHOR
-      ];
-      for (const ch of invisible) {
-        expect(visibleText(`a${ch}b`), cp(ch)).toBe(`a<${cp(ch)}>b`);
-      }
-    },
-  );
+  it('names the other invisible characters too: tags, soft hyphen, separators, fillers', () => {
+    // Each renders as nothing (or as an unexpected line break) in Chromium, so a value or
+    // the confirm dialog's SQL could carry text the user never sees.
+    const invisible = [
+      '\u{E0041}', // TAG LATIN CAPITAL LETTER A ("ASCII smuggling")
+      '\u{E0001}', // LANGUAGE TAG
+      '­', // SOFT HYPHEN
+      '͏', // COMBINING GRAPHEME JOINER
+      '᠎', // MONGOLIAN VOWEL SEPARATOR
+      ' ', // LINE SEPARATOR
+      ' ', // PARAGRAPH SEPARATOR
+      'ᅟ', // HANGUL CHOSEONG FILLER
+      'ㅤ', // HANGUL FILLER
+      '￹', // INTERLINEAR ANNOTATION ANCHOR
+    ];
+    for (const ch of invisible) {
+      expect(visibleText(`a${ch}b`), cp(ch)).toBe(`a<${cp(ch)}>b`);
+    }
+  });
 });
 
 const col = (name: string, type: string, pk: number | undefined) => ({
