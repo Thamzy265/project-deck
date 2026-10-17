@@ -348,6 +348,21 @@ describe('Editing (writes on)', () => {
     expect(screen.queryByRole('button', { name: 'Add row' })).toBeNull();
   });
 
+  it('Enter in the form asks once while saving, and not at all offline (R8)', async () => {
+    const t = await details();
+    t.db.requestEdit.mockReturnValue(never());
+    await t.user.click(within(t.panel).getByRole('button', { name: 'Edit' }));
+    const status = within(t.panel).getByRole('textbox', { name: /^status/ });
+    await t.user.type(status, 'x{Enter}');
+    await t.user.type(status, '{Enter}');
+    expect(t.db.requestEdit).toHaveBeenCalledTimes(1);
+    t.client.status.mockRejectedValue(new TypeError('Failed to fetch'));
+    await t.drop();
+    t.db.requestEdit.mockClear();
+    await t.user.type(status, '{Enter}');
+    expect(t.db.requestEdit).not.toHaveBeenCalled();
+  });
+
   it('Writes off: no edit buttons', async () => {
     const t = await ordersGrid();
     await t.user.click(within(grid()).getByText('Coffee'));

@@ -148,6 +148,8 @@ export function RowDetails(p: RowDetailsProps) {
   };
 
   const save = () => {
+    // Enter submits the form too: never a second request, and nothing offline (R8).
+    if (saving || !p.connected) return;
     const values: ColumnValue[] = [];
     table.columns.forEach((c, i) => {
       const f = fields[i];
