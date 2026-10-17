@@ -4,6 +4,7 @@ import 'dart:math';
 
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
+import 'package:flutterdeck_drift/src/native.dart';
 
 /// A hand-written stand-in for a generated Drift table, so the tests need no
 /// code generation. Only the parts the package reads are real.
@@ -89,3 +90,17 @@ String freshToken() {
   final bytes = List<int>.generate(32, (_) => random.nextInt(256));
   return base64Url.encode(bytes).replaceAll('=', '');
 }
+
+/// Skip reason for tests that run queries: this SQLite build hides
+/// sqlite3_interrupt (package:sqlite3's Linux library), so queries answer
+/// unsupported here. Null where the symbol is exported.
+final String? noInterrupt = interruptAvailable()
+    ? null
+    : 'this SQLite build hides sqlite3_interrupt (package:sqlite3 on Linux), '
+          'so queries answer unsupported; covered by the unsupported tests';
+
+/// Skip reason for tests of the 16 MB value limit (sqlite3_limit), hidden on
+/// the same builds.
+final String? noLengthLimit = lengthLimitAvailable()
+    ? null
+    : 'this SQLite build hides sqlite3_limit (package:sqlite3 on Linux)';

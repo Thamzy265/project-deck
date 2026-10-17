@@ -65,22 +65,28 @@ void main() {
       });
     });
 
-    test('schema and query go through the read isolate', () async {
-      final schema = await call('schema', {'db': 'app'});
-      final names = (schema['tables']! as List).map((t) => (t as Map)['name']);
-      expect(names, ['lines', 'orders', 'raw']);
+    test(
+      'schema and query go through the read isolate',
+      skip: noInterrupt,
+      () async {
+        final schema = await call('schema', {'db': 'app'});
+        final names = (schema['tables']! as List).map(
+          (t) => (t as Map)['name'],
+        );
+        expect(names, ['lines', 'orders', 'raw']);
 
-      final r = await call('query', {
-        'db': 'app',
-        'sql': 'SELECT item FROM orders WHERE id = ?',
-        'params': '[1]',
-        'limit': '5',
-      });
-      expect(r['rows'], [
-        ['Coffee'],
-      ]);
-      expect(r['truncated'], isFalse);
-    });
+        final r = await call('query', {
+          'db': 'app',
+          'sql': 'SELECT item FROM orders WHERE id = ?',
+          'params': '[1]',
+          'limit': '5',
+        });
+        expect(r['rows'], [
+          ['Coffee'],
+        ]);
+        expect(r['truncated'], isFalse);
+      },
+    );
 
     test('snapshot and rows answer by key', () async {
       final snap = await call('snapshot', {'db': 'app'});
@@ -101,14 +107,18 @@ void main() {
       ]);
     });
 
-    test('a write refused as a read changes nothing', () async {
-      final r = await call('query', {
-        'db': 'app',
-        'sql': 'DELETE FROM orders RETURNING *',
-      });
-      expect(errorCode(r), ErrorCode.notReadOnly);
-      expect(await app.count(), 1);
-    });
+    test(
+      'a write refused as a read changes nothing',
+      skip: noInterrupt,
+      () async {
+        final r = await call('query', {
+          'db': 'app',
+          'sql': 'DELETE FROM orders RETURNING *',
+        });
+        expect(errorCode(r), ErrorCode.notReadOnly);
+        expect(await app.count(), 1);
+      },
+    );
 
     final bad = <String, Map<String, String>>{
       'unknown db': {'db': 'nope', 'sql': 'SELECT 1'},
@@ -389,6 +399,7 @@ void main() {
       final mode = wal ? 'WAL' : 'rollback journal';
       test(
         '$mode: the app writes while a runaway read runs',
+        skip: noInterrupt,
         () async {
           final walPath = '${dir.path}/locks.sqlite';
           final db = openAppDb(walPath, wal: wal);

@@ -12,6 +12,8 @@ import 'package:flutterdeck_drift/src/read_worker.dart';
 import 'package:sqlite3/sqlite3.dart';
 import 'package:test/test.dart';
 
+import 'support.dart';
+
 import 'fds.dart';
 
 /// A ~39 MB rollback-journal database.
@@ -152,6 +154,7 @@ void main() {
 
   test(
     'closing a reader mid-copy, with the app writing, leaks nothing',
+    skip: noInterrupt,
     () async {
       final writer = sqlite3.open(path);
       addTearDown(writer.close);

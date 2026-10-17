@@ -40,50 +40,59 @@ void main() {
     return app;
   }
 
-  test('the bundled SQLite exports sqlite3_interrupt and sqlite3_limit', () {
-    final db = sqlite3.openInMemory();
-    addTearDown(db.close);
-    // Interrupting an idle connection does nothing; this checks the lookup.
-    expect(interruptConnection(db.handle.address), isTrue);
-    // SQLite never lets the length limit go below 30.
-    expect(limitLength(db.handle, 100), isTrue);
-    expect(
-      () => db.select("SELECT printf('%.*c', 200, 'x')"),
-      throwsA(isA<SqliteException>()),
-    );
-  });
+  test(
+    'the bundled SQLite exports sqlite3_interrupt and sqlite3_limit',
+    skip: noInterrupt,
+    () {
+      final db = sqlite3.openInMemory();
+      addTearDown(db.close);
+      // Interrupting an idle connection does nothing; this checks the lookup.
+      expect(interruptConnection(db.handle.address), isTrue);
+      // SQLite never lets the length limit go below 30.
+      expect(limitLength(db.handle, 100), isTrue);
+      expect(
+        () => db.select("SELECT printf('%.*c', 200, 'x')"),
+        throwsA(isA<SqliteException>()),
+      );
+    },
+  );
 
-  test('runs reads in the isolate and answers with the result', () async {
-    final app = await openApp(wal: false);
-    final reader = DbReader(path);
-    addTearDown(() async {
-      await reader.close();
-      await app.close();
-    });
+  test(
+    'runs reads in the isolate and answers with the result',
+    skip: noInterrupt,
+    () async {
+      final app = await openApp(wal: false);
+      final reader = DbReader(path);
+      addTearDown(() async {
+        await reader.close();
+        await app.close();
+      });
 
-    final r = await reader.call('query', {
-      'sql': 'SELECT item FROM orders',
-      'params': const <Object?>[],
-      'limit': 10,
-    });
-    expect(r['rows'], [
-      ['Coffee'],
-    ]);
-    await expectLater(
-      reader.call('query', {
-        'sql': 'DELETE FROM orders',
+      final r = await reader.call('query', {
+        'sql': 'SELECT item FROM orders',
         'params': const <Object?>[],
         'limit': 10,
-      }),
-      failsWith(ErrorCode.notReadOnly),
-    );
-  });
+      });
+      expect(r['rows'], [
+        ['Coffee'],
+      ]);
+      await expectLater(
+        reader.call('query', {
+          'sql': 'DELETE FROM orders',
+          'params': const <Object?>[],
+          'limit': 10,
+        }),
+        failsWith(ErrorCode.notReadOnly),
+      );
+    },
+  );
 
   for (final wal in [false, true]) {
     final mode = wal ? 'WAL' : 'rollback journal';
 
     test(
       '$mode: a runaway read stops in about 5 s and the app writes after',
+      skip: noInterrupt,
       () async {
         final app = await openApp(wal: wal);
         final reader = DbReader(path);
@@ -123,6 +132,7 @@ void main() {
 
     test(
       '$mode: the app writes while inspector reads run',
+      skip: noInterrupt,
       () async {
         final app = await openApp(wal: wal);
         final reader = DbReader(path);
@@ -157,6 +167,7 @@ void main() {
 
   test(
     'non-WAL: a long query holds no lock; the app writes at once (F1)',
+    skip: noInterrupt,
     () async {
       final app = await openApp(wal: false);
       final reader = DbReader(path);
@@ -244,24 +255,28 @@ void main() {
     ]);
   });
 
-  test('a closed reader answers "stopped" and starts no new isolate', () async {
-    final app = await openApp(wal: false);
-    final reader = DbReader(path);
-    addTearDown(app.close);
-    final slow = reader.call('query', {
-      'sql': runaway,
-      'params': const <Object?>[],
-      'limit': 10,
-    });
-    final stopped = expectLater(slow, failsWith(ErrorCode.internal));
-    await Future<void>.delayed(const Duration(milliseconds: 200));
-    await reader.close();
-    await stopped;
-    await expectLater(
-      reader.call('schema', const {}),
-      failsWith(ErrorCode.internal),
-    );
-  });
+  test(
+    'a closed reader answers "stopped" and starts no new isolate',
+    skip: noInterrupt,
+    () async {
+      final app = await openApp(wal: false);
+      final reader = DbReader(path);
+      addTearDown(app.close);
+      final slow = reader.call('query', {
+        'sql': runaway,
+        'params': const <Object?>[],
+        'limit': 10,
+      });
+      final stopped = expectLater(slow, failsWith(ErrorCode.internal));
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      await reader.close();
+      await stopped;
+      await expectLater(
+        reader.call('schema', const {}),
+        failsWith(ErrorCode.internal),
+      );
+    },
+  );
 
   test(
     'a reset connection is marked dead before its reply arrives (CR-2)',
@@ -289,8 +304,48 @@ void main() {
     },
   );
 
+  test(
+    'with this SQLite build lacking sqlite3_interrupt, queries are '
+    'unsupported and tables still read',
+    // Runs where the symbol is hidden (package:sqlite3 on Linux); the test
+    // below forces the same path with a hook everywhere else.
+    skip: noInterrupt == null
+        ? 'this SQLite build exports sqlite3_interrupt'
+        : false,
+    () async {
+      expect(interruptAvailable(), isFalse);
+      final app = await openApp(wal: false);
+      final reader = DbReader(path);
+      addTearDown(() async {
+        await reader.close();
+        await app.close();
+      });
+      await expectLater(
+        reader.call('query', {
+          'sql': 'SELECT 1',
+          'params': const <Object?>[],
+          'limit': 1,
+        }),
+        throwsA(
+          isA<DriftDeckError>()
+              .having((e) => e.code, 'code', ErrorCode.unsupported)
+              .having(
+                (e) => e.message,
+                'message',
+                contains('sqlite3_interrupt'),
+              ),
+        ),
+      );
+      final schema = await reader.call('schema', const {});
+      expect(
+        (schema['tables']! as List).map((t) => (t as Map)['name']),
+        contains('orders'),
+      );
+      expect((await reader.call('snapshot', const {}))['tables'], isNotEmpty);
+    },
+  );
+
   test('without sqlite3_interrupt, queries are unsupported (D-2)', () async {
-    expect(interruptAvailable(), isTrue, reason: 'the bundled library');
     final app = await openApp(wal: false);
     final reader = DbReader(path);
     addTearDown(() async {
@@ -317,29 +372,33 @@ void main() {
     expect((await reader.call('schema', const {}))['tables'], isNotEmpty);
   });
 
-  test('a page size change is answered by a fresh reader (R3-2)', () async {
-    final app = await openApp(wal: false);
-    final reader = DbReader(path);
-    addTearDown(() async {
-      await reader.close();
-      await app.close();
-    });
-    const count = {
-      'sql': 'SELECT count(*) FROM orders',
-      'params': <Object?>[],
-      'limit': 1,
-    };
-    expect((await reader.call('query', count))['rows'], [
-      [1],
-    ]);
-    await app.customStatement('PRAGMA page_size = 8192');
-    await app.customStatement('VACUUM');
-    expect((await reader.call('query', count))['rows'], [
-      [1],
-    ]);
-  });
+  test(
+    'a page size change is answered by a fresh reader (R3-2)',
+    skip: noInterrupt,
+    () async {
+      final app = await openApp(wal: false);
+      final reader = DbReader(path);
+      addTearDown(() async {
+        await reader.close();
+        await app.close();
+      });
+      const count = {
+        'sql': 'SELECT count(*) FROM orders',
+        'params': <Object?>[],
+        'limit': 1,
+      };
+      expect((await reader.call('query', count))['rows'], [
+        [1],
+      ]);
+      await app.customStatement('PRAGMA page_size = 8192');
+      await app.customStatement('VACUUM');
+      expect((await reader.call('query', count))['rows'], [
+        [1],
+      ]);
+    },
+  );
 
-  group('DbReader starts one isolate at a time (CR-1)', () {
+  group('DbReader starts one isolate at a time (CR-1)', skip: noInterrupt, () {
     const quick = {
       'sql': 'SELECT count(*) FROM orders',
       'params': <Object?>[],

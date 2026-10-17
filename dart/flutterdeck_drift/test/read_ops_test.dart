@@ -7,6 +7,8 @@ import 'package:flutterdeck_drift/src/read_ops.dart';
 import 'package:sqlite3/sqlite3.dart';
 import 'package:test/test.dart';
 
+import 'support.dart';
+
 Matcher refusedWith(String code) =>
     throwsA(isA<DriftDeckError>().having((e) => e.code, 'code', code));
 
@@ -175,16 +177,20 @@ void main() {
       );
     });
 
-    test('values longer than 16 MB fail instead of allocating', () {
-      expect(
-        () => ops.query('SELECT zeroblob(20000000)', const [], 10),
-        refusedWith(ErrorCode.sqlError),
-      );
-      expect(
-        () => ops.query("SELECT printf('%.*c', 1e9, 'x')", const [], 10),
-        refusedWith(ErrorCode.sqlError),
-      );
-    });
+    test(
+      'values longer than 16 MB fail instead of allocating',
+      skip: noLengthLimit,
+      () {
+        expect(
+          () => ops.query('SELECT zeroblob(20000000)', const [], 10),
+          refusedWith(ErrorCode.sqlError),
+        );
+        expect(
+          () => ops.query("SELECT printf('%.*c', 1e9, 'x')", const [], 10),
+          refusedWith(ErrorCode.sqlError),
+        );
+      },
+    );
 
     test('the connection is read-only even past the guard', () {
       // Belt and braces: this would only matter if both guards failed.

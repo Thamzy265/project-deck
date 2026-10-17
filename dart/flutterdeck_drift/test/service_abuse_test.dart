@@ -66,6 +66,7 @@ void main() {
     // until the budget kills it.
     test(
       'a query with a NUL is refused at once',
+      skip: noInterrupt,
       () async {
         final watch = Stopwatch()..start();
         final r = await call('query', {'db': 'app', 'sql': 'SELECT 1\u0000'});
@@ -94,6 +95,7 @@ void main() {
 
   test(
     'FD-3: a read queued behind a runaway read still gets an answer',
+    skip: noInterrupt,
     () async {
       final slow = call('query', {'db': 'app', 'sql': _runaway});
       await Future<void>.delayed(const Duration(milliseconds: 100));
@@ -323,6 +325,7 @@ void main() {
 
   test(
     're-adding a new database under the same name reads the new file',
+    skip: noInterrupt,
     () async {
       // As after a hot restart: main() runs again and registers a new
       // GeneratedDatabase under the same name.
