@@ -97,6 +97,12 @@ interface Seen {
   written: Set<string>;
   /** Schema loading: the virtual table a CREATE VIRTUAL TABLE declares, and its module. */
   vtab: { name: string; module: string } | undefined;
+  /**
+   * Names read whole (no column) that are no table of the database: a count(*) over a
+   * CTE reports the CTE's name (Q1). Allowed only once the query plan shows each one is
+   * a CTE or subquery of this statement.
+   */
+  cteCandidates: Set<string>;
 }
 
 const newSeen = (): Seen => ({
@@ -108,6 +114,7 @@ const newSeen = (): Seen => ({
   creates: 0,
   written: new Set(),
   vtab: undefined,
+  cteCandidates: new Set(),
 });
 
 type Policy =
@@ -317,6 +324,10 @@ export class GuardEngine {
           'writes-data',
           'This statement changes data or the database. Only reading is allowed here.',
         );
+      }
+      const notCte = this.unconfirmedCte(stmt, seen);
+      if (notCte !== undefined) {
+        return refuse('table', `${notCte} is not a table or view of this database.`);
       }
       const { hiddenTables } = this.checkPolicy();
       const unchecked = this.uncheckedTables(scratch);
@@ -592,6 +603,11 @@ export class GuardEngine {
     if (leak !== undefined) return refuse('table', `Reading ${table} is not allowed: ${leak}.`);
     const scratch = this.current;
     if (!BUILTIN_READABLE.has(table) && !(scratch?.relations.has(table) ?? false)) {
+      // Table-valued functions keep their own rules, whatever a CTE is called.
+      if (column === '' && !table.startsWith('pragma_') && !table.startsWith('json_')) {
+        policy.seen.cteCandidates.add(table);
+        return undefined;
+      }
       return refuse('table', `${table} is not a table or view of this database.`);
     }
     const module = scratch?.virtualTables.get(table);
@@ -794,6 +810,32 @@ export class GuardEngine {
       }
     }
     return byTable;
+  }
+
+  /**
+   * The first name read whole that SQLite's own query plan doesn't show as a CTE or
+   * subquery of this statement ("CO-ROUTINE n" or "MATERIALIZE n"), or that the plan
+   * also scans as a virtual table (a table-valued function of the same name read in
+   * another scope). Undefined when every such name is a CTE.
+   */
+  private unconfirmedCte(stmt: number, seen: Seen): string | undefined {
+    if (seen.cteCandidates.size === 0) return undefined;
+    const { capi } = this.sqlite;
+    const ctes = new Set<string>();
+    const virtual = new Set<string>();
+    if (capi.sqlite3_stmt_explain(stmt, 2) !== SQLITE_OK) return [...seen.cteCandidates][0];
+    try {
+      while (capi.sqlite3_step(stmt) === capi.SQLITE_ROW) {
+        const detail = capi.sqlite3_column_text(stmt, 3);
+        const cte = /^(?:CO-ROUTINE|MATERIALIZE) (.+)$/.exec(detail)?.[1];
+        if (cte !== undefined) ctes.add(foldName(cte));
+        const vtab = /^SCAN (\S+) VIRTUAL TABLE/.exec(detail)?.[1];
+        if (vtab !== undefined) virtual.add(foldName(vtab));
+      }
+    } finally {
+      capi.sqlite3_reset(stmt);
+    }
+    return [...seen.cteCandidates].find((name) => !ctes.has(name) || virtual.has(name));
   }
 
   /** Lists the compiled program (EXPLAIN only lists it; nothing runs). */
