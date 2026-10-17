@@ -144,12 +144,15 @@ final class ReadWorker {
 
   bool get isDead => _dead;
 
+  /// Whether the read isolate has exited (for tests).
+  bool get hasExited => _ports.hasExited;
+
   /// Test hook: how many read isolates this process has started.
   static int spawnCount = 0;
 
   static Future<ReadWorker> spawn(String path) async {
     spawnCount++;
-    final ports = _Ports(calloc<Int32>(2));
+    final ports = _Ports(calloc<Int32>(4));
     final first = Completer<List<Object?>>();
     ports.messages.listen((Object? m) {
       if (!first.isCompleted) {
@@ -223,15 +226,27 @@ final class ReadWorker {
     final id = _nextId++;
     final done = Completer<Map<String, Object?>>();
     _pending[id] = done;
+    _ports.clearTimeout();
     _toWorker.send([id, op, args]);
 
     Timer? grace;
+    Timer? again;
     var fired = false;
     final budgetTimer = Timer(budget, () {
       if (_dead || done.isCompleted) return;
       fired = true;
+      // Sticky stop (R5-1): set the timeout word, then interrupt both
+      // connections now and every few milliseconds until the reply or the
+      // end of the grace period. SQLite forgets an interrupt that lands
+      // between statements, so one interrupt is not enough.
+      _ports.markTimeout();
       _interruptAll();
+      again = Timer.periodic(const Duration(milliseconds: 5), (_) {
+        if (_dead || done.isCompleted) return;
+        _interruptAll();
+      });
       grace = Timer(interruptGrace, () {
+        again?.cancel();
         // The step did not return: give up on this isolate.
         _fail(id, _tooLong);
         _stop();
@@ -248,6 +263,7 @@ final class ReadWorker {
     } finally {
       budgetTimer.cancel();
       grace?.cancel();
+      again?.cancel();
       _pending.remove(id);
     }
   }
@@ -336,7 +352,8 @@ final class _Ports {
   void Function()? onExit;
 
   /// Shared with the read isolate: [0] is set to ask a copy to stop, [1] is
-  /// 1 while a copy runs. Freed only once the isolate has exited, so neither
+  /// 1 while a copy runs, [2] is 1 while statements run, [3] is set when the
+  /// budget for the current operation ran out. Freed only once the isolate has exited, so neither
   /// side can touch freed memory.
   final Pointer<Int32> control;
   var hasExited = false;
@@ -345,6 +362,14 @@ final class _Ports {
 
   void stopCopy() {
     if (!hasExited) control[0] = 1;
+  }
+
+  void markTimeout() {
+    if (!hasExited) control[3] = 1;
+  }
+
+  void clearTimeout() {
+    if (!hasExited) control[3] = 0;
   }
 
   /// The isolate is gone: free the shared block.

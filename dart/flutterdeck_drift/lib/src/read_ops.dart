@@ -46,7 +46,9 @@ final class ReadOps {
   final String? path;
 
   /// Shared with the controlling isolate (see read_worker.dart): [0] asks a
-  /// copy to stop, [1] is 1 while a copy runs.
+  /// copy to stop, [1] is 1 while a copy runs, [2] is 1 while statements
+  /// run, [3] is set when the controller's budget for the current operation
+  /// ran out.
   final Pointer<Int32>? control;
 
   /// The read-only connection to the app's database file.
@@ -196,7 +198,7 @@ final class ReadOps {
         if (e.resultCode != _busy && e.resultCode != _locked) rethrow;
       }
       if (_stopRequested) throw copyStopped;
-      if (spent.elapsed >= copyBudget) throw _copyTooLong;
+      if (_timedOut || spent.elapsed >= copyBudget) throw _copyTooLong;
       sleep(const Duration(milliseconds: 2));
     }
   }
@@ -204,6 +206,12 @@ final class ReadOps {
   bool get _stopRequested {
     final control = this.control;
     return control != null && control[0] != 0;
+  }
+
+  /// The controller's budget for the current operation has run out.
+  bool get _timedOut {
+    final control = this.control;
+    return control != null && control[3] != 0;
   }
 
   /// How many backups this connection has started (for tests).
@@ -284,6 +292,7 @@ final class ReadOps {
         // Asked to stop (the reader is closing): end here, finishing the
         // backup below, so no unfinished backup outlives the copy (R3-1).
         if (_stopRequested) throw copyStopped;
+        if (_timedOut) throw _copyTooLong;
         if (spent.elapsed >= copyBudget) {
           // An app that writes all the time keeps restarting the copy; say
           // so, with the way out, rather than "took too long" (R3-3).
@@ -381,10 +390,25 @@ final class ReadOps {
   /// Runs [action], maps SQLite errors to protocol errors, and makes sure no
   /// transaction stays open afterwards (design note D2, S4). If the
   /// connection is no longer as [open] left it, the answer is `internal`.
+  ///
+  /// Before the statements run, the isolate says "running" and then reads
+  /// the controller's timeout and stop words; the controller sets those and
+  /// then interrupts, again and again until the reply. SQLite clears an
+  /// interrupt when a statement starts on an idle connection, so a single
+  /// interrupt that landed during the copy was lost and the query then ran
+  /// on forever (R5-1).
   T guarded<T>(T Function() action) {
     final result = _mapErrors(() {
       _chooseTarget();
-      return action();
+      final control = this.control;
+      control?[2] = 1;
+      try {
+        if (_stopRequested) throw copyStopped;
+        if (_timedOut) throw _copyTooLong;
+        return action();
+      } finally {
+        control?[2] = 0;
+      }
     });
     if (broken) throw connectionReset;
     return result;

@@ -211,8 +211,10 @@ void main() {
         failsWith(ErrorCode.timeout),
       );
       expect(watch.elapsed, lessThan(const Duration(seconds: 2)));
-      // Both connections: the file and its in-memory copy.
-      expect(interrupted, hasLength(2));
+      // Both connections (the file and its in-memory copy), interrupted
+      // again and again until the grace period ends (R5-1).
+      expect(interrupted.toSet(), hasLength(2));
+      expect(interrupted.length, greaterThan(2));
       expect(worker.isDead, isTrue);
       await expectLater(
         worker.call('schema', const {}),

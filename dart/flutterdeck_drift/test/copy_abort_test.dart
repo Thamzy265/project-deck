@@ -43,7 +43,7 @@ void main() {
     late ReadOps ops;
 
     setUp(() {
-      control = calloc<Int32>(2);
+      control = calloc<Int32>(4);
       ops = ReadOps.open(path, control: control);
     });
 
@@ -83,9 +83,45 @@ void main() {
     });
   });
 
+  test(
+    'a budget that runs out during the copy stops the query too (R5-1)',
+    () async {
+      final worker = await ReadWorker.spawn(path);
+      addTearDown(worker.close);
+      // The budget fires while the 39 MB copy runs, before the endless
+      // query starts. SQLite clears an interrupt when a statement starts
+      // on an idle connection, so a single interrupt here was lost.
+      await expectLater(
+        worker.call('query', {
+          'sql':
+              'WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c) '
+              'SELECT count(*) FROM c',
+          'params': const <Object?>[],
+          'limit': 1,
+        }, budget: const Duration(milliseconds: 5)),
+        throwsA(
+          isA<DriftDeckError>().having(
+            (e) => e.code,
+            'code',
+            ErrorCode.timeout,
+          ),
+        ),
+      );
+      final exit = Stopwatch()..start();
+      while (!worker.hasExited && exit.elapsed < const Duration(seconds: 5)) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      // An isolate can't exit while its thread is still inside SQLite, so
+      // an exit proves no thread keeps spinning on the query. (Process CPU
+      // time can't show it here: other test files run in parallel.)
+      expect(worker.hasExited, isTrue, reason: 'the read isolate exits');
+    },
+    timeout: const Timeout(Duration(seconds: 60)),
+  );
+
   test('a copy told to stop finishes its backup: no zombie is left', () {
     final baseline = openDescriptors(path);
-    final control = calloc<Int32>(2);
+    final control = calloc<Int32>(4);
     addTearDown(() => calloc.free(control));
     final ops = ReadOps.open(path, control: control);
     var steps = 0;
