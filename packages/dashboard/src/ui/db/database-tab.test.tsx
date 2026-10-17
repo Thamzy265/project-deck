@@ -283,6 +283,21 @@ describe('Table picker and grid', () => {
     expect(screen.queryByRole('button', { name: 'Clear filter' })).toBeNull();
   });
 
+  it('a failed row count shows "?" and leaves Export usable (review N1)', async () => {
+    const db = fakeDbClient();
+    const real = db.query.getMockImplementation();
+    db.query.mockImplementation((input, signal) =>
+      input.sql.startsWith('SELECT count(*)')
+        ? Promise.reject(new DbApiError('timeout', 'slow'))
+        : (real?.(input, signal) ?? Promise.reject(new Error('no fake'))),
+    );
+    const t = await open(db);
+    await t.user.selectOptions(await screen.findByRole('combobox', { name: 'Table' }), 'orders');
+    await screen.findByRole('grid', { name: 'orders rows' });
+    expect(screen.getByText('1–2 of ?')).toBeVisible();
+    expect(screen.getByRole('button', { name: /^Export/ })).not.toHaveAttribute('aria-disabled');
+  });
+
   it('Error: "Couldn\'t read rows: <reason>" with Retry', async () => {
     const db = fakeDbClient();
     const t = await open(db);

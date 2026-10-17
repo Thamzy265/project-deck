@@ -281,9 +281,13 @@ export function TableView(p: TableViewProps) {
     });
     return out;
   }, [page, flash, identityKey]);
-  const total = countedTotal ?? 0;
-  const from = total === 0 ? 0 : pageIndex * PAGE_SIZE + 1;
-  const to = Math.min(total, (pageIndex + 1) * PAGE_SIZE);
+  // The count may fail (review N1): the rows shown still page and export, and the
+  // total says "?" (or keeps the last count, which the count effect leaves in place).
+  const shownRows = page?.rows.length ?? 0;
+  const total = countedTotal;
+  const from = shownRows === 0 ? 0 : pageIndex * PAGE_SIZE + 1;
+  const to = pageIndex * PAGE_SIZE + shownRows;
+  const hasNext = total === undefined ? shownRows === PAGE_SIZE : to < total;
   const filtered = typed !== '' || p.match !== undefined;
   const selected =
     details === undefined
@@ -378,7 +382,7 @@ export function TableView(p: TableViewProps) {
               label={`${visibleText(table.name)} rows`}
               columns={gridColumns}
               rows={page.rows}
-              total={total}
+              total={total ?? -1}
               offset={pageIndex * PAGE_SIZE}
               sort={sort}
               onSort={(c) => setSort(nextSort(sort, c))}
@@ -409,7 +413,8 @@ export function TableView(p: TableViewProps) {
         )}
         <div className="flex flex-wrap items-center gap-2 border-t border-border px-2 py-1 text-sm">
           <span aria-live="off">
-            {from.toLocaleString('en')}–{to.toLocaleString('en')} of {total.toLocaleString('en')}
+            {from.toLocaleString('en')}–{to.toLocaleString('en')} of{' '}
+            {total === undefined ? '?' : total.toLocaleString('en')}
           </span>
           <button
             type="button"
@@ -426,9 +431,9 @@ export function TableView(p: TableViewProps) {
             type="button"
             className={button}
             aria-label="Next page"
-            aria-disabled={to >= total ? true : undefined}
+            aria-disabled={hasNext ? undefined : true}
             onClick={() => {
-              if (to < total) setPageIndex(pageIndex + 1);
+              if (hasNext) setPageIndex(pageIndex + 1);
             }}
           >
             ▶
@@ -436,7 +441,7 @@ export function TableView(p: TableViewProps) {
           <span className="flex-1" />
           <ExportMenu
             name={table.name}
-            disabled={!p.connected || total === 0}
+            disabled={!p.connected || shownRows === 0}
             rows={async (onProgress) => exportTable(client, db, table, spec, onProgress)}
           />
         </div>

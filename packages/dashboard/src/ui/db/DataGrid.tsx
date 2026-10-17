@@ -25,7 +25,7 @@ export interface DataGridProps {
   label: string;
   columns: GridColumn[];
   rows: Cell[][];
-  /** All rows the grid stands for (all pages), for `aria-rowcount`. */
+  /** All rows the grid stands for (all pages), for `aria-rowcount`; -1 when unknown. */
   total: number;
   /** Rows before this page, for `aria-rowindex`. */
   offset?: number;
@@ -156,7 +156,7 @@ export function DataGrid(p: DataGridProps) {
       ref={ref}
       role="grid"
       aria-label={p.label}
-      aria-rowcount={p.total + 1}
+      aria-rowcount={p.total < 0 ? -1 : p.total + 1}
       aria-colcount={colCount}
       onKeyDown={onKeyDown}
       className="min-h-0 flex-1 overflow-auto"
