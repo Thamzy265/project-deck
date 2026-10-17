@@ -418,6 +418,22 @@ describe('Editing (writes on)', () => {
     expect(within(t.panel).getByRole('button', { name: 'Delete row' })).toHaveFocus();
   });
 
+  it('marks line breaks and tabs in the SQL too, so nothing hides on a later line (R9)', async () => {
+    const t = await details();
+    t.db.requestEdit.mockResolvedValueOnce({
+      requestId: 'r'.repeat(32),
+      db: 'app',
+      sql: `DELETE FROM "orders" WHERE "id" IS ?${'\n'.repeat(3)}\t-- more`,
+      params: [1],
+      tables: ['orders'],
+      expiresAt: Date.now() + 60_000,
+    });
+    await t.user.click(within(t.panel).getByRole('button', { name: 'Delete row' }));
+    const dialog = await screen.findByRole('alertdialog');
+    expect(within(dialog).getAllByText('U+000A')).toHaveLength(3);
+    expect(within(dialog).getByText('U+0009')).toBeVisible();
+  });
+
   it('shows control and bidi characters in the SQL visibly', async () => {
     const t = await details();
     t.db.requestEdit.mockResolvedValueOnce({

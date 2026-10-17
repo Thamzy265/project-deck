@@ -145,7 +145,8 @@ export function WriteConfirmDialog({
           aria-label="The exact SQL"
           className="max-h-48 min-h-12 overflow-auto rounded-sm bg-surface p-2 font-mono text-sm whitespace-pre-wrap wrap-anywhere"
         >
-          <VisibleText text={request.sql} multiline />
+          {/* One line: line breaks and tabs are marked, so no part hides below (R9). */}
+          <VisibleText text={request.sql} />
         </pre>
         {request.params.length > 0 && (
           <div className="text-sm">
