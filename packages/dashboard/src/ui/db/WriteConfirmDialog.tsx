@@ -14,7 +14,8 @@ export const CONFIRM_TTL_MS = 60_000;
 function paramText(value: DbEditRequest['params'][number]): string {
   if (value === null) return 'null';
   if (typeof value === 'object') return value.value;
-  if (typeof value === 'string') return `'${value}'`;
+  // As an SQL literal, inner quotes doubled, so a value reads one way only.
+  if (typeof value === 'string') return `'${value.replaceAll("'", "''")}'`;
   return String(value);
 }
 

@@ -349,7 +349,8 @@ describe('Editing (writes on)', () => {
     expect(
       within(dialog).getByText('UPDATE "orders" SET "status" = ? WHERE "id" IS ?'),
     ).toBeVisible();
-    expect(within(dialog).getByText("'shipped'; --'")).toBeVisible();
+    // Written as an SQL literal: the inner quote is doubled, so the value reads one way.
+    expect(within(dialog).getByText("'shipped''; --'")).toBeVisible();
     expect(t.db.confirmEdit).not.toHaveBeenCalled();
     await t.user.click(within(dialog).getByRole('button', { name: 'Run change' }));
     expect(t.db.confirmEdit).toHaveBeenCalledWith({
