@@ -60,6 +60,8 @@ export class SavedQueryStore {
       // A fresh file, then a rename: a link at `path` is replaced, never followed.
       await writeFile(tmp, `${JSON.stringify({ version: 1, queries }, null, 2)}\n`, {
         flag: 'wx',
+        // Owner only, like runtime.json: saved SQL can name tables and values (TAB-4).
+        mode: 0o600,
       });
       await retryWhileBusy(() => rename(tmp, path));
     } catch {

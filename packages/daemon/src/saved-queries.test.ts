@@ -68,7 +68,7 @@ describe('SavedQueryStore (.flutterdeck/queries.json)', () => {
 });
 
 describe('SavedQueryStore: file mode, races and odd files (tester probes)', () => {
-  (process.platform === 'win32' ? it.skip : it.fails)(
+  it.skipIf(process.platform === 'win32')(
     'writes queries.json readable by its owner only (0600), like runtime.json',
     async () => {
       const { stat } = await import('node:fs/promises');
