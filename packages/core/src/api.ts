@@ -184,9 +184,12 @@ export const TableDiffSchema = z.object({
   key: z.array(z.string()),
   /** No primary key: rows were matched by row id. */
   matchedByRowid: z.boolean(),
-  added: z.array(z.object({ key: RowKeySchema, row: Row })),
+  /** `row: null`: the row was gone (deleted again) by the time its values were read. */
+  added: z.array(z.object({ key: RowKeySchema, row: Row.nullable() })),
   removed: z.array(z.object({ key: RowKeySchema })),
-  changed: z.array(z.object({ key: RowKeySchema, row: Row, columns: z.array(z.string()) })),
+  changed: z.array(
+    z.object({ key: RowKeySchema, row: Row.nullable(), columns: z.array(z.string()) }),
+  ),
   counts: z.object({ added: Count, removed: Count, changed: Count }),
   truncated: z.boolean(),
   /** The table was over the snapshot caps, so it wasn't compared. */

@@ -71,3 +71,49 @@ describe('buildDiff reads rows by column name (DB-1)', () => {
     expect(tables[0]?.error?.code).toBe('schema-changed');
   });
 });
+
+describe('buildDiff with incomplete row reads (R7)', () => {
+  const twoAdded: RowHashes = {
+    takenAt: 2,
+    tables: [
+      {
+        name: 'users',
+        columns: ['id', 'email', 'name'],
+        key: ['id'],
+        rows: [
+          [1, [H(1), H(2), H(3)]],
+          [2, [H(4), H(5), H(6)]],
+        ],
+      },
+    ],
+  };
+
+  it('reports a row deleted before its values were read, as row null', async () => {
+    const inspector = answering({
+      columns: ['id', 'email', 'name'],
+      key: ['id'],
+      rows: [[2, [2, 'b@example.com', 'Bo']]],
+      missing: [1],
+      truncated: false,
+    });
+    const { tables } = await buildDiff(inspector, 'app', before, twoAdded, CLAUDE_DIFF_CAPS, []);
+    expect(tables[0]?.added).toEqual([
+      { key: 1, row: null },
+      { key: 2, row: [2, 'b@example.com', 'Bo'] },
+    ]);
+    expect(tables[0]?.counts.added).toBe(2);
+  });
+
+  it('marks the table truncated when the row read was cut by its reply cap', async () => {
+    const inspector = answering({
+      columns: ['id', 'email', 'name'],
+      key: ['id'],
+      rows: [[1, [1, 'a@example.com', 'Al']]],
+      missing: [],
+      truncated: true,
+    });
+    const { tables } = await buildDiff(inspector, 'app', before, twoAdded, CLAUDE_DIFF_CAPS, []);
+    expect(tables[0]?.added).toEqual([{ key: 1, row: [1, 'a@example.com', 'Al'] }]);
+    expect(tables[0]?.truncated).toBe(true);
+  });
+});

@@ -63,9 +63,11 @@ async function readRows(
   table: string,
   columns: readonly string[],
   keys: RowKey[],
-): Promise<Map<string, Map<string, Cell>>> {
+): Promise<RowRead> {
   const rows = new Map<string, Map<string, Cell>>();
-  if (inspector.rowsByKey === undefined || keys.length === 0) return rows;
+  const missing = new Set<string>();
+  const read: RowRead = { rows, missing, truncated: false };
+  if (inspector.rowsByKey === undefined || keys.length === 0) return read;
   const expected = [...columns].sort().join('\u0000');
   for (let i = 0; i < keys.length; i += MAX_KEYS_PER_CALL) {
     const reply = await inspector.rowsByKey(db, table, keys.slice(i, i + MAX_KEYS_PER_CALL));
@@ -79,8 +81,22 @@ async function readRows(
       if (cells.length !== reply.columns.length) throw new ColumnsChanged();
       rows.set(rowKeyId(key), new Map(reply.columns.map((c, j) => [c, cells[j] ?? null])));
     }
+    for (const key of reply.missing) missing.add(rowKeyId(key));
+    // The backend's reply cap cut this batch: the rest is unread, not missing (R7).
+    if (reply.truncated) {
+      read.truncated = true;
+      break;
+    }
   }
-  return rows;
+  return read;
+}
+
+interface RowRead {
+  rows: Map<string, Map<string, Cell>>;
+  /** Keys the backend no longer has: deleted again after the hashes were taken. */
+  missing: Set<string>;
+  /** True when a reply cap left keys unread. */
+  truncated: boolean;
 }
 
 export async function buildDiff(
@@ -160,7 +176,7 @@ export async function buildDiff(
     const addedKeys = take(result.added);
     const changedShown = take(changed);
     const removedKeys = take(result.removed);
-    let values: Map<string, Map<string, Cell>>;
+    let values: RowRead;
     try {
       values = await readRows(inspector, db, name, shape.columns, [
         ...addedKeys,
@@ -177,9 +193,12 @@ export async function buildDiff(
       });
       continue;
     }
-    const row = (key: RowKey): Cell[] | undefined => {
-      const cells = values.get(rowKeyId(key));
-      return cells === undefined ? undefined : visible.map((v) => cells.get(v.c) ?? null);
+    /** The visible cells; null for a row gone since; undefined when it wasn't read. */
+    const row = (key: RowKey): Cell[] | null | undefined => {
+      const id = rowKeyId(key);
+      const cells = values.rows.get(id);
+      if (cells !== undefined) return visible.map((v) => cells.get(v.c) ?? null);
+      return values.missing.has(id) ? null : undefined;
     };
     const shownKey = (key: RowKey): RowKey => (keyHidden ? HIDDEN : key);
     const table: TableDiff = {
@@ -202,8 +221,9 @@ export async function buildDiff(
       removed: removedKeys.map((key) => ({ key: shownKey(key) })),
       counts,
       truncated:
+        values.truncated ||
         addedKeys.length + changedShown.length + removedKeys.length <
-        counts.added + counts.changed + counts.removed,
+          counts.added + counts.changed + counts.removed,
     };
     out.push(table);
   }
