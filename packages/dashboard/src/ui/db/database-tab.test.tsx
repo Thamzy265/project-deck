@@ -318,6 +318,23 @@ describe('Table picker and grid', () => {
 });
 
 describe('Row details and foreign keys', () => {
+  it('stays on its row when a live change moves rows in the page', async () => {
+    const data = fakeDbData();
+    const t = await ordersGrid(data);
+    await t.user.click(within(grid()).getByText('Tea'));
+    expect(await screen.findByRole('dialog', { name: 'orders: id 2' })).toBeInTheDocument();
+    // A new row lands first in the page (a sort that puts it there): Tea moves down.
+    data.rows.orders = [
+      [3, 'Cake', 'pending', 1],
+      [1, 'Coffee', 'pending', 1],
+      [2, 'Tea', 'shipped', 2],
+    ];
+    await t.send({ type: 'db.changed', payload: { source: 'drift', db: 'app', table: 'orders' } });
+    await within(grid()).findByText('Cake');
+    expect(screen.getByRole('dialog', { name: 'orders: id 2' })).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'orders: id 1' })).toBeNull();
+  });
+
   it('Enter opens row details with every value; Escape closes and returns focus', async () => {
     const t = await ordersGrid();
     const cell = within(grid()).getByText('Coffee').closest<HTMLElement>('[role="gridcell"]');

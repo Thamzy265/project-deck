@@ -105,7 +105,9 @@ export function TableView(p: TableViewProps) {
   const range = useRef<[number, number]>([0, -1]);
   const [newRows, setNewRows] = useState<number[]>([]);
   const [scrollTo, setScrollTo] = useState<{ index: number; seq: number }>();
-  const [details, setDetails] = useState<number | undefined>();
+  /** The open row: its identity, so a live re-read that moves rows keeps it, and its
+   *  last cells, shown if the row has gone from this page. */
+  const [details, setDetails] = useState<{ id: string; row: Cell[] } | undefined>();
   const [adding, setAdding] = useState(false);
   const [retry, setRetry] = useState(0);
   const narrow = !useMedia(PANE_QUERY, true);
@@ -223,7 +225,9 @@ export function TableView(p: TableViewProps) {
   const openRow = (index: number) => {
     returnFocus.current =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    setDetails(index);
+    const row = page?.rows[index];
+    if (row === undefined || page === undefined) return;
+    setDetails({ id: rowIdentity(identityKey, page.columns, row), row });
   };
   const focusBack = useRef(false);
   const closeDetails = () => {
@@ -265,7 +269,11 @@ export function TableView(p: TableViewProps) {
   const from = total === 0 ? 0 : pageIndex * PAGE_SIZE + 1;
   const to = Math.min(total, (pageIndex + 1) * PAGE_SIZE);
   const filtered = typed !== '' || p.match !== undefined;
-  const selected = details === undefined ? undefined : page?.rows[details];
+  const selected =
+    details === undefined
+      ? undefined
+      : (page?.rows.find((r) => rowIdentity(identityKey, page.columns, r) === details.id) ??
+        details.row);
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
