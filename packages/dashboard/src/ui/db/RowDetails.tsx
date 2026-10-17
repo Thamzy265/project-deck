@@ -121,8 +121,15 @@ export function RowDetails(p: RowDetailsProps) {
     if (!adding) heading.current?.focus();
   }, [adding]);
 
+  // Without a usable key the row is shown as the page has it. This also ends a read
+  // that the row changing (a live re-read moved another row here) left waiting:
+  // "Loading row…" never stays (QA, batch 4).
+  const pageRow = key === undefined && p.row !== undefined ? JSON.stringify(p.row) : '';
   useEffect(() => {
-    if (key === undefined) return;
+    if (key === undefined) {
+      if (p.row !== undefined) setFresh({ status: 'ready', columns: p.columns, row: p.row });
+      return;
+    }
     let cancelled = false;
     setFresh({ status: 'loading' });
     const where = key.columns.map((c) => `${quoteIdent(c)} IS ?`).join(' AND ');
@@ -149,7 +156,7 @@ export function RowDetails(p: RowDetailsProps) {
       cancelled = true;
     };
     // keyText stands for the key's values.
-  }, [client, db, table.name, keyText, retry]);
+  }, [client, db, table.name, keyText, pageRow, retry]);
 
   const names = fresh.status === 'ready' ? fresh.columns : p.columns;
   const row = fresh.status === 'ready' ? fresh.row : undefined;
