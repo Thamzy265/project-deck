@@ -32,6 +32,17 @@ It does nothing in release builds (and in profile builds). Register each databas
 
 In-memory and encrypted (SQLCipher) databases are not supported.
 
+**Linux (desktop apps):** package:sqlite3's Linux library exports only the SQLite functions package:sqlite3 itself uses, which leaves out `sqlite3_interrupt`. Without it FlutterDeck could not stop a slow query, so on Linux queries answer "unsupported"; tables, row details and snapshots still work. To get queries on Linux, have your app use the system SQLite (on Ubuntu: `sudo apt install libsqlite3-dev`) by adding this to your app's `pubspec.yaml`:
+
+```yaml
+hooks:
+  user_defines:
+    sqlite3:
+      source: system
+```
+
+Android, iOS, macOS and Windows are not affected.
+
 ## Protocol
 
 Every reply holds `protocol: 1`. Errors are `{"protocol": 1, "error": {"code", "message"}}`. Codes: `bad-request`, `unknown-db`, `not-read-only`, `not-allowed`, `timeout`, `busy`, `too-large`, `unsupported`, `bad-token`, `sql-error`, `not-found`, `internal`. In `schema` and `snapshot`, a table or view the read connection can't use (for example a view that calls one of your app's SQL functions) gets its own `error` entry, and the other tables still answer. The `schema` reply also holds `sqlSchema`: every `CREATE` statement in `sqlite_schema` (tables, views, indexes, triggers, virtual tables) in schema order, read in the same transaction, for the daemon's read-only check. If it would make the reply larger than 8 MB it is cut, and `sqlSchemaTruncated: true` says so. Write tokens are single use per app isolate; the daemon enforces single use across hot restarts. Recorded examples: [`packages/connector-dart/src/testing/fixtures/flutterdeck-drift-v1.recorded.json`](../../packages/connector-dart/src/testing/fixtures/flutterdeck-drift-v1.recorded.json).
