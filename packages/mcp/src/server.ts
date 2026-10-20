@@ -8,7 +8,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { LogQuery, Status } from '@project-deck/core';
 import { DECK_VERSION, DEFAULT_LOG_LIMIT, GetLogsInput } from '@project-deck/core';
 import type { DaemonClient } from './daemon-client.js';
-import { DaemonError } from './daemon-client.js';
+import { errorText } from './daemon-client.js';
 import { registerDbTools } from './db-tools.js';
 import type { JsonValue, MaskSettings } from './mask/masker.js';
 import type { Masker } from './mask/masker.js';
@@ -158,9 +158,4 @@ function describeStatus(status: Status): { [key: string]: JsonValue } {
 function maskingLine(settings: MaskSettings, notes: string[]): string {
   if (!settings.redact) return MASKING_OFF;
   return [MASKING_ON, ...notes].join(' ');
-}
-
-function errorText(err: unknown): string {
-  if (err instanceof DaemonError) return err.message;
-  return `FlutterDeck MCP server failed: ${err instanceof Error ? err.message : String(err)}`;
 }

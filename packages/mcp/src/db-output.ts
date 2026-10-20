@@ -5,9 +5,12 @@
  */
 import type { Cell, DbDiff, DbList, RowKey, TableDiff, TableInfo } from '@project-deck/core';
 import type { JsonValue } from './mask/masker.js';
-import { MAX_OUTPUT_BYTES, fitKeepingFrame } from './output.js';
+import { MAX_OUTPUT_BYTES, fitKeepingFrame, fitsOutput } from './output.js';
 
-type Json = { [key: string]: JsonValue };
+/** The last resort: cuts body text, never the frame (note, masking, warnings, hint). */
+const lastResort = (value: Json, problem: string): Json => fitKeepingFrame(value, problem) as Json;
+
+export type Json = { [key: string]: JsonValue };
 
 /**
  * Marks an integer cell so the masker sees it as text: a phone number stored as a number
@@ -15,8 +18,6 @@ type Json = { [key: string]: JsonValue };
  * because every cell becomes a string, a number or null.
  */
 const NUMBER = '\u0000number';
-
-const fits = (value: unknown) => Buffer.byteLength(JSON.stringify(value)) <= MAX_OUTPUT_BYTES;
 
 export function cellForClaude(cell: Cell): JsonValue {
   if (cell === null || typeof cell === 'string') return cell;
@@ -65,20 +66,15 @@ function restore(value: JsonValue): JsonValue {
 
 /** Largest n in [0, max] for which `build(n)` fits, or -1 when not even 0 does. */
 function largestFitting(max: number, build: (n: number) => unknown): number {
-  if (!fits(build(0))) return -1;
+  if (!fitsOutput(build(0))) return -1;
   let lo = 0;
   let hi = max;
   while (lo < hi) {
     const mid = Math.ceil((lo + hi) / 2);
-    if (fits(build(mid))) lo = mid;
+    if (fitsOutput(build(mid))) lo = mid;
     else hi = mid - 1;
   }
   return lo;
-}
-
-/** The last resort: cuts body text, never the frame (note, masking, warnings, hint). */
-function shortenToFit(value: Json, problem: string): Json {
-  return fitKeepingFrame(value, problem) as Json;
 }
 
 // ---- db_query ----
@@ -118,20 +114,21 @@ export function fitQuery(
     };
   };
   const all = columns.length;
-  if (!moreRows && fits(build(all, rows.length, false))) return build(all, rows.length, false);
+  if (!moreRows && fitsOutput(build(all, rows.length, false)))
+    return build(all, rows.length, false);
   // A wide result may not fit even with no rows (MCP-1): show the first columns, with
   // room for one row when there is one, and count the others.
   const firstRows = Math.min(rows.length, 1);
   let shown = all;
-  if (!fits(build(all, firstRows, true))) {
+  if (!fitsOutput(build(all, firstRows, true))) {
     shown = largestFitting(all, (k) => build(k, firstRows, true));
     if (shown < 0) shown = largestFitting(all, (k) => build(k, 0, true));
-    if (shown < 0) return shortenToFit(build(0, 0, true), 'The result was too large to show.');
+    if (shown < 0) return lastResort(build(0, 0, true), 'The result was too large to show.');
   }
   const n = largestFitting(rows.length, (k) => build(shown, k, true));
   if (n > 0 || rows.length === 0) return build(shown, Math.max(n, 0), true);
   // Not even one row fits: show the first one with its texts cut.
-  return shortenToFit(build(shown, 1, true), 'The first row was too large to show.');
+  return lastResort(build(shown, 1, true), 'The first row was too large to show.');
 }
 
 function queryHint(shown: number, columnsLeftOut: number): string {
@@ -185,10 +182,10 @@ export function fitSchema(frame: Json, tables: Json[]): Json {
       hint: `${rest.length} table${rest.length === 1 ? ' was' : 's were'} left out to keep this answer under 20 kB. Their columns are shown only by db_schema, so this answer can't list them; db_query can still read their rows by name.`,
     };
   };
-  if (fits(build(tables.length))) return build(tables.length);
+  if (fitsOutput(build(tables.length))) return build(tables.length);
   const n = largestFitting(tables.length, build);
   if (n >= 0) return build(n);
-  return shortenToFit(build(0), 'The schema was too large to show.');
+  return lastResort(build(0), 'The schema was too large to show.');
 }
 
 // ---- db_diff ----
@@ -266,12 +263,12 @@ export function fitDiff(frame: Json, diff: Json): Json {
     };
   };
   const whole = build(longest, tables.length);
-  if (fits(whole)) return whole;
+  if (fitsOutput(whole)) return whole;
   const perList = largestFitting(longest, (k) => build(k, tables.length));
   if (perList >= 0) return build(perList, tables.length);
   const shown = largestFitting(tables.length, (n) => build(0, n));
   if (shown >= 0) return build(0, shown);
-  return shortenToFit(build(0, 0), 'The diff was too large to show.');
+  return lastResort(build(0, 0), 'The diff was too large to show.');
 }
 
 const DIFF_HINT =

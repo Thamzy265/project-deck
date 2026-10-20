@@ -64,6 +64,12 @@ const MAX_REASON = 300;
 /** A message that is safe to show to Claude: it never holds the token. */
 export class DaemonError extends Error {}
 
+/** What a failed tool call tells Claude: the daemon's message, or that the server failed. */
+export function errorText(err: unknown): string {
+  if (err instanceof DaemonError) return err.message;
+  return `FlutterDeck MCP server failed: ${err instanceof Error ? err.message : String(err)}`;
+}
+
 /**
  * The program on the port can't be stopped through the API: it refused the token, or it
  * didn't say which project it serves (so it never got the token).

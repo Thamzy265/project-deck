@@ -133,7 +133,8 @@ export function fitStatus(
  */
 export const FRAME_KEYS: readonly string[] = ['note', 'masking', 'warnings', 'hint'];
 
-const fitsOutput = (v: unknown) => Buffer.byteLength(JSON.stringify(v)) <= MAX_OUTPUT_BYTES;
+export const fitsOutput = (v: unknown): boolean =>
+  Buffer.byteLength(JSON.stringify(v)) <= MAX_OUTPUT_BYTES;
 
 /**
  * The last resort for an answer over 20 kB: cuts the text of everything but the frame

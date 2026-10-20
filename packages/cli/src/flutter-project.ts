@@ -3,11 +3,10 @@
  * Parsed with the `yaml` package (core schema, no custom tags, aliases capped against
  * "billion laughs" expansion); nothing from the file is repeated except a checked name.
  */
-import { lstat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { ANDROID_APPLICATION_ID } from '@project-deck/core';
 import { parseDocument } from 'yaml';
-import { MAX_FILE_BYTES, readProjectFile } from './project-files.js';
+import { MAX_FILE_BYTES, isRealFolder, readProjectFile } from './project-files.js';
 
 /** Dart package names: lower-case letters, digits and underscores. */
 const PACKAGE_NAME = /^[a-z_][a-z0-9_]*$/;
@@ -93,14 +92,6 @@ export async function detectFlutterProject(projectDir: string): Promise<Detectio
     };
   }
   return pubspec.name === undefined ? { ok: true } : { ok: true, name: pubspec.name };
-}
-
-async function isRealFolder(path: string): Promise<boolean> {
-  try {
-    return (await lstat(path)).isDirectory();
-  } catch {
-    return false;
-  }
 }
 
 /** The Android applicationId when it is a plain literal; undefined otherwise. */

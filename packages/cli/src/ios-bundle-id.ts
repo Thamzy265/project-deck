@@ -4,10 +4,9 @@
  * a plain value matching core's IOS_BUNDLE_ID. Nothing in the project runs; the file is
  * parsed as an old-style property list by a small linear parser, and never quoted.
  */
-import { lstat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { IOS_BUNDLE_ID } from '@project-deck/core';
-import { readProjectFile } from './project-files.js';
+import { isRealFolder, readProjectFile } from './project-files.js';
 
 /** Far more than a real Flutter project file (about 25 kB). */
 export const MAX_PBXPROJ_BYTES = 2 * 1024 * 1024;
@@ -204,14 +203,6 @@ export function bundleIdFromPbxproj(text: string): BundleIdLookup {
     return { kind: 'unusable' };
   }
   return { kind: 'found', id };
-}
-
-async function isRealFolder(path: string): Promise<boolean> {
-  try {
-    return (await lstat(path)).isDirectory();
-  } catch {
-    return false;
-  }
 }
 
 /** Reads the bundle id without following a link anywhere on the way. */

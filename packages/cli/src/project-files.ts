@@ -61,6 +61,15 @@ export async function readProjectFile(
   }
 }
 
+/** True for a real folder; false for a link, a file or nothing (never follows a link). */
+export async function isRealFolder(path: string): Promise<boolean> {
+  try {
+    return (await lstat(path)).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 /** A regular file's text and mode, or missing. Refuses a link, a folder or a huge file. */
 export async function inspectFile(path: string, shown: string): Promise<FileState> {
   const found = await readProjectFile(path);
