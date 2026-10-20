@@ -284,7 +284,7 @@ describe('db_query', () => {
     const out = await call(client, 'db_query', { db: 'app', sql: 'DELETE FROM orders' });
     expect(out.isError).toBe(true);
     expect(out.text).toMatch(
-      /^FlutterDeck couldn't do that \(refused\): This statement changes data/,
+      /^FlutterDeck couldn't do that \(refused\): "This statement changes data/,
     );
     expect(out.text).toMatch(/Claude can't change data/);
     expect(out.text).toMatch(/untrusted data/);
@@ -313,7 +313,7 @@ describe('db_query', () => {
     daemon.route('POST', '/api/db/query', () => dbError(status, { error: 'Reason here', code }));
     const out = await call(client, 'db_query', { db: 'app', sql: 'SELECT 1' });
     expect(out.isError).toBe(true);
-    expect(out.text).toContain(`(${code}): Reason here.`);
+    expect(out.text).toContain(`(${code}): "Reason here".`);
     expect(out.text).toMatch(hint);
   });
 

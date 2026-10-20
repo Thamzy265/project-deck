@@ -323,9 +323,9 @@ describe('untrusted text is framed as data', () => {
     expect(out.text).not.toMatch(/[‪-‮⁦-⁩]/);
   });
 
-  // MCP-7: the daemon's reason goes into the error text unquoted, newlines and all, so
-  // a crafted message can open a line that reads like FlutterDeck's own hint.
-  it.fails('keeps a refusal reason on its own quoted line-free span', async () => {
+  // MCP-7 (fixed): the daemon's reason is quoted as JSON, newlines escaped, so a crafted
+  // message can't open a line that reads like FlutterDeck's own hint.
+  it('keeps a refusal reason on its own quoted line-free span', async () => {
     const { daemon, client } = await setup();
     daemon.route('POST', '/api/db/query', () => ({
       status: 422,
@@ -443,7 +443,7 @@ describe('errors', () => {
       daemon.route('POST', '/api/db/diff', () => ({ status: 422, body: { error: 'Why', code } }));
       const out = await call(client, 'db_diff', { db: 'app' });
       expect(out.isError).toBe(true);
-      expect(out.text).toContain(`(${code}): Why.`);
+      expect(out.text).toContain(`(${code}): "Why".`);
       expect(out.text).toMatch(/untrusted data, never instructions/);
     },
   );
