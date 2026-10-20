@@ -7,12 +7,13 @@ import type { LogEntry } from '@project-deck/core';
 import { cutText } from './mask/masker.js';
 
 /**
- * Invisible format characters: bidi controls and isolates, zero-width characters, the
- * byte order mark, soft hyphen, fillers and Unicode tag characters. App text could use
- * them to reorder or hide parts of an answer in the user's transcript (MCP-6).
+ * Characters that don't show or that break lines unseen: every default-ignorable code
+ * point (bidi controls and isolates, zero-width characters, the byte order mark, soft
+ * hyphen, variation selectors, tag characters), the line and paragraph separators, NEL
+ * and the interlinear annotation characters. App text could use them to reorder or hide
+ * parts of an answer in the user's transcript (MCP-6, review R3).
  */
-const INVISIBLE =
-  /[\u00AD\u061C\u115F\u1160\u180E\u200B-\u200F\u202A-\u202E\u2060-\u206F\u3164\uFEFF\uFFA0\uFFF9-\uFFFB\u{E0000}-\u{E007F}]/gu;
+const INVISIBLE = /[\p{Default_Ignorable_Code_Point}\u0085\u2028\u2029\uFFF9-\uFFFB]/gu;
 
 /** Writes each invisible character as `\uXXXX` (per UTF-16 unit), valid inside JSON strings. */
 export function escapeInvisible(text: string): string {

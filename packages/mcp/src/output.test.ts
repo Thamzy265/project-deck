@@ -82,6 +82,16 @@ describe('escapeInvisible (MCP-6)', () => {
     expect(JSON.parse(out)).toEqual(JSON.parse(text));
   });
 
+  it('escapes every default-ignorable character, line separators and NEL (review R3)', () => {
+    // A heart with a variation selector, a combining grapheme joiner, a Mongolian free
+    // variation selector, U+2028/2029, NEL and the interlinear annotation characters.
+    const raw = 'a\u2764\uFE0Fb\u034Fc\u180Bd\u2028e\u2029f\u0085g\uFFF9h';
+    const text = JSON.stringify({ m: raw });
+    const out = escapeInvisible(text);
+    expect(out).toBe('{"m":"a\u2764\\ufe0fb\\u034fc\\u180bd\\u2028e\\u2029f\\u0085g\\ufff9h"}');
+    expect(JSON.parse(out)).toEqual({ m: raw });
+  });
+
   it('leaves ordinary text, emoji and other scripts alone', () => {
     const text = 'Grüße 漢字 😀 مرحبا';
     expect(escapeInvisible(text)).toBe(text);
