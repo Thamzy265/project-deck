@@ -290,6 +290,23 @@ describe('deck_status', () => {
 });
 
 describe('get_logs', () => {
+  it('escapes bidi controls and invisible format characters in log lines (MCP-6)', async () => {
+    const f = await fake();
+    f.logs = {
+      entries: [
+        line('safe \u202Etxt.exe\u202C \u2066x\u2069 zero\u200Bwidth \uFEFFbom', { seq: 1 }),
+      ],
+      truncated: false,
+    };
+    const out = await call(await connect(), 'get_logs');
+    expect(out.isError).toBe(false);
+    expect(out.text).not.toMatch(/[\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF]/);
+    // Still valid JSON that reads back as the original line.
+    expect((out.json.entries as { message: string }[])[0]?.message).toBe(
+      'safe \u202Etxt.exe\u202C \u2066x\u2069 zero\u200Bwidth \uFEFFbom',
+    );
+  });
+
   it('returns masked lines as data, with the untrusted note', async () => {
     const f = await fake();
     f.logs = {

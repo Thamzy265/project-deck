@@ -1,6 +1,6 @@
 import type { LogEntry } from '@project-deck/core';
 import { describe, expect, it } from 'vitest';
-import { MAX_OUTPUT_BYTES, MAX_OUTPUT_ENTRIES, fitLogs } from './output.js';
+import { MAX_OUTPUT_BYTES, MAX_OUTPUT_ENTRIES, escapeInvisible, fitLogs } from './output.js';
 
 function entry(i: number, size = 10): LogEntry {
   return { ts: i, level: 'info', source: 'app', message: `${i} ${'x'.repeat(size)}`, seq: i };
@@ -64,5 +64,19 @@ describe('fitLogs', () => {
     expect(out.entries[0]?.ts).toBe(7);
     expect(out.entries[0]?.message.length).toBeGreaterThan(1000);
     expect(out.truncated).toBe(true);
+  });
+});
+
+describe('escapeInvisible (MCP-6)', () => {
+  it('writes bidi controls, zero-width and tag characters as JSON escapes', () => {
+    const text = JSON.stringify({ m: 'a\u202Eb\u2066c\u200Bd\uFEFFe\u{E0041}f' });
+    const out = escapeInvisible(text);
+    expect(out).toBe('{"m":"a\\u202eb\\u2066c\\u200bd\\ufeffe\\udb40\\udc41f"}');
+    expect(JSON.parse(out)).toEqual(JSON.parse(text));
+  });
+
+  it('leaves ordinary text, emoji and other scripts alone', () => {
+    const text = 'Grüße 漢字 😀 مرحبا';
+    expect(escapeInvisible(text)).toBe(text);
   });
 });

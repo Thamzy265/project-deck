@@ -5,7 +5,6 @@
  * size and returned (design D4).
  */
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import type { LogQuery, Status } from '@project-deck/core';
 import { DECK_VERSION, DEFAULT_LOG_LIMIT, GetLogsInput } from '@project-deck/core';
 import type { DaemonClient } from './daemon-client.js';
@@ -15,7 +14,7 @@ import type { JsonValue, MaskSettings } from './mask/masker.js';
 import type { Masker } from './mask/masker.js';
 import { MASKING_OFF } from './mask/masker.js';
 import { MaskerCache } from './mask/masker-cache.js';
-import { MAX_OUTPUT_ENTRIES, fitLogs, fitStatus } from './output.js';
+import { MAX_OUTPUT_ENTRIES, errorResult, fitLogs, fitStatus, jsonResult } from './output.js';
 import { pathScrubber } from '@project-deck/core/node';
 import type { LoadedSettings } from './settings.js';
 import { readMaskSettings } from './settings.js';
@@ -75,7 +74,7 @@ export function createDeckServer(opts: DeckServerOptions): DeckServer {
         };
       }
       const masked = await withMasker(settings.mask, (m) => m.mask(body));
-      return json(
+      return jsonResult(
         fitStatus({ ...masked.value, masking: maskingLine(settings.mask, masked.notes) }),
       );
     },
@@ -99,7 +98,7 @@ export function createDeckServer(opts: DeckServerOptions): DeckServer {
         answer = await opts.daemon.logs({ ...query, limit });
       } catch (err) {
         const masked = await withMasker(settings.mask, (m) => m.mask(scrub(errorText(err))));
-        return { isError: true, content: [{ type: 'text', text: masked.value }] };
+        return errorResult(masked.value);
       }
       const warnings = [
         ...settings.warnings.map(scrub),
@@ -114,7 +113,7 @@ export function createDeckServer(opts: DeckServerOptions): DeckServer {
         masking: maskingLine(settings.mask, masked.notes),
         warnings: masked.value.warnings,
       };
-      return json(fitLogs(frame, masked.value.entries, answer.value.truncated));
+      return jsonResult(fitLogs(frame, masked.value.entries, answer.value.truncated));
     },
   );
 
@@ -164,8 +163,4 @@ function maskingLine(settings: MaskSettings, notes: string[]): string {
 function errorText(err: unknown): string {
   if (err instanceof DaemonError) return err.message;
   return `FlutterDeck MCP server failed: ${err instanceof Error ? err.message : String(err)}`;
-}
-
-function json(value: unknown): CallToolResult {
-  return { content: [{ type: 'text', text: JSON.stringify(value) }] };
 }

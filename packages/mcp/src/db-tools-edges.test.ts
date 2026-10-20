@@ -311,9 +311,9 @@ describe('untrusted text is framed as data', () => {
     expect(JSON.stringify(out.json.tables)).toContain('db_execute');
   });
 
-  // MCP-6: bidi controls pass through raw. JSON doesn't escape them, so a row can
-  // reorder how the tool result reads in the user's transcript.
-  it.fails('escapes bidi control characters in row values', async () => {
+  // MCP-6 (fixed): bidi controls are written as \uXXXX, so a row can't reorder how
+  // the tool result reads in the user's transcript.
+  it('escapes bidi control characters in row values', async () => {
     const { daemon, client } = await setup();
     daemon.route('POST', '/api/db/query', () =>
       ok(queryResult(['note'], [['safe ‮txt.exe‬ ⁦x⁩']])),

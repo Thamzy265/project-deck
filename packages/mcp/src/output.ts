@@ -2,7 +2,37 @@
  * Keeps get_logs output small enough for Claude's context (design: ≤ 200 entries and
  * ≤ 20 kB) and says when it was cut. Runs after masking, on masked text.
  */
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import type { LogEntry } from '@project-deck/core';
+
+/**
+ * Invisible format characters: bidi controls and isolates, zero-width characters, the
+ * byte order mark, soft hyphen, fillers and Unicode tag characters. App text could use
+ * them to reorder or hide parts of an answer in the user's transcript (MCP-6).
+ */
+const INVISIBLE =
+  /[\u00AD\u061C\u115F\u1160\u180E\u200B-\u200F\u202A-\u202E\u2060-\u206F\u3164\uFEFF\uFFA0\uFFF9-\uFFFB\u{E0000}-\u{E007F}]/gu;
+
+/** Writes each invisible character as `\uXXXX` (per UTF-16 unit), valid inside JSON strings. */
+export function escapeInvisible(text: string): string {
+  return text.replace(INVISIBLE, (c) => {
+    let out = '';
+    for (let i = 0; i < c.length; i++) {
+      out += `\\u${c.charCodeAt(i).toString(16).padStart(4, '0')}`;
+    }
+    return out;
+  });
+}
+
+/** Every tool's answer as text: JSON with invisible characters escaped. */
+export function jsonResult(value: unknown): CallToolResult {
+  return { content: [{ type: 'text', text: escapeInvisible(JSON.stringify(value)) }] };
+}
+
+/** A failed call's plain text, with invisible characters escaped. */
+export function errorResult(text: string): CallToolResult {
+  return { isError: true, content: [{ type: 'text', text: escapeInvisible(text) }] };
+}
 
 export const MAX_OUTPUT_ENTRIES = 200;
 export const MAX_OUTPUT_BYTES = 20_000;

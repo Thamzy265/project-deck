@@ -29,7 +29,7 @@ import {
   schemaForClaude,
 } from './db-output.js';
 import type { JsonValue, Masker, MaskSettings } from './mask/masker.js';
-import { fitStatus } from './output.js';
+import { errorResult, fitStatus, jsonResult } from './output.js';
 import type { LoadedSettings } from './settings.js';
 import {
   DB_DIFF_DESCRIPTION,
@@ -90,7 +90,7 @@ export function registerDbTools(server: McpServer, ctx: DbToolContext): void {
       masking: ctx.maskingLine(settings.mask, masked.notes),
       warnings: masked.value.warnings,
     };
-    return json(fit(frame, restoreNumbers(masked.value.body)));
+    return jsonResult(fit(frame, restoreNumbers(masked.value.body)));
   };
 
   server.registerTool(
@@ -231,9 +231,5 @@ async function failure(
   }
   const full = [text, ...warnings].map(ctx.scrub).join('\n');
   const masked = await ctx.withMasker(settings.mask, (m) => m.mask(full));
-  return { isError: true, content: [{ type: 'text', text: masked.value }] };
-}
-
-function json(value: unknown): CallToolResult {
-  return { content: [{ type: 'text', text: JSON.stringify(value) }] };
+  return errorResult(masked.value);
 }
