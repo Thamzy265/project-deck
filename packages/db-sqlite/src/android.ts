@@ -245,7 +245,15 @@ export async function resolveAndroidSource(
         ),
       );
       const running = devices.filter((d) => isPackageName(d.process));
-      const matches = wanted.size > 0 ? running.filter((d) => wanted.has(d.process)) : running;
+      // One of the app's ids, or a build type or flavor of one (`<id>.<suffix>`): init
+      // writes the base id, and a debug build often runs as `<id>.debug` (review R2).
+      const matches =
+        wanted.size > 0
+          ? devices.flatMap((d) => {
+              const id = appIdOf(d.process, wanted);
+              return id === undefined ? [] : [{ serial: d.serial, process: id }];
+            })
+          : running;
       const picked = matches.find((d) => d.serial === chosen);
       if (picked !== undefined) return new AndroidSource(adb, picked.serial, picked.process);
       if (matches.length > 1) throw chooseDevice(matches.map((d) => d.serial));

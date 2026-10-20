@@ -65,3 +65,26 @@ describe('resolveAndroidSource: the device the user picked (review R2)', () => {
     ).rejects.toMatchObject({ code: 'unavailable' });
   });
 });
+
+describe('resolveAndroidSource: an id with a build-type suffix (review R2, round 2)', () => {
+  const shop = () => fakeApp({ name: 'shop_app', pid: FIXTURE_PID, device });
+
+  it('takes the running <id>.<suffix> when config.json has the base id', async () => {
+    const adb = new FakeAdb({
+      processes: { [FIXTURE_SERIAL]: { [FIXTURE_PID]: 'com.acme.app.debug' } },
+    });
+    const source = await resolveAndroidSource(adb, shop(), 'com.acme.app');
+    expect(source.packageName).toBe('com.acme.app.debug');
+  });
+
+  it('picks the device running the suffixed app over one running another app', async () => {
+    const adb = new FakeAdb({
+      processes: {
+        [FIXTURE_SERIAL]: { [FIXTURE_PID]: 'com.unrelated.game' },
+        R58M123ABC: { [FIXTURE_PID]: 'com.acme.app.debug' },
+      },
+    });
+    const source = await resolveAndroidSource(adb, shop(), 'com.acme.app');
+    expect(source.packageName).toBe('com.acme.app.debug');
+  });
+});
