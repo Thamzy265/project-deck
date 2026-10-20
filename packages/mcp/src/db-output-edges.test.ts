@@ -136,8 +136,8 @@ describe('fitSchema edges', () => {
     expect(out.truncated).toBe(true);
   });
 
-  // MCP-2: the same cut-every-string fallback shortens the note here too.
-  it.fails('keeps the note when 200 long left-out names alone pass 20 kB', () => {
+  // MCP-2 (fixed): the fallback cuts body text only, never the note.
+  it('keeps the note when 200 long left-out names alone pass 20 kB', () => {
     const tables = schemaForClaude(
       Array.from({ length: 300 }, (_, i) => table(`${'n'.repeat(4000)}${i}`, 1)),
     );
@@ -219,9 +219,9 @@ describe('fitDiff edges', () => {
 });
 
 describe('db_list and db_snapshot cuts (fitStatus)', () => {
-  // MCP-2: past 20 kB at 32 characters a string, the answer is only
-  // "FlutterDeck status was too large to show": wrong tool, and no untrusted note.
-  it.fails('keeps the note, and names the database list, when many databases pass 20 kB', () => {
+  // MCP-2 (fixed): the frame stays whole and long lists are cut before the last resort,
+  // whose problem text belongs to the tool.
+  it('keeps the note, and names the database list, when many databases pass 20 kB', () => {
     const databases = Array.from({ length: 1000 }, (_, i) => ({
       name: `db_${i}_${'x'.repeat(100)}`,
       backend: 'live',

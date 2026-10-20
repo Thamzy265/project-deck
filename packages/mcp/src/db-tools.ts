@@ -107,7 +107,11 @@ export function registerDbTools(server: McpServer, ctx: DbToolContext): void {
         args,
         () => ctx.daemon.dbList(),
         listForClaude,
-        (frame, body) => fitStatus({ ...frame, ...body }) as Json,
+        (frame, body) =>
+          fitStatus(
+            { ...frame, ...body },
+            'The database list was too large to show. Ask the user to look in the Database tab.',
+          ) as Json,
       ),
   );
 
@@ -182,7 +186,8 @@ export function registerDbTools(server: McpServer, ctx: DbToolContext): void {
           ...(snap.label === undefined ? {} : { label: snap.label }),
           next: 'Now let the action happen in the app (the user, or a hot reload or restart with the Dart MCP server), then call db_diff with this snapshotId.',
         }),
-        (frame, body) => fitStatus({ ...frame, ...body }) as Json,
+        (frame, body) =>
+          fitStatus({ ...frame, ...body }, 'The snapshot answer was too large to show.') as Json,
       ),
   );
 

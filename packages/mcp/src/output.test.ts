@@ -1,6 +1,13 @@
 import type { LogEntry } from '@project-deck/core';
 import { describe, expect, it } from 'vitest';
-import { MAX_OUTPUT_BYTES, MAX_OUTPUT_ENTRIES, escapeInvisible, fitLogs } from './output.js';
+import {
+  MAX_OUTPUT_BYTES,
+  MAX_OUTPUT_ENTRIES,
+  escapeInvisible,
+  fitKeepingFrame,
+  fitLogs,
+  fitStatus,
+} from './output.js';
 
 function entry(i: number, size = 10): LogEntry {
   return { ts: i, level: 'info', source: 'app', message: `${i} ${'x'.repeat(size)}`, seq: i };
@@ -78,5 +85,43 @@ describe('escapeInvisible (MCP-6)', () => {
   it('leaves ordinary text, emoji and other scripts alone', () => {
     const text = 'Grüße 漢字 😀 مرحبا';
     expect(escapeInvisible(text)).toBe(text);
+  });
+});
+
+describe('fitKeepingFrame (MCP-2)', () => {
+  const frame = {
+    note: 'n'.repeat(300),
+    masking: 'm'.repeat(300),
+    warnings: ['w'.repeat(300)],
+    hint: 'h'.repeat(300),
+  };
+
+  it('cuts body text and keeps the frame whole', () => {
+    const out = fitKeepingFrame(
+      { ...frame, items: Array.from({ length: 40 }, () => 'x'.repeat(4000)) },
+      'p',
+    );
+    expect(Buffer.byteLength(JSON.stringify(out))).toBeLessThanOrEqual(MAX_OUTPUT_BYTES);
+    expect(out).toMatchObject({ ...frame, truncated: true });
+    expect(out).not.toHaveProperty('problem');
+  });
+
+  it('cuts long lists next, and says so', () => {
+    const out = fitKeepingFrame(
+      { ...frame, items: Array.from({ length: 5000 }, (_, i) => i) },
+      'p',
+    );
+    expect(Buffer.byteLength(JSON.stringify(out))).toBeLessThanOrEqual(MAX_OUTPUT_BYTES);
+    expect(out).toMatchObject({ ...frame, truncated: true, listsCut: true });
+  });
+
+  it("ends with the frame and the tool's own problem text", () => {
+    const keys = Object.fromEntries(Array.from({ length: 3000 }, (_, i) => [`key_${i}`, i]));
+    const out = fitKeepingFrame({ ...frame, ...keys }, 'The diff was too large to show.');
+    expect(out).toEqual({ ...frame, truncated: true, problem: 'The diff was too large to show.' });
+  });
+
+  it('keeps deck_status whole when it fits', () => {
+    expect(fitStatus({ a: 1 })).toEqual({ a: 1, truncated: false });
   });
 });

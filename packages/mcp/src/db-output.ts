@@ -5,7 +5,7 @@
  */
 import type { Cell, DbDiff, DbList, RowKey, TableDiff, TableInfo } from '@project-deck/core';
 import type { JsonValue } from './mask/masker.js';
-import { MAX_OUTPUT_BYTES, shorten } from './output.js';
+import { MAX_OUTPUT_BYTES, fitKeepingFrame } from './output.js';
 
 type Json = { [key: string]: JsonValue };
 
@@ -76,13 +76,9 @@ function largestFitting(max: number, build: (n: number) => unknown): number {
   return lo;
 }
 
-/** Cuts every long text shorter and shorter until it fits; the last resort. */
+/** The last resort: cuts body text, never the frame (note, masking, warnings, hint). */
 function shortenToFit(value: Json, problem: string): Json {
-  for (const max of [2048, 1024, 512, 256, 128, 64, 32]) {
-    const cut = shorten(value, max) as Json;
-    if (fits(cut)) return cut;
-  }
-  return { truncated: true, problem };
+  return fitKeepingFrame(value, problem) as Json;
 }
 
 // ---- db_query ----

@@ -114,18 +114,63 @@ function hint(shown: number): string {
 }
 
 /**
- * deck_status within the same 20 kB: if it doesn't fit, every long string is cut
- * shorter and shorter until it does, and `truncated` says so.
+ * A small answer (deck_status, db_list, db_snapshot) within the same 20 kB; `truncated`
+ * says whether it was cut. `problem` is the tool's own words for the last resort.
  */
-export function fitStatus(value: Record<string, unknown>): Record<string, unknown> {
-  const fits = (v: unknown) => Buffer.byteLength(JSON.stringify(v)) <= MAX_OUTPUT_BYTES;
+export function fitStatus(
+  value: Record<string, unknown>,
+  problem = 'FlutterDeck status was too large to show.',
+): Record<string, unknown> {
   const whole = { ...value, truncated: false };
-  if (fits(whole)) return whole;
-  for (const max of [2048, 1024, 512, 256, 128, 64, 32]) {
-    const cut = { ...(shorten(value, max) as Record<string, unknown>), truncated: true };
-    if (fits(cut)) return cut;
+  if (fitsOutput(whole)) return whole;
+  return fitKeepingFrame(value, problem);
+}
+
+/**
+ * Fields every answer keeps whole, however much else is cut: what Claude must read
+ * about the rest (the untrusted note, masking, warnings, the hint) (MCP-2).
+ */
+export const FRAME_KEYS: readonly string[] = ['note', 'masking', 'warnings', 'hint'];
+
+const fitsOutput = (v: unknown) => Buffer.byteLength(JSON.stringify(v)) <= MAX_OUTPUT_BYTES;
+
+/**
+ * The last resort for an answer over 20 kB: cuts the text of everything but the frame
+ * shorter and shorter, then long lists, and finally gives the frame with `problem`.
+ */
+export function fitKeepingFrame(
+  value: Record<string, unknown>,
+  problem: string,
+): Record<string, unknown> {
+  const frame: Record<string, unknown> = {};
+  const body: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (FRAME_KEYS.includes(key)) frame[key] = item;
+    else body[key] = item;
   }
-  return { truncated: true, problem: 'FlutterDeck status was too large to show.' };
+  for (const max of [2048, 1024, 512, 256, 128, 64, 32]) {
+    const cut = { ...frame, ...(shorten(body, max) as object), truncated: true };
+    if (fitsOutput(cut)) return cut;
+  }
+  for (const items of [100, 20, 5, 1, 0]) {
+    const cut = {
+      ...frame,
+      ...(shorten(limitLists(body, items), 32) as object),
+      truncated: true,
+      listsCut: true,
+    };
+    if (fitsOutput(cut)) return cut;
+  }
+  return { ...frame, truncated: true, problem };
+}
+
+/** Every list cut to its first `max` items. */
+function limitLists(value: unknown, max: number): unknown {
+  if (Array.isArray(value)) return value.slice(0, max).map((v) => limitLists(v, max));
+  if (typeof value === 'object' && value !== null) {
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, limitLists(v, max)]));
+  }
+  return value;
 }
 
 export function shorten(value: unknown, max: number): unknown {
