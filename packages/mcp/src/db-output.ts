@@ -167,7 +167,7 @@ export function fitSchema(frame: Json, tables: Json[]): Json {
       truncated: true,
       tablesLeftOut: rest.length,
       leftOutNames: rest.slice(0, MAX_LEFT_OUT_NAMES).map((t) => t.name ?? null),
-      hint: `${rest.length} table${rest.length === 1 ? ' was' : 's were'} left out to keep this answer under 20 kB. Read one table's columns with db_query: PRAGMA table_info("<table>").`,
+      hint: `${rest.length} table${rest.length === 1 ? ' was' : 's were'} left out to keep this answer under 20 kB. Their columns are shown only by db_schema, so this answer can't list them; db_query can still read their rows by name.`,
     };
   };
   if (fits(build(tables.length))) return build(tables.length);

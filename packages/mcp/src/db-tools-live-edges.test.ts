@@ -241,3 +241,92 @@ describe('crafted names and the cap (real daemon)', { timeout: 30_000 }, () => {
     expect(Buffer.byteLength(out.text)).toBeLessThanOrEqual(MAX_OUTPUT_BYTES);
   });
 });
+
+describe('schema text and column defaults (review R1)', { timeout: 30_000 }, () => {
+  it.each([
+    'SELECT sql FROM sqlite_schema',
+    'SELECT * FROM sqlite_master',
+    'SELECT upper(sql) AS s FROM sqlite_master',
+    'SELECT sql FROM sqlite_temp_schema',
+    "SELECT count(*) FROM sqlite_master WHERE sql LIKE '%zq81%'",
+    'SELECT m.name, p.name FROM sqlite_master m JOIN pragma_table_xinfo(m.name) p WHERE m.sql IS NOT NULL',
+  ])('refuses CREATE text to Claude, even with no hidden columns: %s', async (sql) => {
+    const { mcp } = await setup();
+    const out = await call(mcp, 'db_query', { db: 'app', sql });
+    expect(out.isError, sql).toBe(true);
+    expect(out.text).toMatch(/db_schema/);
+    expect(out.text).not.toMatch(/zq81/);
+  });
+
+  it('still lets Claude read table names from sqlite_master', async () => {
+    const { mcp } = await setup(HIDDEN);
+    const out = await call(mcp, 'db_query', {
+      db: 'app',
+      sql: "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name",
+    });
+    expect(out.isError).toBe(false);
+    expect(out.json.rows).toEqual([[INJECTED_TABLE], ['users']]);
+  });
+
+  it.each([
+    'PRAGMA table_info(users)',
+    "PRAGMA table_xinfo('users')",
+    'PRAGMA main.table_info("users")',
+    'PRAGMA /* note */ table_info(users)',
+  ])('clears a hidden column default in %s and keeps the others', async (sql) => {
+    const { mcp } = await setup(HIDDEN);
+    const out = await call(mcp, 'db_query', { db: 'app', sql });
+    expect(out.isError, sql).toBe(false);
+    expect(out.text).not.toMatch(/zq81/);
+    const columns = out.json.columns as string[];
+    const name = columns.indexOf('name');
+    const dflt = columns.indexOf('dflt_value');
+    const rows = out.json.rows as unknown[][];
+    const byName: Record<string, unknown> = {};
+    for (const r of rows) byName[String(r[name])] = r[dflt];
+    expect(byName).toMatchObject({ api_key: null, name: null, plan: null });
+  });
+
+  it.each([
+    "SELECT * FROM pragma_table_info('users')",
+    "SELECT dflt_value AS d FROM pragma_table_xinfo('users')",
+    'SELECT m.name, p.* FROM sqlite_master m JOIN pragma_table_xinfo(m.name) p',
+    "SELECT p.name, p.dflt_value FROM pragma_table_info('users') p JOIN users u ON u.name = p.name",
+  ])('never shows a hidden column default through %s', async (sql) => {
+    const { mcp } = await setup(HIDDEN);
+    const out = await call(mcp, 'db_query', { db: 'app', sql });
+    expect(out.text, sql).not.toMatch(/zq81/);
+    if (out.isError) expect(out.text).toMatch(/db_schema/);
+  });
+
+  it('lets Claude read the other columns of pragma_table_info', async () => {
+    const { mcp } = await setup(HIDDEN);
+    const out = await call(mcp, 'db_query', {
+      db: 'app',
+      sql: "SELECT name, type FROM pragma_table_info('users')",
+    });
+    expect(out.isError).toBe(false);
+    expect((out.json.rows as unknown[][]).map((r) => r[0])).toEqual([
+      'email',
+      'name',
+      'api_key',
+      'plan',
+    ]);
+  });
+
+  it('points a cut schema to db_schema, never to PRAGMA table_info', async () => {
+    const { fitSchema, schemaForClaude } = await import('./db-output.js');
+    const tables = schemaForClaude(
+      Array.from({ length: 2000 }, (_, i) => ({
+        name: `table_${i}`,
+        kind: 'table' as const,
+        columns: [{ name: 'id', type: 'INTEGER', nullable: false, pk: true, default: null }],
+        foreignKeys: [],
+        indexes: [],
+      })),
+    );
+    const out = fitSchema({ note: DB_UNTRUSTED_TEXT }, tables);
+    expect(out.hint).toMatch(/db_schema/);
+    expect(out.hint).not.toMatch(/PRAGMA/i);
+  });
+});

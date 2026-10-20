@@ -127,6 +127,9 @@ type Policy =
       hidden: HiddenColumns;
       /** Virtual tables holding a hidden column, with their shadow tables (SG-2). */
       hiddenTables: ReadonlySet<string>;
+      /** Claude's rules for schema text and column defaults (review R1). */
+      claude: boolean;
+      anyHidden: boolean;
     };
 
 interface Scratch {
@@ -165,6 +168,27 @@ const written = (seen: Seen): number => seen.written.size;
 
 /** Reads the denial afresh: authorizer callbacks set it while SQLite prepares. */
 const denialOf = (seen: Seen): GuardRefusal | undefined => seen.denial;
+
+/** The schema tables whose `sql` column holds CREATE text (folded names). */
+const CREATE_TEXT_TABLES: ReadonlySet<string> = new Set(['sqlite_master', 'sqlite_temp_master']);
+const DEFAULT_PRAGMAS: ReadonlySet<string> = new Set(['pragma_table_info', 'pragma_table_xinfo']);
+
+/** Claude never reads CREATE text, nor column defaults while any column is hidden (R1). */
+function claudeRule(table: string, column: string, anyHidden: boolean): GuardRefusal | undefined {
+  if (CREATE_TEXT_TABLES.has(table) && column === 'sql') {
+    return refuse(
+      'hidden-column',
+      "The CREATE text in sqlite_schema (its sql column) isn't shown to Claude. db_schema shows the tables, columns, keys and indexes; sqlite_schema's other columns can be read.",
+    );
+  }
+  if (anyHidden && DEFAULT_PRAGMAS.has(table) && column === 'dflt_value') {
+    return refuse(
+      'hidden-column',
+      `Column defaults from ${table} aren't shown while some columns are hidden (db.hiddenColumns). db_schema shows the defaults Claude may see; ${table}'s other columns can be read.`,
+    );
+  }
+  return undefined;
+}
 
 const refuse = (code: GuardRefusal['code'], reason: string): GuardRefusal => ({
   ok: false,
@@ -252,6 +276,8 @@ export class GuardEngine {
       seen,
       hidden,
       hiddenTables: this.hiddenTables(scratch, opts.hiddenColumns ?? []),
+      claude: opts.claude === true,
+      anyHidden: (opts.hiddenColumns ?? []).length > 0,
     };
     try {
       return this.judge(scratch, sql, opts.mode, seen, hidden);
@@ -604,6 +630,10 @@ export class GuardEngine {
   ): GuardRefusal | undefined {
     const leak = LEAKY_TABLES.get(table);
     if (leak !== undefined) return refuse('table', `Reading ${table} is not allowed: ${leak}.`);
+    if (policy.claude) {
+      const refusal = claudeRule(table, column, policy.anyHidden);
+      if (refusal !== undefined) return refusal;
+    }
     const scratch = this.current;
     if (!BUILTIN_READABLE.has(table) && !(scratch?.relations.has(table) ?? false)) {
       // Table-valued functions keep their own rules, whatever a CTE is called.

@@ -17,6 +17,12 @@ export interface GuardCheckOptions {
    * Callers pass them for Claude's queries.
    */
   hiddenColumns?: readonly HiddenColumn[];
+  /**
+   * Claude's queries (review R1): the CREATE text in sqlite_schema (its `sql` column) is
+   * never read, and while any column is hidden, neither are the column defaults of
+   * pragma_table_info and pragma_table_xinfo, which can't be told apart per table.
+   */
+  claude?: boolean;
 }
 
 export const GuardRefusalCodeSchema = z.enum([

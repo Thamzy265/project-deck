@@ -24,6 +24,7 @@ import { DB_UNTRUSTED_TEXT, DbError, isDbError, parseHiddenColumn } from '@proje
 import type { GuardCheckOptions, GuardResult, SqlGuard } from '@project-deck/sql-guard';
 import type { TableVisibility } from './db-diff.js';
 import { CLAUDE_DIFF_CAPS, DASHBOARD_DIFF_CAPS, buildDiff } from './db-diff.js';
+import { clearHiddenDefaults, fold } from './hidden-defaults.js';
 
 /**
  * Who asks. Token callers (the MCP server, the CLI) count as Claude: hidden columns
@@ -97,7 +98,6 @@ const noApp = (): DbError =>
   );
 
 /** SQLite folds ASCII letters only when it compares names. */
-const fold = (name: string): string => name.replace(/[A-Z]/g, (c) => c.toLowerCase());
 
 /** A name in double quotes, safe in SQL whatever it holds. */
 function quoteIdent(name: string): string {
@@ -308,7 +308,8 @@ export class DbService {
     const hiddenColumns = caller === 'claude' ? this.hidden() : undefined;
     const { verdict, schemaSql } = await this.check(source, input.db, input.sql, {
       mode: 'read',
-      ...(hiddenColumns === undefined ? {} : { hiddenColumns }),
+      // Claude never reads CREATE text, nor pragma defaults while columns are hidden (R1).
+      ...(hiddenColumns === undefined ? {} : { hiddenColumns, claude: true }),
     });
     let result: QueryResult;
     try {
@@ -322,6 +323,7 @@ export class DbService {
     }
     if (caller === 'claude' && hiddenColumns !== undefined && hiddenColumns.length > 0) {
       await this.checkResultColumns(source, input.db, schemaSql, verdict.tables, result.columns);
+      if (verdict.kind === 'pragma') result = clearHiddenDefaults(input.sql, result, hiddenColumns);
     }
     return result;
   }
