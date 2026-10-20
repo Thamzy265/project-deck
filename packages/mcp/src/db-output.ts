@@ -83,6 +83,21 @@ function shortenToFit(value: Json, problem: string): Json {
 
 // ---- db_query ----
 
+/**
+ * Rows past twice the output cap, unmasked, could never be shown, so they are dropped
+ * before masking: masking them would spend the user rules' time budget on text no one
+ * sees, and a rule cut short leaves the shown rows unmasked (review R8). The margin
+ * allows for masking that shortens text; the first row is always kept.
+ */
+export function rowsWorthMasking(rows: JsonValue[][]): { rows: JsonValue[][]; dropped: boolean } {
+  let total = 0;
+  for (let i = 0; i < rows.length; i++) {
+    total += Buffer.byteLength(JSON.stringify(rows[i])) + 1;
+    if (i > 0 && total > 2 * MAX_OUTPUT_BYTES) return { rows: rows.slice(0, i), dropped: true };
+  }
+  return { rows, dropped: false };
+}
+
 export function fitQuery(
   frame: Json,
   columns: JsonValue[],

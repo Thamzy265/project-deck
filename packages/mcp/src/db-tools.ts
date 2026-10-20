@@ -26,6 +26,7 @@ import {
   listForClaude,
   problemHint,
   restoreNumbers,
+  rowsWorthMasking,
   schemaForClaude,
 } from './db-output.js';
 import type { JsonValue, Masker, MaskSettings } from './mask/masker.js';
@@ -151,12 +152,15 @@ export function registerDbTools(server: McpServer, ctx: DbToolContext): void {
         McpDbQueryInput,
         args,
         (input) => ctx.daemon.dbQuery(input),
-        (result) => ({
-          columns: result.columns,
-          rows: result.rows.map(cellsForClaude),
-          moreRows: result.truncated,
-          durationMs: Math.round(result.durationMs),
-        }),
+        (result) => {
+          const { rows, dropped } = rowsWorthMasking(result.rows.map(cellsForClaude));
+          return {
+            columns: result.columns,
+            rows,
+            moreRows: result.truncated || dropped,
+            durationMs: Math.round(result.durationMs),
+          };
+        },
         (frame, body) =>
           fitQuery(
             { ...frame, durationMs: body.durationMs ?? null },

@@ -3,7 +3,7 @@
  * and masked, and how every refusal reads. The real daemon and gate are in
  * db-tools-live.test.ts.
  */
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -425,5 +425,30 @@ describe('no write path', () => {
     expect(
       daemon.requests.map((r) => r.path).filter((p) => /execute|device|queries/.test(p)),
     ).toEqual([]);
+  });
+});
+
+describe('masking only what can be shown (review R8)', () => {
+  it('runs slow user rules on the rows that can fit, so they finish and mask them', async () => {
+    // A rule that is slow on long runs of x, then a rule for the secret. On 500 rows the
+    // first rule runs out of the 200 ms budget and the second never runs.
+    await writeFile(
+      join(projectDir, '.flutterdeck', 'config.json'),
+      JSON.stringify({ version: 1, logs: { rules: ['@w*q', 'SECRET-@d+'] } }).replaceAll(
+        '@',
+        '\\\\',
+      ),
+    );
+    const { daemon, client } = await setup();
+    const x = 'x'.repeat(500);
+    const rows = Array.from({ length: 500 }, (_, i) => [i === 0 ? 'SECRET-123' : 'ok', x, x, x]);
+    daemon.route('POST', '/api/db/query', () =>
+      ok({ columns: ['a', 'b', 'c', 'd'], rows, truncated: false, durationMs: 1 }),
+    );
+    const out = await call(client, 'db_query', { db: 'app', sql: 'SELECT 1', limit: 500 });
+    expect(out.isError).toBe(false);
+    expect(out.text).not.toContain('SECRET-123');
+    expect(out.json.masking).not.toMatch(/skipped/);
+    expect(out.json.truncated).toBe(true);
   });
 });

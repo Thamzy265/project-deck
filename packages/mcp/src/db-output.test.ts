@@ -9,6 +9,7 @@ import {
   fitQuery,
   fitSchema,
   restoreNumbers,
+  rowsWorthMasking,
   schemaForClaude,
 } from './db-output.js';
 import { MAX_OUTPUT_BYTES } from './output.js';
@@ -252,5 +253,24 @@ describe('fitDiff', () => {
       }),
       expect.objectContaining({ table: 'log', matchedByRowid: true }),
     ]);
+  });
+});
+
+describe('rowsWorthMasking (review R8)', () => {
+  it('keeps rows up to twice the cap and says when it dropped some', () => {
+    const rows = Array.from({ length: 100 }, () => ['y'.repeat(1000)]);
+    const out = rowsWorthMasking(rows);
+    expect(out.dropped).toBe(true);
+    expect(out.rows.length).toBeGreaterThanOrEqual(39);
+    expect(out.rows.length).toBeLessThanOrEqual(40);
+    expect(rowsWorthMasking(rows.slice(0, 10))).toEqual({
+      rows: rows.slice(0, 10),
+      dropped: false,
+    });
+  });
+
+  it('always keeps the first row', () => {
+    const huge = [['z'.repeat(100_000)], ['a']];
+    expect(rowsWorthMasking(huge).rows).toEqual([huge[0]]);
   });
 });
