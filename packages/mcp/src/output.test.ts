@@ -116,6 +116,29 @@ describe('fitKeepingFrame (MCP-2)', () => {
     expect(out).not.toHaveProperty('problem');
   });
 
+  it('keeps rowCount, columnsLeftOut and tablesLeftOut true to what a list cut shows (review R7)', () => {
+    const columns = Array.from({ length: 3000 }, (_, i) => `c${i}`);
+    const out = fitKeepingFrame(
+      {
+        ...frame,
+        columns,
+        rows: Array.from({ length: 300 }, () => columns.map(() => 1)),
+        rowCount: 300,
+        columnsLeftOut: 7,
+        tables: Array.from({ length: 3000 }, (_, i) => ({ name: `t${i}` })),
+        tablesLeftOut: 2,
+      },
+      'p',
+    );
+    expect(out.listsCut).toBe(true);
+    const shownColumns = (out.columns as unknown[]).length;
+    const shownTables = (out.tables as unknown[]).length;
+    expect(out.rowCount).toBe((out.rows as unknown[]).length);
+    expect(out.columnsLeftOut).toBe(7 + 3000 - shownColumns);
+    expect(out.tablesLeftOut).toBe(2 + 3000 - shownTables);
+    expect(out.listsCutNote).toMatch(/counts/);
+  });
+
   it('cuts long lists next, and says so', () => {
     const out = fitKeepingFrame(
       { ...frame, items: Array.from({ length: 5000 }, (_, i) => i) },

@@ -154,15 +154,45 @@ export function fitKeepingFrame(
     if (fitsOutput(cut)) return cut;
   }
   for (const items of [100, 20, 5, 1, 0]) {
+    const limited = shorten(limitLists(body, items), 32) as Record<string, unknown>;
     const cut = {
       ...frame,
-      ...(shorten(limitLists(body, items), 32) as object),
+      ...limited,
+      ...recount(body, limited),
       truncated: true,
       listsCut: true,
+      listsCutNote: LISTS_CUT_NOTE,
     };
     if (fitsOutput(cut)) return cut;
   }
   return { ...frame, truncated: true, problem };
+}
+
+const LISTS_CUT_NOTE =
+  'Lists were cut to fit 20 kB. rowCount, columnsLeftOut and tablesLeftOut describe what is shown; counts inside items (such as a diff table’s counts) are the full totals.';
+
+/**
+ * The top-level counters of a cut answer, made true to the lists it still shows (R7):
+ * rowCount is the rows shown, and columns or tables cut away join the left-out counts.
+ */
+function recount(
+  before: Record<string, unknown>,
+  after: Record<string, unknown>,
+): Record<string, unknown> {
+  const length = (v: unknown) => (Array.isArray(v) ? v.length : 0);
+  const count = (v: unknown) => (typeof v === 'number' ? v : 0);
+  const out: Record<string, unknown> = {};
+  if ('rowCount' in before) out.rowCount = length(after.rows);
+  if (Array.isArray(before.columns) && 'columnsLeftOut' in before) {
+    out.columnsLeftOut =
+      count(before.columnsLeftOut) + length(before.columns) - length(after.columns);
+  } else if (Array.isArray(before.columns) && length(after.columns) < length(before.columns)) {
+    out.columnsLeftOut = length(before.columns) - length(after.columns);
+  }
+  if (Array.isArray(before.tables) && length(after.tables) < length(before.tables)) {
+    out.tablesLeftOut = count(before.tablesLeftOut) + length(before.tables) - length(after.tables);
+  }
+  return out;
 }
 
 /** Every list cut to its first `max` items. */
