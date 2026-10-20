@@ -337,13 +337,19 @@ export class GuardEngine {
       if (!tailIsEmpty()) {
         return refuse('multiple-statements', 'Send only one statement at a time.');
       }
-      const explain = capi.sqlite3_stmt_isexplain(stmt) !== 0;
+      // 1: EXPLAIN (bytecode); 2: EXPLAIN QUERY PLAN.
+      const explainMode = capi.sqlite3_stmt_isexplain(stmt);
+      const explain = explainMode !== 0;
       if (explain && capi.sqlite3_stmt_explain(stmt, 0) !== SQLITE_OK) {
         return refuse('invalid-sql', 'SQLite could not read the explained statement.');
       }
       // Re-preparing in normal mode runs the authorizer again on the inner statement.
       const innerDenial = denialOf(seen);
       if (innerDenial !== undefined) return innerDenial;
+      if (explainMode === 1) {
+        const bytecode = this.claudeBytecodeRule(seen);
+        if (bytecode !== undefined) return bytecode;
+      }
       const readOnly = capi.sqlite3_stmt_readonly(stmt) !== 0;
       if (mode === 'read' && !readOnly) {
         return refuse(
@@ -618,6 +624,30 @@ export class GuardEngine {
       return refuse(
         'multiple-tables',
         `An edit may change one table only; this one also changes ${[...seen.written].join(', ')} (for example through a trigger).`,
+      );
+    }
+    return undefined;
+  }
+
+  /**
+   * Bytecode EXPLAIN puts literals in the opcodes' p4: a PRAGMA's column defaults, and a
+   * column's default or generating expression where it is read. For Claude it is refused
+   * for any PRAGMA, and for anything while a column is hidden (review R1-b). EXPLAIN QUERY
+   * PLAN shows no literals and stays allowed.
+   */
+  private claudeBytecodeRule(seen: Seen): GuardRefusal | undefined {
+    const policy = this.policy;
+    if (policy.kind !== 'check' || !policy.claude) return undefined;
+    if (seen.pragma) {
+      return refuse(
+        'pragma',
+        "EXPLAIN of a PRAGMA isn't shown to Claude: its bytecode holds column defaults. Run the PRAGMA itself, or use db_schema.",
+      );
+    }
+    if (policy.anyHidden) {
+      return refuse(
+        'hidden-column',
+        "Bytecode EXPLAIN isn't shown to Claude while some columns are hidden (db.hiddenColumns): it can hold their defaults and expressions. EXPLAIN QUERY PLAN still works.",
       );
     }
     return undefined;

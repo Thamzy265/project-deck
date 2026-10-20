@@ -66,3 +66,33 @@ describe("Claude's rules for schema text and defaults (review R1)", () => {
     ).toMatchObject({ ok: true });
   });
 });
+
+describe('bytecode EXPLAIN for Claude (review R1-b)', () => {
+  it.each([
+    'EXPLAIN PRAGMA table_info(users)',
+    'EXPLAIN PRAGMA main.table_xinfo("users")',
+    "explain pragma TABLE_INFO('users')",
+    'EXPLAIN PRAGMA index_list(users)',
+  ])('refuses EXPLAIN of a PRAGMA always: %s', async (sql) => {
+    for (const hide of [false, true]) {
+      expect(await read(sql, { claude: true, hide }), sql).toMatchObject({ ok: false });
+    }
+    // The dashboard keeps it.
+    expect(await read(sql)).toMatchObject({ ok: true, kind: 'explain' });
+  });
+
+  it('refuses bytecode EXPLAIN of a SELECT while columns are hidden, and keeps EXPLAIN QUERY PLAN', async () => {
+    const select = 'EXPLAIN SELECT name FROM users';
+    expect(await read(select, { claude: true, hide: true })).toMatchObject({
+      ok: false,
+      code: 'hidden-column',
+    });
+    expect(await read(select, { claude: true })).toMatchObject({ ok: true, kind: 'explain' });
+    expect(
+      await read('EXPLAIN QUERY PLAN SELECT name FROM users', { claude: true, hide: true }),
+    ).toMatchObject({ ok: true, kind: 'explain' });
+    expect(
+      await read('EXPLAIN QUERY PLAN PRAGMA table_info(users)', { claude: true, hide: true }),
+    ).toMatchObject({ ok: true });
+  });
+});

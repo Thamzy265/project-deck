@@ -330,3 +330,43 @@ describe('schema text and column defaults (review R1)', { timeout: 30_000 }, () 
     expect(out.hint).not.toMatch(/PRAGMA/i);
   });
 });
+
+describe('bytecode EXPLAIN (review R1-b)', { timeout: 30_000 }, () => {
+  it.each([
+    'EXPLAIN PRAGMA table_info(users)',
+    'EXPLAIN PRAGMA main.table_xinfo("users")',
+    "EXPLAIN PRAGMA table_info('users')",
+  ])('never shows a hidden default through %s', async (sql) => {
+    const { mcp } = await setup(HIDDEN);
+    const out = await call(mcp, 'db_query', { db: 'app', sql });
+    expect(out.text, sql).not.toMatch(/zq81/);
+    expect(out.isError, sql).toBe(true);
+  });
+
+  it('refuses EXPLAIN of a PRAGMA even with no hidden columns', async () => {
+    const { mcp } = await setup();
+    const out = await call(mcp, 'db_query', { db: 'app', sql: 'EXPLAIN PRAGMA table_info(users)' });
+    expect(out.isError).toBe(true);
+  });
+
+  it.each([
+    'EXPLAIN SELECT * FROM users',
+    'EXPLAIN SELECT name FROM users',
+    'EXPLAIN SELECT name, plan FROM users ORDER BY plan',
+  ])('refuses bytecode EXPLAIN of %s while columns are hidden', async (sql) => {
+    const { mcp } = await setup(HIDDEN);
+    const out = await call(mcp, 'db_query', { db: 'app', sql });
+    expect(out.isError, sql).toBe(true);
+    expect(out.text).not.toMatch(/zq81/);
+  });
+
+  it('keeps EXPLAIN QUERY PLAN while columns are hidden', async () => {
+    const { mcp } = await setup(HIDDEN);
+    const out = await call(mcp, 'db_query', {
+      db: 'app',
+      sql: 'EXPLAIN QUERY PLAN SELECT name FROM users',
+    });
+    expect(out.isError).toBe(false);
+    expect(out.text).not.toMatch(/zq81/);
+  });
+});
