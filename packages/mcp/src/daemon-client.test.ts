@@ -1,7 +1,8 @@
-import { mkdtemp, readdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import type { WriteRuntimeOptions } from '@project-deck/core/node';
 import type { DaemonClientOptions } from './daemon-client.js';
 import { DaemonClient, DaemonError, NOT_RUNNING, NOT_SET_UP } from './daemon-client.js';
 import { FakeDaemon, initProject } from './testing/fake-daemon.js';
@@ -27,10 +28,20 @@ afterEach(async () => {
 });
 
 async function fake(): Promise<FakeDaemon> {
-  const f = await FakeDaemon.start(projectDir);
+  return fakeWith({});
+}
+
+async function fakeWith(runtime: WriteRuntimeOptions): Promise<FakeDaemon> {
+  const f = await FakeDaemon.start(projectDir, runtime);
   fakes.push(f);
   return f;
 }
+
+/**
+ * For tests where no daemon ever comes up. Tests that expect one get the 5 s default:
+ * a new runtime.json can take Windows more than 0.3 s to put in place.
+ */
+const GIVE_UP_MS = 300;
 
 function client(opts: Partial<DaemonClientOptions> = {}): DaemonClient {
   return new DaemonClient({
@@ -38,7 +49,7 @@ function client(opts: Partial<DaemonClientOptions> = {}): DaemonClient {
     version: '0.0.0',
     projectId: () => Promise.resolve('aaaaaaaaaaaa'),
     spawnDaemon: () => undefined,
-    readyTimeoutMs: 300,
+    readyTimeoutMs: 5000,
     pollMs: 20,
     ...opts,
   });
@@ -166,7 +177,7 @@ describe('DaemonClient', () => {
   it('treats a non-FlutterDeck health answer as no daemon', async () => {
     const f = await fake();
     f.route('GET', '/api/health', () => ({ status: 200, body: { hello: 'world' } }));
-    const err = await rejection(client().status());
+    const err = await rejection(client({ readyTimeoutMs: GIVE_UP_MS }).status());
     expect(err.message).toBe(NOT_RUNNING);
     expect(f.requests.every((r) => r.headers['x-deck-token'] === undefined)).toBe(true);
   });
@@ -385,6 +396,42 @@ describe('DaemonClient when the daemon is down', () => {
     expect(spawned).toBe(2);
   });
 
+  it('waits for the second daemon while Windows holds up its runtime.json', async () => {
+    let spawned = 0;
+    let refused = 0;
+    const c = client({
+      spawnDaemon: () => {
+        spawned++;
+        if (spawned === 1) {
+          track(
+            fake().then((f) =>
+              f.route('GET', '/api/status', () => {
+                track(f.stop());
+                return 'hang';
+              }),
+            ),
+          );
+          return;
+        }
+        // Windows refuses the rename while this client's poll has the old runtime.json
+        // open; core retries with back-off, so the new file lands about 0.6 s later.
+        const busyRename = async (from: string, to: string): Promise<void> => {
+          if (refused < 6) {
+            refused++;
+            throw Object.assign(new Error('EPERM: operation not permitted, rename'), {
+              code: 'EPERM',
+            });
+          }
+          await rename(from, to);
+        };
+        track(fakeWith({ rename: busyRename }));
+      },
+    });
+    expect((await c.status()).value.projectName).toBe('shop_app');
+    expect(spawned).toBe(2);
+    expect(refused).toBe(6);
+  });
+
   it('starts it at most twice for one call', async () => {
     let spawned = 0;
     const c = client({
@@ -408,6 +455,7 @@ describe('DaemonClient when the daemon is down', () => {
     let spawned = 0;
     const err = await rejection(
       client({
+        readyTimeoutMs: GIVE_UP_MS,
         spawnDaemon: () => {
           spawned++;
         },

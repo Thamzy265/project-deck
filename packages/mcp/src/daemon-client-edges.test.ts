@@ -232,6 +232,8 @@ describe('the daemon going away', () => {
     await raw((req) => req.socket.destroy());
     let spawned = 0;
     const c = client({
+      // A new runtime.json can take Windows more than the 0.3 s default to put in place.
+      readyTimeoutMs: 5000,
       spawnDaemon: () => {
         spawned++;
         track(fake());
@@ -338,6 +340,8 @@ describe('a damaged or hostile runtime.json', () => {
     await writeRawRuntime(JSON.stringify({ pid: 999_999, port, token, startedAt: 0 }));
     let spawned = 0;
     const c = client({
+      // A new runtime.json can take Windows more than the 0.3 s default to put in place.
+      readyTimeoutMs: 5000,
       spawnDaemon: () => {
         spawned++;
         track(fake());
