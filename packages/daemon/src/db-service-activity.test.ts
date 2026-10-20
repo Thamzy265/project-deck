@@ -141,6 +141,27 @@ describe('DbService: Activity events (design note, Observability)', () => {
     ]);
   });
 
+  it('announces an edit refused for not naming one written table as denied (review R5)', async () => {
+    const cases: (string[] | undefined)[] = [undefined, [], ['orders', 'audit_log']];
+    for (const written of cases) {
+      const { service, guard, events } = await setup();
+      const base = { ok: true as const, kind: 'write' as const, functions: [], recursive: false };
+      guard.answer(sql, {
+        ...base,
+        tables: ['orders'],
+        ...(written === undefined ? {} : { written }),
+      });
+      await expect(service.requestEdit({ db: 'app', sql, params: ['x', 1] })).rejects.toMatchObject(
+        {
+          code: 'refused',
+        },
+      );
+      expect(events, JSON.stringify(written)).toEqual([
+        ['db.write', { db: 'app', tables: ['orders'], allowed: false }],
+      ]);
+    }
+  });
+
   it('announces a cancelled edit as denied, once, and an unknown id not at all', async () => {
     const { service, guard, events } = await setup();
     guard.answer(sql, write);

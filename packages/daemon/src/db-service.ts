@@ -497,6 +497,13 @@ export class DbService {
     let verdict: Extract<GuardResult, { ok: true }>;
     try {
       ({ verdict } = await this.check(source, input.db, input.sql, { mode: 'write' }));
+      // The gate passes an edit only when it writes exactly one table; anything else
+      // fails closed, and counts as a denied write like any other refusal (review R5).
+      if (verdict.written?.length !== 1) {
+        throw new DbError('refused', 'An edit must insert, update or delete rows of one table.', {
+          detail: 'not-an-edit',
+        });
+      }
     } catch (err) {
       // A refused edit is a denied write too (lead decision G4): names only, never SQL.
       if (isDbError(err) && err.code === 'refused') {
@@ -510,14 +517,8 @@ export class DbService {
       throw err;
     }
     // The confirm and Activity name the table the edit writes, not tables it only
-    // reads (a parent for a foreign-key check). The gate passes an edit only when it
-    // writes exactly one table; anything else here fails closed.
+    // reads (a parent for a foreign-key check).
     const written = verdict.written ?? [];
-    if (written.length !== 1) {
-      throw new DbError('refused', 'An edit must insert, update or delete rows of one table.', {
-        detail: 'not-an-edit',
-      });
-    }
     const params = input.params ?? [];
     const requestId = randomBytes(24).toString('base64url');
     const expiresAt = this.now() + EDIT_TTL_MS;
