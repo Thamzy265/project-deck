@@ -50,7 +50,7 @@ Then start a new session in your Flutter project (in Claude Desktop, a new Code 
 ```
 
 - **`dart`** is the official Dart MCP server (`dart mcp-server`), which ships with the Dart SDK. It gives Claude hot reload, hot restart, runtime errors and the other Dart and Flutter tools, so FlutterDeck doesn't build its own.
-- **`flutterdeck`** is FlutterDeck's MCP server (`deck_status`, `get_logs`). It starts the project's daemon when it starts. In M2 it runs this checkout's CLI build; the M5 release changes it to `npx flutterdeck mcp`. JSON has no comments, which is why this note lives here.
+- **`flutterdeck`** is FlutterDeck's MCP server: `deck_status`, `get_logs`, and the read-only database tools `db_list`, `db_schema`, `db_query`, `db_snapshot` and `db_diff` (M3). There is no tool that changes data: Claude never writes (PM decision, 16 Oct 2026); the user edits rows in the dashboard's Database tab. It starts the project's daemon when it starts. In M2 it runs this checkout's CLI build; the M5 release changes it to `npx flutterdeck mcp`. JSON has no comments, which is why this note lives here.
 - Claude Code names plugin tools `mcp__plugin_flutterdeck_<server>__<tool>`, for example `mcp__plugin_flutterdeck_dart__hot_reload`.
 - If your Flutter project also has its own `.mcp.json` with a `dart` entry (the M1 instructions), Claude gets two Dart servers. Remove the project entry, or leave it: the hooks work with either.
 
