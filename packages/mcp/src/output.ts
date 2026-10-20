@@ -4,6 +4,7 @@
  */
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import type { LogEntry } from '@project-deck/core';
+import { cutText } from './mask/masker.js';
 
 /**
  * Invisible format characters: bidi controls and isolates, zero-width characters, the
@@ -93,7 +94,7 @@ function shrinkToFit(entry: OutputEntry, budget: number): OutputEntry {
     if (text === undefined) continue;
     const withText = (n: number): OutputEntry => ({
       ...out,
-      [field]: n >= text.length ? text : `${text.slice(0, n)}${CUT}`,
+      [field]: n >= text.length ? text : cutText(text, n),
     });
     // The longest prefix that fits, found by halving.
     let lo = 0;
@@ -107,8 +108,6 @@ function shrinkToFit(entry: OutputEntry, budget: number): OutputEntry {
   }
   return out;
 }
-
-const CUT = ' …[cut]';
 
 function hint(shown: number): string {
   return `Showing the newest ${shown} matching lines; older ones were left out. Narrow with since, minLevel, tag, text or regex to see others.`;
@@ -130,7 +129,8 @@ export function fitStatus(value: Record<string, unknown>): Record<string, unknow
 }
 
 export function shorten(value: unknown, max: number): unknown {
-  if (typeof value === 'string') return value.length > max ? `${value.slice(0, max)}…` : value;
+  // The masker's cut: never inside a surrogate pair or a mask marker (MCP-3).
+  if (typeof value === 'string') return cutText(value, max);
   if (Array.isArray(value)) return value.map((v) => shorten(v, max));
   if (typeof value === 'object' && value !== null) {
     return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, shorten(v, max)]));

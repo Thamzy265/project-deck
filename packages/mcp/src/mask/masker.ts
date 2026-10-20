@@ -82,7 +82,7 @@ export class Masker {
 const MARKER = /^\[(?:(?:email|phone|token|secret|auth code) )?masked\]/;
 
 /** Cuts `text` to at most `max` characters, never inside a surrogate pair or a marker. */
-function cutText(text: string, max: number): string {
+export function cutText(text: string, max: number): string {
   if (text.length <= max) return text;
   let end = max;
   const last = text.charCodeAt(end - 1);

@@ -89,15 +89,15 @@ describe('fitQuery at the 20 kB boundary', () => {
     expect(out.hint).toMatch(/count\(\*\)/);
   });
 
-  // MCP-3: `shorten` cuts at a UTF-16 index, so it can split an emoji (a lone surrogate
-  // reaches Claude) and a mask marker; the masker's own cut avoids both.
-  it.fails('never splits an emoji when it cuts a cell', () => {
+  // MCP-3 (fixed): `shorten` uses the masker's own cut, which never splits an emoji (a
+  // lone surrogate would reach Claude) or a mask marker.
+  it('never splits an emoji when it cuts a cell', () => {
     const out = fitQuery(frame, ['a'], [[`a${'😀'.repeat(6000)}`]], false);
     expect(out.truncated).toBe(true);
     expect(JSON.stringify(out)).not.toMatch(LONE_SURROGATE);
   });
 
-  it.fails('never splits a mask marker when it cuts a cell', () => {
+  it('never splits a mask marker when it cuts a cell', () => {
     const cell = `${'x'.repeat(2040)}[email masked]${'y'.repeat(30_000)}`;
     const out = fitQuery(frame, ['a'], [[cell]], false);
     expect(out.truncated).toBe(true);
