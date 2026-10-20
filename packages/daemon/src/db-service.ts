@@ -281,9 +281,21 @@ export class DbService {
       this.watchTables(source, db, tables);
       return { db, tables };
     }
+    // A default can be a real value (a shared key, a test account), so a hidden column
+    // keeps it from Claude too (lead decision MCP-4, design D2).
+    const hidden = new Set(
+      this.hidden().map((h) => JSON.stringify([fold(h.table), fold(h.column)])),
+    );
     return {
       db,
-      tables: tables.map(({ sql: _sql, ...table }) => table),
+      tables: tables.map(({ sql: _sql, ...table }) => ({
+        ...table,
+        columns: table.columns.map((c) =>
+          hidden.has(JSON.stringify([fold(table.name), fold(c.name)]))
+            ? { ...c, default: null }
+            : c,
+        ),
+      })),
       untrusted: DB_UNTRUSTED_TEXT,
     };
   }

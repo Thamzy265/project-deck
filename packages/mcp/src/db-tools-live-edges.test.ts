@@ -150,10 +150,9 @@ describe('hidden columns through every tool (real daemon)', { timeout: 30_000 },
     expect(out.text).not.toContain('CREATE');
   });
 
-  // MCP-4: the default of a hidden column reaches Claude through db_schema. A default
-  // can be a real value (a shared key, a test account), and hidden columns are meant
-  // to keep a column's data away from Claude.
-  it.fails("db_schema leaves out a hidden column's default", async () => {
+  // MCP-4 (fixed, lead decision): a default can be a real value (a shared key, a test
+  // account), so the daemon leaves out a hidden column's default for Claude.
+  it("db_schema leaves out a hidden column's default", async () => {
     const { mcp } = await setup(HIDDEN);
     const out = await call(mcp, 'db_schema', { db: 'app' });
     expect(out.isError).toBe(false);
