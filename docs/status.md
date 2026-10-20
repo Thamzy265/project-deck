@@ -2,6 +2,15 @@
 
 Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
 
+## 2026-10-20 — M3 batch 5 — MCP db tools ready to merge
+
+- Merged (lead, 2026-10-17): PR #36 `feat/database-tab` (batch 4) after reviewer approval, CI green (one test fixed for Windows 8.3 paths before merge) and QA pass; PLAN boxes "backends" and "Database tab" ticked. Deleted after merge (standing approval): worktree `agent-a061b3a5c6c5c4969` (unlocked first; clean and fully merged), local branches `feat/database-tab` and `worktree-agent-a061b3a5c6c5c4969`, remote branch `feat/database-tab`; QA artifacts copied to the main checkout first.
+- Deleted by the batch 5 team (own items, standing approval): tester's temporary worktree `/tmp/claude-501/oldbase`; developer's `refs/original` backup ref after a subject-only reword (trees identical).
+- Changed: `feat/mcp-db-tools` adds read-only MCP tools `db_list`, `db_schema`, `db_query`, `db_snapshot`, `db_diff` (no write tool), `flutterdeck init` writing `android.applicationId` and `ios.bundleId`, and the gate's `written` field with a fail-closed one-table edit rule. Tester MCP-1..MCP-10 fixed; reviewer R1–R8, R10, R11 and R1-b fixed (R9 cleanup skipped). For Claude the gate refuses CREATE text, hidden column defaults (table-valued pragma forms), bytecode EXPLAIN of pragmas, and any bytecode EXPLAIN while a column is hidden; the daemon clears hidden defaults in `PRAGMA table_info` results. QA PASS on fake mode and real Android through the MCP tools; evidence in [qa/M3.md](qa/M3.md).
+- Lead decisions (2026-10-20): hidden columns also hide their defaults from Claude; Claude never reads CREATE text; flavor ids match `<id>.<suffix>` (same rule as the PM's 17 Oct acceptance).
+- M3 acceptance: part one (row flash < 1 s) PASS in batch 4. Part two (Claude answers "how many orders are pending?" and confirms a change with `db_diff`) NOT RUN — the `claude` CLI on this Mac is logged out; needs the PM (log in, or Claude Desktop steps in [qa/M3.md](qa/M3.md) "PM check (batch 5)").
+- Blockers: Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead none · PM: M3 acceptance part two; IDE breakpoint check (batch 2 box).
+
 ## 2026-10-17 — M3 batch 4 — Database tab ready to merge
 
 - Merged (lead, 2026-10-17): PR #35 `feat/db-backends` (batch 3) after reviewer approval, CI green and QA pass; PLAN box "db-drift and db-sqlite backends" ticked. Deleted after merge (standing approval): worktree `agent-a68693af0659f700a`, local branches `feat/db-backends` and `worktree-agent-a68693af0659f700a`, remote branch `feat/db-backends`; QA artifacts copied to the main checkout first.

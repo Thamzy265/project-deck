@@ -394,7 +394,7 @@ Five milestones, each ending in something usable. Claude should not start the ne
 - [ ] `flutterdeck_drift` Dart package; no-op in release (debug builds only)
 - [x] `db-drift` (live) and `db-sqlite` (snapshot, sqlite-wasm) backends
 - [x] Database tab: tables, schema diagram, SQL editor with autocomplete, saved queries, live refresh, snapshot diff, export, guarded editing
-- [ ] MCP tools: `db_list`, `db_schema`, `db_query`, `db_snapshot`, `db_diff` (no `db_execute` for Claude: PM decision, 16 Oct 2026)
+- [x] MCP tools: `db_list`, `db_schema`, `db_query`, `db_snapshot`, `db_diff` (no `db_execute` for Claude: PM decision, 16 Oct 2026)
 - [ ] Accept: adding an item in the sample app flashes the new row within 1 s; Claude answers “how many orders are pending?” and uses `db_diff` to confirm what a change saved
 - [ ] **Validation checkpoint:** publish a 60-second demo and an early install guide; gather feedback from Flutter developers before M4. PM decision, 14 Oct 2026: the team drafts the demo, guide and post text; the PM publishes them and collects feedback; M4 work continues in parallel.
 
