@@ -13,7 +13,12 @@ import type { DbSchema, QueryResult } from '@project-deck/core';
 import { DB_UNTRUSTED_TEXT } from '@project-deck/core';
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { DaemonClientOptions } from './daemon-client.js';
-import { DEFAULT_DB_TIMEOUT_MS, DEFAULT_TIMEOUT_MS, DaemonClient } from './daemon-client.js';
+import {
+  DEFAULT_DB_TIMEOUT_MS,
+  DEFAULT_TIMEOUT_MS,
+  DaemonClient,
+  pathSegment,
+} from './daemon-client.js';
 import { MAX_OUTPUT_BYTES } from './output.js';
 import { createDeckServer } from './server.js';
 import type { FakeAnswer } from './testing/fake-daemon.js';
@@ -231,15 +236,21 @@ describe('no write path through any tool', () => {
     );
   });
 
-  // MCP-5: '.' and '..' are valid db names, and fetch folds them out of the path, so
-  // db_schema asks GET /api/db/schema or GET /api/schema instead of a schema route.
-  it.fails('keeps a db name of "." or ".." inside the schema route', async () => {
+  // MCP-5 (fixed): '.' and '..' are no longer db names (core refuses them), so db_schema
+  // never sends a request whose path fetch would fold into another route.
+  it('keeps a db name of "." or ".." out of every route', async () => {
     const { daemon, client } = await setup();
-    await call(client, 'db_schema', { db: '..' });
-    await call(client, 'db_schema', { db: '.' });
-    const routes = dbRequests(daemon).map((r) => `${r.method} ${r.path}`);
-    expect(routes).toHaveLength(2);
-    for (const route of routes) expect(route).toMatch(/^GET \/api\/db\/[^/]+\/schema$/);
+    for (const db of ['..', '.']) {
+      const out = await call(client, 'db_schema', { db });
+      expect(out.isError, db).toBe(true);
+    }
+    expect(dbRequests(daemon)).toEqual([]);
+  });
+
+  it('never builds a path segment from "." or ".." in the client either', () => {
+    expect(() => pathSegment('..')).toThrow(/can't be used as a name/);
+    expect(() => pathSegment('.')).toThrow(/can't be used as a name/);
+    expect(pathSegment('app_flutter/app.sqlite')).toBe('app_flutter%2Fapp.sqlite');
   });
 });
 

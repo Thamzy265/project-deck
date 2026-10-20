@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { DbEditConfirmInput, DbExecuteInput, DbQueryInput } from './api.js';
+import {
+  DbDiffInput,
+  DbEditConfirmInput,
+  DbExecuteInput,
+  DbQueryInput,
+  DbSchemaInput,
+  DbSnapshotInput,
+  McpDbQueryInput,
+} from './api.js';
 
 describe('SQL parameters', () => {
   it('take integers past 2^53 as tagged ints, so a key binds as an integer (TAB-2)', () => {
@@ -31,6 +39,23 @@ describe('SQL parameters', () => {
       {},
     ]) {
       expect(DbExecuteInput.safeParse({ db: 'app', sql: 'x', params: [bad] }).success).toBe(false);
+    }
+  });
+});
+
+describe('database names (MCP-5)', () => {
+  it('refuse "." and "..", which a URL path folds away', () => {
+    for (const db of ['.', '..']) {
+      expect(DbSchemaInput.safeParse({ db }).success, db).toBe(false);
+      expect(McpDbQueryInput.safeParse({ db, sql: 'SELECT 1' }).success, db).toBe(false);
+      expect(DbSnapshotInput.safeParse({ db }).success, db).toBe(false);
+      expect(DbDiffInput.safeParse({ db }).success, db).toBe(false);
+    }
+  });
+
+  it('take names with dots and slashes, such as snapshot paths', () => {
+    for (const db of ['app', '...', '.hidden', 'app_flutter/app.sqlite', 'a..b']) {
+      expect(DbSchemaInput.safeParse({ db }).success, db).toBe(true);
     }
   });
 });

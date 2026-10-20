@@ -171,8 +171,8 @@ export class DaemonClient {
   }
 
   /** Tables of one database, without CREATE text (token callers get none). */
-  dbSchema(db: string): Promise<Answer<DbSchema>> {
-    const path = `/api/db/${encodeURIComponent(db)}/schema`;
+  async dbSchema(db: string): Promise<Answer<DbSchema>> {
+    const path = `/api/db/${pathSegment(db)}/schema`;
     return this.withDaemon((c) => this.request(c, 'GET', path, DbSchemaResponse, this.db()));
   }
 
@@ -459,6 +459,17 @@ export class DaemonClient {
     }
     return parsed.data;
   }
+}
+
+/**
+ * One path segment. encodeURIComponent leaves `.` and `..` as they are, and fetch folds
+ * them (and `%2E`) away, so the request would reach another route (MCP-5).
+ */
+export function pathSegment(value: string): string {
+  if (value === '.' || value === '..') {
+    throw new DaemonError(`"${value}" can't be used as a name here.`);
+  }
+  return encodeURIComponent(value);
 }
 
 interface RequestOptions {
