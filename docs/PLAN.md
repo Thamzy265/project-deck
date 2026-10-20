@@ -241,7 +241,7 @@ Claude gets two MCP servers, and each tool lives in exactly one of them. `flutte
 | `db_list` | — | databases, backend, live flag |  |
 | `db_schema` | `db` | `TableInfo[]` |  |
 | `db_query` | `db`, `sql`, `params?`, `limit?` (default 100) | `QueryResult` | Read-only statements only |
-| `db_execute` | `db`, `sql`, `params?` | changes | Only when writes are enabled; otherwise a clear refusal |
+| ~~`db_execute`~~ | — | — | Not built: Claude never writes (PM decision, 16 Oct 2026). The user edits rows in the dashboard's Database tab. |
 | `db_snapshot` / `db_diff` | `db`, `label?` | snapshot id / rows added, changed, removed | Lets Claude verify what an action changed |
 | `tasks_mine` | `status?` | `Task[]` |  |
 | `task_get` | `key` | `Task` |  |
