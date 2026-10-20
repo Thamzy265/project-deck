@@ -93,23 +93,42 @@ export function fitQuery(
   rows: JsonValue[][],
   moreRows: boolean,
 ): Json {
-  const build = (n: number, truncated: boolean): Json => ({
-    ...frame,
-    columns,
-    rows: rows.slice(0, n),
-    rowCount: n,
-    truncated,
-    ...(truncated ? { hint: queryHint(n) } : {}),
-  });
-  if (!moreRows && fits(build(rows.length, false))) return build(rows.length, false);
-  const n = largestFitting(rows.length, (k) => build(k, true));
-  if (n > 0 || rows.length === 0) return build(Math.max(n, 0), true);
+  const build = (shownColumns: number, n: number, truncated: boolean): Json => {
+    const leftOut = columns.length - shownColumns;
+    const cut = (row: JsonValue[]) => (leftOut > 0 ? row.slice(0, shownColumns) : row);
+    return {
+      ...frame,
+      columns: cut(columns),
+      rows: rows.slice(0, n).map(cut),
+      rowCount: n,
+      ...(leftOut > 0 ? { columnsLeftOut: leftOut } : {}),
+      truncated,
+      ...(truncated ? { hint: queryHint(n, leftOut) } : {}),
+    };
+  };
+  const all = columns.length;
+  if (!moreRows && fits(build(all, rows.length, false))) return build(all, rows.length, false);
+  // A wide result may not fit even with no rows (MCP-1): show the first columns, with
+  // room for one row when there is one, and count the others.
+  const firstRows = Math.min(rows.length, 1);
+  let shown = all;
+  if (!fits(build(all, firstRows, true))) {
+    shown = largestFitting(all, (k) => build(k, firstRows, true));
+    if (shown < 0) shown = largestFitting(all, (k) => build(k, 0, true));
+    if (shown < 0) return shortenToFit(build(0, 0, true), 'The result was too large to show.');
+  }
+  const n = largestFitting(rows.length, (k) => build(shown, k, true));
+  if (n > 0 || rows.length === 0) return build(shown, Math.max(n, 0), true);
   // Not even one row fits: show the first one with its texts cut.
-  return shortenToFit(build(1, true), 'The first row was too large to show.');
+  return shortenToFit(build(shown, 1, true), 'The first row was too large to show.');
 }
 
-function queryHint(shown: number): string {
-  return `Showing the first ${shown} row${shown === 1 ? '' : 's'}; more rows matched or the answer was cut to 20 kB. For counts or totals use count(*), sum() or GROUP BY; otherwise narrow with WHERE, fewer columns or a smaller limit.`;
+function queryHint(shown: number, columnsLeftOut: number): string {
+  const columns =
+    columnsLeftOut > 0
+      ? ` ${columnsLeftOut} column${columnsLeftOut === 1 ? ' was' : 's were'} left out too (columnsLeftOut): select fewer columns.`
+      : '';
+  return `Showing the first ${shown} row${shown === 1 ? '' : 's'}; more rows matched or the answer was cut to 20 kB.${columns} For counts or totals use count(*), sum() or GROUP BY; otherwise narrow with WHERE, fewer columns or a smaller limit.`;
 }
 
 // ---- db_schema ----

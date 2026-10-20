@@ -229,9 +229,8 @@ describe('crafted names and the cap (real daemon)', { timeout: 30_000 }, () => {
     expect(out.json.truncated).toBe(true);
   });
 
-  // MCP-1 end to end: Claude can ask for a wide result with no rows, and the answer
-  // passes the 20 kB cap.
-  it.fails('keeps a wide SELECT with no rows within 20 kB', async () => {
+  // MCP-1 end to end (fixed): a wide result with no rows stays within the 20 kB cap.
+  it('keeps a wide SELECT with no rows within 20 kB', async () => {
     const { mcp } = await setup();
     const columns = Array.from({ length: 1500 }, (_, i) => `1 AS customer_note_column_${i}`);
     const out = await call(mcp, 'db_query', {

@@ -95,6 +95,20 @@ describe('fitQuery', () => {
     expect(out.truncated).toBe(true);
   });
 
+  it('shows the first columns of a result too wide for 20 kB and counts the others (MCP-1)', () => {
+    const columns = Array.from({ length: 2000 }, (_, i) => `column_number_${i}`);
+    for (const rows of [[], [columns.map(() => 1)]]) {
+      const out = fitQuery(frame, columns, rows, false);
+      expect(size(out)).toBeLessThanOrEqual(MAX_OUTPUT_BYTES);
+      const shown = (out.columns as unknown[]).length;
+      expect(shown).toBeGreaterThan(100);
+      expect(Number(out.columnsLeftOut) + shown).toBe(2000);
+      expect(out.rowCount).toBe(rows.length);
+      expect((out.rows as unknown[][]).every((r) => r.length === shown)).toBe(true);
+      expect(out.hint).toMatch(/columns were left out/);
+    }
+  });
+
   it('cuts the text of a single huge row rather than answering nothing', () => {
     const columns = Array.from({ length: 20 }, (_, i) => `c${i}`);
     const out = fitQuery(frame, columns, [columns.map(() => 'y'.repeat(4096))], false);

@@ -61,16 +61,16 @@ describe('fitQuery at the 20 kB boundary', () => {
     expect(out).toMatchObject({ rowCount: 0, truncated: true, note: DB_UNTRUSTED_TEXT });
   });
 
-  // MCP-1: with no rows, a wide result (many or long column names) is returned whole,
-  // however big: largestFitting gives -1 and the empty case builds it anyway.
-  it.fails('keeps a wide result with no rows within 20 kB', () => {
+  // MCP-1 (fixed): a wide result shows its first columns and counts the others.
+  it('keeps a wide result with no rows within 20 kB', () => {
     const out = fitQuery(frame, wideColumns, [], false);
     expect(size(out)).toBeLessThanOrEqual(MAX_OUTPUT_BYTES);
     expect(out.truncated).toBe(true);
   });
 
-  // MCP-2: the last resort answer drops the frame: no untrusted note, no masking line.
-  it.fails('keeps the untrusted note when not even one wide row fits', () => {
+  // Fixed with MCP-1: the columns are cut to leave room for one row, so the answer keeps
+  // its frame instead of falling back to the last resort.
+  it('keeps the untrusted note when not even one wide row fits', () => {
     const out = fitQuery(frame, wideColumns, [wideColumns.map(() => 1)], false);
     expect(size(out)).toBeLessThanOrEqual(MAX_OUTPUT_BYTES);
     expect(out.truncated).toBe(true);
@@ -78,9 +78,9 @@ describe('fitQuery at the 20 kB boundary', () => {
     expect(out.masking).toBe(frame.masking);
   });
 
-  // MCP-2: shortenToFit cuts every string, the note and the hint included, so at 64
-  // characters the note no longer says the text is untrusted.
-  it.fails('never cuts the untrusted note or the hint while cutting cell text', () => {
+  // Fixed with MCP-1 (the columns are cut first, so whole cells fit); MCP-2 also keeps
+  // the frame whole whenever text has to be cut.
+  it('never cuts the untrusted note or the hint while cutting cell text', () => {
     const columns = Array.from({ length: 200 }, (_, i) => `c${i}`);
     const out = fitQuery(frame, columns, [columns.map(() => 'y'.repeat(4096))], false);
     expect(size(out)).toBeLessThanOrEqual(MAX_OUTPUT_BYTES);
