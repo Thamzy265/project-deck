@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -67,6 +67,53 @@ describe('readApplicationId', () => {
       'applicationId = "$(touch x)"\napplicationId = flavorId\n',
     );
     expect(await readApplicationId(dir)).toBeUndefined();
+  });
+
+  it("reads the sample app's real build.gradle.kts", async () => {
+    const sample = await readFile(
+      new URL('../../../examples/sample_app/android/app/build.gradle.kts', import.meta.url),
+      'utf8',
+    );
+    await writeFile(join(dir, 'android', 'app', 'build.gradle.kts'), sample);
+    expect(await readApplicationId(dir)).toBe('dev.flutterdeck.flutterdeck_sample');
+  });
+
+  it('ignores an id inside a block comment', async () => {
+    await writeFile(
+      join(dir, 'android', 'app', 'build.gradle.kts'),
+      '/*\napplicationId = "org.evil.commented"\n*/\ndefaultConfig {\n  applicationId = "com.example.real"\n}\n',
+    );
+    expect(await readApplicationId(dir)).toBe('com.example.real');
+  });
+
+  it('never guesses between two different ids (flavors)', async () => {
+    await writeFile(
+      join(dir, 'android', 'app', 'build.gradle.kts'),
+      'defaultConfig {\n  applicationId = "com.example.app"\n}\nproductFlavors {\n  create("free") {\n    applicationId = "com.example.free"\n  }\n}\n',
+    );
+    expect(await readApplicationId(dir)).toBeUndefined();
+  });
+
+  it('takes an id written twice the same way', async () => {
+    await writeFile(
+      join(dir, 'android', 'app', 'build.gradle'),
+      'applicationId \'com.example.app\'\napplicationId "com.example.app"\n',
+    );
+    expect(await readApplicationId(dir)).toBe('com.example.app');
+  });
+
+  it('refuses ids config.json would refuse: a digit after a dot, or over 255 characters', async () => {
+    for (const id of ['com.1example', `com.${'a'.repeat(260)}`]) {
+      await writeFile(join(dir, 'android', 'app', 'build.gradle'), `applicationId "${id}"\n`);
+      expect(await readApplicationId(dir), id).toBeUndefined();
+    }
+  });
+
+  it('reads a 1 MB file of unclosed comment openers in linear time', async () => {
+    await writeFile(join(dir, 'android', 'app', 'build.gradle'), '/*x'.repeat(300_000));
+    const start = performance.now();
+    expect(await readApplicationId(dir)).toBeUndefined();
+    expect(performance.now() - start).toBeLessThan(2000);
   });
 
   it('is undefined without an Android folder', async () => {

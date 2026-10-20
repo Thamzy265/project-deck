@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { newConfigText, withPort } from './config-merge.js';
+import { newConfigText, withPort, withValues } from './config-merge.js';
 
 describe('newConfigText', () => {
   it('writes version 1 and the port', () => {
@@ -19,5 +19,32 @@ describe('withPort', () => {
     const out = withPort('\uFEFF{"version":1}', 9150);
     expect(out.startsWith('\uFEFF')).toBe(true);
     expect(JSON.parse(out.slice(1))).toEqual({ version: 1, port: 9150 });
+  });
+});
+
+describe('app ids', () => {
+  it('writes them into a new config', () => {
+    expect(
+      JSON.parse(newConfigText(9147, { applicationId: 'com.a.b', bundleId: 'com.a.b' })),
+    ).toEqual({
+      version: 1,
+      port: 9147,
+      android: { applicationId: 'com.a.b' },
+      ios: { bundleId: 'com.a.b' },
+    });
+  });
+
+  it('adds them as new objects to a config with a byte order mark', () => {
+    const out = withValues('\uFEFF{"version":1,"port":9150}', [
+      [['android', 'applicationId'], 'com.a.b'],
+      [['ios', 'bundleId'], 'com.a.b'],
+    ]);
+    expect(out.startsWith('\uFEFF')).toBe(true);
+    expect(JSON.parse(out.slice(1))).toEqual({
+      version: 1,
+      port: 9150,
+      android: { applicationId: 'com.a.b' },
+      ios: { bundleId: 'com.a.b' },
+    });
   });
 });

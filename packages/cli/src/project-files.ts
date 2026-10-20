@@ -37,7 +37,10 @@ export type ProjectFile =
  * Reads a small regular file in the project: lstat first, then readRegularFile
  * (O_NOFOLLOW, or lstat on Windows), so a link is reported, never followed.
  */
-export async function readProjectFile(path: string): Promise<ProjectFile> {
+export async function readProjectFile(
+  path: string,
+  maxBytes = MAX_FILE_BYTES,
+): Promise<ProjectFile> {
   let info;
   try {
     info = await lstat(path);
@@ -47,10 +50,10 @@ export async function readProjectFile(path: string): Promise<ProjectFile> {
   }
   if (info.isSymbolicLink()) return { kind: 'link' };
   if (!info.isFile()) return { kind: 'not-file' };
-  if (info.size > MAX_FILE_BYTES) return { kind: 'too-large' };
+  if (info.size > maxBytes) return { kind: 'too-large' };
   try {
     // Never through a link, even one that appeared since the lstat.
-    const text = await readRegularFile(path, { maxBytes: MAX_FILE_BYTES });
+    const text = await readRegularFile(path, { maxBytes });
     return { kind: 'file', text, mode: info.mode & 0o777 };
   } catch (err) {
     if (err instanceof NotRegularFileError) return { kind: 'link' };

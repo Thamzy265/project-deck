@@ -5,14 +5,20 @@
  */
 import { lstat } from 'node:fs/promises';
 import { join } from 'node:path';
+import { ANDROID_APPLICATION_ID } from '@project-deck/core';
 import { parseDocument } from 'yaml';
 import { MAX_FILE_BYTES, readProjectFile } from './project-files.js';
 
 /** Dart package names: lower-case letters, digits and underscores. */
 const PACKAGE_NAME = /^[a-z_][a-z0-9_]*$/;
-/** An Android application id: dotted segments of letters, digits and underscores. */
+/**
+ * A plain `applicationId` line: dotted segments of letters, digits and underscores in
+ * quotes. Checked again with core's ANDROID_APPLICATION_ID, which config.json uses.
+ */
 const APPLICATION_ID =
-  /^\s*applicationId\s*=?\s*["']([A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+)["']\s*$/m;
+  /^[ \t]*applicationId[ \t]*=?[ \t]*["']([A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+)["'][ \t]*$/gm;
+/** Longest id config.json accepts. */
+const MAX_APPLICATION_ID = 255;
 
 export type Detection = { ok: true; name?: string } | { ok: false; reason: string };
 
@@ -110,7 +116,37 @@ export async function readApplicationId(projectDir: string): Promise<string | un
       () => undefined,
     );
     if (found?.kind !== 'file') continue;
-    return APPLICATION_ID.exec(found.text)?.[1];
+    return applicationIdFrom(found.text);
   }
   return undefined;
+}
+
+/**
+ * The one id the file sets, outside block comments. Two different ids (flavors that set
+ * their own) are a guess, so none is taken; snapshots then use the running app's id.
+ */
+export function applicationIdFrom(gradle: string): string | undefined {
+  const ids = new Set<string>();
+  for (const m of withoutBlockComments(gradle).matchAll(APPLICATION_ID)) {
+    if (m[1] !== undefined) ids.add(m[1]);
+  }
+  const [id] = ids;
+  if (ids.size !== 1 || id === undefined) return undefined;
+  return id.length <= MAX_APPLICATION_ID && ANDROID_APPLICATION_ID.test(id) ? id : undefined;
+}
+
+/** Drops `/* … *\/` comments in one pass (no regex: unclosed openers stay linear). */
+function withoutBlockComments(text: string): string {
+  let out = '';
+  let i = 0;
+  for (;;) {
+    const open = text.indexOf('/*', i);
+    if (open === -1) return out + text.slice(i);
+    out += text.slice(i, open);
+    const close = text.indexOf('*/', open + 2);
+    // An unclosed comment runs to the end of the file, as Kotlin and Groovy read it.
+    if (close === -1) return out;
+    out += ' ';
+    i = close + 2;
+  }
 }
