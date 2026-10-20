@@ -41,6 +41,15 @@ export function parsePbxproj(text: string): PlistValue | undefined {
   }
 }
 
+/** Escapes in quoted strings and what they stand for. */
+const ESCAPES = new Map([
+  ['"', '"'],
+  ['\\', '\\'],
+  ['n', '\n'],
+  ['t', '\t'],
+  ['r', '\r'],
+]);
+
 /** Characters that end an unquoted string. */
 const DELIMITERS = new Set(['{', '}', '(', ')', '=', ';', ',', '"', ' ', '\t', '\r', '\n']);
 
@@ -109,8 +118,11 @@ class Parser {
         }
         if (c === '\\') {
           this.i++;
-          const e = text[this.i];
-          out += e === 'n' ? '\n' : e === 't' ? '\t' : (e ?? '');
+          // Only the escapes whose meaning is certain; anything else (such as Xcode's
+          // \U00e9) would change the text, so the file counts as unreadable.
+          const escaped = ESCAPES.get(text[this.i] ?? '');
+          if (escaped === undefined) throw new ParseError();
+          out += escaped;
         } else {
           out += c ?? '';
         }

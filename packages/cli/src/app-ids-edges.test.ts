@@ -163,9 +163,9 @@ describe('bundleIdFromPbxproj: project files it must not misread', () => {
     expect(bundleIdFromPbxproj('('.repeat(2 * 1024 * 1024)).kind).toBe('unusable');
   });
 
-  // MCP-9: an escape the parser doesn't know loses its backslash, so `\U00e9`
-  // (Xcode's unicode escape) becomes the text "U00e9" and a made-up id is taken.
-  it.fails('takes no id from a quoted value with an unknown escape', () => {
+  // MCP-9 (fixed): an escape the parser doesn't know, such as `\U00e9` (Xcode's unicode
+  // escape), makes the file unreadable instead of losing its backslash.
+  it('takes no id from a quoted value with an unknown escape', () => {
     expect(bundleIdFromPbxproj(pbxproj(debug('C1', '"com.\\U00e9xample"'))).kind).toBe('unusable');
   });
 
