@@ -3,8 +3,26 @@
  * /api/health before it sends the token, and starts the daemon (then retries once) when
  * it isn't running. Loopback only; the token goes in a header, never a URL or cookie.
  */
-import type { Health, LogQuery, LoginWindowResult, LogsResult, Status } from '@project-deck/core';
+import type {
+  DbDevice,
+  DbDiff,
+  DbErrorCode,
+  DbList,
+  DbSchema,
+  Health,
+  LogQuery,
+  LoginWindowResult,
+  LogsResult,
+  QueryResult,
+  Status,
+} from '@project-deck/core';
 import {
+  DbDiffResponse,
+  DbErrorResponse,
+  DbListResponse,
+  DbQueryResponse,
+  DbSchemaResponse,
+  DbSnapshotResponse,
   ErrorResponse,
   HealthResponse,
   LoginWindowResponse,
@@ -34,12 +52,23 @@ const TOKEN_REJECTED =
 export const DEFAULT_TIMEOUT_MS = 5000;
 export const DEFAULT_READY_TIMEOUT_MS = 10_000;
 export const DEFAULT_STOP_TIMEOUT_MS = 10_000;
+/**
+ * Database calls may copy a snapshot from a device first (adb `ls` 10 s plus `cat` 60 s,
+ * design review S7), so they wait longer than the other routes.
+ */
+export const DEFAULT_DB_TIMEOUT_MS = 75_000;
 const MAX_STARTS = 2;
 /** The daemon's message is repeated to Claude: keep it short. */
 const MAX_REASON = 300;
 
 /** A message that is safe to show to Claude: it never holds the token. */
 export class DaemonError extends Error {}
+
+/** What a failed tool call tells Claude: the daemon's message, or that the server failed. */
+export function errorText(err: unknown): string {
+  if (err instanceof DaemonError) return err.message;
+  return `FlutterDeck MCP server failed: ${err instanceof Error ? err.message : String(err)}`;
+}
 
 /**
  * The program on the port can't be stopped through the API: it refused the token, or it
@@ -49,6 +78,24 @@ export class ForeignDaemonError extends DaemonError {
   constructor(
     message: string,
     readonly port: number,
+  ) {
+    super(message);
+  }
+}
+
+/**
+ * A `/api/db` route answered with a database error. `reason` is the daemon's message,
+ * which may hold untrusted app text (table names, SQLite's errors).
+ */
+export class DaemonDbError extends DaemonError {
+  constructor(
+    message: string,
+    readonly code: DbErrorCode,
+    readonly reason: string,
+    readonly detail: string | undefined,
+    readonly devices: DbDevice[] | undefined,
+    /** Such as a version mismatch, shown with the tool's answer. */
+    readonly warnings: string[] = [],
   ) {
     super(message);
   }
@@ -66,6 +113,8 @@ export interface DaemonClientOptions {
   /** This project's id as /api/health shows it; undefined skips the check. */
   projectId?: () => Promise<string | undefined>;
   timeoutMs?: number;
+  /** How long a database call may take (DEFAULT_DB_TIMEOUT_MS). */
+  dbTimeoutMs?: number;
   readyTimeoutMs?: number;
   /** How long `shutdown` waits for runtime.json to go. */
   stopTimeoutMs?: number;
@@ -89,6 +138,7 @@ interface Connection {
 
 export class DaemonClient {
   private readonly timeoutMs: number;
+  private readonly dbTimeoutMs: number;
   private readonly readyTimeoutMs: number;
   private readonly stopTimeoutMs: number;
   private readonly pollMs: number;
@@ -100,6 +150,7 @@ export class DaemonClient {
   constructor(private readonly opts: DaemonClientOptions) {
     this.scrub = pathScrubber(opts.projectDir);
     this.timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    this.dbTimeoutMs = opts.dbTimeoutMs ?? DEFAULT_DB_TIMEOUT_MS;
     this.readyTimeoutMs = opts.readyTimeoutMs ?? DEFAULT_READY_TIMEOUT_MS;
     this.stopTimeoutMs = opts.stopTimeoutMs ?? DEFAULT_STOP_TIMEOUT_MS;
     this.pollMs = opts.pollMs ?? 100;
@@ -118,6 +169,48 @@ export class DaemonClient {
     }
     const search = params.size === 0 ? '' : `?${params.toString()}`;
     return this.withDaemon((c) => this.request(c, 'GET', `/api/logs${search}`, LogsResponse));
+  }
+
+  /** The attached app's databases (`GET /api/db`). The token makes the daemon treat us as Claude. */
+  dbList(): Promise<Answer<DbList>> {
+    return this.withDaemon((c) => this.request(c, 'GET', '/api/db', DbListResponse, this.db()));
+  }
+
+  /** Tables of one database, without CREATE text (token callers get none). */
+  async dbSchema(db: string): Promise<Answer<DbSchema>> {
+    const path = `/api/db/${pathSegment(db)}/schema`;
+    return this.withDaemon((c) => this.request(c, 'GET', path, DbSchemaResponse, this.db()));
+  }
+
+  /** One read-only statement; the daemon's gate judges it with Claude's rules. */
+  dbQuery(input: {
+    db: string;
+    sql: string;
+    params?: unknown[] | undefined;
+    limit?: number | undefined;
+  }): Promise<Answer<QueryResult>> {
+    return this.withDaemon((c) =>
+      this.request(c, 'POST', '/api/db/query', DbQueryResponse, this.db(input)),
+    );
+  }
+
+  dbSnapshot(input: {
+    db: string;
+    label?: string | undefined;
+  }): Promise<Answer<z.infer<typeof DbSnapshotResponse>>> {
+    return this.withDaemon((c) =>
+      this.request(c, 'POST', '/api/db/snapshot', DbSnapshotResponse, this.db(input)),
+    );
+  }
+
+  dbDiff(input: { db: string; snapshotId?: string | undefined }): Promise<Answer<DbDiff>> {
+    return this.withDaemon((c) =>
+      this.request(c, 'POST', '/api/db/diff', DbDiffResponse, this.db(input)),
+    );
+  }
+
+  private db(body?: unknown): RequestOptions {
+    return { timeoutMs: this.dbTimeoutMs, ...(body === undefined ? {} : { body }) };
   }
 
   /**
@@ -316,16 +409,22 @@ export class DaemonClient {
     method: 'GET' | 'POST',
     path: string,
     schema: S,
+    opts: RequestOptions = {},
   ): Promise<z.infer<S>> {
     const route = `${method} ${path.split('?')[0] ?? path}`;
     let res: Response;
     let body: unknown;
-    const signal = AbortSignal.timeout(this.timeoutMs);
+    const timeoutMs = opts.timeoutMs ?? this.timeoutMs;
+    const signal = AbortSignal.timeout(timeoutMs);
+    const headers: Record<string, string> =
+      conn.token === undefined ? {} : { [TOKEN_HEADER]: conn.token };
+    if (opts.body !== undefined) headers['content-type'] = 'application/json';
     try {
       // Fixed loopback address: never a host from a file, so the token stays local.
       res = await fetch(`http://127.0.0.1:${conn.port}${path}`, {
         method,
-        headers: conn.token === undefined ? {} : { [TOKEN_HEADER]: conn.token },
+        headers,
+        ...(opts.body === undefined ? {} : { body: JSON.stringify(opts.body) }),
         // fetch would forward the token header to wherever a redirect points.
         redirect: 'manual',
         signal,
@@ -338,13 +437,24 @@ export class DaemonClient {
     } catch {
       if (signal.aborted) {
         throw new DaemonError(
-          `FlutterDeck daemon didn't answer ${route} within ${this.timeoutMs / 1000} s`,
+          `FlutterDeck daemon didn't answer ${route} within ${timeoutMs / 1000} s`,
         );
       }
       throw new Unreachable();
     }
     if (res.status === 401) throw new ForeignDaemonError(TOKEN_REJECTED, conn.port);
     if (!res.ok) {
+      const dbError = DbErrorResponse.safeParse(body);
+      if (dbError.success) {
+        const { error, code, detail, devices } = dbError.data;
+        throw new DaemonDbError(
+          `FlutterDeck daemon refused ${route}: ${error} (${res.status})`,
+          code,
+          error,
+          detail,
+          devices,
+        );
+      }
       const error = ErrorResponse.safeParse(body);
       const reason = error.success ? error.data.error : 'no reason given';
       throw new DaemonError(`FlutterDeck daemon refused ${route}: ${reason} (${res.status})`);
@@ -357,7 +467,35 @@ export class DaemonClient {
   }
 }
 
+/**
+ * One path segment. encodeURIComponent leaves `.` and `..` as they are, and fetch folds
+ * them (and `%2E`) away, so the request would reach another route (MCP-5).
+ */
+export function pathSegment(value: string): string {
+  if (value === '.' || value === '..') {
+    throw new DaemonError(`"${value}" can't be used as a name here.`);
+  }
+  return encodeURIComponent(value);
+}
+
+interface RequestOptions {
+  /** Sent as JSON. */
+  body?: unknown;
+  timeoutMs?: number;
+}
+
 function withWarnings(err: unknown, warnings: string[]): DaemonError {
+  // A database error keeps its code, so the tool can say what to do; warnings go along.
+  if (err instanceof DaemonDbError) {
+    return new DaemonDbError(
+      [err.message, ...warnings].join('\n'),
+      err.code,
+      err.reason,
+      err.detail,
+      err.devices,
+      [...err.warnings, ...warnings],
+    );
+  }
   const message =
     err instanceof DaemonError ? err.message : `FlutterDeck daemon call failed: ${String(err)}`;
   return new DaemonError([message, ...warnings].join('\n'));

@@ -151,6 +151,25 @@ describe('DbService: listing and reading', () => {
     expect(DbSchemaResponse.parse(claude)).toEqual(claude);
   });
 
+  it("leaves out a hidden column's default for Claude only (MCP-4, lead decision)", async () => {
+    const table = ordersTable();
+    table.info.columns = table.info.columns.map((c) =>
+      c.name === 'status' ? { ...c, default: "'key-zq81'" } : { ...c, default: "'open'" },
+    );
+    const { service } = await attached(new FakeDbInspector({ app: [table] }), {
+      settings: { allowWrites: false, hiddenColumns: ['ORDERS.Status'] },
+    });
+    const claude = await service.schema('app', 'claude');
+    const defaults = claude.tables[0]?.columns.map((c) => [c.name, c.default]);
+    expect(defaults).toEqual([
+      ['id', "'open'"],
+      ['item', "'open'"],
+      ['status', null],
+    ]);
+    const dashboard = await service.schema('app', 'dashboard');
+    expect(dashboard.tables[0]?.columns[2]?.default).toBe("'key-zq81'");
+  });
+
   it('answers not-found for an unknown database', async () => {
     const { service } = await attached(new FakeDbInspector({ app: [ordersTable()] }));
     await expect(service.schema('nope', 'dashboard')).rejects.toMatchObject({ code: 'not-found' });
@@ -384,6 +403,7 @@ describe('DbService: edits (design review S1)', () => {
       ok: true,
       kind: 'write',
       tables: ['orders'],
+      written: ['orders'],
       functions: [],
       recursive: false,
     });
@@ -415,6 +435,37 @@ describe('DbService: edits (design review S1)', () => {
     const again = await service.requestEdit(edit);
     await service.confirmEdit({ requestId: again.requestId, sql: edit.sql, params: edit.params });
     expect(db.executed[1]?.token).not.toBe(db.executed[0]?.token);
+  });
+
+  it('refuses an edit unless the gate names exactly one written table (fails closed)', async () => {
+    const base = { ok: true as const, kind: 'write' as const, functions: [], recursive: false };
+    const cases: (string[] | undefined)[] = [undefined, [], ['orders', 'audit_log']];
+    for (const written of cases) {
+      const db = writable();
+      const { service, guard } = await attached(db, allow);
+      guard.answer(edit.sql, {
+        ...base,
+        tables: ['orders'],
+        ...(written === undefined ? {} : { written }),
+      });
+      await expect(service.requestEdit(edit), JSON.stringify(written)).rejects.toMatchObject({
+        code: 'refused',
+      });
+      expect(db.executed).toHaveLength(0);
+    }
+  });
+
+  it('names the written table from written, not from the order of tables', async () => {
+    const { service, guard } = await attached(writable(), allow);
+    guard.answer(edit.sql, {
+      ok: true,
+      kind: 'write',
+      tables: ['customers', 'orders'],
+      written: ['orders'],
+      functions: [],
+      recursive: false,
+    });
+    expect((await service.requestEdit(edit)).tables).toEqual(['orders']);
   });
 
   it('refuses a confirm whose SQL or parameters differ from the request', async () => {
@@ -505,6 +556,7 @@ describe('DbService: live Drift app', () => {
       ok: true,
       kind: 'write',
       tables: ['orders'],
+      written: ['orders'],
       functions: [],
       recursive: false,
     });

@@ -127,6 +127,9 @@ type Policy =
       hidden: HiddenColumns;
       /** Virtual tables holding a hidden column, with their shadow tables (SG-2). */
       hiddenTables: ReadonlySet<string>;
+      /** Claude's rules for schema text and column defaults (review R1). */
+      claude: boolean;
+      anyHidden: boolean;
     };
 
 interface Scratch {
@@ -165,6 +168,27 @@ const written = (seen: Seen): number => seen.written.size;
 
 /** Reads the denial afresh: authorizer callbacks set it while SQLite prepares. */
 const denialOf = (seen: Seen): GuardRefusal | undefined => seen.denial;
+
+/** The schema tables whose `sql` column holds CREATE text (folded names). */
+const CREATE_TEXT_TABLES: ReadonlySet<string> = new Set(['sqlite_master', 'sqlite_temp_master']);
+const DEFAULT_PRAGMAS: ReadonlySet<string> = new Set(['pragma_table_info', 'pragma_table_xinfo']);
+
+/** Claude never reads CREATE text, nor column defaults while any column is hidden (R1). */
+function claudeRule(table: string, column: string, anyHidden: boolean): GuardRefusal | undefined {
+  if (CREATE_TEXT_TABLES.has(table) && column === 'sql') {
+    return refuse(
+      'hidden-column',
+      "The CREATE text in sqlite_schema (its sql column) isn't shown to Claude. db_schema shows the tables, columns, keys and indexes; sqlite_schema's other columns can be read.",
+    );
+  }
+  if (anyHidden && DEFAULT_PRAGMAS.has(table) && column === 'dflt_value') {
+    return refuse(
+      'hidden-column',
+      `Column defaults from ${table} aren't shown while some columns are hidden (db.hiddenColumns). db_schema shows the defaults Claude may see; ${table}'s other columns can be read.`,
+    );
+  }
+  return undefined;
+}
 
 const refuse = (code: GuardRefusal['code'], reason: string): GuardRefusal => ({
   ok: false,
@@ -252,6 +276,8 @@ export class GuardEngine {
       seen,
       hidden,
       hiddenTables: this.hiddenTables(scratch, opts.hiddenColumns ?? []),
+      claude: opts.claude === true,
+      anyHidden: (opts.hiddenColumns ?? []).length > 0,
     };
     try {
       return this.judge(scratch, sql, opts.mode, seen, hidden);
@@ -311,13 +337,19 @@ export class GuardEngine {
       if (!tailIsEmpty()) {
         return refuse('multiple-statements', 'Send only one statement at a time.');
       }
-      const explain = capi.sqlite3_stmt_isexplain(stmt) !== 0;
+      // 1: EXPLAIN (bytecode); 2: EXPLAIN QUERY PLAN.
+      const explainMode = capi.sqlite3_stmt_isexplain(stmt);
+      const explain = explainMode !== 0;
       if (explain && capi.sqlite3_stmt_explain(stmt, 0) !== SQLITE_OK) {
         return refuse('invalid-sql', 'SQLite could not read the explained statement.');
       }
       // Re-preparing in normal mode runs the authorizer again on the inner statement.
       const innerDenial = denialOf(seen);
       if (innerDenial !== undefined) return innerDenial;
+      if (explainMode === 1) {
+        const bytecode = this.claudeBytecodeRule(seen);
+        if (bytecode !== undefined) return bytecode;
+      }
       const readOnly = capi.sqlite3_stmt_readonly(stmt) !== 0;
       if (mode === 'read' && !readOnly) {
         return refuse(
@@ -364,6 +396,7 @@ export class GuardEngine {
         // An edit's target first: a DELETE with no WHERE or an INSERT reads no column of
         // it, so only the authorizer's write callback names it (Q2).
         tables: [...new Set([...seen.written, ...seen.tables])],
+        ...(mode === 'write' ? { written: [...seen.written] } : {}),
         functions: [...seen.functions],
         recursive: seen.recursive,
       };
@@ -596,6 +629,30 @@ export class GuardEngine {
     return undefined;
   }
 
+  /**
+   * Bytecode EXPLAIN puts literals in the opcodes' p4: a PRAGMA's column defaults, and a
+   * column's default or generating expression where it is read. For Claude it is refused
+   * for any PRAGMA, and for anything while a column is hidden (review R1-b). EXPLAIN QUERY
+   * PLAN shows no literals and stays allowed.
+   */
+  private claudeBytecodeRule(seen: Seen): GuardRefusal | undefined {
+    const policy = this.policy;
+    if (policy.kind !== 'check' || !policy.claude) return undefined;
+    if (seen.pragma) {
+      return refuse(
+        'pragma',
+        "EXPLAIN of a PRAGMA isn't shown to Claude: its bytecode holds column defaults. Run the PRAGMA itself, or use db_schema.",
+      );
+    }
+    if (policy.anyHidden) {
+      return refuse(
+        'hidden-column',
+        "Bytecode EXPLAIN isn't shown to Claude while some columns are hidden (db.hiddenColumns): it can hold their defaults and expressions. EXPLAIN QUERY PLAN still works.",
+      );
+    }
+    return undefined;
+  }
+
   private readRule(
     table: string,
     column: string,
@@ -603,6 +660,10 @@ export class GuardEngine {
   ): GuardRefusal | undefined {
     const leak = LEAKY_TABLES.get(table);
     if (leak !== undefined) return refuse('table', `Reading ${table} is not allowed: ${leak}.`);
+    if (policy.claude) {
+      const refusal = claudeRule(table, column, policy.anyHidden);
+      if (refusal !== undefined) return refusal;
+    }
     const scratch = this.current;
     if (!BUILTIN_READABLE.has(table) && !(scratch?.relations.has(table) ?? false)) {
       // Table-valued functions keep their own rules, whatever a CTE is called.

@@ -1,7 +1,7 @@
 {
   "name": "@project-deck/mcp",
   "version": "0.0.0",
-  "description": "project-deck MCP server: a stdio client of the project's daemon for Claude (deck_status, get_logs).",
+  "description": "project-deck MCP server: a stdio client of the project's daemon for Claude (deck_status, get_logs, read-only database tools).",
   "type": "module",
   "license": "MIT",
   "exports": {
@@ -23,5 +23,8 @@
     "@project-deck/core": "workspace:*",
     "@project-deck/daemon": "workspace:*",
     "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@project-deck/db-sqlite": "workspace:*"
   }
 }

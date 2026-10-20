@@ -27,7 +27,12 @@ import {
 import { LogEntrySchema, LogQuerySchema } from './logs.js';
 import { TaskStatusTypeSchema } from './tasks.js';
 
-const DbName = z.string().min(1).max(128);
+/** `.` and `..` are refused: in a URL path they fold away and name another route (MCP-5). */
+const DbName = z
+  .string()
+  .min(1)
+  .max(128)
+  .refine((name) => name !== '.' && name !== '..', 'Not a database name');
 const Sql = z.string().min(1).max(MAX_SQL_LENGTH);
 /** Values, and integers past 2^53 as tagged ints, which every backend binds as integers. */
 const INT64_MIN = -(2n ** 63n);

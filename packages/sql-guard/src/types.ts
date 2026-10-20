@@ -17,6 +17,12 @@ export interface GuardCheckOptions {
    * Callers pass them for Claude's queries.
    */
   hiddenColumns?: readonly HiddenColumn[];
+  /**
+   * Claude's queries (review R1): the CREATE text in sqlite_schema (its `sql` column) is
+   * never read, and while any column is hidden, neither are the column defaults of
+   * pragma_table_info and pragma_table_xinfo, which can't be told apart per table.
+   */
+  claude?: boolean;
 }
 
 export const GuardRefusalCodeSchema = z.enum([
@@ -52,6 +58,12 @@ export const GuardResultSchema = z.discriminatedUnion('ok', [
      * caps, time limits, interrupts) live in the backends.
      */
     tables: z.array(z.string()),
+    /**
+     * Write mode only: the tables the edit inserts into, updates or deletes from, its
+     * triggers included. Callers check it holds exactly one table (fail closed) rather
+     * than trusting the order of `tables`.
+     */
+    written: z.array(z.string()).optional(),
     functions: z.array(z.string()),
     /** A recursive CTE, which can run long or forever without a LIMIT. */
     recursive: z.boolean(),

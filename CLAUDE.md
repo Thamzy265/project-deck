@@ -208,4 +208,4 @@ Follows [GitHub flow](https://docs.github.com/en/get-started/using-github/github
 
 - **M1 done** (14 Oct 2026): scaffold, `core`, daemon, `connector-dart`, `logs-android`, `.mcp.json` example, sample app, acceptance check.
 - **M2 done** (16 Oct 2026): dashboard, MCP server with masking, CLI (`init`, `start`, `stop`, `open`, `mcp`), plugin with hooks and notifications; PM acceptance check passed.
-- **M3 in progress** (Drift inspector). Plan of record: `docs/design/m3-drift-inspector.md`, `docs/ui/m3-database-tab.md`, ADRs 0004–0005. Merged: batches 1–3 (PRs #33, #34, #35). Batch 4 `feat/database-tab` (dashboard Database tab) in merge. Next: batch 5 MCP db tools and CLI ids, then the M3 acceptance check. PM IDE check for batch 2 pending.
+- **M3 in progress** (Drift inspector). Plan of record: `docs/design/m3-drift-inspector.md`, `docs/ui/m3-database-tab.md`, ADRs 0004–0005. Merged: batches 1–4 (PRs #33–#36). Batch 5 `feat/mcp-db-tools` (MCP db tools, init app ids) in merge. Remaining: the PM's M3 acceptance check (part two with Claude) and IDE breakpoint check, then the validation checkpoint drafts.

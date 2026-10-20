@@ -24,6 +24,7 @@ import { DB_UNTRUSTED_TEXT, DbError, isDbError, parseHiddenColumn } from '@proje
 import type { GuardCheckOptions, GuardResult, SqlGuard } from '@project-deck/sql-guard';
 import type { TableVisibility } from './db-diff.js';
 import { CLAUDE_DIFF_CAPS, DASHBOARD_DIFF_CAPS, buildDiff } from './db-diff.js';
+import { clearHiddenDefaults, fold } from './hidden-defaults.js';
 
 /**
  * Who asks. Token callers (the MCP server, the CLI) count as Claude: hidden columns
@@ -97,7 +98,6 @@ const noApp = (): DbError =>
   );
 
 /** SQLite folds ASCII letters only when it compares names. */
-const fold = (name: string): string => name.replace(/[A-Z]/g, (c) => c.toLowerCase());
 
 /** A name in double quotes, safe in SQL whatever it holds. */
 function quoteIdent(name: string): string {
@@ -281,9 +281,21 @@ export class DbService {
       this.watchTables(source, db, tables);
       return { db, tables };
     }
+    // A default can be a real value (a shared key, a test account), so a hidden column
+    // keeps it from Claude too (lead decision MCP-4, design D2).
+    const hidden = new Set(
+      this.hidden().map((h) => JSON.stringify([fold(h.table), fold(h.column)])),
+    );
     return {
       db,
-      tables: tables.map(({ sql: _sql, ...table }) => table),
+      tables: tables.map(({ sql: _sql, ...table }) => ({
+        ...table,
+        columns: table.columns.map((c) =>
+          hidden.has(JSON.stringify([fold(table.name), fold(c.name)]))
+            ? { ...c, default: null }
+            : c,
+        ),
+      })),
       untrusted: DB_UNTRUSTED_TEXT,
     };
   }
@@ -296,7 +308,8 @@ export class DbService {
     const hiddenColumns = caller === 'claude' ? this.hidden() : undefined;
     const { verdict, schemaSql } = await this.check(source, input.db, input.sql, {
       mode: 'read',
-      ...(hiddenColumns === undefined ? {} : { hiddenColumns }),
+      // Claude never reads CREATE text, nor pragma defaults while columns are hidden (R1).
+      ...(hiddenColumns === undefined ? {} : { hiddenColumns, claude: true }),
     });
     let result: QueryResult;
     try {
@@ -310,6 +323,7 @@ export class DbService {
     }
     if (caller === 'claude' && hiddenColumns !== undefined && hiddenColumns.length > 0) {
       await this.checkResultColumns(source, input.db, schemaSql, verdict.tables, result.columns);
+      if (verdict.kind === 'pragma') result = clearHiddenDefaults(input.sql, result, hiddenColumns);
     }
     return result;
   }
@@ -483,6 +497,13 @@ export class DbService {
     let verdict: Extract<GuardResult, { ok: true }>;
     try {
       ({ verdict } = await this.check(source, input.db, input.sql, { mode: 'write' }));
+      // The gate passes an edit only when it writes exactly one table; anything else
+      // fails closed, and counts as a denied write like any other refusal (review R5).
+      if (verdict.written?.length !== 1) {
+        throw new DbError('refused', 'An edit must insert, update or delete rows of one table.', {
+          detail: 'not-an-edit',
+        });
+      }
     } catch (err) {
       // A refused edit is a denied write too (lead decision G4): names only, never SQL.
       if (isDbError(err) && err.code === 'refused') {
@@ -496,9 +517,8 @@ export class DbService {
       throw err;
     }
     // The confirm and Activity name the table the edit writes, not tables it only
-    // reads (a parent for a foreign-key check). The gate passes an edit only when it
-    // writes exactly one table, and lists that table first (Q2).
-    const written = verdict.tables.slice(0, 1);
+    // reads (a parent for a foreign-key check).
+    const written = verdict.written ?? [];
     const params = input.params ?? [];
     const requestId = randomBytes(24).toString('base64url');
     const expiresAt = this.now() + EDIT_TTL_MS;

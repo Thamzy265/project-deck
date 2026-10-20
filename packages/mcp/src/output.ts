@@ -2,7 +2,39 @@
  * Keeps get_logs output small enough for Claude's context (design: ≤ 200 entries and
  * ≤ 20 kB) and says when it was cut. Runs after masking, on masked text.
  */
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import type { LogEntry } from '@project-deck/core';
+import { cutText } from './mask/masker.js';
+
+/**
+ * Characters that don't show or that break lines unseen: every default-ignorable code
+ * point (bidi controls and isolates, zero-width characters, the byte order mark, soft
+ * hyphen, variation selectors, tag characters), the line and paragraph separators, NEL
+ * and the interlinear annotation characters. App text could use them to reorder or hide
+ * parts of an answer in the user's transcript (MCP-6, review R3).
+ */
+const INVISIBLE = /[\p{Default_Ignorable_Code_Point}\u0085\u2028\u2029\uFFF9-\uFFFB]/gu;
+
+/** Writes each invisible character as `\uXXXX` (per UTF-16 unit), valid inside JSON strings. */
+export function escapeInvisible(text: string): string {
+  return text.replace(INVISIBLE, (c) => {
+    let out = '';
+    for (let i = 0; i < c.length; i++) {
+      out += `\\u${c.charCodeAt(i).toString(16).padStart(4, '0')}`;
+    }
+    return out;
+  });
+}
+
+/** Every tool's answer as text: JSON with invisible characters escaped. */
+export function jsonResult(value: unknown): CallToolResult {
+  return { content: [{ type: 'text', text: escapeInvisible(JSON.stringify(value)) }] };
+}
+
+/** A failed call's plain text, with invisible characters escaped. */
+export function errorResult(text: string): CallToolResult {
+  return { isError: true, content: [{ type: 'text', text: escapeInvisible(text) }] };
+}
 
 export const MAX_OUTPUT_ENTRIES = 200;
 export const MAX_OUTPUT_BYTES = 20_000;
@@ -63,7 +95,7 @@ function shrinkToFit(entry: OutputEntry, budget: number): OutputEntry {
     if (text === undefined) continue;
     const withText = (n: number): OutputEntry => ({
       ...out,
-      [field]: n >= text.length ? text : `${text.slice(0, n)}${CUT}`,
+      [field]: n >= text.length ? text : cutText(text, n),
     });
     // The longest prefix that fits, found by halving.
     let lo = 0;
@@ -78,29 +110,104 @@ function shrinkToFit(entry: OutputEntry, budget: number): OutputEntry {
   return out;
 }
 
-const CUT = ' …[cut]';
-
 function hint(shown: number): string {
   return `Showing the newest ${shown} matching lines; older ones were left out. Narrow with since, minLevel, tag, text or regex to see others.`;
 }
 
 /**
- * deck_status within the same 20 kB: if it doesn't fit, every long string is cut
- * shorter and shorter until it does, and `truncated` says so.
+ * A small answer (deck_status, db_list, db_snapshot) within the same 20 kB; `truncated`
+ * says whether it was cut. `problem` is the tool's own words for the last resort.
  */
-export function fitStatus(value: Record<string, unknown>): Record<string, unknown> {
-  const fits = (v: unknown) => Buffer.byteLength(JSON.stringify(v)) <= MAX_OUTPUT_BYTES;
+export function fitStatus(
+  value: Record<string, unknown>,
+  problem = 'FlutterDeck status was too large to show.',
+): Record<string, unknown> {
   const whole = { ...value, truncated: false };
-  if (fits(whole)) return whole;
-  for (const max of [2048, 1024, 512, 256, 128, 64, 32]) {
-    const cut = { ...(shorten(value, max) as Record<string, unknown>), truncated: true };
-    if (fits(cut)) return cut;
-  }
-  return { truncated: true, problem: 'FlutterDeck status was too large to show.' };
+  if (fitsOutput(whole)) return whole;
+  return fitKeepingFrame(value, problem);
 }
 
-function shorten(value: unknown, max: number): unknown {
-  if (typeof value === 'string') return value.length > max ? `${value.slice(0, max)}…` : value;
+/**
+ * Fields every answer keeps whole, however much else is cut: what Claude must read
+ * about the rest (the untrusted note, masking, warnings, the hint) (MCP-2).
+ */
+export const FRAME_KEYS: readonly string[] = ['note', 'masking', 'warnings', 'hint'];
+
+export const fitsOutput = (v: unknown): boolean =>
+  Buffer.byteLength(JSON.stringify(v)) <= MAX_OUTPUT_BYTES;
+
+/**
+ * The last resort for an answer over 20 kB: cuts the text of everything but the frame
+ * shorter and shorter, then long lists, and finally gives the frame with `problem`.
+ */
+export function fitKeepingFrame(
+  value: Record<string, unknown>,
+  problem: string,
+): Record<string, unknown> {
+  const frame: Record<string, unknown> = {};
+  const body: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (FRAME_KEYS.includes(key)) frame[key] = item;
+    else body[key] = item;
+  }
+  for (const max of [2048, 1024, 512, 256, 128, 64, 32]) {
+    const cut = { ...frame, ...(shorten(body, max) as object), truncated: true };
+    if (fitsOutput(cut)) return cut;
+  }
+  for (const items of [100, 20, 5, 1, 0]) {
+    const limited = shorten(limitLists(body, items), 32) as Record<string, unknown>;
+    const cut = {
+      ...frame,
+      ...limited,
+      ...recount(body, limited),
+      truncated: true,
+      listsCut: true,
+      listsCutNote: LISTS_CUT_NOTE,
+    };
+    if (fitsOutput(cut)) return cut;
+  }
+  return { ...frame, truncated: true, problem };
+}
+
+const LISTS_CUT_NOTE =
+  'Lists were cut to fit 20 kB. rowCount, columnsLeftOut and tablesLeftOut describe what is shown; counts inside items (such as a diff table’s counts) are the full totals.';
+
+/**
+ * The top-level counters of a cut answer, made true to the lists it still shows (R7):
+ * rowCount is the rows shown, and columns or tables cut away join the left-out counts.
+ */
+function recount(
+  before: Record<string, unknown>,
+  after: Record<string, unknown>,
+): Record<string, unknown> {
+  const length = (v: unknown) => (Array.isArray(v) ? v.length : 0);
+  const count = (v: unknown) => (typeof v === 'number' ? v : 0);
+  const out: Record<string, unknown> = {};
+  if ('rowCount' in before) out.rowCount = length(after.rows);
+  if (Array.isArray(before.columns) && 'columnsLeftOut' in before) {
+    out.columnsLeftOut =
+      count(before.columnsLeftOut) + length(before.columns) - length(after.columns);
+  } else if (Array.isArray(before.columns) && length(after.columns) < length(before.columns)) {
+    out.columnsLeftOut = length(before.columns) - length(after.columns);
+  }
+  if (Array.isArray(before.tables) && length(after.tables) < length(before.tables)) {
+    out.tablesLeftOut = count(before.tablesLeftOut) + length(before.tables) - length(after.tables);
+  }
+  return out;
+}
+
+/** Every list cut to its first `max` items. */
+function limitLists(value: unknown, max: number): unknown {
+  if (Array.isArray(value)) return value.slice(0, max).map((v) => limitLists(v, max));
+  if (typeof value === 'object' && value !== null) {
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, limitLists(v, max)]));
+  }
+  return value;
+}
+
+export function shorten(value: unknown, max: number): unknown {
+  // The masker's cut: never inside a surrogate pair or a mask marker (MCP-3).
+  if (typeof value === 'string') return cutText(value, max);
   if (Array.isArray(value)) return value.map((v) => shorten(v, max));
   if (typeof value === 'object' && value !== null) {
     return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, shorten(v, max)]));

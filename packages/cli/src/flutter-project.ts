@@ -3,16 +3,21 @@
  * Parsed with the `yaml` package (core schema, no custom tags, aliases capped against
  * "billion laughs" expansion); nothing from the file is repeated except a checked name.
  */
-import { lstat } from 'node:fs/promises';
 import { join } from 'node:path';
+import { ANDROID_APPLICATION_ID } from '@project-deck/core';
 import { parseDocument } from 'yaml';
-import { MAX_FILE_BYTES, readProjectFile } from './project-files.js';
+import { MAX_FILE_BYTES, isRealFolder, readProjectFile } from './project-files.js';
 
 /** Dart package names: lower-case letters, digits and underscores. */
 const PACKAGE_NAME = /^[a-z_][a-z0-9_]*$/;
-/** An Android application id: dotted segments of letters, digits and underscores. */
+/**
+ * A plain `applicationId` line: dotted segments of letters, digits and underscores in
+ * matching quotes. Checked again with core's ANDROID_APPLICATION_ID, which config.json uses.
+ */
 const APPLICATION_ID =
-  /^\s*applicationId\s*=?\s*["']([A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+)["']\s*$/m;
+  /^[ \t]*applicationId[ \t]*=?[ \t]*(["'])([A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+)\1[ \t]*$/gm;
+/** Longest id config.json accepts. */
+const MAX_APPLICATION_ID = 255;
 
 export type Detection = { ok: true; name?: string } | { ok: false; reason: string };
 
@@ -89,14 +94,6 @@ export async function detectFlutterProject(projectDir: string): Promise<Detectio
   return pubspec.name === undefined ? { ok: true } : { ok: true, name: pubspec.name };
 }
 
-async function isRealFolder(path: string): Promise<boolean> {
-  try {
-    return (await lstat(path)).isDirectory();
-  } catch {
-    return false;
-  }
-}
-
 /** The Android applicationId when it is a plain literal; undefined otherwise. */
 export async function readApplicationId(projectDir: string): Promise<string | undefined> {
   // O_NOFOLLOW guards only the file itself: a linked `android` or `android/app` folder
@@ -110,7 +107,59 @@ export async function readApplicationId(projectDir: string): Promise<string | un
       () => undefined,
     );
     if (found?.kind !== 'file') continue;
-    return APPLICATION_ID.exec(found.text)?.[1];
+    return applicationIdFrom(found.text);
   }
   return undefined;
+}
+
+/**
+ * The one id the file sets, outside block comments. Two different ids (flavors that set
+ * their own) are a guess, so none is taken; snapshots then use the running app's id.
+ */
+export function applicationIdFrom(gradle: string): string | undefined {
+  const ids = new Set<string>();
+  for (const m of withoutComments(gradle).matchAll(APPLICATION_ID)) {
+    if (m[2] !== undefined) ids.add(m[2]);
+  }
+  const [id] = ids;
+  if (ids.size !== 1 || id === undefined) return undefined;
+  return id.length <= MAX_APPLICATION_ID && ANDROID_APPLICATION_ID.test(id) ? id : undefined;
+}
+
+/**
+ * Drops `/* … *\/` and `//` comments in one pass, keeping quoted strings as they are, so
+ * a `/*` inside a string (`exclude 'META-INF/*.kotlin_module'`) opens no comment
+ * (review R6). Linear: an unclosed comment or string runs to the end of the file.
+ */
+function withoutComments(text: string): string {
+  const parts: string[] = [];
+  let i = 0;
+  let start = 0;
+  while (i < text.length) {
+    const c = text[i];
+    const next = text[i + 1];
+    if (c === '/' && next === '*') {
+      parts.push(text.slice(start, i), ' ');
+      const close = text.indexOf('*/', i + 2);
+      if (close === -1) return parts.join('');
+      i = start = close + 2;
+    } else if (c === '/' && next === '/') {
+      parts.push(text.slice(start, i));
+      const eol = text.indexOf('\n', i);
+      if (eol === -1) return parts.join('');
+      i = start = eol;
+    } else if (c === '"' && text.startsWith('"""', i)) {
+      const close = text.indexOf('"""', i + 3);
+      i = close === -1 ? text.length : close + 3;
+    } else if (c === '"' || c === "'") {
+      // To the closing quote, or the end of the line (an unclosed string ends there).
+      let j = i + 1;
+      while (j < text.length && text[j] !== c && text[j] !== '\n') j += text[j] === '\\' ? 2 : 1;
+      i = j + 1;
+    } else {
+      i++;
+    }
+  }
+  parts.push(text.slice(start));
+  return parts.join('');
 }

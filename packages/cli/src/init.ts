@@ -1,8 +1,8 @@
 /**
  * `flutterdeck init`: sets a Flutter project up for FlutterDeck (plan, "flutterdeck init";
  * design note D2). It checks everything first and writes only when every file is safe to
- * change, so a refusal leaves the project as it was. It only adds: a missing port in
- * config.json, one .gitignore block, one launch.json entry.
+ * change, so a refusal leaves the project as it was. It only adds: a missing port and
+ * missing app ids in config.json, one .gitignore block, one launch.json entry.
  */
 import { dirname, join } from 'node:path';
 import type { DeckConfig } from '@project-deck/core';
@@ -23,9 +23,12 @@ import {
 } from '@project-deck/daemon';
 import { constants } from 'node:fs';
 import { access, mkdir, rmdir } from 'node:fs/promises';
-import { newConfigText, withPort } from './config-merge.js';
+import type { JSONPath } from 'jsonc-parser';
+import type { AppIds } from './config-merge.js';
+import { newConfigText, withValues } from './config-merge.js';
 import { detectFlutterProject, isRecord, readApplicationId } from './flutter-project.js';
 import { addIgnoreBlock } from './gitignore.js';
+import { readBundleId } from './ios-bundle-id.js';
 import type { Io } from './io.js';
 import { messageOf } from './io.js';
 import { launchJsonProblem, mergeLaunchJson } from './launch-json.js';
@@ -83,7 +86,13 @@ export async function runInit(opts: InitOptions): Promise<number> {
   }
   // Slow (flutter --version can take a while), so before the lock is taken.
   const prerequisites = await checkPrerequisites(opts.run);
+  // Read without following links and never run: only checked ids come back.
   const applicationId = await readApplicationId(projectDir);
+  const bundle = await readBundleId(projectDir);
+  const ids: AppIds = {
+    applicationId,
+    bundleId: bundle.kind === 'found' ? bundle.id : undefined,
+  };
   try {
     // Under the lock, another init can't change the files between this run's read and
     // its write, so two runs at once end with one block and one entry.
@@ -92,7 +101,7 @@ export async function runInit(opts: InitOptions): Promise<number> {
       async () => {
         const plan = await inspect(projectDir);
         const port = await choosePort(opts, plan.config.settings);
-        const changes = await apply(projectDir, plan, port.port);
+        const changes = await apply(projectDir, plan, port.port, ids);
         return { plan, port, changes };
       },
       opts.acquireLock ?? acquireFileLock,
@@ -116,6 +125,11 @@ export async function runInit(opts: InitOptions): Promise<number> {
     io.out('Changes:');
     for (const [file, outcome, detail] of changes) {
       io.out(`  ${outcome.padEnd(10)}${file}${outcome === 'unchanged' ? '' : ` (${detail})`}`);
+    }
+    if (bundle.kind === 'unusable' && plan.config.settings?.ios === undefined) {
+      io.out(
+        `Note: ios/Runner.xcodeproj has no plain bundle id for the Runner app's Debug build (a build variable, say). For iOS simulator snapshots, set ios.bundleId in ${CONFIG_SHOWN}.`,
+      );
     }
     io.out('');
     for (const line of await nextSteps(opts.cliMainPath)) io.out(line);
@@ -296,21 +310,41 @@ async function apply(
   projectDir: string,
   plan: Plan,
   port: number,
+  ids: AppIds,
 ): Promise<[string, Outcome, string][]> {
   const changes: [string, Outcome, string][] = [];
   const writes: Write[] = [];
 
   const config = plan.config.state;
+  const settings = plan.config.settings;
+  // Only what the config lacks; a value the user set is never replaced.
+  const added: [JSONPath, string | number, string][] = [];
+  if (settings?.port === undefined) added.push([['port'], port, `port ${port}`]);
+  if (ids.applicationId !== undefined && settings?.android === undefined) {
+    const id = ids.applicationId;
+    added.push([['android', 'applicationId'], id, `android.applicationId ${id}`]);
+  }
+  if (ids.bundleId !== undefined && settings?.ios === undefined) {
+    added.push([['ios', 'bundleId'], ids.bundleId, `ios.bundleId ${ids.bundleId}`]);
+  }
+  const details = added.map(([, , detail]) => detail).join(', ');
   if (config.kind === 'missing') {
-    writes.push({ path: configPath(projectDir), text: newConfigText(port), mode: NEW_FILE_MODE });
-    changes.push([CONFIG_SHOWN, 'created', `version 1, port ${port}`]);
-  } else if (plan.config.settings?.port === undefined) {
     writes.push({
       path: configPath(projectDir),
-      text: withPort(config.text, port),
+      text: newConfigText(port, ids),
+      mode: NEW_FILE_MODE,
+    });
+    changes.push([CONFIG_SHOWN, 'created', `version 1, ${details}`]);
+  } else if (added.length > 0) {
+    writes.push({
+      path: configPath(projectDir),
+      text: withValues(
+        config.text,
+        added.map(([path, value]) => [path, value] as const),
+      ),
       mode: config.mode,
     });
-    changes.push([CONFIG_SHOWN, 'updated', `added port ${port}`]);
+    changes.push([CONFIG_SHOWN, 'updated', `added ${details}`]);
   } else {
     changes.push([CONFIG_SHOWN, 'unchanged', '']);
   }

@@ -241,7 +241,7 @@ Claude gets two MCP servers, and each tool lives in exactly one of them. `flutte
 | `db_list` | — | databases, backend, live flag |  |
 | `db_schema` | `db` | `TableInfo[]` |  |
 | `db_query` | `db`, `sql`, `params?`, `limit?` (default 100) | `QueryResult` | Read-only statements only |
-| `db_execute` | `db`, `sql`, `params?` | changes | Only when writes are enabled; otherwise a clear refusal |
+| ~~`db_execute`~~ | — | — | Not built: Claude never writes (PM decision, 16 Oct 2026). The user edits rows in the dashboard's Database tab. |
 | `db_snapshot` / `db_diff` | `db`, `label?` | snapshot id / rows added, changed, removed | Lets Claude verify what an action changed |
 | `tasks_mine` | `status?` | `Task[]` |  |
 | `task_get` | `key` | `Task` |  |
@@ -394,7 +394,7 @@ Five milestones, each ending in something usable. Claude should not start the ne
 - [ ] `flutterdeck_drift` Dart package; no-op in release (debug builds only)
 - [x] `db-drift` (live) and `db-sqlite` (snapshot, sqlite-wasm) backends
 - [x] Database tab: tables, schema diagram, SQL editor with autocomplete, saved queries, live refresh, snapshot diff, export, guarded editing
-- [ ] MCP tools: `db_list`, `db_schema`, `db_query`, `db_snapshot`, `db_diff` (no `db_execute` for Claude: PM decision, 16 Oct 2026)
+- [x] MCP tools: `db_list`, `db_schema`, `db_query`, `db_snapshot`, `db_diff` (no `db_execute` for Claude: PM decision, 16 Oct 2026)
 - [ ] Accept: adding an item in the sample app flashes the new row within 1 s; Claude answers “how many orders are pending?” and uses `db_diff` to confirm what a change saved
 - [ ] **Validation checkpoint:** publish a 60-second demo and an early install guide; gather feedback from Flutter developers before M4. PM decision, 14 Oct 2026: the team drafts the demo, guide and post text; the PM publishes them and collects feedback; M4 work continues in parallel.
 
