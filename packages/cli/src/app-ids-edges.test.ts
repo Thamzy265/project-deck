@@ -169,9 +169,9 @@ describe('bundleIdFromPbxproj: project files it must not misread', () => {
     expect(bundleIdFromPbxproj(pbxproj(debug('C1', '"com.\\U00e9xample"'))).kind).toBe('unusable');
   });
 
-  // MCP-10: a repeated object key silently replaces the first, so a second "C1" later in
-  // the file decides the id. Xcode files never repeat keys; two values are a guess.
-  it.fails('takes no id when an object key is repeated', () => {
+  // MCP-10 (fixed): a repeated object key makes the file unreadable, so a second "C1"
+  // later in the file can't decide the id. Xcode files never repeat keys.
+  it('takes no id when an object key is repeated', () => {
     const text = pbxproj(`${debug('C1', 'com.example.app')}\n${debug('C1', 'com.evil.app')}`);
     expect(bundleIdFromPbxproj(text).kind).toBe('unusable');
   });

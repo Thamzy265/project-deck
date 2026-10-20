@@ -85,6 +85,8 @@ class Parser {
       this.expect('=');
       const value = this.value(depth + 1);
       this.expect(';');
+      // Xcode never repeats a key; two values for one would make the answer a guess.
+      if (out.has(key)) throw new ParseError();
       out.set(key, value);
     }
   }
