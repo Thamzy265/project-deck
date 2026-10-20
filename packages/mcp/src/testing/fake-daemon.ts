@@ -9,6 +9,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
 import type { Health, LogsResult, Status } from '@project-deck/core';
+import type { WriteRuntimeOptions } from '@project-deck/core/node';
 import { writeRuntime } from '@project-deck/core/node';
 
 export interface FakeRequest {
@@ -59,8 +60,11 @@ export class FakeDaemon {
     readonly token: string,
   ) {}
 
-  /** Listens on a free 127.0.0.1 port and writes runtime.json for `projectDir`. */
-  static async start(projectDir: string): Promise<FakeDaemon> {
+  /**
+   * Listens on a free 127.0.0.1 port and writes runtime.json for `projectDir`. `runtime`
+   * reaches writeRuntime, for a rename that Windows holds up.
+   */
+  static async start(projectDir: string, runtime: WriteRuntimeOptions = {}): Promise<FakeDaemon> {
     // The server exists before the fake that answers its requests.
     const holder: { fake?: FakeDaemon } = {};
     const server = createServer((req, res) => holder.fake?.handle(req, res));
@@ -70,7 +74,11 @@ export class FakeDaemon {
     const token = randomBytes(32).toString('base64url');
     const fake = new FakeDaemon(server, port, token);
     holder.fake = fake;
-    await writeRuntime(projectDir, { pid: process.pid, port, token, startedAt: Date.now() });
+    await writeRuntime(
+      projectDir,
+      { pid: process.pid, port, token, startedAt: Date.now() },
+      runtime,
+    );
     return fake;
   }
 
