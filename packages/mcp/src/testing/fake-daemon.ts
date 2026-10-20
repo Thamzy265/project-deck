@@ -16,6 +16,8 @@ export interface FakeRequest {
   path: string;
   /** Lower-case header names, as Node gives them. */
   headers: Record<string, string | string[] | undefined>;
+  /** The JSON body, when one was sent (undefined when none, or not JSON). */
+  body?: unknown;
 }
 
 export interface FakeAnswer {
@@ -87,11 +89,24 @@ export class FakeDaemon {
   private handle(req: IncomingMessage, res: ServerResponse): void {
     req.on('error', () => undefined);
     res.on('error', () => undefined);
+    const chunks: Buffer[] = [];
+    req.on('data', (chunk: Buffer) => chunks.push(chunk));
+    req.on('end', () => this.reply(req, res, Buffer.concat(chunks).toString('utf8')));
+  }
+
+  private reply(req: IncomingMessage, res: ServerResponse, text: string): void {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+    let body: unknown;
+    try {
+      body = text === '' ? undefined : JSON.parse(text);
+    } catch {
+      body = undefined;
+    }
     const request: FakeRequest = {
       method: req.method ?? 'GET',
       path: url.pathname + url.search,
       headers: req.headers,
+      ...(body === undefined ? {} : { body }),
     };
     this.requests.push(request);
     const answer = this.answer(request, url.pathname);

@@ -245,6 +245,10 @@ importers:
       zod:
         specifier: ^4.6.5
         version: 4.6.5
+    devDependencies:
+      '@project-deck/db-sqlite':
+        specifier: workspace:*
+        version: link:../db-sqlite
 
   packages/sql-guard:
     dependencies:

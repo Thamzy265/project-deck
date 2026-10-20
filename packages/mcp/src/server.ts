@@ -1,5 +1,6 @@
 /**
- * The FlutterDeck MCP server: `deck_status` and `get_logs`, forwarded to the daemon.
+ * The FlutterDeck MCP server: `deck_status`, `get_logs` and the read-only database tools
+ * (db-tools.ts), forwarded to the daemon.
  * Every tool's output, errors included, goes through the Masker before it is cut to
  * size and returned (design D4).
  */
@@ -9,6 +10,7 @@ import type { LogQuery, Status } from '@project-deck/core';
 import { DECK_VERSION, DEFAULT_LOG_LIMIT, GetLogsInput } from '@project-deck/core';
 import type { DaemonClient } from './daemon-client.js';
 import { DaemonError } from './daemon-client.js';
+import { registerDbTools } from './db-tools.js';
 import type { JsonValue, MaskSettings } from './mask/masker.js';
 import type { Masker } from './mask/masker.js';
 import { MASKING_OFF } from './mask/masker.js';
@@ -115,6 +117,14 @@ export function createDeckServer(opts: DeckServerOptions): DeckServer {
       return json(fitLogs(frame, masked.value.entries, answer.value.truncated));
     },
   );
+
+  registerDbTools(server, {
+    daemon: opts.daemon,
+    readSettings: () => readSettings(opts.projectDir),
+    scrub,
+    withMasker,
+    maskingLine,
+  });
 
   return {
     server,

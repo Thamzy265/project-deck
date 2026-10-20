@@ -9,6 +9,17 @@ import {
   getDefaultEnvironment,
 } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+
+/** deck_status, get_logs and the read-only database tools; no write tool. */
+const ALL_TOOLS = [
+  'db_diff',
+  'db_list',
+  'db_query',
+  'db_schema',
+  'db_snapshot',
+  'deck_status',
+  'get_logs',
+];
 import { FakeDaemon, initProject } from './testing/fake-daemon.js';
 
 // The entrypoint runs top-level code, so it is exercised as a process. CI builds first.
@@ -47,7 +58,7 @@ async function waitFor(check: () => boolean): Promise<void> {
 }
 
 describe('main.js over stdio', () => {
-  it('serves both tools for --project and opens the login window at start', async () => {
+  it('serves every tool for --project and opens the login window at start', async () => {
     daemon.logs = {
       entries: [{ ts: 5, level: 'error', source: 'native', message: 'call +44 7700 900123' }],
       truncated: false,
@@ -63,7 +74,7 @@ describe('main.js over stdio', () => {
 
     await waitFor(() => daemon.requests.some((r) => r.path === '/api/login-window'));
     const { tools } = await client.listTools();
-    expect(tools.map((t) => t.name).sort()).toEqual(['deck_status', 'get_logs']);
+    expect(tools.map((t) => t.name).sort()).toEqual(ALL_TOOLS);
 
     const logs = await client.callTool({ name: 'get_logs', arguments: { minLevel: 'error' } });
     const text = (logs.content as { text: string }[])[0]?.text ?? '';

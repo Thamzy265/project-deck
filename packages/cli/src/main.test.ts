@@ -14,6 +14,17 @@ import {
 } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+/** deck_status, get_logs and the read-only database tools; no write tool. */
+const ALL_TOOLS = [
+  'db_diff',
+  'db_list',
+  'db_query',
+  'db_schema',
+  'db_snapshot',
+  'deck_status',
+  'get_logs',
+];
+
 const MAIN = fileURLToPath(new URL('../dist/main.js', import.meta.url));
 
 let project: string;
@@ -107,7 +118,7 @@ describe('main.js', () => {
     client = new Client({ name: 'test', version: '0.0.0' });
     await client.connect(transport);
     const { tools } = await client.listTools();
-    expect(tools.map((t) => t.name).sort()).toEqual(['deck_status', 'get_logs']);
+    expect(tools.map((t) => t.name).sort()).toEqual(ALL_TOOLS);
     const status = await client.callTool({ name: 'deck_status', arguments: {} });
     const text = (status.content as { text: string }[])[0]?.text ?? '';
     expect(text).toContain('flutterdeck init');

@@ -103,10 +103,18 @@ const line = (message: string, extra: Partial<LogEntry> = {}): LogEntry => ({
 });
 
 describe('tool list', () => {
-  it('offers deck_status and get_logs with honest descriptions', async () => {
+  it('offers deck_status, get_logs and the database tools with honest descriptions', async () => {
     const client = await connect();
     const { tools } = await client.listTools();
-    expect(tools.map((t) => t.name).sort()).toEqual(['deck_status', 'get_logs']);
+    expect(tools.map((t) => t.name).sort()).toEqual([
+      'db_diff',
+      'db_list',
+      'db_query',
+      'db_schema',
+      'db_snapshot',
+      'deck_status',
+      'get_logs',
+    ]);
     for (const tool of tools) {
       expect(tool.description).toMatch(/untrusted/i);
       expect(tool.description).toMatch(/best[- ]effort/i);
