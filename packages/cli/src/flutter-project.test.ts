@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   detectFlutterProject,
   hasFlutterDependency,
+  applicationIdFrom,
   readApplicationId,
 } from './flutter-project.js';
 
@@ -76,6 +77,22 @@ describe('readApplicationId', () => {
     );
     await writeFile(join(dir, 'android', 'app', 'build.gradle.kts'), sample);
     expect(await readApplicationId(dir)).toBe('dev.flutterdeck.flutterdeck_sample');
+  });
+
+  it('reads past a comment opener inside a quoted string (review R6)', () => {
+    for (const gradle of [
+      "packaging {\n  exclude 'META-INF/*.kotlin_module'\n}\ndefaultConfig {\n  applicationId 'com.example.app'\n}\n",
+      'packaging { resources { excludes += "META-INF/*.kotlin_module" } }\napplicationId = "com.example.app"\n',
+      'val url = "https://example.com/*"\n// a note with /* in it\napplicationId = "com.example.app"\n',
+    ]) {
+      expect(applicationIdFrom(gradle), gradle).toBe('com.example.app');
+    }
+  });
+
+  it('still ignores an id in a block comment that follows a string', () => {
+    const gradle =
+      'val a = "x"\n/*\napplicationId = "com.evil.app"\n*/\napplicationId = "com.example.app"\n';
+    expect(applicationIdFrom(gradle)).toBe('com.example.app');
   });
 
   it('ignores an id inside a block comment', async () => {

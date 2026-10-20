@@ -72,7 +72,6 @@ describe('applicationIdFrom: Gradle text it must not misread', () => {
       'an id in a string literal on the same line',
       'val note = "applicationId = \\"com.evil.app\\""\n',
     ],
-    ['a trailing line comment', 'applicationId = "com.example.app" // prod\n'],
     ['a trailing semicolon', 'applicationId "com.example.app";\n'],
     ['a call form', 'applicationId("com.example.app")\n'],
     ['the setter form', 'setApplicationId("com.example.app")\n'],
@@ -85,6 +84,15 @@ describe('applicationIdFrom: Gradle text it must not misread', () => {
     ['a project property', 'applicationId = project.property("appId")\n'],
     ['Groovy interpolation', 'applicationId "com.example.${flavor}"\n'],
     ['Kotlin template', 'applicationId = "$base.app"\n'],
+    ['an id over 255 characters', `applicationId = "com.${'a'.repeat(260)}"\n`],
+    ['a single segment', 'applicationId = "example"\n'],
+  ])('takes no id from %s', (_name, gradle) => {
+    expect(applicationIdFrom(gradle)).toBeUndefined();
+  });
+
+  // Review R6: comments are dropped and strings kept, so these read as Gradle reads them.
+  it.each([
+    ['a trailing line comment', 'applicationId = "com.example.app" // prod\n'],
     [
       'a block comment opener inside a string',
       'val c = "/*"\napplicationId = "com.example.app"\nval d = "*/"\n',
@@ -93,10 +101,8 @@ describe('applicationIdFrom: Gradle text it must not misread', () => {
       'a block comment opener inside a line comment',
       '// see /* old\napplicationId = "com.example.app"\n',
     ],
-    ['an id over 255 characters', `applicationId = "com.${'a'.repeat(260)}"\n`],
-    ['a single segment', 'applicationId = "example"\n'],
-  ])('takes no id from %s', (_name, gradle) => {
-    expect(applicationIdFrom(gradle)).toBeUndefined();
+  ])('takes the id despite %s', (_name, gradle) => {
+    expect(applicationIdFrom(gradle)).toBe('com.example.app');
   });
 
   it('takes the base id when a build type adds a suffix (process name wins at run time)', () => {

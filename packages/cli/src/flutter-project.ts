@@ -127,7 +127,7 @@ export async function readApplicationId(projectDir: string): Promise<string | un
  */
 export function applicationIdFrom(gradle: string): string | undefined {
   const ids = new Set<string>();
-  for (const m of withoutBlockComments(gradle).matchAll(APPLICATION_ID)) {
+  for (const m of withoutComments(gradle).matchAll(APPLICATION_ID)) {
     if (m[2] !== undefined) ids.add(m[2]);
   }
   const [id] = ids;
@@ -135,18 +135,40 @@ export function applicationIdFrom(gradle: string): string | undefined {
   return id.length <= MAX_APPLICATION_ID && ANDROID_APPLICATION_ID.test(id) ? id : undefined;
 }
 
-/** Drops `/* … *\/` comments in one pass (no regex: unclosed openers stay linear). */
-function withoutBlockComments(text: string): string {
-  let out = '';
+/**
+ * Drops `/* … *\/` and `//` comments in one pass, keeping quoted strings as they are, so
+ * a `/*` inside a string (`exclude 'META-INF/*.kotlin_module'`) opens no comment
+ * (review R6). Linear: an unclosed comment or string runs to the end of the file.
+ */
+function withoutComments(text: string): string {
+  const parts: string[] = [];
   let i = 0;
-  for (;;) {
-    const open = text.indexOf('/*', i);
-    if (open === -1) return out + text.slice(i);
-    out += text.slice(i, open);
-    const close = text.indexOf('*/', open + 2);
-    // An unclosed comment runs to the end of the file, as Kotlin and Groovy read it.
-    if (close === -1) return out;
-    out += ' ';
-    i = close + 2;
+  let start = 0;
+  while (i < text.length) {
+    const c = text[i];
+    const next = text[i + 1];
+    if (c === '/' && next === '*') {
+      parts.push(text.slice(start, i), ' ');
+      const close = text.indexOf('*/', i + 2);
+      if (close === -1) return parts.join('');
+      i = start = close + 2;
+    } else if (c === '/' && next === '/') {
+      parts.push(text.slice(start, i));
+      const eol = text.indexOf('\n', i);
+      if (eol === -1) return parts.join('');
+      i = start = eol;
+    } else if (c === '"' && text.startsWith('"""', i)) {
+      const close = text.indexOf('"""', i + 3);
+      i = close === -1 ? text.length : close + 3;
+    } else if (c === '"' || c === "'") {
+      // To the closing quote, or the end of the line (an unclosed string ends there).
+      let j = i + 1;
+      while (j < text.length && text[j] !== c && text[j] !== '\n') j += text[j] === '\\' ? 2 : 1;
+      i = j + 1;
+    } else {
+      i++;
+    }
   }
+  parts.push(text.slice(start));
+  return parts.join('');
 }
