@@ -107,9 +107,9 @@ describe('applicationIdFrom: Gradle text it must not misread', () => {
     expect(applicationIdFrom(gradle)).toBe('com.example.app');
   });
 
-  // MCP-8: the opening and closing quotes needn't match, so `"com.example.app'` is read
-  // as an id although neither Groovy nor Kotlin would build it.
-  it.fails('takes no id from mismatched quotes', () => {
+  // MCP-8 (fixed): the opening and closing quotes must match, so `"com.example.app'` is not
+  // read as an id: neither Groovy nor Kotlin would build it.
+  it('takes no id from mismatched quotes', () => {
     expect(applicationIdFrom('applicationId "com.example.app\'\n')).toBeUndefined();
   });
 

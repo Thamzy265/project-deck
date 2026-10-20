@@ -13,10 +13,10 @@ import { MAX_FILE_BYTES, readProjectFile } from './project-files.js';
 const PACKAGE_NAME = /^[a-z_][a-z0-9_]*$/;
 /**
  * A plain `applicationId` line: dotted segments of letters, digits and underscores in
- * quotes. Checked again with core's ANDROID_APPLICATION_ID, which config.json uses.
+ * matching quotes. Checked again with core's ANDROID_APPLICATION_ID, which config.json uses.
  */
 const APPLICATION_ID =
-  /^[ \t]*applicationId[ \t]*=?[ \t]*["']([A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+)["'][ \t]*$/gm;
+  /^[ \t]*applicationId[ \t]*=?[ \t]*(["'])([A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+)\1[ \t]*$/gm;
 /** Longest id config.json accepts. */
 const MAX_APPLICATION_ID = 255;
 
@@ -128,7 +128,7 @@ export async function readApplicationId(projectDir: string): Promise<string | un
 export function applicationIdFrom(gradle: string): string | undefined {
   const ids = new Set<string>();
   for (const m of withoutBlockComments(gradle).matchAll(APPLICATION_ID)) {
-    if (m[1] !== undefined) ids.add(m[1]);
+    if (m[2] !== undefined) ids.add(m[2]);
   }
   const [id] = ids;
   if (ids.size !== 1 || id === undefined) return undefined;
