@@ -3,6 +3,7 @@ import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { WriteRuntimeOptions } from '@project-deck/core/node';
+import { BUSY_RETRY_DELAYS_MS, retryWhileBusy } from '@project-deck/core/node';
 import type { DaemonClientOptions } from './daemon-client.js';
 import { DaemonClient, DaemonError, NOT_RUNNING, NOT_SET_UP } from './daemon-client.js';
 import { FakeDaemon, initProject } from './testing/fake-daemon.js';
@@ -27,19 +28,16 @@ afterEach(async () => {
   await rm(projectDir, { recursive: true, force: true });
 });
 
-async function fake(): Promise<FakeDaemon> {
-  return fakeWith({});
-}
-
-async function fakeWith(runtime: WriteRuntimeOptions): Promise<FakeDaemon> {
+async function fake(runtime: WriteRuntimeOptions = {}): Promise<FakeDaemon> {
   const f = await FakeDaemon.start(projectDir, runtime);
   fakes.push(f);
   return f;
 }
 
 /**
- * For tests where no daemon ever comes up. Tests that expect one get the 5 s default:
- * a new runtime.json can take Windows more than 0.3 s to put in place.
+ * For tests where no daemon ever comes up. Tests that expect one get the 3 s default:
+ * a new runtime.json can take Windows more than 0.3 s to put in place. It stays well
+ * under Vitest's 5 s test timeout, so a failure says why.
  */
 const GIVE_UP_MS = 300;
 
@@ -49,7 +47,7 @@ function client(opts: Partial<DaemonClientOptions> = {}): DaemonClient {
     version: '0.0.0',
     projectId: () => Promise.resolve('aaaaaaaaaaaa'),
     spawnDaemon: () => undefined,
-    readyTimeoutMs: 5000,
+    readyTimeoutMs: 3000,
     pollMs: 20,
     ...opts,
   });
@@ -397,8 +395,11 @@ describe('DaemonClient when the daemon is down', () => {
   });
 
   it('waits for the second daemon while Windows holds up its runtime.json', async () => {
+    // All but core's last retry: the file lands about 0.6 s late, well past the old 0.3 s.
+    const refusals = BUSY_RETRY_DELAYS_MS.length - 1;
     let spawned = 0;
     let refused = 0;
+    let second: Promise<FakeDaemon> | undefined;
     const c = client({
       spawnDaemon: () => {
         spawned++;
@@ -416,20 +417,27 @@ describe('DaemonClient when the daemon is down', () => {
         // Windows refuses the rename while this client's poll has the old runtime.json
         // open; core retries with back-off, so the new file lands about 0.6 s later.
         const busyRename = async (from: string, to: string): Promise<void> => {
-          if (refused < 6) {
+          if (refused < refusals) {
             refused++;
             throw Object.assign(new Error('EPERM: operation not permitted, rename'), {
               code: 'EPERM',
             });
           }
-          await rename(from, to);
+          // The real rename may be refused on Windows too: give it retries of its own.
+          await retryWhileBusy(() => rename(from, to));
         };
-        track(fakeWith({ rename: busyRename }));
+        second = fake({ rename: busyRename });
+        track(second);
       },
     });
-    expect((await c.status()).value.projectName).toBe('shop_app');
+    const answer = await c.status().catch(async (err: unknown) => {
+      // A write that failed for good is the real cause: show it rather than NOT_RUNNING.
+      await second;
+      throw err;
+    });
+    expect(answer.value.projectName).toBe('shop_app');
     expect(spawned).toBe(2);
-    expect(refused).toBe(6);
+    expect(refused).toBe(refusals);
   });
 
   it('starts it at most twice for one call', async () => {

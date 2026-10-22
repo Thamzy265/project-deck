@@ -233,7 +233,7 @@ describe('the daemon going away', () => {
     let spawned = 0;
     const c = client({
       // A new runtime.json can take Windows more than the 0.3 s default to put in place.
-      readyTimeoutMs: 5000,
+      readyTimeoutMs: 3000,
       spawnDaemon: () => {
         spawned++;
         track(fake());
@@ -341,7 +341,7 @@ describe('a damaged or hostile runtime.json', () => {
     let spawned = 0;
     const c = client({
       // A new runtime.json can take Windows more than the 0.3 s default to put in place.
-      readyTimeoutMs: 5000,
+      readyTimeoutMs: 3000,
       spawnDaemon: () => {
         spawned++;
         track(fake());
