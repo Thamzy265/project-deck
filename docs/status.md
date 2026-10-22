@@ -2,6 +2,14 @@
 
 Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
 
+## 2026-10-22 — MCP daemon restart flake fixed
+
+- Merged (PM, 2026-10-22): PR #39 `fix/mcp-daemon-restart-flake` after reviewer approval and CI green on all nine checks. QA not run: the change is in tests only, with nothing to check on the running product. The lead's merge was blocked by the app's auto mode, so the PM merged. Deleted after merge (standing approval): local and remote branch `fix/mcp-daemon-restart-flake`.
+- Changed: "starts it once more when it stops again right after starting" failed once on windows-latest, Node 24 (PR #37). Cause: a test timing assumption, not a race in the client. The client gave up after the tests' 0.3 s ready window. On Windows a new `runtime.json` can land later, because the rename is refused while a reader has the old file open and core retries with back-off. Tests that expect a daemon now wait 3 s (below Vitest's 5 s timeout); tests where none comes up keep 0.3 s. A new test refuses the second daemon's rename six times and fails every run under the old window. Reviewer R1 (retry budget, hidden write error) and R2 (window equal to the test timeout) fixed; cleanups (a) shared constant and (d) repeated comment skipped.
+- Observation, no action: if a Windows daemon's `runtime.json` rename is refused on all of core's retries (about 1 s), the daemon start fails with EPERM. No evidence it happens with production's 100 ms poll.
+- Host note: the app refused to merge `main` into the worktree until the PM confirms the repository's pinned origin (Help → Troubleshooting → Review Pinned Git Origins).
+- Blockers: Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead none · PM: M3 acceptance part two; IDE breakpoint check (batch 2 box).
+
 ## 2026-10-20 — M3 batch 5 — MCP db tools ready to merge
 
 - Merged (lead, 2026-10-17): PR #36 `feat/database-tab` (batch 4) after reviewer approval, CI green (one test fixed for Windows 8.3 paths before merge) and QA pass; PLAN boxes "backends" and "Database tab" ticked. Deleted after merge (standing approval): worktree `agent-a061b3a5c6c5c4969` (unlocked first; clean and fully merged), local branches `feat/database-tab` and `worktree-agent-a061b3a5c6c5c4969`, remote branch `feat/database-tab`; QA artifacts copied to the main checkout first.
