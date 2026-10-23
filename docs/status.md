@@ -2,6 +2,13 @@
 
 Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
 
+## 2026-10-23 — M3 acceptance passed
+
+- Changed: the PM ran "PM check (batch 5)" in Claude Desktop against the fake-mode daemon. Claude answered "how many orders are pending?", confirmed new rows with `db_snapshot` and `db_diff`, was refused the hidden `customers.email`, and could not delete. With the batch 4 row flash (285 ms), the M3 acceptance box is ticked. Step 1 of the PM check now starts from `main`, because the batch 5 worktree no longer exists.
+- Deleted (standing approval): local and remote branch `docs/log-flake-fix-merge` after PR #40 merged.
+- Next: the M3 validation checkpoint drafts (60-second demo, early install guide, post text) after the IDE breakpoint check.
+- Blockers: Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead none · PM: IDE breakpoint check (batch 2 box, `flutterdeck_drift`).
+
 ## 2026-10-22 — MCP daemon restart flake fixed
 
 - Merged (PM, 2026-10-22): PR #39 `fix/mcp-daemon-restart-flake` after reviewer approval and CI green on all nine checks. QA not run: the change is in tests only, with nothing to check on the running product. The lead's merge was blocked by the app's auto mode, so the PM merged. Deleted after merge (standing approval): local and remote branch `fix/mcp-daemon-restart-flake`.
