@@ -109,7 +109,7 @@ Project rules set paths, commands and formats, and add rules. They never relax a
 - Check command: `pnpm check`.
 - Run command: `pnpm build`, then `node packages/daemon/dist/main.js` (fake mode: add `--fake`).
 - End-to-end tools: Playwright for the dashboard (M2, web). For app flows, the existing scripted checks: `scripts/qa/android-sample-app.sh up|down` and `node scripts/qa/check-android-logs.mjs`. Maestro only if a later item needs it.
-- Approved tools: Playwright Chromium — `pnpm exec playwright install chromium` (into `~/Library/Caches/ms-playwright`) — approved 2026-10-14. Standing approvals (PM): 2026-10-14, the team may delete temporary local branches it created (for example `*-tmp`, `worktree-agent-*`) when their commits are already on another branch; 2026-10-15, the team may delete files and folders it created, switch branches, and run commands in this project folder without asking. Each deletion is logged in `docs/status.md`. Everything else on the Host safety list still needs the PM.
+- Approved tools: Playwright Chromium — `pnpm exec playwright install chromium` (into `~/Library/Caches/ms-playwright`) — approved 2026-10-14. Standing approvals (PM): 2026-10-14, the team may delete temporary local branches it created (for example `*-tmp`, `worktree-agent-*`) when their commits are already on another branch; 2026-10-15, the team may delete files and folders it created, switch branches, and run commands in this project folder without asking. 2026-10-24, the lead may push branches, open PRs and merge them without asking, once the gates below pass (PM said: "no need to ask me to push pr and merge. lead can take over and merge"). Each deletion is logged in `docs/status.md`. Everything else on the Host safety list still needs the PM.
 - Project phase: `MVP` (until the M5 release).
 - Privacy regions: UK + EU. App logs and Drift databases may hold the personal data of the app's end users. Treat them as personal data, and never log or return them beyond what the feature needs.
 
@@ -122,7 +122,7 @@ After every finished task the PM gets numbered steps with copy-paste commands, t
 Lead:
 
 - "Done" means ticked in `docs/PLAN.md` on `main`. Work on a branch is in progress.
-- Merge through a PR. The lead merges a PR when the reviewer approves, CI passes and QA passes, then logs the merge in `docs/status.md` (PM decision, 14 Oct 2026). A confirmed finding that is not fixed still needs the PM's dated decision before the merge.
+- Merge through a PR. The lead merges a PR when the reviewer approves, CI passes and QA passes, then logs the merge in `docs/status.md` (PM decision, 14 Oct 2026). The lead pushes, opens and merges without asking the PM (standing approval, 24 Oct 2026); never force-push or publish anything outside GitHub. A confirmed finding that is not fixed still needs the PM's dated decision before the merge.
 - After a merge, tick the box in `docs/PLAN.md` and update "Current status" in this file.
 - Each PM update lists blockers for every role, with "none" where there are none.
 
@@ -202,7 +202,7 @@ Follows [GitHub flow](https://docs.github.com/en/get-started/using-github/github
   - short sentences, active voice, present tense, one statement per sentence;
   - sections `Changes`, `Reason`, `Verification`, and `Limitations` when there are any.
   - They say only what changed, why and how it was verified. Never put the conversation, progress summaries, review history or blockers in a PR. Those go to the PM in the chat.
-- Never commit secrets, `.flutterdeck/state.json` or `.flutterdeck/runtime.json`. Never force-push `main`. Only commit or push when the user has asked.
+- Never commit secrets, `.flutterdeck/state.json` or `.flutterdeck/runtime.json`. Never force-push `main`. Only commit or push when the user has asked; the lead's standing approval (24 Oct 2026) covers pushing branches and PRs.
 
 ## Current status
 
