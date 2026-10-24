@@ -2,6 +2,14 @@
 
 Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
 
+## 2026-10-24 — M3 IDE breakpoint check passed
+
+- Changed: QA wrote and ran a complete PM check for the IDE breakpoint (Android Studio on an emulator), using stand-ins for Android Studio and Claude Desktop. All 6 steps QA could run passed. The PM then ran all 10 steps on 2026-10-24: Android Studio stopped on the marked line with FlutterDeck attached, and Claude's pending count rose after Resume. The `flutterdeck_drift` box is ticked, so every M3 build box and the acceptance box are now ticked. Evidence in [qa/M3.md](qa/M3.md), "IDE breakpoint check".
+- Deleted (standing approval): QA's worktree `agent-a3d85cce79078bbd0` and its branches `docs/m3-breakpoint-pm-check` (commit moved to the PR branch) and `worktree-agent-a3d85cce79078bbd0`, after copying `qa-artifacts/M3-breakpoint/` to the main checkout; local and remote branch `docs/m3-acceptance-part-two` after PR #41 merged. Local and remote branch `docs/m3-breakpoint-pm-check` after PR #42 merged.
+- Host note: QA left its scratch HOME at `/private/tmp/claude-501/qa-m3bp/home` (outside the project). A `dartvm` process running since 20 Oct is not the team's and was left alone.
+- Next: the M3 validation checkpoint. The team drafts a 60-second demo, an early install guide and the post text; the PM publishes them and collects feedback.
+- Blockers: Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead none · PM: merge this record's PR.
+
 ## 2026-10-23 — M3 acceptance passed
 
 - Changed: the PM ran "PM check (batch 5)" in Claude Desktop against the fake-mode daemon. Claude answered "how many orders are pending?", confirmed new rows with `db_snapshot` and `db_diff`, was refused the hidden `customers.email`, and could not delete. With the batch 4 row flash (285 ms), the M3 acceptance box is ticked. Step 1 of the PM check now starts from `main`, because the batch 5 worktree no longer exists.

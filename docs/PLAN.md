@@ -391,7 +391,7 @@ Five milestones, each ending in something usable. Claude should not start the ne
 ### M3 — Drift inspector (headline feature)
 
 - Plan of record (16 Oct 2026): [design note](design/m3-drift-inspector.md), [UI spec](ui/m3-database-tab.md), [deck](slides/m3-drift-inspector.html), ADRs [0004](adr/0004-app-extensions-in-core.md) and [0005](adr/0005-read-only-sql-gate.md). PM decisions: D1 our package only; D2 rows reach Claude masked, capped, with hidden columns; D3 changed after the design review: Claude never writes (no `db_execute` for Claude); the user edits in the Database tab with writes switched on; D4 snapshots on Android and the iOS simulator.
-- [ ] `flutterdeck_drift` Dart package; no-op in release (debug builds only)
+- [x] `flutterdeck_drift` Dart package; no-op in release (debug builds only). Accepted 24 Oct 2026: the PM's IDE breakpoint check in Android Studio passed with FlutterDeck attached ([qa/M3.md](qa/M3.md), "IDE breakpoint check").
 - [x] `db-drift` (live) and `db-sqlite` (snapshot, sqlite-wasm) backends
 - [x] Database tab: tables, schema diagram, SQL editor with autocomplete, saved queries, live refresh, snapshot diff, export, guarded editing
 - [x] MCP tools: `db_list`, `db_schema`, `db_query`, `db_snapshot`, `db_diff` (no `db_execute` for Claude: PM decision, 16 Oct 2026)
