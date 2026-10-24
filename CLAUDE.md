@@ -25,7 +25,7 @@ TypeScript (strict) pnpm monorepo, Node 22.12+, plus Dart code: one Dart package
 | `packages/cli`                            | `init`, `start`, `stop`, `doctor`, `mcp`                                                                             | M2     |
 | `packages/sql-guard`                      | Read-only SQL gate: sqlite-wasm in a worker, authorizer + bytecode checks (ADR 0005)                                 | M3     |
 | `packages/db-drift`, `packages/db-sqlite` | `DbInspector` backends (live over app extensions / snapshot read with sqlite-wasm in a worker)                       | M3     |
-| `packages/tasks-linear`                   | `TaskProvider` for Linear GraphQL                                                                                    | M4     |
+| `packages/tasks-linear`                   | Not built in v1: no Linear support (PM decision, 24 Oct 2026)                                                        | —      |
 | `dart/flutterdeck_drift`                  | Debug-only in-app helper exposing Drift via VM service extensions                                                    | M3     |
 | `examples/sample_app`                     | Sample Flutter app for PM checks (breakpoint, reload, logs); Drift in M3, demo in M5                                 | M1     |
 | `plugin/`                                 | Claude Code plugin: `.mcp.json`, commands, hooks                                                                     | M2–M5  |
@@ -85,7 +85,7 @@ CI (`.github/workflows/ci.yml`) runs the same steps on Linux, macOS and Windows.
 
 ## Milestone process
 
-The plan has five milestones (M1 core + daemon + attach, M2 dashboard, M3 Drift inspector, M4 Linear, M5 release), each with a checklist and acceptance criteria in [docs/PLAN.md](docs/PLAN.md#milestones).
+The plan has five milestones (M1 core + daemon + attach, M2 dashboard, M3 Drift inspector, M4 plugin commands `/check` and `/db`, M5 release), each with a checklist and acceptance criteria in [docs/PLAN.md](docs/PLAN.md#milestones).
 
 1. Work on one milestone at a time. Don't start the next until every box in the current one is ticked and its acceptance check has been run for real.
 2. Before building a piece that depends on an external tool or API (DTD, VM service, Dart MCP server, Claude Code plugin format, Linear), check its current docs or source rather than relying on memory; note anything that differs from the plan.
