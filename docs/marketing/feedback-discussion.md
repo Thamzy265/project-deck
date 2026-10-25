@@ -2,7 +2,7 @@
 
 Draft for the M3 validation checkpoint (docs/PLAN.md). PM decision, 2026-10-25: feedback goes to a GitHub Discussions thread on the repo. It is public and tied to GitHub accounts. There is no email field and no extra service. Nothing here is posted: the lead or the PM turns on Discussions for the repo, creates the thread with the text below, and puts its URL in `[FEEDBACK LINK]` (see [m3-post.md](m3-post.md)).
 
-Suggested category: a Q&A or General category. Pin the thread.
+Posted on 2026-10-25 in the General category (the GitHub API cannot create a Feedback category or pin a thread). When the demo is recorded, the thread gets the demo link.
 
 ## Title
 
@@ -12,7 +12,7 @@ FlutterDeck early preview: feedback wanted (12 short questions)
 
 Thanks for looking at the FlutterDeck early preview. FlutterDeck is an open source (MIT) dashboard and Claude Code plugin for Flutter developers. This preview shows your app's Drift database next to Claude in Claude Desktop. I want to know if it is useful before I build more.
 
-Watch the 60-second demo: [DEMO LINK]. Try the install guide if you can: [REPO LINK].
+Try the install guide if you can: https://github.com/Thamzy265/project-deck/wiki/Install-guide. No device? https://github.com/Thamzy265/project-deck/wiki/Try-without-a-device needs only Node and pnpm. A 60-second demo video follows soon.
 
 **How to answer.** Reply to this thread. Number your answers like the questions, for example `3: b, d`. Skip any question. Question 5 is a number from 1 to 5. The open questions (7, 10, 11) take free text.
 
@@ -34,7 +34,7 @@ Watch the 60-second demo: [DEMO LINK]. Try the install guide if you can: [REPO L
 7. **If you got stuck, at which step, and what did you see?** (free text, no tokens or addresses)
 8. **What would stop you from using it?** (pick all that apply)
    a. Needs a package in my app b. Needs Claude Desktop c. Install from a git checkout d. My database isn't Drift e. My platform isn't supported f. Privacy or security concerns g. Nothing h. Other (say what)
-9. **FlutterDeck lets Claude read your database but not change it. Is that the right default for you?** (pick one)
+9. **FlutterDeck's tools let Claude read your database but not change it. Is that the right default for you?** (pick one)
    a. Yes b. No, I want Claude to write with my confirmation c. Not sure
 10. **What is the one thing you'd want next?** (free text)
 11. **Is anything confusing or wrong in the demo or the guide?** (free text)
