@@ -12,7 +12,8 @@ Tested on Android (emulator) and the iOS Simulator; real iPhones are untested. T
 
 ## Try it
 
-- [Install guide](docs/marketing/m3-install-guide.md): from a git checkout to your own app, with a no-device fake mode (about 5 minutes) and a sample app.
+- [Try it without a device](https://github.com/Thamzy265/project-deck/wiki/Try-without-a-device): fake mode, about 5 minutes, no Flutter or IDE needed.
+- [Install guide](https://github.com/Thamzy265/project-deck/wiki/Install-guide): from a git checkout to your own app, with a sample app.
 - [Wiki](https://github.com/Thamzy265/project-deck/wiki): the guide, FAQ, and safety and privacy notes.
 
 ## Safety
@@ -36,7 +37,7 @@ Linear support is not planned for v1: ask Claude to use Linear's own MCP server.
 
 ## Feedback
 
-Tell us what is missing or wrong in GitHub Discussions: [FEEDBACK LINK]. Replies are public, so don't paste app data, logs or personal data.
+Tell us what is missing or wrong in GitHub Discussions: <https://github.com/Thamzy265/project-deck/discussions>. Replies are public, so don't paste app data, logs or personal data.
 
 ## Building from source
 
@@ -54,7 +55,7 @@ pnpm build
 pnpm check
 ```
 
-To try FlutterDeck with a built-in fake app and no Flutter, follow section 2 of the [install guide](docs/marketing/m3-install-guide.md). To see which running Dart and Flutter apps your tooling daemons know about:
+To try FlutterDeck with a built-in fake app and no Flutter, follow [Try it without a device](https://github.com/Thamzy265/project-deck/wiki/Try-without-a-device). To see which running Dart and Flutter apps your tooling daemons know about:
 
 ```bash
 node scripts/dtd-apps.mjs
