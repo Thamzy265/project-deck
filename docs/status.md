@@ -2,6 +2,17 @@
 
 Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
 
+## 2026-10-24 — PM standing approval: the lead pushes and merges
+
+- Decisions: PM, 2026-10-24, word for word: "no need to ask me to push pr and merge. lead can take over and merge". The lead now pushes branches, opens PRs and merges them without asking, once the reviewer, CI and QA gates pass (or are logged `n/a` with a reason). A confirmed finding that is not fixed still needs the PM's dated decision. Force-push, `main` history and anything published outside GitHub still need the PM. Recorded in CLAUDE.md "Team setup".
+- Blockers: Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead none.
+
+## 2026-10-24 — M4 re-planned: no Linear support in v1
+
+- Changed: M4 "Linear tasks" becomes "Plugin commands": `/check` and `/db` only, with a new acceptance check in [PLAN.md](PLAN.md). Not built in v1: the `tasks-linear` provider, the `task_*` MCP tools, the Tasks tab, the current task chip, `init`'s Linear key step, and `/tasks`, `/start` and `/ship`. One Later line covers them (trigger: 3 or more validation-form replies asking for task-tracker support). The lead checked on 2026-10-24 that Linear's official MCP server lists the PM's workspace teams through OAuth, with no API key. The validation feedback form asks which task tracker people use.
+- Decisions: PM, 2026-10-24, word for word: "a and to add plugin commands, we dont have the linear key we are using an enterprise version"; then "i think we can leave the linear thing for now because not alot of developers will have it and i can just let claude to fetch and tell me whats going on linear"; then "yes go ahead, keep /check and /db".
+- Blockers: Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead none.
+
 ## 2026-10-24 — M3 IDE breakpoint check passed
 
 - Changed: QA wrote and ran a complete PM check for the IDE breakpoint (Android Studio on an emulator), using stand-ins for Android Studio and Claude Desktop. All 6 steps QA could run passed. The PM then ran all 10 steps on 2026-10-24: Android Studio stopped on the marked line with FlutterDeck attached, and Claude's pending count rose after Resume. The `flutterdeck_drift` box is ticked, so every M3 build box and the acceptance box are now ticked. Evidence in [qa/M3.md](qa/M3.md), "IDE breakpoint check".
