@@ -2,6 +2,16 @@
 
 Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
 
+## 2026-10-25 — M3 validation checkpoint — drafts ready
+
+- Merged (lead, 2026-10-25, standing approval): PR #44 `docs/m4-linear-mcp` (M4 re-plan, docs only) after CI passed 9/9. Reviewer and QA `n/a — plan record only, nothing to run`. Deleted after merge (standing approval): worktree `.claude/worktrees/m4-linear-mcp`, local and remote branch `docs/m4-linear-mcp`.
+- Changed: `docs/m3-validation` adds drafts in `docs/marketing/`: [m3-demo-script.md](marketing/m3-demo-script.md) (60-second demo, shot list, setup and clean-up), [m3-install-guide.md](marketing/m3-install-guide.md) (early install from a git checkout) and [m3-post.md](marketing/m3-post.md) (three post lengths, 13 feedback questions, form outline). Size: small (docs only). Every claim has a row in a claims table with QA's verdict.
+- Gates: developer pass · tester `n/a — docs only, no code` · reviewer approve with notes (first round block on R1–R3 Medium: form field number, overclaimed "Claude never writes", unguarded `pkill`; R1–R13 and N1 fixed) · QA pass: the install guide ran as written with a scratch HOME (fake mode, the sample app on an API 34 emulator, a separate Drift app, removal); V1–V2 fixed; claims 56 verified, 2 reword (post 17 "a few minutes": PM to time the form; guide 15: snapshot without the package, already hedged as untested), 0 remove. Evidence: [qa/M3.md](qa/M3.md), "Validation checkpoint drafts (2026-10-25)".
+- Lead decision (2026-10-25, review R14): the PM decision of 14 Oct 2026 ("the team drafts the demo, guide and post text") covers these drafts before `docs/marketing/voice.md` exists. At M5 the marketer writes voice.md first and aligns these texts with it.
+- Open findings: none. The PLAN box stays open until the PM publishes the demo and guide and collects feedback.
+- Needs PM: the steps in [qa/M3.md](qa/M3.md) "PM check (validation drafts)" (real Claude with the real app, the "don't ask again" entry names, Android Studio breakpoint), recording the demo, the open questions in each draft (name, where to post, form tool and email field, README), then publishing.
+- Blockers: Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead none · PM: the items above.
+
 ## 2026-10-24 — PM standing approval: the lead pushes and merges
 
 - Decisions: PM, 2026-10-24, word for word: "no need to ask me to push pr and merge. lead can take over and merge". The lead now pushes branches, opens PRs and merges them without asking, once the reviewer, CI and QA gates pass (or are logged `n/a` with a reason). A confirmed finding that is not fixed still needs the PM's dated decision. Force-push, `main` history and anything published outside GitHub still need the PM. Recorded in CLAUDE.md "Team setup".
