@@ -50,8 +50,8 @@ Thank you.
 
 ## Claims in this draft
 
-| #   | Claim (as written)                                                           | Evidence                                    | QA verdict |
-| --- | ---------------------------------------------------------------------------- | ------------------------------------------- | ---------- |
-| 1   | Replies are public and tied to GitHub accounts; no email or other service    | PM decision 2026-10-25 (GitHub Discussions) | pending    |
-| 2   | FlutterDeck is an open source (MIT) dashboard and Claude Code plugin         | LICENSE file (MIT); PM decision 2026-10-25  | pending    |
-| 3   | The preview shows your app's Drift database next to Claude in Claude Desktop | qa/M3.md batch 4 C; "PM check (batch 4)"    | pending    |
+| #   | Claim (as written)                                                           | Evidence                                    | QA verdict                                          |
+| --- | ---------------------------------------------------------------------------- | ------------------------------------------- | --------------------------------------------------- |
+| 1   | Replies are public and tied to GitHub accounts; no email or other service    | PM decision 2026-10-25 (GitHub Discussions) | verified — docs/qa/M3.md#readme-and-wiki-2026-10-25 |
+| 2   | FlutterDeck is an open source (MIT) dashboard and Claude Code plugin         | LICENSE file (MIT); PM decision 2026-10-25  | verified — docs/qa/M3.md#readme-and-wiki-2026-10-25 |
+| 3   | The preview shows your app's Drift database next to Claude in Claude Desktop | qa/M3.md batch 4 C; "PM check (batch 4)"    | verified — docs/qa/M3.md#readme-and-wiki-2026-10-25 |
