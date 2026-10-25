@@ -25,7 +25,7 @@ What FlutterDeck adds:
 
 ## Goals, non-goals and v1 scope
 
-v1 succeeds when a Flutter developer can pick a Linear task, let Claude implement it, reload, read logs and inspect the Drift database without leaving Claude Desktop, while still launching and debugging the app from their own IDE if they want.
+v1 succeeds when a Flutter developer can pick a Linear task (_changed 24 Oct 2026:_ Linear support moved to Later), let Claude implement it, reload, read logs and inspect the Drift database without leaving Claude Desktop, while still launching and debugging the app from their own IDE if they want.
 
 **Goals**
 
@@ -243,7 +243,7 @@ Claude gets two MCP servers, and each tool lives in exactly one of them. `flutte
 | `db_query` | `db`, `sql`, `params?`, `limit?` (default 100) | `QueryResult` | Read-only statements only |
 | ~~`db_execute`~~ | — | — | Not built: Claude never writes (PM decision, 16 Oct 2026). The user edits rows in the dashboard's Database tab. |
 | `db_snapshot` / `db_diff` | `db`, `label?` | snapshot id / rows added, changed, removed | Lets Claude verify what an action changed |
-| `tasks_mine` | `status?` | `Task[]` |  |
+| `tasks_mine` | `status?` | `Task[]` | Not built in v1: no Linear support (PM decision, 24 Oct 2026); same for the four `task_*` rows below |
 | `task_get` | `key` | `Task` |  |
 | `task_current` | — | the task selected in the dashboard, or null | Dashboard-to-Claude bridge |
 | `task_set_current` | `key` | ok | Keeps the dashboard in sync with `/start` |
@@ -288,6 +288,8 @@ The dashboard is a single-page React app the daemon serves at `http://127.0.0.1:
 **Theme.** Follow `prefers-color-scheme` to match Claude Desktop's light and dark modes.
 
 ## Task providers and the Linear handoff
+
+_Changed 24 Oct 2026 (PM decisions):_ FlutterDeck builds no Linear support in v1. First the PM said: "a and to add plugin commands, we dont have the linear key we are using an enterprise version". Linear's official MCP server signs in with OAuth and needs no API key (checked 24 Oct 2026: it lists the PM's enterprise workspace teams without a key), and a FlutterDeck task tool would duplicate it. Then the PM said: "i think we can leave the linear thing for now because not alot of developers will have it and i can just let claude to fetch and tell me whats going on linear", and, on keeping the two commands that don't use Linear: "yes go ahead, keep /check and /db". So the `tasks-linear` provider, the `task_*` MCP tools, the Tasks tab, the current task chip, `init`'s Linear key step and the `/tasks`, `/start` and `/ship` commands are not built; they are in Later. The `TaskProvider` interface stays in `core`. The rest of this section is the original design, kept for reference.
 
 The dashboard can't type into Claude's chat, so the handoff works through shared state: the dashboard sets a current task in the daemon, and Claude reads it with `task_current`. This costs the user one short command and is reliable.
 
@@ -344,9 +346,9 @@ plugin/
 **`flutterdeck init`**
 
 1. Detect the project (`pubspec.yaml` with a `flutter` dependency) and read `applicationId`.
-2. Check prerequisites (`dart` 3.9+ for the Dart MCP server, `flutter`, `adb`, `gh`); `flutterdeck doctor` reruns this. _Changed 15 Oct 2026 (lead decision):_ `gh` is checked from M4, where `/ship` uses it; M2's `init` checks `dart`, `flutter` and `adb` only.
+2. Check prerequisites (`dart` 3.9+ for the Dart MCP server, `flutter`, `adb`, `gh`); `flutterdeck doctor` reruns this. _Changed 15 Oct 2026 (lead decision):_ `gh` is checked from M4, where `/ship` uses it (_changed 24 Oct 2026:_ `/ship` is not built in v1, so `gh` is not checked); M2's `init` checks `dart`, `flutter` and `adb` only.
 3. Detect Drift; offer to add `flutterdeck_drift` as a dependency and show the one-line register call.
-4. Ask for a Linear API key (optional) and store it outside the repo.
+4. ~~Ask for a Linear API key (optional) and store it outside the repo.~~ Not built: no Linear support in v1 (PM decision, 24 Oct 2026).
 5. Write `.flutterdeck/config.json` (port, codegen mode, DB write toggle) and gitignore `.flutterdeck/state.json` and `runtime.json`.
 6. Add the dashboard to `.claude/launch.json`.
 7. Print the plugin install command, plus raw MCP configs for other agents.
@@ -398,12 +400,12 @@ Five milestones, each ending in something usable. Claude should not start the ne
 - [x] Accept: adding an item in the sample app flashes the new row within 1 s; Claude answers “how many orders are pending?” and uses `db_diff` to confirm what a change saved. Accepted 23 Oct 2026: row flash PASS in batch 4 (285 ms max, real Android); Claude part PASS in the PM's Claude Desktop run ([qa/M3.md](qa/M3.md), "M3 acceptance").
 - [ ] **Validation checkpoint:** publish a 60-second demo and an early install guide; gather feedback from Flutter developers before M4. PM decision, 14 Oct 2026: the team drafts the demo, guide and post text; the PM publishes them and collects feedback; M4 work continues in parallel.
 
-### M4 — Linear tasks
+### M4 — Plugin commands
 
-- [ ] `tasks-linear` provider with key stored outside the repo
-- [ ] Tasks tab, current task chip, `task_*` MCP tools
-- [ ] `/tasks`, `/start`, `/check`, `/db`, `/ship` commands
-- [ ] Accept: click Work on this, type `/start`, and Claude is on the right branch with the issue In Progress; `/ship` opens a PR Linear links to the issue
+_Changed 24 Oct 2026 (PM decisions, see "Task providers and the Linear handoff"):_ M4 was "Linear tasks". FlutterDeck builds no Linear support in v1: no `tasks-linear` provider, Tasks tab, current task chip, `task_*` tools, `/tasks`, `/start` or `/ship`. Users who want Linear ask Claude to use Linear's official MCP server. `/check` and `/db` stay, because they help every user.
+
+- [ ] `/check` and `/db` plugin commands
+- [ ] Accept: with the sample app attached, `/db how many orders are pending?` answers with `db_query` and changes nothing; after an edit, `/check` hot reloads with the Dart MCP server, reads runtime errors, `get_logs` and `db_diff`, and reports what it found, including a planted runtime error
 
 ### M5 — Packaging and public release
 
@@ -457,5 +459,6 @@ One line per deferred item, in the format `- <what> — <why> — trigger: <meas
 - No-setup live path on Drift's own DevTools extension — internal API, no in-app read-only guard — trigger: 5 or more feedback replies asking for live mode without adding a package — noted 2026-10-16 by lead
 - Room / Isar / Hive inspectors — other databases — trigger: 3 user requests for one of them — noted 2026-10-16 by lead
 - Edit rows of tables without a primary key (matched by row id) in the Database tab — Edit and Delete row need a primary key today — trigger: 3 user reports of a table they can't edit — noted 2026-10-17 by developer
+- Task tracker support: `/tasks`, `/start` and `/ship` over Linear's official MCP server (no key), and a Tasks tab with a current task chip, which would need FlutterDeck's own client — few developers use Linear, and Claude with Linear's MCP server already fetches issues (PM decision 24 Oct 2026) — trigger: 3 or more validation-form replies asking for task-tracker support — noted 2026-10-24 by lead
 - Export query results past 1,000 rows (the design allows 5,000) — `POST /api/db/query` caps dashboard results at 1,000 — trigger: 2 user requests to export a larger query result — noted 2026-10-17 by developer
 - Keyset paging for Database tab table pages — `OFFSET` reads every skipped row — trigger: a page of a 100,000-row table takes > 1 s on the Android emulator — noted 2026-10-17 by developer
