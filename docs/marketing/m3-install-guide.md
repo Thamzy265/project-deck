@@ -1,6 +1,8 @@
 # FlutterDeck early install guide (M3 preview)
 
-> **Working name.** The product name is an open plan decision (docs/PLAN.md, "Open decisions"). Replace "FlutterDeck" before publishing.
+> **Source.** This copy in `docs/` is the source. The GitHub wiki is published from `docs/wiki/`. Change the guide here, not in the wiki.
+
+> **Name.** The PM keeps "FlutterDeck" for the validation post (PM decision, 2026-10-25). The name stays an open decision before M5 (docs/PLAN.md, "Open decisions").
 
 Draft for the M3 validation checkpoint (docs/PLAN.md). This guide installs FlutterDeck from a git checkout. Packages on npm and pub.dev come with a later release.
 
@@ -8,7 +10,7 @@ The steps are for **macOS with zsh**. They were not run on Windows or Linux for 
 
 ## What it is
 
-FlutterDeck puts your Flutter app's Drift database next to Claude in Claude Desktop. You see the tables live in a Database tab in Claude Desktop's Browser pane, and Claude can read the database to answer questions about your data.
+FlutterDeck is open source (MIT). It puts your Flutter app's Drift database next to Claude in Claude Desktop. You see the tables live in a Database tab in Claude Desktop's Browser pane, and Claude can read the database to answer questions about your data.
 
 - **It attaches, it never launches.** You start your app from your IDE or `flutter run`, in debug mode, as usual. We tested with Android Studio and `flutter run`; VS Code is untested. FlutterDeck finds the running app and connects to it. Your IDE keeps control, so your breakpoints still work.
 - **Debug builds only.** The in-app package, `flutterdeck_drift`, works only in debug builds. We checked that a profile build doesn't include it; we have not built a release build.
@@ -18,8 +20,8 @@ FlutterDeck puts your Flutter app's Drift database next to Claude in Claude Desk
 ## What it is not (yet)
 
 - Not a published package. You build it from a git checkout.
-- Not tested on Windows or Linux in this guide. We tested on macOS with an Android emulator.
-- Not for iOS devices. On the iOS simulator only a read-only database copy (snapshot) was checked.
+- Not tested on Windows or Linux in this guide. QA tested on macOS with an Android emulator.
+- iOS: Android and iOS (the PM's own check, 25 Oct 2026). QA's own iOS check covered only a read-only database copy (snapshot) on the simulator. We make no claim about iOS speed.
 - The live view needs Drift. On Android, other SQLite databases can be read as a snapshot copy (not tested in an app without the package); see [Snapshot mode](#snapshot-mode-on-android-without-the-package).
 - Not a cloud service. FlutterDeck runs on your computer and listens only on `127.0.0.1`. What Claude reads with FlutterDeck's tools goes into your Claude conversation, like any other tool result.
 
@@ -364,13 +366,9 @@ The plugin is installed for your user, so it runs in every Claude Code session. 
 
 ## Open questions for the PM
 
-1. Product name: every "FlutterDeck", the `flutterdeck` command and `.flutterdeck/` folder may change (open decision in docs/PLAN.md).
-2. The repo's README still says "Nothing is installable yet" and shows M1 "in progress". Should the README link to this guide before it is shared?
-3. Repo visibility: `Thamzy265/project-deck` is public today. Should the guide name it, or a new home after the name decision?
-4. Path or git dependency for `flutterdeck_drift`: the guide uses a path to the checkout (tested by QA). A git dependency (`git: url: https://github.com/Thamzy265/project-deck.git, path: dart/flutterdeck_drift`) should also work because the repo is public, but it was not tested, and it can drift from the checkout's version.
-5. Should the guide mention the iOS simulator (snapshot only, checked once), or keep it Android only?
-6. Licence wording: the repo and `flutterdeck_drift` are MIT. Should the guide say so?
-7. Windows and Linux: CI runs the test suite there, but nobody ran these steps there. Keep "untested", or ask for testers in the post?
+1. Repo visibility: `Thamzy265/project-deck` is public today. Should the guide name it, or a new home after the name decision?
+2. Path or git dependency for `flutterdeck_drift`: the guide uses a path to the checkout (tested by QA). A git dependency (`git: url: https://github.com/Thamzy265/project-deck.git, path: dart/flutterdeck_drift`) should also work because the repo is public, but it was not tested, and it can drift from the checkout's version.
+3. Windows and Linux: CI runs the test suite there, but nobody ran these steps there. Keep "untested", or ask for testers in the post?
 
 ## Claims in this draft
 
@@ -388,7 +386,7 @@ The plugin is installed for your user, so it runs in every Claude Code session. 
 | 10  | Gives Claude your app's logs                                                                                                                         | qa/M3.md "IDE breakpoint check" step 6c (`get_logs`); qa/M2.md batch 3                                                                            | verified — docs/qa/M3.md#claim-check-validation-drafts |
 | 11  | Works with the Dart MCP server for hot reload and runtime errors                                                                                     | qa/M2.md "Final PM check" steps 13–15                                                                                                             | verified — docs/qa/M3.md#claim-check-validation-drafts |
 | 12  | Tested on macOS with an Android emulator (API 34)                                                                                                    | qa/M3.md batches 2–5 and "IDE breakpoint check"                                                                                                   | verified — docs/qa/M3.md#claim-check-validation-drafts |
-| 13  | On the iOS simulator only a read-only snapshot was checked                                                                                           | qa/M3.md batch 3 E                                                                                                                                | verified — docs/qa/M3.md#claim-check-validation-drafts |
+| 13  | iOS: Android and iOS (the PM's own check, 25 Oct 2026); QA's own check covered only a read-only snapshot on the iOS simulator                        | PM report 2026-10-25, docs/qa/M3.md (the lead adds the record); qa/M3.md batch 3 E for the snapshot                                               | pending                                                |
 | 14  | Snapshot mode on Android reads SQLite files of a debug build with `adb`, read-only                                                                   | qa/M3.md batch 3 C; batch 4 C R9 (read-only); batch 5 E3                                                                                          | verified — docs/qa/M3.md#claim-check-validation-drafts |
 | 15  | Snapshot mode reads a copy of the app's database file without the package                                                                            | qa/M3.md batch 3 C (the copy is read through `adb exec-out run-as`, not through the package). An app without `flutterdeck_drift` installed: none  | reword — docs/qa/M3.md#claim-check-validation-drafts   |
 | 16  | `flutterdeck init` writes the Android id into `config.json`                                                                                          | qa/M3.md batch 5 E1, E2                                                                                                                           | verified — docs/qa/M3.md#claim-check-validation-drafts |
@@ -403,3 +401,4 @@ The plugin is installed for your user, so it runs in every Claude Code session. 
 | 25  | `~/.flutterdeck` holds only the per-user port list                                                                                                   | qa/M2.md "Final PM check" step 19                                                                                                                 | verified — docs/qa/M3.md#claim-check-validation-drafts |
 | 26  | Read-only and hidden columns apply to FlutterDeck's tools only; Claude Code's other tools (shell, file reads, Browser pane) can still reach the data | docs/status.md, risks accepted by the PM 2026-10-16 (Bash) and 2026-10-17 (Browser pane); not a qa claim                                          | verified — docs/qa/M3.md#claim-check-validation-drafts |
 | 27  | With `db.allowWrites` on, Claude driving the Browser pane could click Edit in the Database tab                                                       | docs/status.md, risk accepted by the PM 2026-10-16 ("Claude could click an edit button"); not a qa claim                                          | verified — docs/qa/M3.md#claim-check-validation-drafts |
+| 28  | FlutterDeck is open source (MIT)                                                                                                                     | LICENSE file (MIT); docs/PLAN.md "Licence" decided 9 Oct 2026; PM decision 2026-10-25                                                             | pending                                                |
