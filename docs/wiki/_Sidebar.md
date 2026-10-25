@@ -1,0 +1,6 @@
+- [[Home]]
+- [[Try it without a device|Try-without-a-device]]
+- [[Install guide|Install-guide]]
+- [[Safety and privacy|Safety-and-privacy]]
+- [[FAQ]]
+- [[Feedback]]
