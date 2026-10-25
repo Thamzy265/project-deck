@@ -10,8 +10,8 @@ The steps are for **macOS with zsh**. They were not run on Windows or Linux for 
 
 FlutterDeck puts your Flutter app's Drift database next to Claude in Claude Desktop. You see the tables live in a Database tab in Claude Desktop's Browser pane, and Claude can read the database to answer questions about your data.
 
-- **It attaches, it never launches.** You start your app from Android Studio, VS Code or `flutter run`, in debug mode, as usual. FlutterDeck finds the running app and connects to it. Your IDE keeps control, so your breakpoints still work.
-- **Debug builds only.** The in-app package, `flutterdeck_drift`, does nothing in profile and release builds.
+- **It attaches, it never launches.** You start your app from your IDE or `flutter run`, in debug mode, as usual. We tested with Android Studio and `flutter run`; VS Code is untested. FlutterDeck finds the running app and connects to it. Your IDE keeps control, so your breakpoints still work.
+- **Debug builds only.** The in-app package, `flutterdeck_drift`, works only in debug builds. We checked that a profile build doesn't include it; we have not built a release build.
 - **Claude can't change data through FlutterDeck.** FlutterDeck's database tools for Claude refuse every query that writes. You can hide columns from FlutterDeck's tools.
 - It also gives Claude your app's logs, and works with the official Dart MCP server for hot reload and runtime errors.
 
@@ -25,18 +25,18 @@ FlutterDeck puts your Flutter app's Drift database next to Claude in Claude Desk
 
 ## Prerequisites
 
-| What                          | Version we tested                     | Check with          |
-| ----------------------------- | ------------------------------------- | ------------------- |
-| Node.js                       | 22.12 or later (tested 22.12.0)       | `node --version`    |
-| pnpm                          | 10 (tested 10.34.5)                   | `pnpm --version`    |
-| Flutter                       | tested 3.44.6, with Dart 3.12.2       | `flutter --version` |
-| Dart                          | 3.12.2 or later (`flutterdeck_drift`) | `dart --version`    |
-| Android Studio or VS Code     | with the Flutter plugin               |                     |
-| An Android emulator or device | API 24 or later (tested API 34)       | `adb devices`       |
-| `adb`                         | from the Android SDK, on your PATH    | `adb --version`     |
-| Claude Desktop                | with Claude Code sessions             |                     |
-| `claude` command              | on your PATH                          | `claude --version`  |
-| git                           |                                       | `git --version`     |
+| What                              | Version we tested                             | Check with          |
+| --------------------------------- | --------------------------------------------- | ------------------- |
+| Node.js                           | 22.12 or later (tested 22.12.0)               | `node --version`    |
+| pnpm                              | 10 (tested 10.34.5)                           | `pnpm --version`    |
+| Flutter                           | tested 3.44.6, with Dart 3.12.2               | `flutter --version` |
+| Dart                              | 3.12.2 or later (`flutterdeck_drift`)         | `dart --version`    |
+| Android Studio (VS Code untested) | with the Flutter plugin                       |                     |
+| An Android emulator or device     | tested on API 34; older versions are untested | `adb devices`       |
+| `adb`                             | from the Android SDK, on your PATH            | `adb --version`     |
+| Claude Desktop                    | with Claude Code sessions                     |                     |
+| `claude` command                  | on your PATH                                  | `claude --version`  |
+| git                               |                                               | `git --version`     |
 
 The Dart MCP server needs Dart 3.9 or later. The `flutterdeck_drift` package (`dart/flutterdeck_drift/pubspec.yaml`) needs Dart `^3.12.2`, `drift: ^2.35.2`, `sqlite3: ^3.5.2` and `ffi: ^2.1.0`. Your app must resolve the same packages within these ranges.
 
@@ -134,7 +134,7 @@ The commands set `HOME` to a scratch folder. FlutterDeck keeps a list of project
    kill "$DECK_PID"; rm -rf "${T:?run this in the terminal from step 1}"
    ```
 
-   Expected: the shell prints that the job was terminated. If `kill` says "no such process", run:
+   Expected: the shell may print that the job was terminated. If `kill` says "no such process", run:
 
    ```bash
    pkill -f "${T:?run this in the terminal from step 1}/proj"; rm -rf "${T:?}"
@@ -164,7 +164,7 @@ The checkout has a small Drift app, `examples/sample_app`, with an `orders` tabl
 
    The plugin gives Claude two MCP servers: the official Dart MCP server (hot reload, runtime errors) and FlutterDeck's own (logs and the database tools). It also adds hooks that show Claude's activity in the dashboard.
 
-3. In Android Studio choose **File > Open** and pick `project-deck/examples/sample_app` in your home folder (not the repo root). Start an emulator. In `lib/main.dart`, set a breakpoint on the line that ends with `// FLUTTERDECK: put the breakpoint on this line`. Press **Debug**, not Run. (VS Code: open the same folder and choose **Run > Start Debugging**.)
+3. In Android Studio choose **File > Open** and pick `project-deck/examples/sample_app` in your home folder (not the repo root). Start an emulator. In `lib/main.dart`, set a breakpoint on the line that ends with `// FLUTTERDECK: put the breakpoint on this line`. Press **Debug**, not Run. (VS Code is untested: open the same folder and choose **Run > Start Debugging**.)
 
    Expected: the app opens on the emulator with **Hit breakpoint**, **Add order** and a red DEBUG banner.
 
@@ -222,7 +222,7 @@ Your app must use Drift and run in debug mode. Below, `~/code/my_app` stands for
        path: /Users/you/project-deck/dart/flutterdeck_drift
    ```
 
-   Don't commit this change: the path is for your machine only. It is a normal dependency, not a dev dependency, because `main.dart` imports it. It does nothing in profile and release builds.
+   Don't commit this change: the path is for your machine only. It is a normal dependency, not a dev dependency, because `main.dart` imports it. It works only in debug builds (a profile build was checked; release was not built).
 
 2. Get the package:
 
@@ -294,7 +294,7 @@ Start a Code session in your app's folder, with the plugin installed and Flutter
 - FlutterDeck's database tools for Claude only read: FlutterDeck checks every query with the real SQLite engine before it runs, and refuses anything that changes data. Hidden columns (`db.hiddenColumns`) are refused in every query of these tools and left out of their diffs.
 - Rows and log lines are untrusted data: Claude's tools tell it not to follow instructions found in them. The dashboard and its API answer only on `127.0.0.1`, and need the session token in `.flutterdeck/runtime.json`.
 
-Known limit: these rules cover FlutterDeck's tools only. Claude Code's other tools can still reach your database: a shell command (for example `adb` or `sqlite3`), a file read, or the Browser pane, where Claude can read what the dashboard page shows, as you can. Keep Claude Code's permission prompts on, and choose No when Claude asks to run a command or read a file that touches your app's data.
+Known limit: these rules cover FlutterDeck's tools only. Claude Code's other tools can still reach your database: a shell command (for example `adb` or `sqlite3`), a file read, or the Browser pane, where Claude can read what the dashboard page shows, as you can. If you turn on `db.allowWrites`, Claude driving the Browser pane could also click Edit in the Database tab. Keep Claude Code's permission prompts on, and choose No when Claude asks to run a command or read a file that touches your app's data.
 
 ## Remove FlutterDeck
 
@@ -324,13 +324,13 @@ The plugin is installed for your user, so it runs in every Claude Code session. 
    cd ~/code/my_app && rm -rf .flutterdeck
    ```
 
-   Then open `.gitignore` in an editor and delete the block from the line that starts with `# >>> flutterdeck` to the line `# <<< flutterdeck`, both included. Check that only that block went:
+   Then open `.gitignore` in an editor and delete the block from the line that starts with `# >>> flutterdeck` to the line `# <<< flutterdeck`, both included. `init` also added a blank line just before the block: delete it too. Check that only that block went:
 
    ```bash
    git diff .gitignore
    ```
 
-   Expected: only the removed `# >>> flutterdeck` block lines (with `-`), nothing else.
+   Expected: no output if you never committed the block. If you committed it, only the removed blank line and block lines (with `-`), nothing else.
 
 4. Remove the "FlutterDeck" entry from `.claude/launch.json`. If it is the only entry, delete the file:
 
@@ -378,8 +378,8 @@ The plugin is installed for your user, so it runs in every Claude Code session. 
 | --- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
 | 1   | It attaches, it never launches; FlutterDeck finds the running app                                                                                    | qa/M3.md "IDE breakpoint check" step 4; qa/M1.md acceptance                                                                                       | verified — docs/qa/M3.md#claim-check-validation-drafts |
 | 2   | Your breakpoints still work                                                                                                                          | qa/M3.md "IDE breakpoint check", "PM run (2026-10-24)" (Android Studio); batch 4 D, batch 5 F                                                     | verified — docs/qa/M3.md#claim-check-validation-drafts |
-| 3   | Works from VS Code too (Run > Start Debugging)                                                                                                       | qa/M2.md "Final PM check" step 6 says "Android Studio or VS Code"; the M3 IDE check ran Android Studio only. VS Code with M3: none                | reword — docs/qa/M3.md#claim-check-validation-drafts   |
-| 4   | `flutterdeck_drift` does nothing in profile and release builds                                                                                       | qa/M3.md batch 2, row 7 (profile build has no `ext.flutterdeck` strings). Release build: none (not built; same code path, batch 2 "Not observed") | reword — docs/qa/M3.md#claim-check-validation-drafts   |
+| 3   | Tested with Android Studio and `flutter run`; VS Code is untested                                                                                    | qa/M2.md "Final PM check" step 6 says "Android Studio or VS Code"; the M3 IDE check ran Android Studio only. VS Code with M3: none                | reword — docs/qa/M3.md#claim-check-validation-drafts   |
+| 4   | `flutterdeck_drift` is debug-only; a profile build was checked; release was not built                                                                | qa/M3.md batch 2, row 7 (profile build has no `ext.flutterdeck` strings). Release build: none (not built; same code path, batch 2 "Not observed") | reword — docs/qa/M3.md#claim-check-validation-drafts   |
 | 5   | Claude can't change data through FlutterDeck: its database tools refuse every query that writes                                                      | qa/M3.md batch 5 B3, D4; "M3 acceptance" step 12 (PM)                                                                                             | verified — docs/qa/M3.md#claim-check-validation-drafts |
 | 6   | Every query is checked with the real SQLite engine                                                                                                   | qa/M3.md batch 1 B (SQL gate against real statements)                                                                                             | verified — docs/qa/M3.md#claim-check-validation-drafts |
 | 7   | Hidden columns are refused in every query of FlutterDeck's tools and left out of their diffs                                                         | qa/M3.md batch 5 B2, B5; batch 4 C R3; batch 3 E2/E3 (token diff without `item`)                                                                  | verified — docs/qa/M3.md#claim-check-validation-drafts |
@@ -398,7 +398,8 @@ The plugin is installed for your user, so it runs in every Claude Code session. 
 | 20  | Login window of 2 minutes; `open` opens it again (also in fake mode with the scratch HOME)                                                           | qa/M2.md "Final PM check" steps 7–8; fake mode with `open`: none in qa (developer ran it on 2026-10-25)                                           | verified — docs/qa/M3.md#claim-check-validation-drafts |
 | 21  | FlutterDeck runs on your computer and listens only on 127.0.0.1                                                                                      | qa/M2.md batch 1 A (loopback and Host/Origin checks)                                                                                              | verified — docs/qa/M3.md#claim-check-validation-drafts |
 | 22  | Needs Dart 3.12.2+ and Drift 2.35.2+ for `flutterdeck_drift`                                                                                         | none in qa (from `dart/flutterdeck_drift/pubspec.yaml` constraints)                                                                               | verified — docs/qa/M3.md#claim-check-validation-drafts |
-| 23  | API 24 or later                                                                                                                                      | none (from the PM checks' prerequisites; only API 34 was run)                                                                                     | reword — docs/qa/M3.md#claim-check-validation-drafts   |
+| 23  | Tested on API 34; older versions are untested                                                                                                        | none (from the PM checks' prerequisites; only API 34 was run)                                                                                     | reword — docs/qa/M3.md#claim-check-validation-drafts   |
 | 24  | The `.gitignore` block covers the files that hold the token; config and launch.json are not                                                          | qa/M3.md "IDE breakpoint check" row 2b                                                                                                            | verified — docs/qa/M3.md#claim-check-validation-drafts |
 | 25  | `~/.flutterdeck` holds only the per-user port list                                                                                                   | qa/M2.md "Final PM check" step 19                                                                                                                 | verified — docs/qa/M3.md#claim-check-validation-drafts |
 | 26  | Read-only and hidden columns apply to FlutterDeck's tools only; Claude Code's other tools (shell, file reads, Browser pane) can still reach the data | docs/status.md, risks accepted by the PM 2026-10-16 (Bash) and 2026-10-17 (Browser pane); not a qa claim                                          | verified — docs/qa/M3.md#claim-check-validation-drafts |
+| 27  | With `db.allowWrites` on, Claude driving the Browser pane could click Edit in the Database tab                                                       | docs/status.md, risk accepted by the PM 2026-10-16 ("Claude could click an edit button"); not a qa claim                                          | pending                                                |
