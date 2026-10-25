@@ -25,14 +25,17 @@ const layoutChanged = 'The guide layout changed: update scripts/wiki-install-gui
 const h1 = /^# .*$/m.exec(guide);
 if (!h1) fail(layoutChanged);
 const title = `${h1[0]}\n`;
-const afterNotes = guide.indexOf('Draft for the M3 validation checkpoint');
+// The wiki page starts after the repo-only "Draft for ..." paragraph.
+const draft = guide.indexOf('Draft for the M3 validation checkpoint');
+const afterNotes = draft < 0 ? -1 : guide.indexOf('\n\n', draft) + 2;
 const end = guide.indexOf('## Open questions for the PM');
 if (afterNotes < 0 || end <= afterNotes) fail(layoutChanged);
 
 const header =
   `${title}\n` +
   '> This page is built from `docs/marketing/m3-install-guide.md` in the repo, which is the source. ' +
-  'Do not edit it here. See also [[Safety and privacy|Safety-and-privacy]], [[FAQ]] and [[Feedback]].\n\n';
+  'Do not edit it here. See also [[Safety and privacy|Safety-and-privacy]], [[FAQ]] and [[Feedback]].\n\n' +
+  'This guide installs FlutterDeck from a git checkout. Packages on npm and pub.dev come with a later release.\n\n';
 const footer =
   '\n## More\n\n- [[Try it without a device|Try-without-a-device]]\n- [[Safety and privacy|Safety-and-privacy]]\n- [[FAQ]]\n- [[Feedback]]\n';
 const out = header + guide.slice(afterNotes, end).trimEnd() + '\n' + footer;

@@ -2,7 +2,7 @@
 
 ## Does it work on iOS?
 
-Tested on Android (emulator) and the iOS Simulator; real iPhones are untested. The iOS Simulator check was the PM's own, on 25 Oct 2026. QA's own iOS Simulator check covered only a read-only database copy (snapshot). We make no claim about iOS speed.
+Checked on the iOS Simulator only; real iPhones are untested. We checked a read-only database copy (snapshot) on the simulator ourselves, and the maintainer checked the app on the simulator on 25 Oct 2026. We make no claim about iOS speed.
 
 ## Does it work with VS Code?
 

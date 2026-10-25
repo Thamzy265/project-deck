@@ -2,7 +2,7 @@
 
 > This page is built from `docs/marketing/m3-install-guide.md` in the repo, which is the source. Do not edit it here. See also [[Safety and privacy|Safety-and-privacy]], [[FAQ]] and [[Feedback]].
 
-Draft for the M3 validation checkpoint (docs/PLAN.md). This guide installs FlutterDeck from a git checkout. Packages on npm and pub.dev come with a later release.
+This guide installs FlutterDeck from a git checkout. Packages on npm and pub.dev come with a later release.
 
 The steps are for **macOS with zsh**. They were not run on Windows or Linux for this guide.
 
@@ -18,8 +18,8 @@ FlutterDeck is open source (MIT). It puts your Flutter app's Drift database next
 ## What it is not (yet)
 
 - Not a published package. You build it from a git checkout.
-- Not tested on Windows or Linux in this guide. QA tested on macOS with an Android emulator.
-- iOS: tested on Android (emulator) and the iOS Simulator; real iPhones are untested (the PM's own check, 25 Oct 2026). QA's own iOS Simulator check covered only a read-only database copy (snapshot). We make no claim about iOS speed.
+- Not tested on Windows or Linux in this guide. We tested on macOS with an Android emulator.
+- iOS: checked on the iOS Simulator only; real iPhones are untested. We checked a read-only database copy (snapshot) on the simulator ourselves, and the maintainer checked the app on the simulator on 25 Oct 2026. We make no claim about iOS speed.
 - The live view needs Drift. On Android, other SQLite databases can be read as a snapshot copy (not tested in an app without the package); see [Snapshot mode](#snapshot-mode-on-android-without-the-package).
 - Not a cloud service. FlutterDeck runs on your computer and listens only on `127.0.0.1`. What Claude reads with FlutterDeck's tools goes into your Claude conversation, like any other tool result.
 

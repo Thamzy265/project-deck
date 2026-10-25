@@ -5,7 +5,7 @@
 FlutterDeck is an open source (MIT) dashboard and Claude Code plugin for Flutter developers. This early preview puts your Flutter app's Drift database next to Claude in Claude Desktop.
 
 - You see your Drift tables live in a Database tab in Claude Desktop's Browser pane.
-- Claude can read the database to answer questions. Through FlutterDeck, Claude can't change data: its database tools refuse every query that writes. You can hide columns from these tools.
+- Claude can read the database to answer questions. Through FlutterDeck, Claude can't change data: its database tools refuse every query that writes. You can hide columns from these tools. These rules cover FlutterDeck's tools only; see [[Safety and privacy|Safety-and-privacy]].
 - It attaches to the app you already run from your IDE or `flutter run`, in debug mode. It never launches the app, so your breakpoints still work.
 - It gives Claude your app's logs, and works with the official Dart MCP server for hot reload and runtime errors.
 
