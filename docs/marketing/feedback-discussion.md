@@ -16,7 +16,7 @@ Watch the 60-second demo: [DEMO LINK]. Try the install guide if you can: [REPO L
 
 **How to answer.** Reply to this thread. Number your answers like the questions, for example `3: b, d`. Skip any question. Question 5 is a number from 1 to 5. The open questions (7, 10, 11) take free text.
 
-**Replies are public.** Everyone can read them, and they are tied to your GitHub account. Do not paste app data, database rows, logs, tokens, addresses or personal data. If you got stuck, give the step number and the message you saw, with tokens and addresses removed.
+**Replies are public.** Everyone can read them, and they are tied to your GitHub account. Do not paste app data, database rows, logs, tokens, VM service or web addresses (URLs) or personal data. If you got stuck, give the step number and the message you saw, with tokens and addresses removed. If you post something by mistake, edit or delete your reply (the … menu on your comment).
 
 ### Questions
 
