@@ -8,9 +8,9 @@ Placeholders: `[DEMO LINK]` (the 60-second video), `[REPO LINK]` (the repo, whos
 
 ## Short version (optional: X, Bluesky, Mastodon; about 280 characters)
 
-> Early preview: FlutterDeck (open source, MIT) shows your app's Drift database live next to Claude in Claude Desktop. Through FlutterDeck, Claude can read it but not change it. It attaches to the app your IDE runs, so breakpoints still work. Tried on Android and iOS. [DEMO LINK]
+> Early preview: FlutterDeck (open source, MIT) shows your app's Drift database live next to Claude in Claude Desktop. Through FlutterDeck, Claude can read it but not change it. It attaches to the app your IDE runs, so breakpoints still work. Tested on Android and the iOS Simulator. [DEMO LINK]
 
-Character count without the link: about 266; with a link (23 on X) about 290, which is over 280 on X. Cut "(open source, MIT)" there, or move it to the reply. Add `[FEEDBACK LINK]` in a reply: "Feedback welcome: [FEEDBACK LINK]".
+Character count without the link: about 281; with a link (23 on X) about 305, which is over 280 on X. Cut "(open source, MIT)" and "Claude Desktop" there, or move them to the reply. Add `[FEEDBACK LINK]` in a reply: "Feedback welcome: [FEEDBACK LINK]".
 
 ## Medium version (optional: Reddit r/FlutterDev, Discord, Slack; about 190 words)
 
@@ -22,7 +22,7 @@ Character count without the link: about 266; with a link (23 on X) about 290, wh
 > - A Database tab in Claude Desktop's Browser pane shows your Drift tables live. New rows flash as your app adds them.
 > - Claude can query the database read-only: "how many orders are pending?", or "snapshot the database, I'll tap the button, then tell me what changed". Claude can't change data through FlutterDeck: its database tools refuse every query that writes. You can hide columns from these tools.
 >
-> It is early. You install it from a git checkout. It is built for Claude Desktop's Browser pane and works with Claude Code. QA tested it on macOS with an Android emulator, and I tried it on iOS too. Windows and Linux are not tested.
+> It is early. You install it from a git checkout. It is built for Claude Desktop's Browser pane and works with Claude Code. It is tested on Android (emulator) and the iOS Simulator; real iPhones are untested. Windows and Linux are not tested.
 >
 > 60-second demo: [DEMO LINK]
 > Install guide: [REPO LINK]
@@ -42,7 +42,7 @@ Character count without the link: about 266; with a link (23 on X) about 290, wh
 >
 > **What Claude can do.** Claude gets read-only tools for the same database. You can ask "how many orders are pending?" and get an answer from your real data. You can ask Claude to take a snapshot, make a change in the app, and then ask Claude what the change saved. Claude can't change data through FlutterDeck: its database tools refuse every query that writes. You can hide columns from these tools, for example your users' personal data.
 >
-> **What it is not, yet.** It is an early preview. You install it from a git checkout, not from npm or pub.dev. It is built for Claude Desktop's Browser pane and works with Claude Code. QA tested it on macOS with an Android emulator, and I tried it on iOS too. Windows and Linux are not tested.
+> **What it is not, yet.** It is an early preview. You install it from a git checkout, not from npm or pub.dev. It is built for Claude Desktop's Browser pane and works with Claude Code. It is tested on Android (emulator) and the iOS Simulator; real iPhones are untested. Windows and Linux are not tested.
 >
 > **What I'd like from you.** I want to know if this is useful for Flutter developers before I build more. Watch the 60-second demo, try it if you can, and tell me what's missing or wrong.
 >
@@ -95,4 +95,4 @@ Feedback goes to a GitHub Discussions thread on the repo (PM decision, 2026-10-2
 | 16  | Open source (MIT)                                                                                                                                    | LICENSE file (MIT); docs/PLAN.md "Licence" decided 9 Oct 2026; PM decision 2026-10-25                                                                                | pending                                                |
 | 17  | The feedback thread has 12 numbered questions, public replies on GitHub Discussions                                                                  | docs/marketing/feedback-discussion.md; PM decision 2026-10-25                                                                                                        | pending                                                |
 | 18  | The "can't change data" and hidden-column claims are scoped to FlutterDeck's tools; Claude Code's shell, file and Browser pane tools are not covered | docs/status.md, risks accepted by the PM 2026-10-16 (Bash) and 2026-10-17 (Browser pane); not a qa claim                                                             | verified — docs/qa/M3.md#claim-check-validation-drafts |
-| 19  | Tried on Android and iOS (the PM's own check, 25 Oct 2026)                                                                                           | PM report 2026-10-25, docs/qa/M3.md (the lead adds the record); the setup (device or simulator) is not recorded and the post does not say                            | pending                                                |
+| 19  | Tested on Android (emulator) and the iOS Simulator; real iPhones are untested                                                                        | Android: qa/M3.md batches 2–5. iOS: docs/qa/M3.md, PM report: iOS Simulator (2026-10-25)                                                                             | pending                                                |
