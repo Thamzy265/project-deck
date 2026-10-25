@@ -5,15 +5,29 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath, URL } from 'node:url';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
-const guide = readFileSync(`${root}docs/marketing/m3-install-guide.md`, 'utf8');
+
+function fail(message) {
+  console.error(message);
+  process.exit(1);
+}
+
+// Normalise line endings, so a CRLF checkout gives the same pages as an LF one.
+let guide;
+try {
+  guide = readFileSync(`${root}docs/marketing/m3-install-guide.md`, 'utf8').replace(/\r\n/g, '\n');
+} catch {
+  fail('Cannot read docs/marketing/m3-install-guide.md');
+}
+const layoutChanged = 'The guide layout changed: update scripts/wiki-install-guide.mjs.';
 
 // Drop the repo-only parts: the source and name notes at the top, and everything from the
 // PM's open questions on (open questions and the claims table).
-const start = guide.indexOf('# ');
-const title = guide.slice(start, guide.indexOf('\n', start) + 1);
+const h1 = /^# .*$/m.exec(guide);
+if (!h1) fail(layoutChanged);
+const title = `${h1[0]}\n`;
 const afterNotes = guide.indexOf('Draft for the M3 validation checkpoint');
 const end = guide.indexOf('## Open questions for the PM');
-if (afterNotes < 0 || end < 0) throw new Error('The guide layout changed: update this script.');
+if (afterNotes < 0 || end <= afterNotes) fail(layoutChanged);
 
 const header =
   `${title}\n` +
@@ -26,7 +40,7 @@ const out = header + guide.slice(afterNotes, end).trimEnd() + '\n' + footer;
 // Section 2 of the guide is also a page of its own, for people who only want to look.
 const fakeStart = guide.indexOf('## 2. Try it without a device');
 const fakeEnd = guide.indexOf('## 3. First run with the sample app');
-if (fakeStart < 0 || fakeEnd < 0) throw new Error('The guide layout changed: update this script.');
+if (fakeStart < 0 || fakeEnd <= fakeStart) fail(layoutChanged);
 const fake =
   '# Try FlutterDeck without a device\n\n' +
   '> This page is built from `docs/marketing/m3-install-guide.md` in the repo, which is the source. ' +
@@ -44,7 +58,7 @@ for (const [name, text] of Object.entries(pages)) {
   if (process.argv.includes('--check')) {
     let current = '';
     try {
-      current = readFileSync(target, 'utf8');
+      current = readFileSync(target, 'utf8').replace(/\r\n/g, '\n');
     } catch {
       // A missing file counts as a difference.
     }
