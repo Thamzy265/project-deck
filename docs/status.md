@@ -2,6 +2,19 @@
 
 Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
 
+## 2026-10-25 — M3 validation — PM decisions for publishing
+
+- Decisions (PM, 2026-10-25, word for word):
+  - Name: "we can continue to use the name flutterdeck for now". The drafts, README and wiki keep FlutterDeck; the name stays an open decision before M5.
+  - Where: "i might post on linkendin". The long post is the LinkedIn version.
+  - README and wiki: "when done you can update the readme and have a wiki on github".
+  - Feedback: "GitHub Discussions (Recommended)", whose description read "I turn on Discussions and add a 'Feedback' category with the questions pinned. Answers are public and tied to GitHub accounts. No email field and no extra service." The form's email field is dropped.
+  - Licence: "Say 'open source (MIT)' (Recommended)".
+  - iOS: "i have tested on ios too and it works", then, asked where: "simulator only". Recorded in [qa/M3.md](qa/M3.md), "PM report: iOS Simulator (2026-10-25)".
+- Merged (lead, 2026-10-25, standing approval): PR #45 `docs/m3-validation` after reviewer approval, QA pass, PM check pass and CI 9/9. Deleted after merge (standing approval): local and remote branch `docs/m3-validation`; temporary local branch `readme-wiki-before-squash-tmp` (its tree was identical to the squashed `docs/readme-wiki`).
+- In progress: `docs/readme-wiki` (README rewrite, wiki source in `docs/wiki/`, feedback discussion text, wiki page builder `scripts/wiki-install-guide.mjs` checked by `pnpm check` and CI). Tester T1–T4 and reviewer R1–R10 fixed; R11 (commit hygiene) left as is.
+- Blockers: Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead none.
+
 ## 2026-10-25 — M3 validation checkpoint — drafts ready
 
 - Merged (lead, 2026-10-25, standing approval): PR #44 `docs/m4-linear-mcp` (M4 re-plan, docs only) after CI passed 9/9. Reviewer and QA `n/a — plan record only, nothing to run`. Deleted after merge (standing approval): worktree `.claude/worktrees/m4-linear-mcp`, local and remote branch `docs/m4-linear-mcp`.
