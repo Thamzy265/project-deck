@@ -1,8 +1,7 @@
 // Tests for scripts/wiki-install-guide.mjs. The script has a fixed root (the folder above its own
 // file), so each test copies it into a scratch tree with a copy of the real guide and mutates
 // the copy. Fixture source: docs/marketing/m3-install-guide.md at test time.
-// Note: vitest.config.ts has no project for scripts/, so `pnpm test` does not run this file yet.
-// Run it with an empty vitest config: pnpm exec vitest run --config <file with "export default {};"> --root . scripts/wiki-install-guide.test.mjs
+// `pnpm test` runs this file through the "scripts" project in vitest.config.ts.
 import { spawnSync } from 'node:child_process';
 import {
   copyFileSync,
