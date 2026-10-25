@@ -130,6 +130,10 @@ describe('wiki-install-guide: layout changes fail loudly and write nothing', () 
     ['Draft for the M3 validation checkpoint', 'Draft for the validation checkpoint'],
     ['## 2. Try it without a device', '## 2. Try it in fake mode'],
     ['## 3. First run with the sample app', '## 3. First run'],
+    [
+      '# FlutterDeck early install guide (M3 preview)',
+      'FlutterDeck early install guide (M3 preview)',
+    ],
   ];
   for (const [from, to] of renames) {
     it(`renaming "${from}" exits non-zero and leaves the wiki folder empty`, () => {
@@ -139,6 +143,20 @@ describe('wiki-install-guide: layout changes fail loudly and write nothing', () 
       expect(existsSync(join(dir, 'docs', 'wiki', 'Try-without-a-device.md'))).toBe(false);
     });
   }
+
+  it('keeps the rest of the draft paragraph from the guide, not a copy in the script', () => {
+    const dir = scratch((g) =>
+      g.replace(
+        'This guide installs FlutterDeck from a git checkout.',
+        'Guide sentence for the test.',
+      ),
+    );
+    run(dir);
+    const text = page(dir, 'Install-guide.md');
+    expect(text).toContain('Guide sentence for the test.');
+    expect(text).not.toContain('Draft for the M3 validation checkpoint');
+    expect(text).not.toContain('This guide installs FlutterDeck from a git checkout.');
+  });
 
   // T2: the end marker moved before the start marker. slice() gives '' so a page with only
   // header and footer is written and the script exits 0.
