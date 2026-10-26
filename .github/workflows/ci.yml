@@ -25,6 +25,7 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm format:check
+      - run: pnpm check:wiki
       - run: pnpm test
 
   # Dashboard end-to-end tests (Playwright, Chromium) against the built daemon.

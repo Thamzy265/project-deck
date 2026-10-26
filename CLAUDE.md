@@ -41,7 +41,7 @@ pnpm typecheck
 pnpm lint
 pnpm format:check   # pnpm format to fix
 pnpm test           # vitest across all packages
-pnpm check          # typecheck + lint + format + test
+pnpm check          # typecheck + lint + format + wiki pages up to date + test
 ```
 
 Packages import each other through `dist`, so run `pnpm build` after changing a dependency before typechecking or testing a dependent package.

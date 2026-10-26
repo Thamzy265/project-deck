@@ -16,7 +16,8 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "check": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test"
+    "check:wiki": "node scripts/wiki-install-guide.mjs --check",
+    "check": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm check:wiki && pnpm test"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
