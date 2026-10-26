@@ -2,6 +2,15 @@
 
 Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
 
+## 2026-10-26 — README, wiki and feedback thread published
+
+- Changed: `docs/readme-wiki` rewrites README.md for the early preview, adds the wiki source in `docs/wiki/` (Home, Install guide, Try without a device, Safety and privacy, FAQ, Feedback) and `scripts/wiki-install-guide.mjs`, which builds the two guide pages from the install guide. `pnpm check` and CI now run `check:wiki` and the `scripts` tests.
+- Published (lead, 2026-10-26, PM decisions of 2026-10-25): GitHub Discussions turned on; feedback thread https://github.com/Thamzy265/project-deck/discussions/46 posted in "General" (the API cannot create a category or pin a thread); wiki published from `docs/wiki/` after the PM created its first page. README, the wiki Feedback page and the drafts link the thread.
+- Gates: developer pass · tester pass (14 script tests; T1–T4 fixed) · reviewer approve with notes (R1–R10, N1, N2 fixed; R11 commit hygiene left) · QA pass (commands as written, public-page scan, claims 62 verified, 1 reword: guide row 15). Evidence: [qa/M3.md](qa/M3.md), "README and wiki (2026-10-25)".
+- Open: `[DEMO LINK]` in the posts until the PM records the demo; then the lead adds the link to the thread.
+- Needs PM: pin the thread; optionally a "Feedback" category; record the demo; post on LinkedIn.
+- Blockers: Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead none · PM: the items above.
+
 ## 2026-10-25 — M3 validation — PM decisions for publishing
 
 - Decisions (PM, 2026-10-25, word for word):
