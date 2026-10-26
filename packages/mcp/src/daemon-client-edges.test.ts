@@ -11,6 +11,7 @@ import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { writeRuntime } from '@project-deck/daemon';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DaemonClientOptions } from './daemon-client.js';
@@ -59,7 +60,8 @@ async function fake(): Promise<FakeDaemon> {
   return f;
 }
 
-type Handler = (req: IncomingMessage, res: ServerResponse) => void;
+/** `die` stops the server listening and drops its connections, like a daemon that exits. */
+type Handler = (req: IncomingMessage, res: ServerResponse, die: () => void) => void;
 
 interface RawDaemon {
   port: number;
@@ -88,7 +90,10 @@ async function raw(handler: Handler, health = true): Promise<RawDaemon> {
       );
       return;
     }
-    handler(req, res);
+    handler(req, res, () => {
+      server.close();
+      server.closeAllConnections();
+    });
   });
   server.on('error', () => undefined);
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -229,14 +234,21 @@ describe('odd answers from the daemon', () => {
 
 describe('the daemon going away', () => {
   it('restarts a daemon that drops the connection mid-call, then retries once', async () => {
-    await raw((req) => req.socket.destroy());
+    // The daemon dies mid-call, so its port stops answering health too. Left answering,
+    // the old runtime.json still points at it until the new daemon replaces the file,
+    // and the client "finds" the dead one again (Windows CI, 26 Oct 2026).
+    await raw((req, _res, die) => {
+      req.socket.destroy();
+      die();
+    });
     let spawned = 0;
     const c = client({
       // A new runtime.json can take Windows more than the 0.3 s default to put in place.
       readyTimeoutMs: 3000,
       spawnDaemon: () => {
         spawned++;
-        track(fake());
+        // A slow start, like Windows putting the new runtime.json in place.
+        track(sleep(150).then(fake));
       },
     });
     expect((await c.status()).value.projectName).toBe(FAKE_STATUS.projectName);
