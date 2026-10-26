@@ -37,7 +37,7 @@ Linear support is not planned for v1: ask Claude to use Linear's own MCP server.
 
 ## Feedback
 
-Tell us what is missing or wrong in GitHub Discussions: <https://github.com/Thamzy265/project-deck/discussions>. Replies are public, so don't paste app data, logs or personal data.
+Tell us what is missing or wrong in GitHub Discussions: <https://github.com/Thamzy265/project-deck/discussions/46>. Replies are public, so don't paste app data, logs or personal data.
 
 ## Building from source
 

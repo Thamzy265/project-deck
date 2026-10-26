@@ -4,13 +4,13 @@
 
 Draft for the M3 validation checkpoint (docs/PLAN.md). The team drafts; the PM publishes and collects feedback. Nothing here is posted. The PM said they might post on LinkedIn (2026-10-25), so the long version is the LinkedIn post. The short and medium versions are optional, for other places.
 
-Placeholders: `[DEMO LINK]` (the 60-second video), `[REPO LINK]` (the repo, whose README links the install guide), `[FEEDBACK LINK]` (the GitHub Discussions thread; the text is in [feedback-discussion.md](feedback-discussion.md)).
+Placeholder: `[DEMO LINK]` (the 60-second video). Links: the repo https://github.com/Thamzy265/project-deck (its README links the install guide) and the feedback thread https://github.com/Thamzy265/project-deck/discussions/46 (its text is in [feedback-discussion.md](feedback-discussion.md)).
 
 ## Short version (optional: X, Bluesky, Mastodon; about 280 characters)
 
 > Early preview: FlutterDeck (open source, MIT) shows your app's Drift database live next to Claude in Claude Desktop. Through FlutterDeck, Claude can read it but not change it. It attaches to the app your IDE runs, so breakpoints still work. Tested on Android and the iOS Simulator. [DEMO LINK]
 
-Character count without the link: about 281; with a link (23 on X) about 305, which is over 280 on X. Cut "(open source, MIT)" and "Claude Desktop" there, or move them to the reply. Add `[FEEDBACK LINK]` in a reply: "Feedback welcome: [FEEDBACK LINK]".
+Character count without the link: about 281; with a link (23 on X) about 305, which is over 280 on X. Cut "(open source, MIT)" and "Claude Desktop" there, or move them to the reply. Add `https://github.com/Thamzy265/project-deck/discussions/46` in a reply: "Feedback welcome: https://github.com/Thamzy265/project-deck/discussions/46".
 
 ## Medium version (optional: Reddit r/FlutterDev, Discord, Slack; about 190 words)
 
@@ -25,8 +25,8 @@ Character count without the link: about 281; with a link (23 on X) about 305, wh
 > It is early. You install it from a git checkout. It is built for Claude Desktop's Browser pane and works with Claude Code. It is tested on Android (emulator) and the iOS Simulator; real iPhones are untested. Windows and Linux are not tested.
 >
 > 60-second demo: [DEMO LINK]
-> Install guide: [REPO LINK]
-> I'd like to hear what you think, especially if it doesn't fit how you work (replies are public, on GitHub Discussions): [FEEDBACK LINK]
+> Install guide: https://github.com/Thamzy265/project-deck
+> I'd like to hear what you think, especially if it doesn't fit how you work (replies are public, on GitHub Discussions): https://github.com/Thamzy265/project-deck/discussions/46
 
 ## Longer version: the LinkedIn post (about 380 words; also fits a blog)
 
@@ -47,8 +47,8 @@ Character count without the link: about 281; with a link (23 on X) about 305, wh
 > **What I'd like from you.** I want to know if this is useful for Flutter developers before I build more. Watch the 60-second demo, try it if you can, and tell me what's missing or wrong.
 >
 > Demo: [DEMO LINK]
-> Install guide: [REPO LINK]
-> Feedback (12 questions, public replies on GitHub Discussions): [FEEDBACK LINK]
+> Install guide: https://github.com/Thamzy265/project-deck
+> Feedback (12 questions, public replies on GitHub Discussions): https://github.com/Thamzy265/project-deck/discussions/46
 
 ## Feedback questions
 
@@ -71,7 +71,7 @@ Feedback goes to a GitHub Discussions thread on the repo (PM decision, 2026-10-2
 
 1. Voice: the texts say "I". That fits a personal LinkedIn post. Change to "we" if the post comes from a project account.
 2. Mention the Drift DevTools extension? The texts make no comparison, because we have no evidence for one.
-3. The GitHub Discussions thread needs Discussions switched on for the repo and the thread created. The lead or the PM does that; the thread URL is `[FEEDBACK LINK]`.
+3. The GitHub Discussions thread needs Discussions switched on for the repo and the thread created. The lead or the PM does that; the thread URL is `https://github.com/Thamzy265/project-deck/discussions/46`.
 
 ## Claims in this draft
 

@@ -1,6 +1,6 @@
 # Feedback discussion (GitHub Discussions)
 
-Draft for the M3 validation checkpoint (docs/PLAN.md). PM decision, 2026-10-25: feedback goes to a GitHub Discussions thread on the repo. It is public and tied to GitHub accounts. There is no email field and no extra service. Nothing here is posted: the lead or the PM turns on Discussions for the repo, creates the thread with the text below, and puts its URL in `[FEEDBACK LINK]` (see [m3-post.md](m3-post.md)).
+Draft for the M3 validation checkpoint (docs/PLAN.md). PM decision, 2026-10-25: feedback goes to a GitHub Discussions thread on the repo. It is public and tied to GitHub accounts. There is no email field and no extra service. The lead posted the text below on 2026-10-26: https://github.com/Thamzy265/project-deck/discussions/46.
 
 Posted on 2026-10-25 in the General category (the GitHub API cannot create a Feedback category or pin a thread). When the demo is recorded, the thread gets the demo link.
 

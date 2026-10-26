@@ -1,6 +1,6 @@
 # Feedback
 
-Feedback goes to a GitHub Discussions thread on the repo: [FEEDBACK LINK]
+Feedback goes to a GitHub Discussions thread on the repo: <https://github.com/Thamzy265/project-deck/discussions/46>
 
 - It is **public** and tied to your GitHub account. There is no email field and no other service.
 - Answer the 12 numbered questions in the thread, for example `3: b`. Skip any you like.
