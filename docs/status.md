@@ -2,6 +2,14 @@
 
 Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
 
+## 2026-10-27 — O1 daemon client stale ready — in progress
+
+- Changed: `fix/daemon-client-stale-ready` fixes reviewer finding O1 (pre-existing, raised on `fix/ci-flakes`). Size: small (one module, `packages/mcp`). When a daemon answers `/api/health` but drops a call, the MCP client no longer takes that same daemon (same port, token and pid in `runtime.json`) for a new start. It retries the call once on it, then shows a clear error. It starts nothing. A start also ignores a `runtime.json` that still names the daemon that dropped the call. Tester T-O1-1 (`start: false` still said "not running") and T-O1-2 (racy concurrent test) sent to the developer; T-O1-3 (child exits 1 with "already running", message has no stop hint) accepted by the lead as is.
+- Decisions: PM (2026-10-27), tool-call behaviour: "A: retry once, then error (Recommended)". PM (2026-10-27), daemon side (`findRunningDaemon`): "Defer with a Later line (Recommended)". Later line added to PLAN.md.
+- Gates: developer pass · tester findings open (T-O1-1, T-O1-2) · reviewer waiting · QA waiting · PM merge: standing approval (24 Oct 2026) after the gates.
+- Open findings: T-O1-1 low-medium, T-O1-2 medium (test only).
+- Blockers: Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead none.
+
 ## 2026-10-23 — M3 acceptance passed
 
 - Changed: the PM ran "PM check (batch 5)" in Claude Desktop against the fake-mode daemon. Claude answered "how many orders are pending?", confirmed new rows with `db_snapshot` and `db_diff`, was refused the hidden `customers.email`, and could not delete. With the batch 4 row flash (285 ms), the M3 acceptance box is ticked. Step 1 of the PM check now starts from `main`, because the batch 5 worktree no longer exists.
