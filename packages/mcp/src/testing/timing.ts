@@ -12,24 +12,16 @@ export function repeatTo(unit: string, size: number): string {
 /** Milliseconds from the real clock; the helper's own tests pass a fake one. */
 const realNow = (): number => performance.now();
 
-/**
- * The best of `attempts` times of `calls` calls of `run` on `text`, in milliseconds. The
- * best of several drops pauses from garbage collection or other processes.
- */
-export function bestTime(
+/** The time of `calls` calls of `run` on `text`, in milliseconds. */
+function timeOf(
   run: (text: string) => unknown,
   text: string,
-  calls = 1,
-  attempts = 3,
-  now: () => number = realNow,
+  calls: number,
+  now: () => number,
 ): number {
-  let best = Number.POSITIVE_INFINITY;
-  for (let attempt = 0; attempt < attempts; attempt++) {
-    const start = now();
-    for (let call = 0; call < calls; call++) run(text);
-    best = Math.min(best, now() - start);
-  }
-  return best;
+  const start = now();
+  for (let call = 0; call < calls; call++) run(text);
+  return now() - start;
 }
 
 export interface Growth {
@@ -88,8 +80,8 @@ export function growth(
   const ratio = () => large / Math.max(small, 0.5);
   for (let measurement = 0; measurement < MEASUREMENTS; measurement++) {
     for (let round = 0; round < rounds; round++) {
-      small = Math.min(small, bestTime(run, smallText, calls, 1, now));
-      large = Math.min(large, bestTime(run, largeText, calls, 1, now));
+      small = Math.min(small, timeOf(run, smallText, calls, now));
+      large = Math.min(large, timeOf(run, largeText, calls, now));
     }
     if (limit === undefined || ratio() < limit) break;
   }
