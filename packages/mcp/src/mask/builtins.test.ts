@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { growth } from '../testing/timing.js';
 import { maskBuiltIn } from './builtins.js';
 
+/** Growth limit for 8 times the text: linear work is about 8, quadratic about 64. */
+const GROWTH_LIMIT = 24;
+
 describe('built-in masking', () => {
   it.each([
     ['email', 'login ok for jane.doe+test@example.co.uk now', 'login ok for [email masked] now'],
@@ -228,8 +231,8 @@ describe('built-in masking', () => {
     'http%3A%2F%2Flocalhost%3A1%2FgetUserProfile%3 ',
   ])('runs every built-in in linear time on 64 kB of %j', (unit) => {
     // 8 kB vs 64 kB: linear work grows 8x, quadratic work 64x.
-    const { ratio, large } = growth(maskBuiltIn, unit, 8_192, 65_536, { limit: 24 });
-    expect(ratio).toBeLessThan(24);
+    const { ratio, large } = growth(maskBuiltIn, unit, 8_192, 65_536, { limit: GROWTH_LIMIT });
+    expect(ratio).toBeLessThan(GROWTH_LIMIT);
     expect(large).toBeLessThan(2000);
   });
 });
@@ -239,8 +242,8 @@ describe('broken escapes in bare encoded URIs (N1)', () => {
   // about 9x slower than valid escapes; they are now checked in one pass.
   it('decodes %E9 runs inside bare URIs in linear time', () => {
     const unit = `x http%3A%2F%2F127.0.0.1%2F${'%E9'.repeat(20)} `;
-    const { ratio, large } = growth(maskBuiltIn, unit, 8_192, 65_536, { limit: 24 });
-    expect(ratio).toBeLessThan(24);
+    const { ratio, large } = growth(maskBuiltIn, unit, 8_192, 65_536, { limit: GROWTH_LIMIT });
+    expect(ratio).toBeLessThan(GROWTH_LIMIT);
     expect(large).toBeLessThan(2000);
   });
 });
@@ -259,8 +262,11 @@ describe('nested encoded URLs below the part cap', () => {
     '&u=ws://127.0.0.1:1/a?v=http://a/',
   ])('reads nested %j in linear time', (unit) => {
     // 20 calls per run, so the 1 kB time is above the timer's resolution.
-    const { ratio, large } = growth(maskBuiltIn, unit, 1_024, 8_000, { calls: 20, limit: 24 });
-    expect(ratio).toBeLessThan(24);
+    const { ratio, large } = growth(maskBuiltIn, unit, 1_024, 8_000, {
+      calls: 20,
+      limit: GROWTH_LIMIT,
+    });
+    expect(ratio).toBeLessThan(GROWTH_LIMIT);
     expect(large).toBeLessThan(2000);
   });
 });
