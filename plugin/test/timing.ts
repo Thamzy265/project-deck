@@ -10,13 +10,21 @@ export function repeatTo(unit: string, size: number): string {
   return unit.repeat(Math.ceil(size / unit.length)).slice(0, size);
 }
 
+/** Milliseconds from the real clock; the helper's own tests pass a fake one. */
+const realNow = (): number => performance.now();
+
 /** The best of `attempts` times of `run` on `text`, in milliseconds: drops GC pauses. */
-export function bestTime(run: (text: string) => unknown, text: string, attempts = 5): number {
+export function bestTime(
+  run: (text: string) => unknown,
+  text: string,
+  attempts = 5,
+  now: () => number = realNow,
+): number {
   let best = Number.POSITIVE_INFINITY;
   for (let attempt = 0; attempt < attempts; attempt++) {
-    const start = performance.now();
+    const start = now();
     run(text);
-    best = Math.min(best, performance.now() - start);
+    best = Math.min(best, now() - start);
   }
   return best;
 }
@@ -35,6 +43,8 @@ export interface GrowthOptions {
   rounds?: number;
   /** The ratio the caller fails on. Without it, one measurement is taken. */
   limit?: number;
+  /** The clock, in milliseconds. Default performance.now; the helper's tests fake it. */
+  now?: () => number;
 }
 
 /** Measurements at most, when each one is at or over the limit. */
@@ -53,9 +63,10 @@ const MEASUREMENTS = 3;
  * the text on linear work, ubuntu CI, Oct 2026).
  *
  * With a `limit`, a ratio at or over it is measured again, up to MEASUREMENTS times in
- * all, and the lowest ratio counts. Linear work then passes even when a stall spoils one
- * or two whole measurements, but work that really grows faster than the text is over
- * the limit every time.
+ * all, and the best small and large times over all of them count. Linear work then passes
+ * when a stall spoils one whole measurement, but work that really grows faster than the
+ * text stays over the limit. Not the lowest ratio of the measurements: one whose small
+ * runs all stalled has a low ratio even for quadratic work.
  */
 export function growth(
   run: (text: string) => unknown,
@@ -64,24 +75,20 @@ export function growth(
   largeSize: number,
   opts: GrowthOptions = {},
 ): Growth {
-  const { attempts = 1, rounds = 5, limit } = opts;
+  const { attempts = 1, rounds = 5, limit, now = realNow } = opts;
   const smallText = repeatTo(unit, smallSize);
   const largeText = repeatTo(unit, largeSize);
   run(smallText);
   run(largeText);
-  const measure = (): Growth => {
-    let small = Number.POSITIVE_INFINITY;
-    let large = Number.POSITIVE_INFINITY;
+  let small = Number.POSITIVE_INFINITY;
+  let large = Number.POSITIVE_INFINITY;
+  const ratio = () => large / Math.max(small, 0.5);
+  for (let measurement = 0; measurement < MEASUREMENTS; measurement++) {
     for (let round = 0; round < rounds; round++) {
-      small = Math.min(small, bestTime(run, smallText, attempts));
-      large = Math.min(large, bestTime(run, largeText, attempts));
+      small = Math.min(small, bestTime(run, smallText, attempts, now));
+      large = Math.min(large, bestTime(run, largeText, attempts, now));
     }
-    return { small, large, ratio: large / Math.max(small, 0.5) };
-  };
-  let best = measure();
-  for (let again = 1; limit !== undefined && best.ratio >= limit && again < MEASUREMENTS; again++) {
-    const next = measure();
-    if (next.ratio < best.ratio) best = next;
+    if (limit === undefined || ratio() < limit) break;
   }
-  return best;
+  return { small, large, ratio: ratio() };
 }
