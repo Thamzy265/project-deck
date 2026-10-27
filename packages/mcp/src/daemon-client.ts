@@ -50,7 +50,8 @@ export const NOT_SET_UP = "FlutterDeck isn't set up in this folder. Run `flutter
 /**
  * The daemon still answers /api/health but dropped the same call twice. Starting another
  * would only exit at once (one daemon per project), so the user has to stop this one.
- * Lead's wording, PM decision pending: keep it here so it is easy to change.
+ * Retry once, then this text, never a spawn: PM decision 27 Oct 2026. Kept here so the
+ * wording is easy to change.
  */
 export function droppedCallText(port: number, pid: number, route: string): string {
   return `FlutterDeck daemon on port ${port} (pid ${pid}) answers but dropped ${route}. Run \`flutterdeck stop\`, then try again.`;
