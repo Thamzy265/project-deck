@@ -337,18 +337,55 @@ describe('status and login window with start: false (O1 probe)', () => {
     expect(spawned).toBe(0);
   });
 
-  it.fails(
-    'start: false says the daemon is stuck, not that it is not running (T-O1-1)',
-    async () => {
-      const d = await halfAlive();
-      const c = client();
-      expect(await c.running()).toBe(true);
-      const err = await rejection(c.status({ start: false }));
-      // Today NOT_RUNNING ("run `flutterdeck start`"), though the daemon is alive and a
-      // start would exit at once. Expected: the same stuck-daemon text as the default path.
-      expect(err.message).toBe(droppedCallText(d.port, d.pid, 'GET /api/status'));
-    },
-  );
+  it('start: false says the daemon is stuck, not that it is not running (T-O1-1)', async () => {
+    const d = await halfAlive();
+    let spawned = 0;
+    const c = client({
+      spawnDaemon: () => {
+        spawned++;
+      },
+    });
+    expect(await c.running()).toBe(true);
+    const err = await rejection(c.status({ start: false }));
+    // The daemon is alive, so "run `flutterdeck start`" would be wrong: the same
+    // stuck-daemon text as the default path, after one retry, and never a start.
+    expect(err.message).toBe(droppedCallText(d.port, d.pid, 'GET /api/status'));
+    expect(err.message).not.toContain(d.token);
+    expect(d.calls).toBe(2);
+    expect(spawned).toBe(0);
+  });
+
+  it('start: false succeeds after a one-off drop on the same daemon', async () => {
+    const d = await halfAlive((n, res, req) => {
+      if (n === 1) {
+        req.socket.destroy();
+        return;
+      }
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify(FAKE_STATUS));
+    });
+    const answer = await client().status({ start: false });
+    expect(answer.value.projectName).toBe(FAKE_STATUS.projectName);
+    expect(d.calls).toBe(2);
+  });
+
+  it("start: false still says it isn't running when the daemon died with the call", async () => {
+    const d = await halfAlive((_n, _res, req, daemon) => {
+      daemon.healthy = false;
+      req.socket.destroy();
+    });
+    let spawned = 0;
+    const err = await rejection(
+      client({
+        spawnDaemon: () => {
+          spawned++;
+        },
+      }).status({ start: false }),
+    );
+    expect(err.message).toBe(NOT_RUNNING);
+    expect(d.calls).toBe(1);
+    expect(spawned).toBe(0);
+  });
 });
 
 describe('a daemon that drops, then runtime.json names another one', () => {

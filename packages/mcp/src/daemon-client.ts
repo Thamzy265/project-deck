@@ -250,12 +250,7 @@ export class DaemonClient {
   private async withRunning<T>(call: (c: Connection) => Promise<T>): Promise<Answer<T>> {
     const conn = await this.connectChecked();
     if (conn === undefined) throw new DaemonError(NOT_RUNNING);
-    try {
-      return { value: await call(conn), warnings: conn.warnings };
-    } catch (err) {
-      if (err instanceof Unreachable) throw new DaemonError(NOT_RUNNING);
-      throw withWarnings(err, conn.warnings);
-    }
+    return this.callDaemon(call, conn, false);
   }
 
   /** Whether this project's daemon answers. Never starts one. */
@@ -305,6 +300,19 @@ export class DaemonClient {
     // Lead decision 14 Oct 2026: only a folder `flutterdeck init` set up gets a daemon,
     // so opening Claude in any other folder starts nothing and writes nothing there.
     if (!(await this.isSetUp())) throw new DaemonError(NOT_SET_UP);
+    return this.callDaemon(call, await this.connect(), true);
+  }
+
+  /**
+   * Makes the call on `first` (undefined when none answered), and handles a dropped call
+   * the same way with or without `canStart` (T-O1-1): a daemon still alive is never
+   * reported as not running. Only a gone daemon is started, and only with `canStart`.
+   */
+  private async callDaemon<T>(
+    call: (c: Connection) => Promise<T>,
+    first: Connection | undefined,
+    canStart: boolean,
+  ): Promise<Answer<T>> {
     // The daemon that last dropped this call. If health still finds that same one, it
     // is alive and starting another would only exit at once (one daemon per project):
     // retry it once, for a one-off keep-alive reset, then say it is stuck (finding O1).
@@ -312,8 +320,8 @@ export class DaemonClient {
     // Each daemon gets the call at most twice, and a new one appears only through a start
     // (or someone else's), so this bounds the loop even if runtime.json keeps changing.
     let drops = 0;
-    for (let starts = 0; ;) {
-      const conn = await this.connect();
+    let conn = first;
+    for (let starts = 0; ; conn = await this.connect()) {
       if (conn !== undefined) {
         try {
           return { value: await call(conn), warnings: conn.warnings };
@@ -336,7 +344,7 @@ export class DaemonClient {
       }
       // Gone: start it and retry. Twice at most, for a daemon that stopped again
       // between its start (perhaps one another call was waiting for) and this call.
-      if (starts >= MAX_STARTS) throw new DaemonError(NOT_RUNNING);
+      if (!canStart || starts >= MAX_STARTS) throw new DaemonError(NOT_RUNNING);
       starts++;
       const started = await this.start(dropped);
       // 'gone': it came up and stopped again, so this counts as a start and we look again.
