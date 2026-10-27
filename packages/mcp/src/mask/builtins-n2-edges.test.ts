@@ -12,6 +12,9 @@ import { describe, expect, it } from 'vitest';
 import { growth } from '../testing/timing.js';
 import { maskBuiltIn } from './builtins.js';
 
+/** Growth limit for 8 times the text: linear work is about 8, quadratic about 64. */
+const GROWTH_LIMIT = 24;
+
 // Built at runtime so no auth-code-shaped literal sits in the source.
 const code = ['Ab3dE', '_fGh1I'].join('');
 const padded = ['qXHgMx0R', 'Rm4%3D'].join('');
@@ -94,7 +97,8 @@ describe('broken UTF-8 next to an auth code (N1)', () => {
     'http://127.0.0.1:1/?u=' + '%25ED%25A0'.repeat(40) + ' ',
   ])('stays linear on 64 kB of %j', (unit) => {
     // 8x the text should cost about 8x; quadratic work would be 64x.
-    expect(growth(maskBuiltIn, unit, 8_192, 65_536).ratio).toBeLessThan(24);
+    const { ratio } = growth(maskBuiltIn, unit, 8_192, 65_536, { limit: GROWTH_LIMIT });
+    expect(ratio).toBeLessThan(GROWTH_LIMIT);
   });
 });
 
