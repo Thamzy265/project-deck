@@ -420,9 +420,11 @@ describe('scrubReloadMessage: more shapes', () => {
   });
 
   it('T-P5-2 every pattern grows linearly with the text (scrubText, before the cut)', () => {
-    // 64k and 512k characters: a few milliseconds and more, so constant costs and timer
+    // 32k and 512k characters: about a millisecond and more, so constant costs and timer
     // resolution don't dominate; warm-up drops compiling, and growth() keeps the best of
-    // several interleaved rounds, so a GC pause or a stall can't fail it.
+    // several interleaved rounds, so a GC pause or a stall can't fail it. 16 times the text
+    // leaves a 4x margin each way (a busy machine pushed 8 times the text to 25.2, Oct
+    // 2026). Not 1M: the percent decoding slows down in steps there, from GC, not regexes.
     for (const unit of [
       'a.',
       'a:',
@@ -438,9 +440,9 @@ describe('scrubReloadMessage: more shapes', () => {
       'a.b:1/',
       'a-',
     ]) {
-      const { ratio, small, large } = growth(scrubText, unit, 64_000, 512_000);
-      // 8 times the text: linear is about 8, quadratic about 64.
-      expect(ratio, `${unit}: ${small.toFixed(2)} ms -> ${large.toFixed(2)} ms`).toBeLessThan(24);
+      const { ratio, small, large } = growth(scrubText, unit, 32_000, 512_000);
+      // 16 times the text: linear is about 16, quadratic about 256.
+      expect(ratio, `${unit}: ${small.toFixed(2)} ms -> ${large.toFixed(2)} ms`).toBeLessThan(64);
     }
   });
 });
