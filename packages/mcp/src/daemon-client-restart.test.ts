@@ -19,6 +19,8 @@ import { FAKE_STATUS, FakeDaemon, initProject } from './testing/fake-daemon.js';
 let projectDir: string;
 const cleanups: (() => Promise<void>)[] = [];
 const pending: Promise<unknown>[] = [];
+/** Why a fake daemon didn't start: without it, a test only sees "isn't running". */
+const startErrors: unknown[] = [];
 
 beforeEach(async () => {
   projectDir = await mkdtemp(join(tmpdir(), 'deck-mcp-restart-'));
@@ -29,6 +31,7 @@ afterEach(async () => {
   await Promise.all(pending.splice(0));
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
   await rm(projectDir, { recursive: true, force: true });
+  expect(startErrors.splice(0)).toEqual([]);
 });
 
 /** A server that answers health only when `healthy`, and dies on its first other call. */
@@ -86,7 +89,9 @@ function restartingClient(startDelayMs: number, readyTimeoutMs: number) {
           .then((f) => {
             cleanups.push(() => f.stop());
           })
-          .catch(() => undefined),
+          .catch((err: unknown) => {
+            startErrors.push(err);
+          }),
       );
     },
   });
