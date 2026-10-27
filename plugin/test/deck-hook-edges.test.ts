@@ -421,7 +421,8 @@ describe('scrubReloadMessage: more shapes', () => {
 
   it('T-P5-2 every pattern grows linearly with the text (scrubText, before the cut)', () => {
     // 64k and 512k characters: a few milliseconds and more, so constant costs and timer
-    // resolution don't dominate; warm-up and best of 5 drop compiling and GC pauses.
+    // resolution don't dominate; warm-up drops compiling, and growth() keeps the best of
+    // several interleaved rounds, so a GC pause or a stall can't fail it.
     for (const unit of [
       'a.',
       'a:',
