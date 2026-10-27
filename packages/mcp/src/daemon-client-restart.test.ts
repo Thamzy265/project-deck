@@ -1,7 +1,7 @@
 /**
  * Tester probes of the restart after a daemon dies mid-call: how late the new daemon
- * writes its runtime.json (0 ms, 150 ms, close to the ready timeout), and a daemon that
- * dies before it answers health. The old daemon's port is closed, as for a real exit.
+ * writes its runtime.json (0 ms, 150 ms, 1 s), and a daemon that dies before it answers
+ * health. The old daemon's port is closed, as for a real exit.
  * Local sockets only; the delays are the test's own and no assertion measures time.
  */
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -97,7 +97,9 @@ describe('restarting a daemon that died mid-call', () => {
   it.each([
     ['at once', 0, 3000],
     ['after 150 ms', 150, 3000],
-    ['just inside the ready timeout', 1000, 1500],
+    // A 3 s ready timeout like the others: on Windows the rename of runtime.json can be
+    // retried for more than 0.6 s (core's retryWhileBusy), so 0.5 s to spare wasn't enough.
+    ['after 1 s', 1000, 3000],
   ])(
     'spawns once and answers when the new daemon starts %s (health was answered)',
     async (_name, startDelayMs, readyTimeoutMs) => {
