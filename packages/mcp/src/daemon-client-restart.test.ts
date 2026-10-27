@@ -1,0 +1,126 @@
+/**
+ * Tester probes of the restart after a daemon dies mid-call: how late the new daemon
+ * writes its runtime.json (0 ms, 150 ms, close to the ready timeout), and a daemon that
+ * dies before it answers health. The old daemon's port is closed, as for a real exit.
+ * Local sockets only; the delays are the test's own and no assertion measures time.
+ */
+import { mkdtemp, rm } from 'node:fs/promises';
+import type { Server } from 'node:http';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { setTimeout as sleep } from 'node:timers/promises';
+import { writeRuntime } from '@project-deck/daemon';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { DaemonClient } from './daemon-client.js';
+import { FAKE_STATUS, FakeDaemon, initProject } from './testing/fake-daemon.js';
+
+let projectDir: string;
+const cleanups: (() => Promise<void>)[] = [];
+const pending: Promise<unknown>[] = [];
+
+beforeEach(async () => {
+  projectDir = await mkdtemp(join(tmpdir(), 'deck-mcp-restart-'));
+  await initProject(projectDir);
+});
+
+afterEach(async () => {
+  await Promise.all(pending.splice(0));
+  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
+  await rm(projectDir, { recursive: true, force: true });
+});
+
+/** A server that answers health only when `healthy`, and dies on its first other call. */
+async function dyingDaemon(healthy: boolean): Promise<void> {
+  const server: Server = createServer((req, res) => {
+    req.on('error', () => undefined);
+    res.on('error', () => undefined);
+    if (healthy && req.url === '/api/health') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          ok: true,
+          name: 'project-deck',
+          version: '0.0.0',
+          projectId: 'aaaaaaaaaaaa',
+        }),
+      );
+      return;
+    }
+    req.socket.destroy();
+    server.close();
+    server.closeAllConnections();
+  });
+  server.on('error', () => undefined);
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address() as AddressInfo;
+  await writeRuntime(projectDir, {
+    pid: process.pid,
+    port,
+    token: 'r'.repeat(43),
+    startedAt: Date.now(),
+  });
+  cleanups.push(
+    () =>
+      new Promise<void>((resolve) => {
+        server.close(() => resolve());
+        server.closeAllConnections();
+      }),
+  );
+}
+
+function restartingClient(startDelayMs: number, readyTimeoutMs: number) {
+  const state = { spawned: 0 };
+  const client = new DaemonClient({
+    projectDir,
+    version: '0.0.0',
+    projectId: () => Promise.resolve('aaaaaaaaaaaa'),
+    readyTimeoutMs,
+    pollMs: 20,
+    spawnDaemon: () => {
+      state.spawned++;
+      pending.push(
+        sleep(startDelayMs)
+          .then(() => FakeDaemon.start(projectDir))
+          .then((f) => {
+            cleanups.push(() => f.stop());
+          })
+          .catch(() => undefined),
+      );
+    },
+  });
+  return { client, state };
+}
+
+describe('restarting a daemon that died mid-call', () => {
+  it.each([
+    ['at once', 0, 3000],
+    ['after 150 ms', 150, 3000],
+    ['just inside the ready timeout', 1000, 1500],
+  ])(
+    'spawns once and answers when the new daemon starts %s (health was answered)',
+    async (_name, startDelayMs, readyTimeoutMs) => {
+      await dyingDaemon(true);
+      const { client, state } = restartingClient(startDelayMs, readyTimeoutMs);
+      expect((await client.status()).value.projectName).toBe(FAKE_STATUS.projectName);
+      expect(state.spawned).toBe(1);
+    },
+  );
+
+  it('spawns once and answers when the daemon died before it answered health', async () => {
+    await dyingDaemon(false);
+    const { client, state } = restartingClient(150, 3000);
+    expect((await client.status()).value.projectName).toBe(FAKE_STATUS.projectName);
+    expect(state.spawned).toBe(1);
+  });
+
+  it('spawns once for two calls that both hit the dying daemon', async () => {
+    await dyingDaemon(true);
+    const { client, state } = restartingClient(150, 3000);
+    const [a, b] = await Promise.all([client.status(), client.status()]);
+    expect(a.value.projectName).toBe(FAKE_STATUS.projectName);
+    expect(b.value.projectName).toBe(FAKE_STATUS.projectName);
+    expect(state.spawned).toBe(1);
+  });
+});
