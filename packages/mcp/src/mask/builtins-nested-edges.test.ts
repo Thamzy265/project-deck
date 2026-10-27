@@ -212,7 +212,7 @@ describe('long escape runs', () => {
     '%25253D%253D%3Dhttp%253A%252F%252F127.0.0.1%253A1%252F ',
   ])('stays linear on 64 kB of %j', (unit) => {
     // 8x the text should cost about 8x.
-    const { ratio, large } = growth(maskBuiltIn, unit, 8_192, 65_536);
+    const { ratio, large } = growth(maskBuiltIn, unit, 8_192, 65_536, { limit: 24 });
     expect(ratio).toBeLessThan(24);
     expect(large).toBeLessThan(2000);
   });

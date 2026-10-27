@@ -62,6 +62,8 @@ describe('growth', () => {
 describe('growth under a long stall (tester probes, 27 Oct 2026)', () => {
   /** Calls 0 and 1 are the warm-up, call 2 is the first timed small run. */
   const FIRST_STALLED_CALL = 3;
+  /** 2 warm-up calls and 5 rounds of one small and one large call. */
+  const LAST_CALL_OF_FIRST_MEASUREMENT = 11;
 
   it('stalls that only slow a window of calls leave the best times clean', () => {
     // Regression lock: a wall-clock stall of about 300 ms where each call in it takes
@@ -77,26 +79,28 @@ describe('growth under a long stall (tester probes, 27 Oct 2026)', () => {
     expect(growth(stalled, 'a', SMALL, LARGE).ratio).toBeLessThan(THRESHOLD);
   });
 
-  // FINDING: only the first small run is clean, so best small is 1 ms and every large run
-  // is stalled (about 58 ms): ratio about 58 > 24 on linear work. Expected failure marker
-  // until the developer decides how to survive it (for example a retry by the caller).
-  it.fails('passes linear work when a stall covers every call after the first small run', () => {
+  // Only the first small run of the measurement is clean, so best small is 1 ms and every
+  // large run is stalled (about 58 ms): ratio about 58 > 24 on linear work. The stall ends
+  // with the measurement (about 450 ms), so a second measurement is clean.
+  it('passes linear work when a stall covers every call after the first small run', () => {
     let call = 0;
     const stalled = (text: string) => {
-      if (call >= FIRST_STALLED_CALL) busy(50);
+      if (call >= FIRST_STALLED_CALL && call <= LAST_CALL_OF_FIRST_MEASUREMENT) busy(50);
       call++;
       linear(text);
     };
-    expect(growth(stalled, 'a', SMALL, LARGE).ratio).toBeLessThan(THRESHOLD);
+    expect(growth(stalled, 'a', SMALL, LARGE, { limit: THRESHOLD }).ratio).toBeLessThan(THRESHOLD);
   });
 
   it('still fails quadratic work under the same long stall', () => {
     let call = 0;
     const stalled = (text: string) => {
-      if (call >= FIRST_STALLED_CALL) busy(50);
+      if (call >= FIRST_STALLED_CALL && call <= LAST_CALL_OF_FIRST_MEASUREMENT) busy(50);
       call++;
       quadratic(text);
     };
-    expect(growth(stalled, 'a', SMALL, LARGE).ratio).toBeGreaterThan(THRESHOLD);
+    expect(growth(stalled, 'a', SMALL, LARGE, { limit: THRESHOLD }).ratio).toBeGreaterThan(
+      THRESHOLD,
+    );
   });
 });

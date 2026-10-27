@@ -94,7 +94,7 @@ describe('broken UTF-8 next to an auth code (N1)', () => {
     'http://127.0.0.1:1/?u=' + '%25ED%25A0'.repeat(40) + ' ',
   ])('stays linear on 64 kB of %j', (unit) => {
     // 8x the text should cost about 8x; quadratic work would be 64x.
-    expect(growth(maskBuiltIn, unit, 8_192, 65_536).ratio).toBeLessThan(24);
+    expect(growth(maskBuiltIn, unit, 8_192, 65_536, { limit: 24 }).ratio).toBeLessThan(24);
   });
 });
 
