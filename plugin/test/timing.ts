@@ -13,20 +13,11 @@ export function repeatTo(unit: string, size: number): string {
 /** Milliseconds from the real clock; the helper's own tests pass a fake one. */
 const realNow = (): number => performance.now();
 
-/** The best of `attempts` times of `run` on `text`, in milliseconds: drops GC pauses. */
-export function bestTime(
-  run: (text: string) => unknown,
-  text: string,
-  attempts = 5,
-  now: () => number = realNow,
-): number {
-  let best = Number.POSITIVE_INFINITY;
-  for (let attempt = 0; attempt < attempts; attempt++) {
-    const start = now();
-    run(text);
-    best = Math.min(best, now() - start);
-  }
-  return best;
+/** The time of one call of `run` on `text`, in milliseconds. */
+function timeOf(run: (text: string) => unknown, text: string, now: () => number): number {
+  const start = now();
+  run(text);
+  return now() - start;
 }
 
 export interface Growth {
@@ -37,8 +28,6 @@ export interface Growth {
 }
 
 export interface GrowthOptions {
-  /** Times per round for each text, best of them counts. Default 1. */
-  attempts?: number;
   /** Rounds of one small and one large timing per measurement. Default 5. */
   rounds?: number;
   /** The ratio the caller fails on. Without it, one measurement is taken. */
@@ -75,7 +64,7 @@ export function growth(
   largeSize: number,
   opts: GrowthOptions = {},
 ): Growth {
-  const { attempts = 1, rounds = 5, limit, now = realNow } = opts;
+  const { rounds = 5, limit, now = realNow } = opts;
   const smallText = repeatTo(unit, smallSize);
   const largeText = repeatTo(unit, largeSize);
   run(smallText);
@@ -85,8 +74,8 @@ export function growth(
   const ratio = () => large / Math.max(small, 0.5);
   for (let measurement = 0; measurement < MEASUREMENTS; measurement++) {
     for (let round = 0; round < rounds; round++) {
-      small = Math.min(small, bestTime(run, smallText, attempts, now));
-      large = Math.min(large, bestTime(run, largeText, attempts, now));
+      small = Math.min(small, timeOf(run, smallText, now));
+      large = Math.min(large, timeOf(run, largeText, now));
     }
     if (limit === undefined || ratio() < limit) break;
   }
