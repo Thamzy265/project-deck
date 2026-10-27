@@ -58,3 +58,45 @@ describe('growth', () => {
     expect(growth(stalled, 'a', SMALL, LARGE).ratio).toBeGreaterThan(THRESHOLD);
   });
 });
+
+describe('growth under a long stall (tester probes, 27 Oct 2026)', () => {
+  /** Calls 0 and 1 are the warm-up, call 2 is the first timed small run. */
+  const FIRST_STALLED_CALL = 3;
+
+  it('stalls that only slow a window of calls leave the best times clean', () => {
+    // Regression lock: a wall-clock stall of about 300 ms where each call in it takes
+    // 50 ms longer covers about 5 calls; the later rounds are clean again.
+    let call = 0;
+    let stallEnd = 0;
+    const stalled = (text: string) => {
+      if (call === FIRST_STALLED_CALL) stallEnd = performance.now() + 300;
+      if (call >= FIRST_STALLED_CALL && performance.now() < stallEnd) busy(50);
+      call++;
+      linear(text);
+    };
+    expect(growth(stalled, 'a', SMALL, LARGE).ratio).toBeLessThan(THRESHOLD);
+  });
+
+  // FINDING: only the first small run is clean, so best small is 1 ms and every large run
+  // is stalled (about 58 ms): ratio about 58 > 24 on linear work. Expected failure marker
+  // until the developer decides how to survive it (for example a retry by the caller).
+  it.fails('passes linear work when a stall covers every call after the first small run', () => {
+    let call = 0;
+    const stalled = (text: string) => {
+      if (call >= FIRST_STALLED_CALL) busy(50);
+      call++;
+      linear(text);
+    };
+    expect(growth(stalled, 'a', SMALL, LARGE).ratio).toBeLessThan(THRESHOLD);
+  });
+
+  it('still fails quadratic work under the same long stall', () => {
+    let call = 0;
+    const stalled = (text: string) => {
+      if (call >= FIRST_STALLED_CALL) busy(50);
+      call++;
+      quadratic(text);
+    };
+    expect(growth(stalled, 'a', SMALL, LARGE).ratio).toBeGreaterThan(THRESHOLD);
+  });
+});
