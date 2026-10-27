@@ -28,6 +28,18 @@ export interface Growth {
   ratio: number;
 }
 
+export interface GrowthOptions {
+  /** Times per round for each text, best of them counts. Default 1. */
+  attempts?: number;
+  /** Rounds of one small and one large timing per measurement. Default 5. */
+  rounds?: number;
+  /** The ratio the caller fails on. Without it, one measurement is taken. */
+  limit?: number;
+}
+
+/** Measurements at most, when each one is at or over the limit. */
+const MEASUREMENTS = 3;
+
 /**
  * Times `run` on `unit` repeated to `smallSize` and to `largeSize` characters. Untimed
  * calls on both texts first warm up the code and the regular expressions (V8 compiles a
@@ -39,24 +51,37 @@ export interface Growth {
  * time longer, so each best comes from a round it missed. Timing all the small runs
  * first and then all the large ones let one stall inflate every large time (56x for 8x
  * the text on linear work, ubuntu CI, Oct 2026).
+ *
+ * With a `limit`, a ratio at or over it is measured again, up to MEASUREMENTS times in
+ * all, and the lowest ratio counts. Linear work then passes even when a stall spoils one
+ * or two whole measurements, but work that really grows faster than the text is over
+ * the limit every time.
  */
 export function growth(
   run: (text: string) => unknown,
   unit: string,
   smallSize: number,
   largeSize: number,
-  attempts = 1,
-  rounds = 5,
+  opts: GrowthOptions = {},
 ): Growth {
+  const { attempts = 1, rounds = 5, limit } = opts;
   const smallText = repeatTo(unit, smallSize);
   const largeText = repeatTo(unit, largeSize);
   run(smallText);
   run(largeText);
-  let small = Number.POSITIVE_INFINITY;
-  let large = Number.POSITIVE_INFINITY;
-  for (let round = 0; round < rounds; round++) {
-    small = Math.min(small, bestTime(run, smallText, attempts));
-    large = Math.min(large, bestTime(run, largeText, attempts));
+  const measure = (): Growth => {
+    let small = Number.POSITIVE_INFINITY;
+    let large = Number.POSITIVE_INFINITY;
+    for (let round = 0; round < rounds; round++) {
+      small = Math.min(small, bestTime(run, smallText, attempts));
+      large = Math.min(large, bestTime(run, largeText, attempts));
+    }
+    return { small, large, ratio: large / Math.max(small, 0.5) };
+  };
+  let best = measure();
+  for (let again = 1; limit !== undefined && best.ratio >= limit && again < MEASUREMENTS; again++) {
+    const next = measure();
+    if (next.ratio < best.ratio) best = next;
   }
-  return { small, large, ratio: large / Math.max(small, 0.5) };
+  return best;
 }
