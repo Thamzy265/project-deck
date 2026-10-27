@@ -252,18 +252,34 @@ describe('starting after a dropped call', () => {
   });
 
   it('shares one start between concurrent calls that dropped on the same daemon', async () => {
-    let dropped = 0;
+    // A barrier: both first calls are held until both have arrived, then dropped together
+    // with health going quiet, so neither call's retry can reach the old daemon.
+    const held: IncomingMessage[] = [];
     const old = await halfAlive((_n, _res, req, d) => {
-      // Health goes quiet only once both calls have been dropped, so both look again.
-      dropped++;
-      if (dropped === 2) d.healthy = false;
-      req.socket.destroy();
+      held.push(req);
+      if (held.length < 2) return;
+      d.healthy = false;
+      for (const r of held) r.socket.destroy();
     });
-    const spawned = { n: 0 };
-    const c = client({ spawnDaemon: replaceAfterStalePoll(old, spawned) });
+    let spawned = 0;
+    const c = client({
+      spawnDaemon: () => {
+        spawned++;
+        // Health stays quiet: turned back on, it could answer the second call's look
+        // after its drop, and a second drop on the same daemon is (rightly) an error.
+        // The replacement comes after the start has polled the old daemon once.
+        track(
+          old.nextHealth().then(async () => {
+            const f = await FakeDaemon.start(projectDir);
+            cleanups.push(() => f.stop());
+          }),
+        );
+      },
+    });
     const answers = await Promise.all([c.status(), c.status()]);
     for (const a of answers) expect(a.value.projectName).toBe(FAKE_STATUS.projectName);
-    expect(spawned.n).toBe(1);
+    expect(spawned).toBe(1);
+    expect(old.calls).toBe(2);
   });
 
   it('a call that arrives during the start waits for the new daemon too', async () => {
