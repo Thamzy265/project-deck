@@ -65,8 +65,8 @@ describe('growth under a long stall (tester probes, 27 Oct 2026)', () => {
     call >= FIRST_STALLED_CALL && call <= LAST_CALL_OF_FIRST_MEASUREMENT;
 
   it('stalls that only slow a window of calls leave the best times clean', () => {
-    // A 300 ms stall from call 3 on slows calls 3 to 8; rounds 0, 3 and 4 have clean
-    // small runs and rounds 3 and 4 clean large ones.
+    // A 300 ms stall from call 3 on slows calls 3 to 8 (call 8 starts at 286 ms, inside
+    // it): rounds 0 and 4 have clean small runs, and rounds 3 and 4 clean large ones.
     let stallEnd = Number.POSITIVE_INFINITY;
     const sim = simulate(linear, (call, at) => {
       if (call === FIRST_STALLED_CALL) stallEnd = at + 300;
