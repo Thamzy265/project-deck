@@ -47,6 +47,14 @@ import type { z } from 'zod';
 
 export const NOT_RUNNING = "FlutterDeck daemon isn't running: run `flutterdeck start`";
 export const NOT_SET_UP = "FlutterDeck isn't set up in this folder. Run `flutterdeck init` first.";
+/**
+ * The daemon still answers /api/health but dropped the same call twice. Starting another
+ * would only exit at once (one daemon per project), so the user has to stop this one.
+ * Lead's wording, PM decision pending: keep it here so it is easy to change.
+ */
+export function droppedCallText(port: number, pid: number, route: string): string {
+  return `FlutterDeck daemon on port ${port} (pid ${pid}) answers but dropped ${route}. Run \`flutterdeck stop\`, then try again.`;
+}
 const TOKEN_REJECTED =
   'FlutterDeck daemon rejected the token in .flutterdeck/runtime.json. Run `flutterdeck stop`, then try again.';
 export const DEFAULT_TIMEOUT_MS = 5000;
@@ -102,7 +110,11 @@ export class DaemonDbError extends DaemonError {
 }
 
 /** No daemon answered: nothing listens, or it isn't a FlutterDeck. */
-class Unreachable extends Error {}
+class Unreachable extends Error {
+  constructor(readonly route: string) {
+    super(route);
+  }
+}
 
 export interface DaemonClientOptions {
   projectDir: string;
@@ -129,11 +141,19 @@ export interface Answer<T> {
 
 type StartResult = { kind: 'up' } | { kind: 'gone' } | { kind: 'failed'; reason: string };
 
-interface Connection {
+/** Which daemon: runtime.json's port, token and pid together. */
+interface DaemonId {
   port: number;
   token: string;
   pid: number;
+}
+
+interface Connection extends DaemonId {
   warnings: string[];
+}
+
+function sameDaemon(a: DaemonId, b: DaemonId): boolean {
+  return a.port === b.port && a.token === b.token && a.pid === b.pid;
 }
 
 export class DaemonClient {
@@ -144,6 +164,8 @@ export class DaemonClient {
   private readonly pollMs: number;
   private ownId: string | undefined;
   private starting: Promise<StartResult> | undefined;
+  /** Daemons that dropped a call of someone waiting on `starting`: never the new one. */
+  private readonly startStale: DaemonId[] = [];
 
   private readonly scrub: (text: string) => string;
 
@@ -260,14 +282,7 @@ export class DaemonClient {
     while (Date.now() < deadline) {
       // Gone, or replaced by another daemon's (a new start): either way this one stopped.
       const now = await readRuntime(this.opts.projectDir);
-      if (
-        now === undefined ||
-        now.token !== conn.token ||
-        now.pid !== conn.pid ||
-        now.port !== conn.port
-      ) {
-        return true;
-      }
+      if (now === undefined || !sameDaemon(now, conn)) return true;
       await sleep(this.pollMs);
     }
     throw new DaemonError(
@@ -290,19 +305,40 @@ export class DaemonClient {
     // Lead decision 14 Oct 2026: only a folder `flutterdeck init` set up gets a daemon,
     // so opening Claude in any other folder starts nothing and writes nothing there.
     if (!(await this.isSetUp())) throw new DaemonError(NOT_SET_UP);
-    for (let starts = 0; ; starts++) {
+    // The daemon that last dropped this call. If health still finds that same one, it
+    // is alive and starting another would only exit at once (one daemon per project):
+    // retry it once, for a one-off keep-alive reset, then say it is stuck (finding O1).
+    let dropped: DaemonId | undefined;
+    // Each daemon gets the call at most twice, and a new one appears only through a start
+    // (or someone else's), so this bounds the loop even if runtime.json keeps changing.
+    let drops = 0;
+    for (let starts = 0; ;) {
       const conn = await this.connect();
       if (conn !== undefined) {
         try {
           return { value: await call(conn), warnings: conn.warnings };
         } catch (err) {
           if (!(err instanceof Unreachable)) throw withWarnings(err, conn.warnings);
+          drops++;
+          if (
+            (dropped !== undefined && sameDaemon(dropped, conn)) ||
+            drops > 2 * (MAX_STARTS + 1)
+          ) {
+            throw withWarnings(
+              new DaemonError(droppedCallText(conn.port, conn.pid, err.route)),
+              conn.warnings,
+            );
+          }
+          dropped = { port: conn.port, token: conn.token, pid: conn.pid };
+          // Look again before starting anything: the same daemon gets one more try.
+          continue;
         }
       }
       // Gone: start it and retry. Twice at most, for a daemon that stopped again
       // between its start (perhaps one another call was waiting for) and this call.
       if (starts >= MAX_STARTS) throw new DaemonError(NOT_RUNNING);
-      const started = await this.start();
+      starts++;
+      const started = await this.start(dropped);
       // 'gone': it came up and stopped again, so this counts as a start and we look again.
       if (started.kind === 'failed') throw new DaemonError(started.reason);
     }
@@ -373,8 +409,15 @@ export class DaemonClient {
   /**
    * Starts the daemon once for any number of waiting calls. True once it answers;
    * otherwise why not, with the daemon's own last message when it exited.
+   *
+   * `stale` is the daemon that dropped the caller's call. runtime.json may still name it
+   * until the new daemon replaces the file (slow on Windows), so it must not count as up.
+   * Callers share one start, so the stale daemons of all of them are pooled: a daemon one
+   * caller saw drop a call is broken for every caller, and a caller with none just waits
+   * for the new daemon too. withDaemon checks the daemon itself again after 'up' anyway.
    */
-  private start(): Promise<StartResult> {
+  private start(stale?: DaemonId): Promise<StartResult> {
+    if (stale !== undefined) this.startStale.push(stale);
     this.starting ??= (async (): Promise<StartResult> => {
       const child: { exitCode?: number | null } = {};
       try {
@@ -388,7 +431,10 @@ export class DaemonClient {
       while (Date.now() < deadline) {
         await sleep(this.pollMs);
         // Throws at once when the daemon that answers belongs to another project.
-        if ((await this.connect()) !== undefined) return { kind: 'up' };
+        const conn = await this.connect();
+        if (conn !== undefined && !this.startStale.some((s) => sameDaemon(s, conn))) {
+          return { kind: 'up' };
+        }
         // Another daemon for this project may have won the start: the check above saw it.
         if ('exitCode' in child) break;
       }
@@ -400,7 +446,10 @@ export class DaemonClient {
       return line === undefined
         ? { kind: 'gone' }
         : { kind: 'failed', reason: `FlutterDeck daemon couldn't start: ${line}` };
-    })().finally(() => (this.starting = undefined));
+    })().finally(() => {
+      this.starting = undefined;
+      this.startStale.length = 0;
+    });
     return this.starting;
   }
 
@@ -440,7 +489,7 @@ export class DaemonClient {
           `FlutterDeck daemon didn't answer ${route} within ${timeoutMs / 1000} s`,
         );
       }
-      throw new Unreachable();
+      throw new Unreachable(route);
     }
     if (res.status === 401) throw new ForeignDaemonError(TOKEN_REJECTED, conn.port);
     if (!res.ok) {
