@@ -2,6 +2,15 @@
 
 Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
 
+## 2026-10-27 — CI flakes: Windows restart race and scrub growth ratio — merged
+
+- Changed: PR #48 `fix/ci-flakes` (test code only, size small). (1) `daemon-client-edges.test.ts` "restarts a daemon that drops the connection mid-call" spawned twice on windows-latest (run 40298340670). Root cause: the test's raw server kept answering `/api/health` after it dropped the call, so the client's first ready poll used the old `runtime.json` before the new fake wrote its own. This is not a client bug that starts two daemons: `startDaemon`'s startup lock stops a second daemon. The raw server now stops listening when it drops a call. A new `daemon-client-restart.test.ts` covers start delays, the timing of the daemon's death and concurrent calls. (2) T-P5-2 failed on ubuntu-latest (run 40187489374, `aa://` ratio 56 against 24) because of a runner stall; `scrubText` is linear. `growth()` (plugin and mcp copies) now interleaves small and large runs over 5 rounds, measures again up to 3 times when over the limit, and combines the best times. Its own tests use an injected fake clock. T-P5-2 uses 32k → 512k with a limit of 64.
+- Gates: developer pass (failing-first: restart 3/3 fail with a delayed fake; old helper ratio 57.9) · tester pass (F1 Medium: a long stall after the first small run still failed the helper — fixed) · reviewer approve with notes (R1 Medium, a 1 s case with a 1.5 s ready timeout, fixed; L1, L3–L6 fixed; L2 and L7 Low notes kept) · QA `n/a — test-only change, nothing a user can run; the CI matrix is the acceptance` · CI 9/9 pass · merged by the lead (standing approval, 2026-10-24).
+- Open findings: none above Low. L2 (commit 2c19e13 touches two packages; pushed history, not rewritten) and L7 (the mcp mask growth checks keep 8x with a limit of 24; watch them on CI).
+- Follow-up: pre-existing O1 (the client restarts a daemon that answers health but drops calls) moved to its own session, branch `claude/gifted-herschel-8951c8`. PM decisions of 2026-10-27 (retry once, then a clear error; defer the daemon side with a Later line) are recorded there.
+- Note: the local machine was swapping heavily during this item (load 15–200), so local timing results were not reliable; CI decided.
+- Blockers: Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead none.
+
 ## 2026-10-25 — M3 validation checkpoint — drafts ready
 
 - Merged (lead, 2026-10-25, standing approval): PR #44 `docs/m4-linear-mcp` (M4 re-plan, docs only) after CI passed 9/9. Reviewer and QA `n/a — plan record only, nothing to run`. Deleted after merge (standing approval): worktree `.claude/worktrees/m4-linear-mcp`, local and remote branch `docs/m4-linear-mcp`.
