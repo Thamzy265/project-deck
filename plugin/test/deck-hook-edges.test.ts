@@ -426,6 +426,8 @@ describe('scrubReloadMessage: more shapes', () => {
     // a stall can't fail it. 16 times the text leaves a 4x margin each way (a busy machine
     // pushed 8 times the text to 25.2, Oct 2026). Not 1M: the percent decoding slows down
     // in steps there, from GC, not regexes.
+    // 16 times the text: linear is about 16, quadratic about 256.
+    const LIMIT = 64;
     for (const unit of [
       'a.',
       'a:',
@@ -441,9 +443,10 @@ describe('scrubReloadMessage: more shapes', () => {
       'a.b:1/',
       'a-',
     ]) {
-      const { ratio, small, large } = growth(scrubText, unit, 32_000, 512_000, { limit: 64 });
-      // 16 times the text: linear is about 16, quadratic about 256.
-      expect(ratio, `${unit}: ${small.toFixed(2)} ms -> ${large.toFixed(2)} ms`).toBeLessThan(64);
+      const { ratio, small, large } = growth(scrubText, unit, 32_000, 512_000, { limit: LIMIT });
+      expect(ratio, `${unit}: ${small.toFixed(2)} ms -> ${large.toFixed(2)} ms`).toBeLessThan(
+        LIMIT,
+      );
     }
   });
 });
