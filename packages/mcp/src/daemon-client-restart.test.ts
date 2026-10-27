@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { writeRuntime } from '@project-deck/daemon';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DaemonClient } from './daemon-client.js';
 import { FAKE_STATUS, FakeDaemon, initProject } from './testing/fake-daemon.js';
 
@@ -21,17 +21,31 @@ const cleanups: (() => Promise<void>)[] = [];
 const pending: Promise<unknown>[] = [];
 /** Why a fake daemon didn't start: without it, a test only sees "isn't running". */
 const startErrors: unknown[] = [];
+/** Every token written to a runtime.json in this file. */
+const tokens = new Set<string>();
+/** Every URL fetch was asked for. */
+const fetched: string[] = [];
 
 beforeEach(async () => {
   projectDir = await mkdtemp(join(tmpdir(), 'deck-mcp-restart-'));
   await initProject(projectDir);
+  const realFetch = globalThis.fetch;
+  vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+    fetched.push(input instanceof Request ? input.url : String(input));
+    return realFetch(input, init);
+  });
 });
 
 afterEach(async () => {
   await Promise.all(pending.splice(0));
+  vi.restoreAllMocks();
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
   await rm(projectDir, { recursive: true, force: true });
   expect(startErrors.splice(0)).toEqual([]);
+  for (const url of fetched.splice(0)) {
+    expect(url.startsWith('http://127.0.0.1:')).toBe(true);
+    for (const token of tokens) expect(url).not.toContain(token);
+  }
 });
 
 /** A server that answers health only when `healthy`, and dies on its first other call. */
@@ -58,12 +72,9 @@ async function dyingDaemon(healthy: boolean): Promise<void> {
   server.on('error', () => undefined);
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const { port } = server.address() as AddressInfo;
-  await writeRuntime(projectDir, {
-    pid: process.pid,
-    port,
-    token: 'r'.repeat(43),
-    startedAt: Date.now(),
-  });
+  const token = 'r'.repeat(43);
+  tokens.add(token);
+  await writeRuntime(projectDir, { pid: process.pid, port, token, startedAt: Date.now() });
   cleanups.push(
     () =>
       new Promise<void>((resolve) => {
@@ -87,6 +98,7 @@ function restartingClient(startDelayMs: number, readyTimeoutMs: number) {
         sleep(startDelayMs)
           .then(() => FakeDaemon.start(projectDir))
           .then((f) => {
+            tokens.add(f.token);
             cleanups.push(() => f.stop());
           })
           .catch((err: unknown) => {
