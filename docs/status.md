@@ -2,12 +2,14 @@
 
 Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
 
-## 2026-10-27 — O1 daemon client stale ready — in progress
+## 2026-11-03 — O1 daemon client stale ready — ready to merge
 
-- Changed: `fix/daemon-client-stale-ready` fixes reviewer finding O1 (pre-existing, raised on `fix/ci-flakes`). Size: small (one module, `packages/mcp`). When a daemon answers `/api/health` but drops a call, the MCP client no longer takes that same daemon (same port, token and pid in `runtime.json`) for a new start. It retries the call once on it, then shows a clear error. It starts nothing. A start also ignores a `runtime.json` that still names the daemon that dropped the call. Tester T-O1-1 (`start: false` still said "not running") and T-O1-2 (racy concurrent test) sent to the developer; T-O1-3 (child exits 1 with "already running", message has no stop hint) accepted by the lead as is.
+- Changed: `fix/daemon-client-stale-ready` fixes reviewer finding O1 (pre-existing, raised on `fix/ci-flakes`). Size: small (`packages/mcp`, plus the `flutterdeck stop` exit code in `packages/cli` tests). When a daemon answers `/api/health` but drops a call, the client no longer takes that same daemon (same port, token and pid in `runtime.json`) for a new start. It retries the call once on it, then says the daemon is stuck, with port, pid and route, and starts nothing. This holds for `start: false` calls too. A start ignores a `runtime.json` that still names the daemon that dropped the call. `flutterdeck stop` on such a daemon now exits 1 and names the process to quit, instead of "isn't running" with exit 0.
+- Findings: tester T-O1-1 (`start: false` said "not running") and T-O1-2 (racy concurrent test) fixed. T-O1-3 (child exits 1 with "already running", no stop hint): the lead's acceptance on 27 Oct was withdrawn, because only the PM accepts a risk; fixed by R-O1-2. Reviewer R-O1-1 (`stop` on a half-alive daemon), R-O1-2 (look again after a failed start), R-O1-3, R-O1-4 (cleanups), R-O1-5 (this entry) and R-O1-6 (keep the one retry after a failed start) fixed.
 - Decisions: PM (2026-10-27), tool-call behaviour: "A: retry once, then error (Recommended)". PM (2026-10-27), daemon side (`findRunningDaemon`): "Defer with a Later line (Recommended)". Later line added to PLAN.md.
-- Gates: developer pass · tester findings open (T-O1-1, T-O1-2) · reviewer waiting · QA waiting · PM merge: standing approval (24 Oct 2026) after the gates.
-- Open findings: T-O1-1 low-medium, T-O1-2 medium (test only).
+- Gates: developer pass · tester pass (14 probes; T-O1-1..3 fixed) · reviewer approve (code, security, privacy; 0 open) · QA PASS 4/4 on the built CLI and MCP server ([qa/M3.md](qa/M3.md#pm-check-o1)) · PM merge: standing approval (24 Oct 2026) after CI.
+- Merged `origin/main` (PR #48) into the branch on 2026-11-03; only this log conflicted, both entries kept.
+- Open findings: none.
 - Blockers: Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead none.
 
 ## 2026-10-27 — CI flakes: Windows restart race and scrub growth ratio — merged
