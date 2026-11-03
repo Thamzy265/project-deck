@@ -613,9 +613,11 @@ describe('the new daemon exits at once while the stale one is still there', () =
     );
     // Only seen when the stale daemon's health flickers off and on during the start. The
     // failed start looks once more and finds the daemon that dropped this very call, so
-    // it says what to do instead of the child's "already running" (T-O1-3, R-O1-2).
+    // it says what to do instead of the child's "already running" (T-O1-3, R-O1-2), but
+    // only after the one retry on it that the PM decided (27 Oct 2026, R-O1-6).
     expect(err.message).toBe(droppedCallText(old.port, old.pid, 'GET /api/status'));
     expect(err.message).not.toContain(old.token);
+    expect(old.calls).toBe(2);
     expect(spawned).toBe(1);
   });
 
@@ -628,10 +630,11 @@ describe('the new daemon exits at once while the stale one is still there', () =
 });
 
 describe('a call that joined a start that failed (R-O1-2)', () => {
-  it('makes its call on a daemon that answers afterwards, if not the one that dropped it', async () => {
+  it('both callers make their call on the daemon that answers afterwards', async () => {
     // A drops the first call and goes quiet; it recovers when the child exits 1 with the
-    // daemon's "already running" line. The joiner had no dropped daemon of its own, so
-    // after the failed start it makes its call on A, which now answers.
+    // daemon's "already running" line. After the failed start both callers look again
+    // and find A: the joiner had no dropped daemon of its own, and the first caller still
+    // has its one retry on A (R-O1-6), so both calls are answered.
     const old = await halfAlive((n, res, req, d) => {
       if (n === 1) {
         d.healthy = false;
@@ -668,12 +671,13 @@ describe('a call that joined a start that failed (R-O1-2)', () => {
         );
       },
     });
-    const first = await rejection(c.status());
-    // The first call's own dropped daemon: stuck, not "couldn't start".
-    expect(first.message).toBe(droppedCallText(old.port, old.pid, 'GET /api/status'));
+    const first = await c.status();
+    expect(first.value.projectName).toBe(FAKE_STATUS.projectName);
     expect(await joiner.result).toMatchObject({
       value: { projectName: FAKE_STATUS.projectName },
     });
+    // The first drop, the first caller's retry and the joiner's call.
+    expect(old.calls).toBe(3);
     expect(spawned).toBe(1);
   });
 });

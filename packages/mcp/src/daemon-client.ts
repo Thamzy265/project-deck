@@ -333,7 +333,6 @@ export class DaemonClient {
     // is alive and starting another would only exit at once (one daemon per project):
     // retry it once, for a one-off keep-alive reset, then say it is stuck (finding O1).
     let dropped: DaemonId | undefined;
-    let droppedRoute = '';
     // Each daemon gets the call at most twice, and a new one appears only through a start
     // (or someone else's), so this bounds the loop even if runtime.json keeps changing.
     let drops = 0;
@@ -355,7 +354,6 @@ export class DaemonClient {
             );
           }
           dropped = { port: conn.port, token: conn.token, pid: conn.pid };
-          droppedRoute = err.route;
           // Look again before starting anything: the same daemon gets one more try.
           conn = await this.connect();
           continue;
@@ -373,18 +371,13 @@ export class DaemonClient {
       }
       // A failed start is judged by the daemons of every caller that shared it, and its
       // child may have failed only because a daemon was already up (R-O1-2). Look once
-      // more: a daemon that answers and isn't the one that dropped this call gets the
-      // call (still within the bounds above); the one that did is stuck.
+      // more and make the call on whatever answers. The daemon that dropped this call
+      // gets its one retry like anywhere else, and the check above calls it stuck only
+      // on a second drop (PM decision 27 Oct 2026, R-O1-6). Still bounded: starts and
+      // drops are counted as above.
       const after = await this.connect();
       if (after === undefined) throw new DaemonError(started.reason);
-      if (dropped !== undefined && sameDaemon(dropped, after)) {
-        throw withWarnings(
-          new DaemonError(droppedCallText(after.port, after.pid, droppedRoute)),
-          after.warnings,
-        );
-      }
       conn = after;
-      continue;
     }
   }
 
