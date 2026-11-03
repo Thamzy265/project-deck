@@ -14,7 +14,13 @@ import { join } from 'node:path';
 import { writeRuntime } from '@project-deck/daemon';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DaemonClientOptions } from './daemon-client.js';
-import { DaemonClient, DaemonError, NOT_RUNNING, droppedCallText } from './daemon-client.js';
+import {
+  DaemonClient,
+  DaemonError,
+  NOT_RUNNING,
+  droppedCallText,
+  droppedShutdownText,
+} from './daemon-client.js';
 import { daemonLogPath } from './spawn.js';
 import { FAKE_PROJECT_ID, FAKE_STATUS, FakeDaemon, initProject } from './testing/fake-daemon.js';
 
@@ -59,7 +65,8 @@ interface HalfAlive {
 
 /**
  * A daemon on 127.0.0.1 that answers /api/health while `healthy`, and hands every
- * /api/status call to `onStatus` (which drops it unless told otherwise).
+ * /api/status call to `onStatus` (which drops it unless told otherwise). Other routes go
+ * to `onOther`, which answers 404 unless told otherwise.
  */
 async function halfAlive(
   onStatus: (n: number, res: ServerResponse, req: IncomingMessage, d: HalfAlive) => void = (
@@ -67,6 +74,10 @@ async function halfAlive(
     _res,
     req,
   ) => req.socket.destroy(),
+  onOther: (res: ServerResponse, req: IncomingMessage, d: HalfAlive) => void = (res) => {
+    res.writeHead(404);
+    res.end();
+  },
 ): Promise<HalfAlive> {
   const waiters: { wake: () => void; cancel: (err: Error) => void }[] = [];
   const d: HalfAlive = {
@@ -118,8 +129,7 @@ async function halfAlive(
       onStatus(d.calls, res, req, d);
       return;
     }
-    res.writeHead(404);
-    res.end();
+    onOther(res, req, d);
   });
   server.on('error', () => undefined);
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -665,6 +675,40 @@ describe('a call that joined a start that failed (R-O1-2)', () => {
       value: { projectName: FAKE_STATUS.projectName },
     });
     expect(spawned).toBe(1);
+  });
+});
+
+describe('stop on a daemon that drops the shutdown call (R-O1-1)', () => {
+  /** Drops POST /api/shutdown; `die` also turns health off, like a daemon that exited. */
+  function dropShutdown(die: boolean, seen: { n: number }) {
+    return (res: ServerResponse, req: IncomingMessage, d: HalfAlive): void => {
+      if (req.url !== '/api/shutdown') {
+        res.writeHead(404);
+        res.end();
+        return;
+      }
+      seen.n++;
+      if (die) d.healthy = false;
+      req.socket.destroy();
+    };
+  }
+
+  it('names the port and pid when it still answers health, never the token', async () => {
+    const seen = { n: 0 };
+    const d = await halfAlive(undefined, dropShutdown(false, seen));
+    const err = await rejection(client().shutdown());
+    expect(err.message).toBe(droppedShutdownText(d.port, d.pid));
+    expect(err.message).toContain(`port ${d.port}`);
+    expect(err.message).toContain(`pid ${d.pid}`);
+    expect(err.message).not.toContain(d.token);
+    expect(seen.n).toBe(1);
+  });
+
+  it('still says none was running when the daemon went away with the call', async () => {
+    const seen = { n: 0 };
+    await halfAlive(undefined, dropShutdown(true, seen));
+    expect(await client().shutdown()).toBe(false);
+    expect(seen.n).toBe(1);
   });
 });
 

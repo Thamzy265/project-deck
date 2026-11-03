@@ -56,6 +56,13 @@ export const NOT_SET_UP = "FlutterDeck isn't set up in this folder. Run `flutter
 export function droppedCallText(port: number, pid: number, route: string): string {
   return `FlutterDeck daemon on port ${port} (pid ${pid}) answers but dropped ${route}. Run \`flutterdeck stop\`, then try again.`;
 }
+/**
+ * The daemon answers health but dropped POST /api/shutdown (R-O1-1). `stop` has no other
+ * way to stop it, and FlutterDeck never signals a process itself, so the user quits it.
+ */
+export function droppedShutdownText(port: number, pid: number): string {
+  return `FlutterDeck daemon on port ${port} (pid ${pid}) answers health but dropped POST /api/shutdown. Quit process ${pid} by hand, then try again.`;
+}
 const TOKEN_REJECTED =
   'FlutterDeck daemon rejected the token in .flutterdeck/runtime.json. Run `flutterdeck stop`, then try again.';
 export const DEFAULT_TIMEOUT_MS = 5000;
@@ -270,9 +277,14 @@ export class DaemonClient {
     try {
       await this.request(conn, 'POST', '/api/shutdown', OkResponse);
     } catch (err) {
-      // It went away between the health check and the call.
-      if (err instanceof Unreachable) return false;
-      throw err;
+      if (!(err instanceof Unreachable)) throw err;
+      // It went away between the health check and the call, unless the same daemon still
+      // answers health: then it is alive, and "not running" would be wrong (R-O1-1).
+      const again = await this.connect();
+      if (again !== undefined && sameDaemon(again, conn)) {
+        throw new DaemonError(droppedShutdownText(conn.port, conn.pid));
+      }
+      return false;
     }
     const deadline = Date.now() + this.stopTimeoutMs;
     while (Date.now() < deadline) {
