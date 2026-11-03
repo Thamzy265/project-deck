@@ -8,6 +8,9 @@ import { describe, expect, it } from 'vitest';
 import { growth } from '../testing/timing.js';
 import { maskBuiltIn } from './builtins.js';
 
+/** Growth limit for 8 times the text: linear work is about 8, quadratic about 64. */
+const GROWTH_LIMIT = 24;
+
 // Built at runtime so no auth-code-shaped literal sits in the source.
 const code = ['Ab3dE', '_fGh1I'].join('');
 const vmUri = `http://127.0.0.1:50123/${code}=/`;
@@ -212,8 +215,8 @@ describe('long escape runs', () => {
     '%25253D%253D%3Dhttp%253A%252F%252F127.0.0.1%253A1%252F ',
   ])('stays linear on 64 kB of %j', (unit) => {
     // 8x the text should cost about 8x.
-    const { ratio, large } = growth(maskBuiltIn, unit, 8_192, 65_536);
-    expect(ratio).toBeLessThan(24);
+    const { ratio, large } = growth(maskBuiltIn, unit, 8_192, 65_536, { limit: GROWTH_LIMIT });
+    expect(ratio).toBeLessThan(GROWTH_LIMIT);
     expect(large).toBeLessThan(2000);
   });
 });

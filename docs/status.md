@@ -10,6 +10,45 @@ Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry re
 - Open findings: T-O1-1 low-medium, T-O1-2 medium (test only).
 - Blockers: Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead none.
 
+## 2026-10-27 — CI flakes: Windows restart race and scrub growth ratio — merged
+
+- Changed: PR #48 `fix/ci-flakes` (test code only, size small). (1) `daemon-client-edges.test.ts` "restarts a daemon that drops the connection mid-call" spawned twice on windows-latest (run 40298340670). Root cause: the test's raw server kept answering `/api/health` after it dropped the call, so the client's first ready poll used the old `runtime.json` before the new fake wrote its own. This is not a client bug that starts two daemons: `startDaemon`'s startup lock stops a second daemon. The raw server now stops listening when it drops a call. A new `daemon-client-restart.test.ts` covers start delays, the timing of the daemon's death and concurrent calls. (2) T-P5-2 failed on ubuntu-latest (run 40187489374, `aa://` ratio 56 against 24) because of a runner stall; `scrubText` is linear. `growth()` (plugin and mcp copies) now interleaves small and large runs over 5 rounds, measures again up to 3 times when over the limit, and combines the best times. Its own tests use an injected fake clock. T-P5-2 uses 32k → 512k with a limit of 64.
+- Gates: developer pass (failing-first: restart 3/3 fail with a delayed fake; old helper ratio 57.9) · tester pass (F1 Medium: a long stall after the first small run still failed the helper — fixed) · reviewer approve with notes (R1 Medium, a 1 s case with a 1.5 s ready timeout, fixed; L1, L3–L6 fixed; L2 and L7 Low notes kept) · QA `n/a — test-only change, nothing a user can run; the CI matrix is the acceptance` · CI 9/9 pass · merged by the lead (standing approval, 2026-10-24).
+- Open findings: none above Low. L2 (commit 2c19e13 touches two packages; pushed history, not rewritten) and L7 (the mcp mask growth checks keep 8x with a limit of 24; watch them on CI).
+- Follow-up: pre-existing O1 (the client restarts a daemon that answers health but drops calls) moved to its own session, branch `claude/gifted-herschel-8951c8`. PM decisions of 2026-10-27 (retry once, then a clear error; defer the daemon side with a Later line) are recorded there.
+- Note: the local machine was swapping heavily during this item (load 15–200), so local timing results were not reliable; CI decided.
+- Blockers: Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead none.
+
+## 2026-10-25 — M3 validation checkpoint — drafts ready
+
+- Merged (lead, 2026-10-25, standing approval): PR #44 `docs/m4-linear-mcp` (M4 re-plan, docs only) after CI passed 9/9. Reviewer and QA `n/a — plan record only, nothing to run`. Deleted after merge (standing approval): worktree `.claude/worktrees/m4-linear-mcp`, local and remote branch `docs/m4-linear-mcp`.
+- Changed: `docs/m3-validation` adds drafts in `docs/marketing/`: [m3-demo-script.md](marketing/m3-demo-script.md) (60-second demo, shot list, setup and clean-up), [m3-install-guide.md](marketing/m3-install-guide.md) (early install from a git checkout) and [m3-post.md](marketing/m3-post.md) (three post lengths, 13 feedback questions, form outline). Size: small (docs only). Every claim has a row in a claims table with QA's verdict.
+- Gates: developer pass · tester `n/a — docs only, no code` · reviewer approve with notes (first round block on R1–R3 Medium: form field number, overclaimed "Claude never writes", unguarded `pkill`; R1–R13 and N1 fixed) · QA pass: the install guide ran as written with a scratch HOME (fake mode, the sample app on an API 34 emulator, a separate Drift app, removal); V1–V2 fixed; claims 56 verified, 2 reword (post 17 "a few minutes": PM to time the form; guide 15: snapshot without the package, already hedged as untested), 0 remove. Evidence: [qa/M3.md](qa/M3.md), "Validation checkpoint drafts (2026-10-25)".
+- Lead decision (2026-10-25, review R14): the PM decision of 14 Oct 2026 ("the team drafts the demo, guide and post text") covers these drafts before `docs/marketing/voice.md` exists. At M5 the marketer writes voice.md first and aligns these texts with it.
+- PM check (2026-10-25): PASS. PM said: "the checks work". The exact "don't ask again" entry names (V3) are still to come from the PM.
+- Open findings: none. The PLAN box stays open until the PM publishes the demo and guide and collects feedback.
+- Needs PM: the steps in [qa/M3.md](qa/M3.md) "PM check (validation drafts)" (real Claude with the real app, the "don't ask again" entry names, Android Studio breakpoint), recording the demo, the open questions in each draft (name, where to post, form tool and email field, README), then publishing.
+- Blockers: Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead none · PM: the items above.
+
+## 2026-10-24 — PM standing approval: the lead pushes and merges
+
+- Decisions: PM, 2026-10-24, word for word: "no need to ask me to push pr and merge. lead can take over and merge". The lead now pushes branches, opens PRs and merges them without asking, once the reviewer, CI and QA gates pass (or are logged `n/a` with a reason). A confirmed finding that is not fixed still needs the PM's dated decision. Force-push, `main` history and anything published outside GitHub still need the PM. Recorded in CLAUDE.md "Team setup".
+- Blockers: Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead none.
+
+## 2026-10-24 — M4 re-planned: no Linear support in v1
+
+- Changed: M4 "Linear tasks" becomes "Plugin commands": `/check` and `/db` only, with a new acceptance check in [PLAN.md](PLAN.md). Not built in v1: the `tasks-linear` provider, the `task_*` MCP tools, the Tasks tab, the current task chip, `init`'s Linear key step, and `/tasks`, `/start` and `/ship`. One Later line covers them (trigger: 3 or more validation-form replies asking for task-tracker support). The lead checked on 2026-10-24 that Linear's official MCP server lists the PM's workspace teams through OAuth, with no API key. The validation feedback form asks which task tracker people use.
+- Decisions: PM, 2026-10-24, word for word: "a and to add plugin commands, we dont have the linear key we are using an enterprise version"; then "i think we can leave the linear thing for now because not alot of developers will have it and i can just let claude to fetch and tell me whats going on linear"; then "yes go ahead, keep /check and /db".
+- Blockers: Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead none.
+
+## 2026-10-24 — M3 IDE breakpoint check passed
+
+- Changed: QA wrote and ran a complete PM check for the IDE breakpoint (Android Studio on an emulator), using stand-ins for Android Studio and Claude Desktop. All 6 steps QA could run passed. The PM then ran all 10 steps on 2026-10-24: Android Studio stopped on the marked line with FlutterDeck attached, and Claude's pending count rose after Resume. The `flutterdeck_drift` box is ticked, so every M3 build box and the acceptance box are now ticked. Evidence in [qa/M3.md](qa/M3.md), "IDE breakpoint check".
+- Deleted (standing approval): QA's worktree `agent-a3d85cce79078bbd0` and its branches `docs/m3-breakpoint-pm-check` (commit moved to the PR branch) and `worktree-agent-a3d85cce79078bbd0`, after copying `qa-artifacts/M3-breakpoint/` to the main checkout; local and remote branch `docs/m3-acceptance-part-two` after PR #41 merged. Local and remote branch `docs/m3-breakpoint-pm-check` after PR #42 merged.
+- Host note: QA left its scratch HOME at `/private/tmp/claude-501/qa-m3bp/home` (outside the project). A `dartvm` process running since 20 Oct is not the team's and was left alone.
+- Next: the M3 validation checkpoint. The team drafts a 60-second demo, an early install guide and the post text; the PM publishes them and collects feedback.
+- Blockers: Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead none · PM: merge this record's PR.
+
 ## 2026-10-23 — M3 acceptance passed
 
 - Changed: the PM ran "PM check (batch 5)" in Claude Desktop against the fake-mode daemon. Claude answered "how many orders are pending?", confirmed new rows with `db_snapshot` and `db_diff`, was refused the hidden `customers.email`, and could not delete. With the batch 4 row flash (285 ms), the M3 acceptance box is ticked. Step 1 of the PM check now starts from `main`, because the batch 5 worktree no longer exists.
