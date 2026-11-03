@@ -572,6 +572,7 @@ describe('the new daemon exits at once while the stale one is still there', () =
   async function stuckWithExitingChild(log: string | undefined): Promise<{
     err: DaemonError;
     spawned: number;
+    old: HalfAlive;
   }> {
     const old = await halfAlive((_n, _res, req, d) => {
       d.healthy = false;
@@ -592,20 +593,19 @@ describe('the new daemon exits at once while the stale one is still there', () =
         },
       }).status(),
     );
-    return { err, spawned };
+    return { err, spawned, old };
   }
 
-  it('says why when its log has a reason, never the token', async () => {
-    const { err, spawned } = await stuckWithExitingChild(
+  it('says the daemon is stuck when its log has a reason, never the token', async () => {
+    const { err, spawned, old } = await stuckWithExitingChild(
       // The daemon's own DaemonAlreadyRunning message (packages/daemon/src/daemon.ts).
       'A project-deck daemon is already running for this project on port 9147\n',
     );
     // Only seen when the stale daemon's health flickers off and on during the start. The
-    // text gives the reason but not what to do (flutterdeck stop): observation T-O1-2.
-    expect(err.message).toBe(
-      "FlutterDeck daemon couldn't start: A project-deck daemon is already running for this project on port 9147",
-    );
-    expect(err.message).not.toContain('flutterdeck stop');
+    // failed start looks once more and finds the daemon that dropped this very call, so
+    // it says what to do instead of the child's "already running" (T-O1-3, R-O1-2).
+    expect(err.message).toBe(droppedCallText(old.port, old.pid, 'GET /api/status'));
+    expect(err.message).not.toContain(old.token);
     expect(spawned).toBe(1);
   });
 
@@ -613,6 +613,57 @@ describe('the new daemon exits at once while the stale one is still there', () =
     const { err, spawned } = await stuckWithExitingChild(undefined);
     expect(err.message).toContain('answers but dropped GET /api/status');
     expect(err.message).not.toBe(NOT_RUNNING);
+    expect(spawned).toBe(1);
+  });
+});
+
+describe('a call that joined a start that failed (R-O1-2)', () => {
+  it('makes its call on a daemon that answers afterwards, if not the one that dropped it', async () => {
+    // A drops the first call and goes quiet; it recovers when the child exits 1 with the
+    // daemon's "already running" line. The joiner had no dropped daemon of its own, so
+    // after the failed start it makes its call on A, which now answers.
+    const old = await halfAlive((n, res, req, d) => {
+      if (n === 1) {
+        d.healthy = false;
+        req.socket.destroy();
+        return;
+      }
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify(FAKE_STATUS));
+    });
+    let spawned = 0;
+    const joiner: { result?: Promise<unknown> } = {};
+    const c = client({
+      pollMs: 20,
+      spawnDaemon: (dir, onExit) => {
+        spawned++;
+        const before = old.probes;
+        joiner.result = c.status();
+        track(joiner.result);
+        // The joiner's own look (health is off, so it joins the start) plus two of the
+        // start's polls: by then it has joined. Then A recovers and the child exits.
+        track(
+          old
+            .probesReached(before + 3)
+            .then(() =>
+              writeFile(
+                daemonLogPath(dir),
+                'A project-deck daemon is already running for this project on port 9147\n',
+              ),
+            )
+            .then(() => {
+              old.healthy = true;
+              onExit(1);
+            }),
+        );
+      },
+    });
+    const first = await rejection(c.status());
+    // The first call's own dropped daemon: stuck, not "couldn't start".
+    expect(first.message).toBe(droppedCallText(old.port, old.pid, 'GET /api/status'));
+    expect(await joiner.result).toMatchObject({
+      value: { projectName: FAKE_STATUS.projectName },
+    });
     expect(spawned).toBe(1);
   });
 });

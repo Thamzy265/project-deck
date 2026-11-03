@@ -318,11 +318,12 @@ export class DaemonClient {
     // is alive and starting another would only exit at once (one daemon per project):
     // retry it once, for a one-off keep-alive reset, then say it is stuck (finding O1).
     let dropped: DaemonId | undefined;
+    let droppedRoute = '';
     // Each daemon gets the call at most twice, and a new one appears only through a start
     // (or someone else's), so this bounds the loop even if runtime.json keeps changing.
     let drops = 0;
     let conn = first;
-    for (let starts = 0; ; conn = await this.connect()) {
+    for (let starts = 0; ;) {
       if (conn !== undefined) {
         try {
           return { value: await call(conn), warnings: conn.warnings };
@@ -339,7 +340,9 @@ export class DaemonClient {
             );
           }
           dropped = { port: conn.port, token: conn.token, pid: conn.pid };
+          droppedRoute = err.route;
           // Look again before starting anything: the same daemon gets one more try.
+          conn = await this.connect();
           continue;
         }
       }
@@ -349,7 +352,24 @@ export class DaemonClient {
       starts++;
       const started = await this.start(dropped);
       // 'gone': it came up and stopped again, so this counts as a start and we look again.
-      if (started.kind === 'failed') throw new DaemonError(started.reason);
+      if (started.kind !== 'failed') {
+        conn = await this.connect();
+        continue;
+      }
+      // A failed start is judged by the daemons of every caller that shared it, and its
+      // child may have failed only because a daemon was already up (R-O1-2). Look once
+      // more: a daemon that answers and isn't the one that dropped this call gets the
+      // call (still within the bounds above); the one that did is stuck.
+      const after = await this.connect();
+      if (after === undefined) throw new DaemonError(started.reason);
+      if (dropped !== undefined && sameDaemon(dropped, after)) {
+        throw withWarnings(
+          new DaemonError(droppedCallText(after.port, after.pid, droppedRoute)),
+          after.warnings,
+        );
+      }
+      conn = after;
+      continue;
     }
   }
 
