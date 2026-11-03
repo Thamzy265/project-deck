@@ -186,7 +186,10 @@ export class DaemonClient {
     this.pollMs = opts.pollMs ?? 100;
   }
 
-  /** `start: false` never starts a daemon: it fails with NOT_RUNNING instead. */
+  /**
+   * `start: false` never starts a daemon: it fails with NOT_RUNNING instead, or with the
+   * stuck-daemon text when a daemon answers health but drops the call twice.
+   */
   status(opts: { start?: boolean } = {}): Promise<Answer<Status>> {
     const call = (c: Connection) => this.request(c, 'GET', '/api/status', StatusResponse);
     return opts.start === false ? this.withRunning(call) : this.withDaemon(call);
