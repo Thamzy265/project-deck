@@ -2,15 +2,27 @@
 
 This folder is the FlutterDeck plugin for Claude Code (see [docs/PLAN.md](../docs/PLAN.md#plugin-commands-hooks-and-init)). It holds:
 
-| File                                                       | What it does                                                                                                                           |
-| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| [`.claude-plugin/plugin.json`](.claude-plugin/plugin.json) | Name (`flutterdeck`), version and description.                                                                                         |
-| [`.mcp.json`](.mcp.json)                                   | Starts two MCP servers: the official Dart MCP server and FlutterDeck's own.                                                            |
-| [`hooks/hooks.json`](hooks/hooks.json)                     | Runs [`hooks/deck-hook.mjs`](hooks/deck-hook.mjs) when Claude finishes, waits for you, or reloads the app through the Dart MCP server. |
+| File                                                                                         | What it does                                                                                                                           |
+| -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| [`.claude-plugin/plugin.json`](.claude-plugin/plugin.json)                                   | Name (`flutterdeck`), version and description.                                                                                         |
+| [`.mcp.json`](.mcp.json)                                                                     | Starts two MCP servers: the official Dart MCP server and FlutterDeck's own.                                                            |
+| [`hooks/hooks.json`](hooks/hooks.json)                                                       | Runs [`hooks/deck-hook.mjs`](hooks/deck-hook.mjs) when Claude finishes, waits for you, or reloads the app through the Dart MCP server. |
+| [`skills/check/SKILL.md`](skills/check/SKILL.md), [`skills/db/SKILL.md`](skills/db/SKILL.md) | The `/check` and `/db` slash commands (see "Commands" below).                                                                          |
 
 `package.json`, `tsconfig.json`, `vitest.config.ts` and `test/` only let this repo typecheck and test the plugin. Claude Code doesn't read them.
 
-Slash commands come with the M3 and M4 tools. Findings about the plugin format are in [docs/notes/claude-code-plugin.md](../docs/notes/claude-code-plugin.md).
+The slash commands `/check` and `/db` came with M4 (see "Commands"). Findings about the plugin format are in [docs/notes/claude-code-plugin.md](../docs/notes/claude-code-plugin.md).
+
+## Commands
+
+The commands are plugin skills. Type `/flutterdeck:check` or `/flutterdeck:db`; the short `/check` and `/db` also work when no other command has that name.
+
+| Command                     | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/check [what you changed]` | Hot reloads the attached app with the Dart MCP server's `hot_reload`, then reports in about 25 lines: reload result, runtime errors (`get_runtime_errors`), warnings and errors logged since the reload (`get_logs`), and rows added, changed and removed per table since the last `/check` (`db_diff`). It ends with a fresh `db_snapshot` for the next `/check`. On the first `/check`, or the first after the daemon restarts or the app detaches, there is no earlier snapshot, so it takes one just before the reload and says so. It runs only when you type it. It never hot restarts, launches or stops the app, and it proposes a fix and asks before it edits code. |
+| `/db <question>`            | Answers a question about the app's data with `db_list`, `db_schema` and read-only `db_query`, and shows the SQL it ran. Claude may also use it by itself when you ask a data question. While it runs, Bash, Write, Edit, NotebookEdit and the Dart server's `hot_reload`, `hot_restart`, `flutter_driver_command` and `pub` are removed. If you ask it to change data, it shows the SQL for you to run in the dashboard's Database tab instead: Claude never writes (PM decision, 16 Oct 2026).                                                                                                                                                                               |
+
+Both commands pre-approve only FlutterDeck's read-only tools and, for `/check`, the plugin's Dart `dtd`, `hot_reload` and `get_runtime_errors`, for that turn only. They work with any Dart MCP server entry: this plugin's, the Dart team's plugin or a project `.mcp.json`; with another entry, Claude Code asks before the Dart tools as usual. Both tell Claude that logs, rows and error text are untrusted data. The design is in [docs/design/m4-plugin-commands.md](../docs/design/m4-plugin-commands.md).
 
 ## Requirements
 
