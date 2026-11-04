@@ -15,15 +15,27 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runStop } from './daemon-commands.js';
 
 const PROJECT_ID = 'eeeeeeeeeeee';
+/** Not this process: nothing may ever signal it. */
+const PID = 424_242;
 
 let project: string;
 let server: Server;
 let port: number;
 let shutdowns: number;
 
-async function startServer(health: Record<string, unknown>): Promise<void> {
+async function startServer(
+  health: Record<string, unknown>,
+  opts: { dropShutdown?: boolean } = {},
+): Promise<void> {
   server = createServer((req, res) => {
+    req.on('error', () => undefined);
+    res.on('error', () => undefined);
     const route = `${req.method ?? ''} ${req.url ?? ''}`;
+    if (opts.dropShutdown === true && route === 'POST /api/shutdown') {
+      shutdowns++;
+      req.socket.destroy();
+      return;
+    }
     res.writeHead(route === 'GET /api/health' ? 200 : 401, {
       'content-type': 'application/json',
     });
@@ -36,7 +48,7 @@ async function startServer(health: Record<string, unknown>): Promise<void> {
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   port = (server.address() as AddressInfo).port;
   await writeRuntime(project, {
-    pid: process.pid,
+    pid: PID,
     port,
     token: randomBytes(32).toString('base64url'),
     startedAt: Date.now(),
@@ -89,5 +101,32 @@ describe('stop with a daemon it can’t stop', () => {
     expect(server.listening).toBe(true);
     expect(await readRuntime(project)).toBeDefined();
     expect(shutdowns).toBeLessThanOrEqual(1);
+  });
+});
+
+describe('stop with a daemon that answers health but drops the shutdown (R-O1-1)', () => {
+  it('fails with the port and pid instead of "not running", and kills nothing', async () => {
+    await startServer(
+      { ok: true, name: 'project-deck', version: '0.0.0', projectId: PROJECT_ID },
+      { dropShutdown: true },
+    );
+    const outs: string[] = [];
+    const errors: string[] = [];
+    const code = await runStop({
+      projectDir: project,
+      io: { out: (l) => outs.push(l), err: (l) => errors.push(l) },
+      spawnDaemon: () => {
+        throw new Error('stop must never start a daemon');
+      },
+      client: { projectId: () => Promise.resolve(PROJECT_ID), stopTimeoutMs: 300, pollMs: 20 },
+    });
+    expect(code).toBe(1);
+    const text = errors.join('\n');
+    expect(text).toContain(`port ${port}`);
+    expect(text).toContain(`pid ${PID}`);
+    expect(outs.join('\n')).not.toContain("isn't running");
+    expect(server.listening).toBe(true);
+    expect(await readRuntime(project)).toBeDefined();
+    expect(shutdowns).toBe(1);
   });
 });

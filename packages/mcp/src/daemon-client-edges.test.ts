@@ -15,7 +15,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { writeRuntime } from '@project-deck/daemon';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DaemonClientOptions } from './daemon-client.js';
-import { DaemonClient, DaemonError, NOT_RUNNING } from './daemon-client.js';
+import { DaemonClient, DaemonError, NOT_RUNNING, droppedCallText } from './daemon-client.js';
 import { FAKE_STATUS, FakeDaemon, initProject } from './testing/fake-daemon.js';
 
 /** Background work a test starts (a fake daemon, a log write): awaited after each test. */
@@ -255,8 +255,8 @@ describe('the daemon going away', () => {
     expect(spawned).toBe(1);
   });
 
-  it("says it isn't running when the restarted daemon drops the connection too", async () => {
-    await raw((req) => req.socket.destroy());
+  it('says the daemon is stuck when it still answers health but drops the call twice', async () => {
+    const d = await raw((req) => req.socket.destroy());
     let spawned = 0;
     const c = client({
       spawnDaemon: () => {
@@ -265,10 +265,12 @@ describe('the daemon going away', () => {
       readyTimeoutMs: 200,
     });
     const err = await rejection(c.status());
-    // The first daemon still answers health, so each retry reaches it and fails again.
-    // One call starts the daemon at most twice (QA B3-2, lead 14 Oct 2026).
-    expect(err.message).toBe(NOT_RUNNING);
-    expect(spawned).toBe(2);
+    // It still answers health, so it is alive: a new daemon would exit at once (one per
+    // project). One retry on it, then a message that says what to do (finding O1).
+    expect(err.message).toBe(droppedCallText(d.port, process.pid, 'GET /api/status'));
+    expectNoSecret(err.message);
+    expect(spawned).toBe(0);
+    expect(d.seen.filter((s) => s.path === '/api/status')).toHaveLength(2);
   });
 
   it('spawns once for a storm of 20 calls, and never more than once per call', async () => {

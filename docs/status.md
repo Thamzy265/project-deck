@@ -2,6 +2,17 @@
 
 Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
 
+## 2026-11-03 — O1 daemon client stale ready — merged
+
+- Changed: `fix/daemon-client-stale-ready` fixes reviewer finding O1 (pre-existing, raised on `fix/ci-flakes`). Size: small (`packages/mcp`, plus the `flutterdeck stop` exit code in `packages/cli` tests). When a daemon answers `/api/health` but drops a call, the client no longer takes that same daemon (same port, token and pid in `runtime.json`) for a new start. It retries the call once on it, then says the daemon is stuck, with port, pid and route, and starts nothing. This holds for `start: false` calls too. A start ignores a `runtime.json` that still names the daemon that dropped the call. `flutterdeck stop` on such a daemon now exits 1 and names the process to quit, instead of "isn't running" with exit 0.
+- Findings: tester T-O1-1 (`start: false` said "not running") and T-O1-2 (racy concurrent test) fixed. T-O1-3 (child exits 1 with "already running", no stop hint): the lead's acceptance on 27 Oct was withdrawn, because only the PM accepts a risk; fixed by R-O1-2. Reviewer R-O1-1 (`stop` on a half-alive daemon), R-O1-2 (look again after a failed start), R-O1-3, R-O1-4 (cleanups), R-O1-5 (this entry) and R-O1-6 (keep the one retry after a failed start) fixed.
+- Decisions: PM (2026-10-27), tool-call behaviour: "A: retry once, then error (Recommended)". PM (2026-10-27), daemon side (`findRunningDaemon`): "Defer with a Later line (Recommended)". Later line added to PLAN.md.
+- Gates: developer pass · tester pass (14 probes; T-O1-1..3 fixed) · reviewer approve (code, security, privacy; 0 open) · QA PASS 4/4 on the built CLI and MCP server ([qa/M3.md](qa/M3.md#pm-check-o1)) · PM merge: approved (2026-11-03, "merge it when CI is green"); PR #49 merged by the lead after CI passed on all checks.
+- Deleted after merge (standing approval): remote and local branch `fix/daemon-client-stale-ready`.
+- Merged `origin/main` (PR #48) into the branch on 2026-11-03; only this log conflicted, both entries kept.
+- Open findings: none.
+- Blockers: Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead none.
+
 ## 2026-10-27 — CI flakes: Windows restart race and scrub growth ratio — merged
 
 - Changed: PR #48 `fix/ci-flakes` (test code only, size small). (1) `daemon-client-edges.test.ts` "restarts a daemon that drops the connection mid-call" spawned twice on windows-latest (run 40298340670). Root cause: the test's raw server kept answering `/api/health` after it dropped the call, so the client's first ready poll used the old `runtime.json` before the new fake wrote its own. This is not a client bug that starts two daemons: `startDaemon`'s startup lock stops a second daemon. The raw server now stops listening when it drops a call. A new `daemon-client-restart.test.ts` covers start delays, the timing of the daemon's death and concurrent calls. (2) T-P5-2 failed on ubuntu-latest (run 40187489374, `aa://` ratio 56 against 24) because of a runner stall; `scrubText` is linear. `growth()` (plugin and mcp copies) now interleaves small and large runs over 5 rounds, measures again up to 3 times when over the limit, and combines the best times. Its own tests use an injected fake clock. T-P5-2 uses 32k → 512k with a limit of 64.
