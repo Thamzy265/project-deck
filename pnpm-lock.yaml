@@ -261,9 +261,18 @@ importers:
 
   plugin:
     devDependencies:
+      '@modelcontextprotocol/sdk':
+        specifier: 1.32.1
+        version: 1.32.1(zod@4.6.5)
       '@project-deck/core':
         specifier: workspace:*
         version: link:../packages/core
+      '@project-deck/mcp':
+        specifier: workspace:*
+        version: link:../packages/mcp
+      yaml:
+        specifier: 2.9.1
+        version: 2.9.1
       zod:
         specifier: ^4.6.5
         version: 4.6.5
