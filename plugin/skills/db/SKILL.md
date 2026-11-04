@@ -1,6 +1,7 @@
 ---
-description: Answer a question about the data in the running Flutter app's databases (Drift or SQLite) with FlutterDeck's read-only SQL tools. Use when the user asks what is in the app's database, such as "how many orders are pending?", a table's rows or its schema. Never changes data.
+description: Answer a question about the data in the running Flutter app's databases (Drift or SQLite) with FlutterDeck's read-only SQL tools, and show the SQL it ran. Runs only when you type it. Never changes data; for a change it shows SQL to run in the FlutterDeck dashboard.
 argument-hint: '[question about the app data]'
+disable-model-invocation: true
 allowed-tools:
   - mcp__plugin_flutterdeck_flutterdeck__deck_status
   - mcp__plugin_flutterdeck_flutterdeck__db_list

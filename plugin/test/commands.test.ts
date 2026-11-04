@@ -123,6 +123,10 @@ describe.each(['check', 'db'])('skills/%s/SKILL.md', (name) => {
     expect(lines).toBeLessThan(MAX_LINES);
   });
 
+  it('runs only when the user types it (D2, changed by the PM 4 Nov 2026: review D-1)', () => {
+    expect(command().meta['disable-model-invocation']).toBe(true);
+  });
+
   it("uses the user's text", () => {
     expect(command().body).toContain('$ARGUMENTS');
   });
@@ -156,10 +160,6 @@ describe.each(['check', 'db'])('skills/%s/SKILL.md', (name) => {
 describe('/check', () => {
   const check = () => readCommand('check');
 
-  it('runs only when the user types it (D2)', () => {
-    expect(check().meta['disable-model-invocation']).toBe(true);
-  });
-
   it('pre-approves what the check needs', () => {
     expect(check().meta['allowed-tools']).toEqual(
       expect.arrayContaining([
@@ -191,12 +191,6 @@ describe('/check', () => {
 
 describe('/db', () => {
   const db = () => readCommand('db');
-
-  it('Claude may start it for a data question, so its description says when (D2)', () => {
-    const { meta } = db();
-    expect(meta['disable-model-invocation']).not.toBe(true);
-    expect(meta.description).toMatch(/use (it )?when/i);
-  });
 
   it('pre-approves no Dart tool', () => {
     for (const tool of db().meta['allowed-tools']) expect(tool.startsWith(DECK_PREFIX)).toBe(true);
