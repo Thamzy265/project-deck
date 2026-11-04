@@ -11,6 +11,10 @@ allowed-tools:
   - mcp__plugin_flutterdeck_dart__dtd
   - mcp__plugin_flutterdeck_dart__hot_reload
   - mcp__plugin_flutterdeck_dart__get_runtime_errors
+disallowed-tools:
+  - mcp__plugin_flutterdeck_dart__hot_restart
+  - mcp__plugin_dart-flutter_dart-mcp-server__hot_restart
+  - mcp__dart__hot_restart
 ---
 
 # /check
@@ -37,6 +41,7 @@ Two MCP servers do the work:
 3. **Log mark.** Call `get_logs` with `limit: 1`. Remember the `ts` of the newest entry as the mark (none if there are no entries).
 4. **Database baseline.** Call `db_list`. For each database without a problem, call `db_diff` with only `db` (no `snapshotId`). This only checks that a baseline exists; ignore its rows. Without `snapshotId` it compares with the latest snapshot of that database, normally the one the previous /check took in step 9.
    - `not-found`: there is no snapshot yet (first /check, or the daemon restarted or the app detached). Call `db_snapshot` for that database now, and say in the report "baseline taken now; the next /check shows all changes".
+     If that `db_snapshot` also fails (for example `not-found` because the database is gone), leave that database out and name it with the error code in the Database line.
    - `choose-device`: ask the user to pick the device in the FlutterDeck dashboard (Database tab); Claude cannot pick it. Leave that database out.
    - Any other failure (such as `unsupported`): leave that database out and name it with the error code in the Database line.
    - No databases, or every database has a problem: leave out the Database line.
