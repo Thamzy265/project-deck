@@ -11,3 +11,6 @@ coverage/
 .flutterdeck/*.stale
 .claude/worktrees/
 qa-artifacts/
+
+# claude plugin eval output
+plugin/evals/results/
