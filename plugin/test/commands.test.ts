@@ -182,6 +182,17 @@ describe('/check', () => {
     for (const line of lines) expect(line).toMatch(/\b(never|not|don't)\b/i);
   });
 
+  it('diffs once, after the reload, and does not call db_diff only to look for a baseline (review P1)', () => {
+    const { body } = check();
+    const steps = body.slice(body.indexOf('## Steps'), body.indexOf('## Report'));
+    expect(steps.indexOf('`db_diff`')).toBeGreaterThan(steps.indexOf('**Reload.**'));
+    expect(steps.match(/call `db_diff`/g)).toHaveLength(1);
+  });
+
+  it('says the baseline is the latest snapshot of the database, whatever its label (review D-2)', () => {
+    expect(check().body).toMatch(/latest snapshot of that database, whatever its label/);
+  });
+
   it('reports in the fixed sections of the design note', () => {
     for (const section of ['Reload', 'Runtime errors', 'Logs', 'Database', 'Next']) {
       expect(check().body).toContain(`**${section}**`);
