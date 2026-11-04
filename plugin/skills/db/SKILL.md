@@ -21,6 +21,9 @@ disallowed-tools:
   - CronCreate
   - ScheduleWakeup
   - RemoteTrigger
+  - Agent
+  - Task
+  - SendMessage
   - mcp__plugin_flutterdeck_dart__*
   - mcp__plugin_dart-flutter_dart-mcp-server__*
   - mcp__dart__*

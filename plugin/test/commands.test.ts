@@ -34,7 +34,7 @@ const PLUGIN_DART_PREFIX = 'mcp__plugin_flutterdeck_dart__';
 
 /**
  * Claude Code tools (CLI 2.1.236, code.claude.com/docs/en/tools-reference) that can run a
- * command, change files, or run or schedule work after the /db deny clears.
+ * command, change files, run or schedule work after the /db deny clears, or pass work on.
  */
 const WRITE_BUILTINS = [
   'Bash',
@@ -50,6 +50,10 @@ const WRITE_BUILTINS = [
   'CronCreate',
   'ScheduleWakeup',
   'RemoteTrigger',
+  // Subagents and messages could hand the work to an agent without these limits (review R2-3).
+  'Agent',
+  'Task',
+  'SendMessage',
 ];
 
 const ToolList = z.array(z.string().min(1));
