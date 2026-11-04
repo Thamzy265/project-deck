@@ -422,6 +422,9 @@ describe('eval cases are well formed (plugin-evals docs)', () => {
       'The app has 3 tables.',
       '13 orders are pending',
       'Pending orders: 13',
+      'Pending orders: 0 out of 3 total',
+      '3 orders are cancelled; 0 pending',
+      'No orders are pending (0 of 3)',
     ]) {
       expect(re.test(bad), bad).toBe(false);
     }
