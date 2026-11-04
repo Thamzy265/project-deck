@@ -46,9 +46,9 @@ Two MCP servers do the work:
 6. **Runtime errors.** Call `get_runtime_errors`.
 7. **Logs.** Call `get_logs` with `minLevel: "warn"` and `since` set to the mark + 1 (leave `since` out if there was no mark).
 8. **Database changes.** For each database from step 4, call `db_diff` with only `db` (no `snapshotId`). It compares with the latest snapshot of that database, whatever its label: normally the one the previous /check took in step 9, so it shows everything since then (the user's taps and what the reload changed). A snapshot taken in the dashboard after that moves the baseline.
-   - `not-found`: there is no snapshot of that database yet (first /check, or the daemon restarted or the app detached), or the database name is no longer known. The `db_snapshot` in step 9 takes the first one; say in the report "baseline taken now; the next /check shows all changes".
+   - `not-found`: there is no snapshot of that database yet (first /check, or the daemon restarted or the app detached), or the database name is no longer known. The `db_snapshot` in step 9 takes the first one. Say "baseline taken now; the next /check shows all changes" in the report only if the step 9 `db_snapshot` succeeds.
    - Any other failure (such as `unsupported`): leave that database out and name it with the error code in the Database line.
-9. **New baseline.** Call `db_snapshot` for each database from step 4, label `/check`, so the next /check shows what changed after this one. If it fails (for example `not-found` because the database is gone), leave that database out and name it with the error code in the Database line.
+9. **New baseline.** Call `db_snapshot` for each database from step 4, label `/check`, so the next /check shows what changed after this one. If it fails (for example `not-found` because the database is gone), leave that database out of the changes and name the database and the error code once in the Database line.
 
 If an answer is truncated, say so in the report; do not page through it.
 
@@ -61,7 +61,7 @@ Reply with this Markdown and nothing longer than about 25 lines:
 **Runtime errors** <count>; first: <message, cut to one line> at <file>:<line>
 **Logs** <n> warnings, <n> errors since the reload
 - <up to 5 lines: level, tag, message cut to one line>
-**Database** <db>: <table> +<added> ~<changed> -<removed>; … | no changes; add "baseline taken now; the next /check shows all changes" after a `not-found`
+**Database** <db>: <table> +<added> ~<changed> -<removed>; … | no changes; add "baseline taken now; the next /check shows all changes" after a `not-found` when step 9 worked
 **Next** <one line: what to fix and where, or "all clear">
 ```
 

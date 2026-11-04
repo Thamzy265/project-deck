@@ -197,6 +197,12 @@ describe('/check', () => {
     expect(check().body).toMatch(/latest snapshot of that database, whatever its label/);
   });
 
+  it('says "baseline taken now" only when the new snapshot worked, else names the error once (review R2-6)', () => {
+    const { body } = check();
+    expect(body).toMatch(/only if the step 9 `db_snapshot` succeeds/);
+    expect(body).toMatch(/name the database and the error code once/);
+  });
+
   it('reports in the fixed sections of the design note', () => {
     for (const section of ['Reload', 'Runtime errors', 'Logs', 'Database', 'Next']) {
       expect(check().body).toContain(`**${section}**`);
