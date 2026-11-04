@@ -118,7 +118,9 @@ describe.each(['check', 'db'])('skills/%s frontmatter edge cases', (name) => {
       expect(Array.isArray(list), `${key} is a YAML list`).toBe(true);
       const items = toolList(list);
       // A space or comma inside an entry would split it when someone rewrites the list as a string.
-      for (const item of items) expect(item, item).toMatch(/^[A-Za-z][A-Za-z0-9_-]*$/);
+      // A whole MCP server may be denied as `mcp__<server>__*` (permissions docs, "Tool name wildcards").
+      for (const item of items)
+        expect(item, item).toMatch(/^(mcp__[A-Za-z0-9_-]+__\*|[A-Za-z][A-Za-z0-9_-]*)$/);
       expect(toolList(items.join(' '))).toEqual(items);
       expect(toolList(items.join(', '))).toEqual(items);
       expect(new Set(items).size, `${key} has a duplicate`).toBe(items.length);

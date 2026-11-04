@@ -9,21 +9,20 @@ allowed-tools:
 disallowed-tools:
   - Bash
   - PowerShell
+  - Monitor
+  - Tmux
+  - REPL
   - Write
   - Edit
+  - MultiEdit
   - NotebookEdit
-  - mcp__plugin_flutterdeck_dart__hot_reload
-  - mcp__plugin_flutterdeck_dart__hot_restart
-  - mcp__plugin_flutterdeck_dart__flutter_driver_command
-  - mcp__plugin_flutterdeck_dart__pub
-  - mcp__plugin_dart-flutter_dart-mcp-server__hot_reload
-  - mcp__plugin_dart-flutter_dart-mcp-server__hot_restart
-  - mcp__plugin_dart-flutter_dart-mcp-server__flutter_driver_command
-  - mcp__plugin_dart-flutter_dart-mcp-server__pub
-  - mcp__dart__hot_reload
-  - mcp__dart__hot_restart
-  - mcp__dart__flutter_driver_command
-  - mcp__dart__pub
+  - Workflow
+  - CronCreate
+  - ScheduleWakeup
+  - RemoteTrigger
+  - mcp__plugin_flutterdeck_dart__*
+  - mcp__plugin_dart-flutter_dart-mcp-server__*
+  - mcp__dart__*
 ---
 
 # /db

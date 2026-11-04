@@ -32,9 +32,25 @@ const DART_PREFIXES = [
 const DECK_PREFIX = 'mcp__plugin_flutterdeck_flutterdeck__';
 const PLUGIN_DART_PREFIX = 'mcp__plugin_flutterdeck_dart__';
 
-/** Claude Code tools that can change files, run commands or change the app. */
-const WRITE_BUILTINS = ['Bash', 'PowerShell', 'Write', 'Edit', 'NotebookEdit'];
-const DART_WRITERS = ['hot_reload', 'hot_restart', 'flutter_driver_command', 'pub'];
+/**
+ * Claude Code tools (CLI 2.1.236, code.claude.com/docs/en/tools-reference) that can run a
+ * command, change files, or run or schedule work after the /db deny clears.
+ */
+const WRITE_BUILTINS = [
+  'Bash',
+  'PowerShell',
+  'Monitor',
+  'Tmux',
+  'REPL',
+  'Write',
+  'Edit',
+  'MultiEdit',
+  'NotebookEdit',
+  'Workflow',
+  'CronCreate',
+  'ScheduleWakeup',
+  'RemoteTrigger',
+];
 
 const ToolList = z.array(z.string().min(1));
 const Frontmatter = z.strictObject({
@@ -186,18 +202,12 @@ describe('/db', () => {
     for (const tool of db().meta['allowed-tools']) expect(tool.startsWith(DECK_PREFIX)).toBe(true);
   });
 
-  it('removes every tool that could change data or the app, for every Dart server name', () => {
+  it('removes every tool that could change data or the app, and every Dart server', () => {
+    // Skill disallowed-tools become deny rules, and deny rules take `mcp__<server>__*`
+    // (code.claude.com/docs/en/permissions, "Tool name wildcards", read 4 Nov 2026).
     const disallowed = db().meta['disallowed-tools'] ?? [];
-    const expected = [
-      ...WRITE_BUILTINS,
-      ...DART_PREFIXES.flatMap((prefix) => DART_WRITERS.map((tool) => prefix + tool)),
-    ];
-    expect(disallowed).toEqual(expect.arrayContaining(expected));
-    for (const tool of disallowed) {
-      const dart = DART_PREFIXES.find((p) => tool.startsWith(p));
-      if (dart === undefined) expect(WRITE_BUILTINS).toContain(tool);
-      else expect(DART_TOOLS).toContain(tool.slice(dart.length));
-    }
+    const expected = [...WRITE_BUILTINS, ...DART_PREFIXES.map((prefix) => `${prefix}*`)];
+    expect([...disallowed].sort()).toEqual([...expected].sort());
   });
 
   it('says Claude never writes and points to the dashboard Database tab', () => {
