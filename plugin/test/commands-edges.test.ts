@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { DbErrorCodeSchema } from '@project-deck/core';
 import { describe, expect, it } from 'vitest';
 import { parse, parseDocument } from 'yaml';
+import { splitFrontmatter } from './frontmatter.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REPO = resolve(ROOT, '..');
@@ -52,9 +53,9 @@ function raw(name: string): string {
 }
 
 function split(text: string): { front: string; body: string } {
-  const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/.exec(text);
-  if (match === null) throw new Error('no frontmatter');
-  return { front: match[1] ?? '', body: match[2] ?? '' };
+  const parts = splitFrontmatter(text);
+  if (parts === null) throw new Error('no frontmatter');
+  return parts;
 }
 
 /** A tool list as Claude Code reads it: a YAML list, or a string split on spaces and commas outside brackets. */

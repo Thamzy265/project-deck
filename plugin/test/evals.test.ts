@@ -19,7 +19,7 @@ import type { IncomingMessage, Server } from 'node:http';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
-import { dirname, join, relative, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
@@ -27,6 +27,8 @@ import { writeRuntime } from '@project-deck/core/node';
 import { DaemonClient, createDeckServer } from '@project-deck/mcp';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
+import { posixRelative, walk } from './files.js';
+import { splitFrontmatter } from './frontmatter.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const EVALS = join(ROOT, 'evals');
@@ -46,25 +48,24 @@ type Obj = { [key: string]: Json };
 
 const str = (v: Json | undefined): string => (typeof v === 'string' ? v : '');
 
-function walk(dir: string): string[] {
-  return readdirSync(dir).flatMap((name) => {
-    const path = join(dir, name);
-    return statSync(path).isDirectory() ? walk(path) : [path];
-  });
-}
-
 function front(path: string): { meta: Obj; body: string } {
   const text = readFileSync(path, 'utf8');
-  const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/.exec(text);
-  if (match === null) return { meta: {}, body: text };
-  const meta: unknown = parse(match[1] ?? '');
-  return { meta: (meta ?? {}) as Obj, body: match[2] ?? '' };
+  const split = splitFrontmatter(text);
+  if (split === null) return { meta: {}, body: text };
+  const meta: unknown = parse(split.front);
+  return { meta: (meta ?? {}) as Obj, body: split.body };
 }
 
-const files = walk(EVALS).filter((f) => !f.includes('/results/'));
-const rel = (f: string) => relative(EVALS, f);
+/** Paths below plugin/evals with `/` on every OS: filters and splits below rely on it (review C1). */
+const rel = (f: string) => posixRelative(EVALS, f);
+const files = walk(EVALS).filter((f) => !rel(f).startsWith('results/'));
+const graderFiles = () => files.filter((f) => rel(f).includes('/graders/'));
 const cases = readdirSync(EVALS).filter(
-  (n) => n !== 'mocks' && n !== 'results' && statSync(join(EVALS, n)).isDirectory(),
+  (n) =>
+    !n.startsWith('.') &&
+    n !== 'mocks' &&
+    n !== 'results' &&
+    statSync(join(EVALS, n)).isDirectory(),
 );
 
 const PROMPT_KEYS = [
@@ -317,9 +318,8 @@ describe('eval cases are well formed (plugin-evals docs)', () => {
   });
 
   it('every grader has a known type, only that type’s keys, and a valid regex', () => {
-    const graderFiles = files.filter((f) => f.includes('/graders/'));
-    expect(graderFiles.length).toBeGreaterThanOrEqual(15);
-    for (const file of graderFiles) {
+    expect(graderFiles().length).toBeGreaterThanOrEqual(15);
+    for (const file of graderFiles()) {
       const { meta, body } = front(file);
       const type = str(meta.type);
       const allowed = GRADER_KEYS[type];
@@ -343,7 +343,7 @@ describe('eval cases are well formed (plugin-evals docs)', () => {
   });
 
   it('every tool a grader names is a real tool of FlutterDeck or the Dart MCP server', () => {
-    for (const file of files.filter((f) => f.includes('/graders/'))) {
+    for (const file of graderFiles()) {
       const { meta } = front(file);
       const named: unknown[] = [meta.tool];
       for (const side of [meta.before, meta.after]) {
@@ -386,7 +386,7 @@ describe('eval cases are well formed (plugin-evals docs)', () => {
 });
 
 describe('eval mocks', () => {
-  const mocks = files.filter((f) => /\/mocks\//.test(f));
+  const mocks = files.filter((f) => /(^|\/)mocks\//.test(rel(f)));
 
   it('sit under a server name that .mcp.json declares, one file per tool that exists', () => {
     expect(mocks.length).toBeGreaterThanOrEqual(10);
@@ -411,7 +411,7 @@ describe('eval mocks', () => {
     );
     for (const skill of ['check', 'db']) {
       const text = readFileSync(join(ROOT, 'skills', skill, 'SKILL.md'), 'utf8');
-      const meta = parse(/^---\n([\s\S]*?)\n---/.exec(text)?.[1] ?? '') as {
+      const meta = parse(splitFrontmatter(text)?.front ?? '') as {
         'allowed-tools': string[];
       };
       for (const tool of meta['allowed-tools']) expect(suite, `${skill}: ${tool}`).toContain(tool);
@@ -429,7 +429,7 @@ describe('eval mocks', () => {
       for (const key of Object.keys(meta))
         expect(['type', 'expect', 'error', 'abort_when'], rel(file)).toContain(key);
       expect(body.trim().length, rel(file)).toBeGreaterThan(0);
-      if (/db_(schema|query|snapshot|diff)/.test(file)) {
+      if (/db_(schema|query|snapshot|diff)/.test(rel(file))) {
         expect((meta.expect as Obj | undefined)?.db, rel(file)).toBe('app');
       }
     }
@@ -439,13 +439,13 @@ describe('eval mocks', () => {
   });
 
   it('answer JSON that parses, for every FlutterDeck mock', () => {
-    for (const file of mocks.filter((f) => f.includes('/flutterdeck/'))) {
+    for (const file of mocks.filter((f) => rel(f).includes('/flutterdeck/'))) {
       expect(() => JSON.parse(front(file).body) as unknown, rel(file)).not.toThrow();
     }
   });
 
   it('carry the same frame as the real tool: untrusted note, masking line and warnings', () => {
-    for (const file of mocks.filter((f) => f.includes('/flutterdeck/'))) {
+    for (const file of mocks.filter((f) => rel(f).includes('/flutterdeck/'))) {
       const tool = (rel(file).split('/').pop() ?? '').replace(/\.md$/, '');
       const mock = JSON.parse(front(file).body) as Obj;
       const real = realOutputs[tool] as Obj | undefined;
@@ -490,7 +490,7 @@ describe('eval mocks', () => {
 
   it('plants an injection in database rows too, since /db reads rows (design abuse case 1)', () => {
     const planted = mocks
-      .filter((f) => /\/(db_query|db_schema|db_diff)\.md$/.test(f))
+      .filter((f) => /(^|\/)(db_query|db_schema|db_diff)\.md$/.test(rel(f)))
       .some((f) => /ignore (your|all|previous)/i.test(front(f).body));
     expect(planted).toBe(true);
   });

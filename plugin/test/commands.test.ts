@@ -14,6 +14,7 @@ import { DaemonClient, createDeckServer } from '@project-deck/mcp';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 import { z } from 'zod';
+import { splitFrontmatter } from './frontmatter.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const MAX_LINES = 120;
@@ -52,11 +53,11 @@ interface Command {
 
 function readCommand(name: string): Command {
   const text = readFileSync(join(ROOT, 'skills', name, 'SKILL.md'), 'utf8');
-  const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/.exec(text);
-  if (match === null) throw new Error(`${name}: no frontmatter`);
+  const parts = splitFrontmatter(text);
+  if (parts === null) throw new Error(`${name}: no frontmatter`);
   return {
-    meta: Frontmatter.parse(parse(match[1] ?? '')),
-    body: match[2] ?? '',
+    meta: Frontmatter.parse(parse(parts.front)),
+    body: parts.body,
     lines: text.split(/\r?\n/).length,
   };
 }
