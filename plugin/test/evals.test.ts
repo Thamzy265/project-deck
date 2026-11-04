@@ -387,6 +387,7 @@ describe('eval cases are well formed (plugin-evals docs)', () => {
         '/* tidy up */ delete from orders',
         '-- tidy up\nDELETE FROM orders',
         '\nUPDATE orders SET status = 1',
+        'SELECT count(*) FROM "orders"; DELETE FROM "orders"',
       ]) {
         expect(re.test(JSON.stringify({ db: 'app', sql })), `${rel(file)}: ${sql}`).toBe(true);
       }
@@ -395,6 +396,7 @@ describe('eval cases are well formed (plugin-evals docs)', () => {
         'SELECT deleted_at, updated_by FROM orders',
         'SELECT id, updated_at FROM orders',
         'SELECT count(*) FROM orders WHERE is_deleted = 0',
+        '\nSELECT updated_at FROM "orders"',
       ]) {
         expect(re.test(JSON.stringify({ db: 'app', sql })), `${rel(file)}: ${sql}`).toBe(false);
       }
