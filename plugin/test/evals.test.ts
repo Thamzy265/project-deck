@@ -104,13 +104,22 @@ const READ_ONLY_GRANTS = [
 
 /** A tool name as the model sees it: a built-in or `mcp__plugin_flutterdeck_<server>__<tool>`. */
 function toolExists(name: string, deckTools: string[]): boolean {
+  // Claude Code built-ins (CLI 2.1.236, code.claude.com/docs/en/tools-reference).
   const builtins = [
     'Skill',
     'Edit',
+    'MultiEdit',
     'Write',
     'Bash',
     'PowerShell',
+    'Monitor',
+    'Tmux',
+    'REPL',
     'NotebookEdit',
+    'Workflow',
+    'CronCreate',
+    'ScheduleWakeup',
+    'RemoteTrigger',
     'Read',
     'Grep',
     'Glob',
@@ -355,33 +364,72 @@ describe('eval cases are well formed (plugin-evals docs)', () => {
     }
   });
 
-  it('the no-write-SQL graders match the write keywords in any case, and the SELECT grader does not catch them', () => {
-    const noWrite = front(join(EVALS, 'db-pending-orders/graders/no-write-sql.md')).meta;
-    const re = new RegExp(str(noWrite.input_match));
-    for (const sql of [
-      'insert into orders',
-      'UPDATE orders',
-      'DeLeTe FROM orders',
-      'DROP TABLE orders',
-    ]) {
-      expect(re.test(JSON.stringify({ db: 'app', sql }))).toBe(true);
+  it('the no-write-SQL graders match a write statement in any case, and no SELECT (review T-3)', () => {
+    const noWrites = graderFiles().filter((f) => rel(f).endsWith('/graders/no-write-sql.md'));
+    expect(noWrites.length).toBeGreaterThanOrEqual(2);
+    for (const file of noWrites) {
+      const noWrite = front(file).meta;
+      const re = new RegExp(str(noWrite.input_match));
+      for (const sql of [
+        'insert into orders',
+        'UPDATE orders',
+        ' DeLeTe FROM orders',
+        'DROP TABLE orders',
+        'replace into orders',
+        'ALTER TABLE orders',
+        'CREATE TABLE x',
+        'attach database',
+      ]) {
+        expect(re.test(JSON.stringify({ db: 'app', sql })), `${rel(file)}: ${sql}`).toBe(true);
+      }
+      for (const sql of [
+        "SELECT count(*) FROM orders WHERE status = 'pending'",
+        'SELECT deleted_at, updated_by FROM orders',
+        "SELECT id FROM orders WHERE note LIKE '%drop table%'",
+      ]) {
+        expect(re.test(JSON.stringify({ db: 'app', sql })), `${rel(file)}: ${sql}`).toBe(false);
+      }
+      expect(noWrite).toMatchObject({ min: 0, max: 0 });
     }
-    expect(
-      re.test(
-        JSON.stringify({ db: 'app', sql: "SELECT count(*) FROM orders WHERE status = 'pending'" }),
-      ),
-    ).toBe(false);
-    expect(noWrite).toMatchObject({ min: 0, max: 0 });
   });
 
-  it('the skill-fired graders accept the namespaced and the bare skill name only', () => {
-    const re = new RegExp(
-      str(front(join(EVALS, 'db-pending-orders/graders/skill-fired.md')).meta.input_match),
+  it('the pending-orders answer grader wants 3 with pending, not a bare 3 (review T-3)', () => {
+    const answer = front(join(EVALS, 'db-pending-orders/graders/answer.md')).meta;
+    const re = new RegExp(str(answer.pattern), str(answer.flags));
+    expect(re.test('There are 3 orders pending.')).toBe(true);
+    expect(re.test('3 pending orders')).toBe(true);
+    expect(re.test('The app has 3 tables.')).toBe(false);
+    expect(re.test('13 orders are pending')).toBe(false);
+  });
+
+  it('typed cases have no skill-fired grader: a typed /flutterdeck:… command makes no Skill call (review T-1)', () => {
+    for (const file of graderFiles()) {
+      const { meta } = front(file);
+      expect(meta.tool === 'Skill', rel(file)).toBe(false);
+    }
+  });
+
+  it('every /db case checks that no shell tool ran: Bash, PowerShell and Monitor (review S1)', () => {
+    for (const name of cases.filter((c) => c.startsWith('db-'))) {
+      const never = readdirSync(join(EVALS, name, 'graders'))
+        .map((g) => front(join(EVALS, name, 'graders', g)).meta)
+        .filter((m) => m.type === 'tool_used' && m.max === 0)
+        .map((m) => str(m.tool));
+      expect(never, name).toEqual(expect.arrayContaining(['Bash', 'PowerShell', 'Monitor']));
+    }
+  });
+
+  it('check-added-order checks the reload comes before the diff (review T-2)', () => {
+    const orders = graderFiles()
+      .filter((f) => rel(f).startsWith('check-added-order/'))
+      .map((f) => front(f).meta)
+      .filter((m) => m.type === 'tool_order');
+    expect(orders).toContainEqual(
+      expect.objectContaining({
+        before: 'mcp__plugin_flutterdeck_dart__hot_reload',
+        after: 'mcp__plugin_flutterdeck_flutterdeck__db_diff',
+      }),
     );
-    for (const ok of ['"skill":"db"', '"skill": "flutterdeck:db"'])
-      expect(re.test(`{${ok}}`)).toBe(true);
-    for (const bad of ['"skill":"dbx"', '"skill":"check"', '"skill":"other:dbx"'])
-      expect(re.test(`{${bad}}`)).toBe(false);
   });
 });
 
