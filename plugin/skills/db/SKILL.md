@@ -8,6 +8,7 @@ allowed-tools:
   - mcp__plugin_flutterdeck_flutterdeck__db_query
 disallowed-tools:
   - Bash
+  - PowerShell
   - Write
   - Edit
   - NotebookEdit

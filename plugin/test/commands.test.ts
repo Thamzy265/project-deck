@@ -32,7 +32,7 @@ const DECK_PREFIX = 'mcp__plugin_flutterdeck_flutterdeck__';
 const PLUGIN_DART_PREFIX = 'mcp__plugin_flutterdeck_dart__';
 
 /** Claude Code tools that can change files, run commands or change the app. */
-const WRITE_BUILTINS = ['Bash', 'Write', 'Edit', 'NotebookEdit'];
+const WRITE_BUILTINS = ['Bash', 'PowerShell', 'Write', 'Edit', 'NotebookEdit'];
 const DART_WRITERS = ['hot_reload', 'hot_restart', 'flutter_driver_command', 'pub'];
 
 const ToolList = z.array(z.string().min(1));
