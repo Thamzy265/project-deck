@@ -2,6 +2,15 @@
 
 Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
 
+## 2026-11-04 — M4 plugin commands — plan approved
+
+- Changed: M4 started on `feat/plugin-commands`. Size: large (commands steer Claude across two MCP servers and read untrusted app data; `/db` must change nothing). [Design note](design/m4-plugin-commands.md) and [deck](slides/m4-plugin-commands.html). Facts checked 4 Nov 2026: Claude Code docs prefer `skills/<name>/SKILL.md` over `commands/` for plugins (deviation from the plan); Dart MCP server 0.1.4 (Dart 3.12.2) still lists the same 13 tools, so FlutterDeck adds no tool.
+- Decisions: PM (2026-11-04): D1/D2 "skills/; /check typed only (Recommended)"; D3 "Report and ask (Recommended)"; D4/D5 "Pre-approve read-only; since last check (Recommended)"; deck "Approve, QA evals OK (Recommended)".
+- CI note (from PR #49): the dashboard SQL-editor e2e test ("1 row in N ms" timeout) failed once and passed on re-run. Watch it; open an item if it fails again.
+- Gates: developer open · tester open · reviewer open · QA open · CI open.
+- Open findings: none.
+- Blockers: Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead none.
+
 ## 2026-11-03 — O1 daemon client stale ready — merged
 
 - Changed: `fix/daemon-client-stale-ready` fixes reviewer finding O1 (pre-existing, raised on `fix/ci-flakes`). Size: small (`packages/mcp`, plus the `flutterdeck stop` exit code in `packages/cli` tests). When a daemon answers `/api/health` but drops a call, the client no longer takes that same daemon (same port, token and pid in `runtime.json`) for a new start. It retries the call once on it, then says the daemon is stuck, with port, pid and route, and starts nothing. This holds for `start: false` calls too. A start ignores a `runtime.json` that still names the daemon that dropped the call. `flutterdeck stop` on such a daemon now exits 1 and names the process to quit, instead of "isn't running" with exit 0.

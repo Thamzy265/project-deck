@@ -1,6 +1,6 @@
 # M4 — Plugin commands `/check` and `/db` — design note
 
-Date: 2026-11-04 — Size: large — the commands are instructions that make Claude call two MCP servers in sequence and read untrusted app data (log lines, database rows, runtime error text) into its context; `/db` must provably change nothing; "if unsure, it is large" — Phase: MVP — Status: draft, waiting for PM
+Date: 2026-11-04 — Size: large — the commands are instructions that make Claude call two MCP servers in sequence and read untrusted app data (log lines, database rows, runtime error text) into its context; `/db` must provably change nothing; "if unsure, it is large" — Phase: MVP — Status: approved by PM 4 Nov 2026 (D1-A, D2-A, D3-A, D4-A, D5-A)
 
 ## Context
 
@@ -140,3 +140,5 @@ One branch, `feat/plugin-commands`, one PR. Rollback: revert the PR; nothing els
 - **D3 — What `/check` does when it finds a problem.** A: report, propose the fix and ask before editing **(recommended)**, because the acceptance asks for a report and you keep control. B: fix and repeat up to 2 times, as the plan's table says.
 - **D4 — Pre-approved tools.** A: `/check` and `/db` pre-approve only FlutterDeck's read-only tools and the plugin's Dart `dtd`, `hot_reload` (`/check`) and `get_runtime_errors`, for the turn only **(recommended)**: fewer prompts, nothing that writes. B: pre-approve nothing; Claude Code asks as usual.
 - **D5 — `/check` diff baseline.** A: each `/check` diffs against the snapshot the previous `/check` left, then takes a new one, so it shows everything since the last check, including your taps **(recommended)**. B: snapshot just before the reload and diff just after (shows only what the reload itself changed, usually nothing).
+
+**PM answers (2026-11-04):** D1 "skills/; /check typed only (Recommended)" (also D2-A) · D3 "Report and ask (Recommended)" · D4 and D5 "Pre-approve read-only; since last check (Recommended)" · deck "Approve, QA evals OK (Recommended)".
