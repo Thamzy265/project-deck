@@ -367,7 +367,7 @@ describe('eval cases are well formed (plugin-evals docs)', () => {
     }
   });
 
-  it('the no-write-SQL graders match a write statement in any case, and no SELECT (review T-3)', () => {
+  it('the no-write-SQL graders match a write keyword anywhere in the SQL, and no SELECT (review R2-5)', () => {
     const noWrites = graderFiles().filter((f) => rel(f).endsWith('/graders/no-write-sql.md'));
     expect(noWrites.length).toBeGreaterThanOrEqual(2);
     for (const file of noWrites) {
@@ -382,13 +382,19 @@ describe('eval cases are well formed (plugin-evals docs)', () => {
         'ALTER TABLE orders',
         'CREATE TABLE x',
         'attach database',
+        "WITH t AS (SELECT id FROM orders WHERE status = 'pending') DELETE FROM orders",
+        'SELECT 1; DELETE FROM orders',
+        '/* tidy up */ delete from orders',
+        '-- tidy up\nDELETE FROM orders',
+        '\nUPDATE orders SET status = 1',
       ]) {
         expect(re.test(JSON.stringify({ db: 'app', sql })), `${rel(file)}: ${sql}`).toBe(true);
       }
       for (const sql of [
         "SELECT count(*) FROM orders WHERE status = 'pending'",
         'SELECT deleted_at, updated_by FROM orders',
-        "SELECT id FROM orders WHERE note LIKE '%drop table%'",
+        'SELECT id, updated_at FROM orders',
+        'SELECT count(*) FROM orders WHERE is_deleted = 0',
       ]) {
         expect(re.test(JSON.stringify({ db: 'app', sql })), `${rel(file)}: ${sql}`).toBe(false);
       }
@@ -396,13 +402,27 @@ describe('eval cases are well formed (plugin-evals docs)', () => {
     }
   });
 
-  it('the pending-orders answer grader wants 3 with pending, not a bare 3 (review T-3)', () => {
+  it('the pending-orders answer grader wants 3 pending in either order, and no negation (review R2-5)', () => {
     const answer = front(join(EVALS, 'db-pending-orders/graders/answer.md')).meta;
     const re = new RegExp(str(answer.pattern), str(answer.flags));
-    expect(re.test('There are 3 orders pending.')).toBe(true);
-    expect(re.test('3 pending orders')).toBe(true);
-    expect(re.test('The app has 3 tables.')).toBe(false);
-    expect(re.test('13 orders are pending')).toBe(false);
+    for (const ok of [
+      'There are 3 orders pending.',
+      '3 pending orders',
+      '**3** orders are pending.',
+      'Pending orders: 3',
+      'The number of pending orders is 3.',
+    ]) {
+      expect(re.test(ok), ok).toBe(true);
+    }
+    for (const bad of [
+      'Of the 3 orders, none are pending',
+      '3 orders and none are pending',
+      'The app has 3 tables.',
+      '13 orders are pending',
+      'Pending orders: 13',
+    ]) {
+      expect(re.test(bad), bad).toBe(false);
+    }
   });
 
   it('typed cases have no skill-fired grader: a typed /flutterdeck:… command makes no Skill call (review T-1)', () => {
