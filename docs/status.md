@@ -2,6 +2,17 @@
 
 Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
 
+## 2026-11-06 — M4 plugin commands — merged
+
+- Changed: PR #50 `feat/plugin-commands` merged by the lead once CI passed (standing approval, 2026-10-24). Both M4 boxes ticked in PLAN.md; CLAUDE.md "Current status" updated.
+- QA re-run (2026-11-05) with the Claude Code bundled in Claude Desktop (2.1.317): PASS 6/6 (D1–D6). Both commands run only when typed; during `/db` Monitor and Bash are denied by rule and all Dart server tools are removed before the session starts; `/check` reloads before it diffs and reports "orders +1". Evidence: [qa/M4.md](qa/M4.md) (f6b223a).
+- CI flakes (PR #50, docs-only pushes; the first push passed every check): `e2e/database.spec.ts` "SQL editor: writes are refused with the reason; errors mark their line" (expected "(line 3)", got "(line 2)") on a773502, and "exports CSV with spreadsheet formulas defused, and JSON" (download timeout) on f6b223a. With the PR #49 flake, three dashboard Database-tab e2e tests failed once each. Proposed as their own item.
+- Found by QA, not in M4 scope: `flutterdeck start … | head -1` crashes the CLI with an unhandled EPIPE when the pipe closes.
+- Gates: developer pass · tester pass · reviewer approve with notes (0 open above Low) · QA pass · PM check `n/a — PM decision 2026-11-05` · CI pass (lead re-ran the flaky e2e job).
+- To delete after the merge (standing approval): remote and local branch `feat/plugin-commands`, local tag `pre-review-rewrite`.
+- Open findings: R2-4 (Low, documented behaviour: `/check` diffs against the latest snapshot of any label).
+- Blockers: Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead none.
+
 ## 2026-11-04 — M4 plugin commands — plan approved
 
 - Changed: M4 started on `feat/plugin-commands`. Size: large (commands steer Claude across two MCP servers and read untrusted app data; `/db` must change nothing). [Design note](design/m4-plugin-commands.md) and [deck](slides/m4-plugin-commands.html). Facts checked 4 Nov 2026: Claude Code docs prefer `skills/<name>/SKILL.md` over `commands/` for plugins (deviation from the plan); Dart MCP server 0.1.4 (Dart 3.12.2) still lists the same 13 tools, so FlutterDeck adds no tool.

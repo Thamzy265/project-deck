@@ -405,8 +405,8 @@ Five milestones, each ending in something usable. Claude should not start the ne
 _Changed 24 Oct 2026 (PM decisions, see "Task providers and the Linear handoff"):_ M4 was "Linear tasks". FlutterDeck builds no Linear support in v1: no `tasks-linear` provider, Tasks tab, current task chip, `task_*` tools, `/tasks`, `/start` or `/ship`. Users who want Linear ask Claude to use Linear's official MCP server. `/check` and `/db` stay, because they help every user.
 
 - Plan of record (4 Nov 2026): [design note](design/m4-plugin-commands.md), [deck](slides/m4-plugin-commands.html). PM decisions: D1 `skills/` format, not `commands/`; D2 `/check` and `/db` run only when typed (changed 4 Nov 2026 by the PM, review D-1; first decision: Claude may start `/db` itself); D3 `/check` reports and asks before editing code (not "fix and repeat"); D4 pre-approve only read-only tools for the turn; D5 `/check` diffs against the snapshot the last `/check` left.
-- [ ] `/check` and `/db` plugin commands
-- [ ] Accept: with the sample app attached, `/db how many orders are pending?` answers with `db_query` and changes nothing; after an edit, `/check` hot reloads with the Dart MCP server, reads runtime errors, `get_logs` and `db_diff`, and reports what it found, including a planted runtime error
+- [x] `/check` and `/db` plugin commands
+- [x] Accept: with the sample app attached, `/db how many orders are pending?` answers with `db_query` and changes nothing; after an edit, `/check` hot reloads with the Dart MCP server, reads runtime errors, `get_logs` and `db_diff`, and reports what it found, including a planted runtime error
 
 ### M5 — Packaging and public release
 
