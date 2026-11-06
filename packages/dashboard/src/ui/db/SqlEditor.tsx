@@ -19,7 +19,16 @@ import { tags } from '@lezer/highlight';
 import { useEffect, useRef, useState } from 'react';
 
 export interface SqlEditorProps {
+  /**
+   * The text. A value other than the last one sent with `onChange` (a saved query)
+   * replaces what is in the editor.
+   */
   value: string;
+  /**
+   * Called with the new text on each change. The parent must store it and pass it back
+   * as `value` synchronously and unchanged: no transition, deferred value or transform.
+   * Otherwise a later echo looks like a new value and keys typed meanwhile can be lost.
+   */
   onChange: (value: string) => void;
   /** Table name to its column names, for autocomplete. */
   schema: Record<string, string[]>;
@@ -98,13 +107,10 @@ export default function SqlEditor(p: SqlEditorProps) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | undefined>(undefined);
   const schemaSlot = useRef(new Compartment());
-  // Each text sent with onChange gets a number, set as state in the same call, so React
-  // commits it in the same render as the parent's echo of that text. A render's `value`
-  // is an echo only if it is the text with that render's number.
-  const [sentSeq, setSentSeq] = useState(0);
-  const lastSeq = useRef(0);
-  /** Texts sent, by number, from the last committed render's number on. */
-  const sent = useRef(new Map<number, string>());
+  // The last text sent with onChange, set as state in the same call, so React commits it
+  // in the same render as the parent's echo of that text. A render's `value` that equals
+  // it is that echo.
+  const [sentText, setSentText] = useState<string | undefined>();
   // The latest callbacks, read by the key bindings made once.
   const latest = useRef(p);
   useEffect(() => {
@@ -195,9 +201,7 @@ export default function SqlEditor(p: SqlEditorProps) {
           EditorView.updateListener.of((u) => {
             if (!u.docChanged) return;
             const text = u.state.doc.toString();
-            const seq = ++lastSeq.current;
-            sent.current.set(seq, text);
-            setSentSeq(seq);
+            setSentText(text);
             latest.current.onChange(text);
           }),
         ],
@@ -216,17 +220,12 @@ export default function SqlEditor(p: SqlEditorProps) {
   // runs (a busy page), and putting that older text back would drop the key.
   const { value, schema, errorLine } = p;
   useEffect(() => {
-    if (value === sent.current.get(sentSeq)) return;
+    if (value === sentText) return;
     const ed = view.current;
     if (ed === undefined || ed.state.doc.toString() === value) return;
     ed.dispatch({ changes: { from: 0, to: ed.state.doc.length, insert: value } });
-    // Only a new `value` runs this; `sentSeq` is the one from the same render.
+    // Only a new `value` runs this; `sentText` is the one from the same render.
   }, [value]);
-
-  // No later render has an older number, so older texts can go.
-  useEffect(() => {
-    for (const seq of sent.current.keys()) if (seq < sentSeq) sent.current.delete(seq);
-  }, [sentSeq]);
 
   useEffect(() => {
     view.current?.dispatch({
