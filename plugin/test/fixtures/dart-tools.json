@@ -1,0 +1,18 @@
+{
+  "source": "tools/list of the official Dart MCP server, recorded 4 Nov 2026 with `node scripts/check-mcp-config.mjs` (Dart SDK 3.12.2, server \"dart and flutter tooling\" 0.1.4, MCP protocol 2025-06-18). Rerun the script after a Dart upgrade and update this list.",
+  "tools": [
+    "analyze_files",
+    "dtd",
+    "flutter_driver_command",
+    "get_runtime_errors",
+    "hot_reload",
+    "hot_restart",
+    "lsp",
+    "pub",
+    "pub_dev_search",
+    "read_package_uris",
+    "rip_grep_packages",
+    "roots",
+    "widget_inspector"
+  ]
+}
