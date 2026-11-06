@@ -116,7 +116,9 @@ describe('SqlEditor render-number echo detection', () => {
     expect(t.text()).toBe('BC');
   });
 
-  it('a parent that sets its value in a transition keeps every key', () => {
+  // act() flushes each transition at once, so this checks the settled text only. It
+  // doesn't make the lane race a real transition could (SqlEditorProps rules it out).
+  it('a parent that sets its value in a transition: the settled text keeps every key', () => {
     const t = setup({ transition: true });
     t.type('SELECT *\n');
     t.type('F');
