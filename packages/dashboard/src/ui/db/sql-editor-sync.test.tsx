@@ -44,25 +44,22 @@ function setup(opts: { echo?: boolean } = {}) {
 }
 
 describe('SqlEditor echo skip edge cases', () => {
-  // Repro of a confirmed bug (stale entries stay in `sent`). Remove `.fails` once fixed.
-  it.fails(
-    'a saved query that equals text typed and deleted inside one React batch still loads',
-    () => {
-      const t = setup();
-      // Two quick edits that React batches: the committed value stays "" so no effect runs
-      // and no echo of "A" ever comes back.
-      act(() => {
-        t.replaceAll('A');
-        t.replaceAll('');
-      });
-      expect(t.text()).toBe('');
-      t.load('A');
-      expect(t.text()).toBe('A');
-    },
-  );
+  // Tester finding F1: a stale entry kept for an echo that never came.
+  it('a saved query that equals text typed and deleted inside one React batch still loads', () => {
+    const t = setup();
+    // Two quick edits that React batches: the committed value stays "" so no effect runs
+    // and no echo of "A" ever comes back.
+    act(() => {
+      t.replaceAll('A');
+      t.replaceAll('');
+    });
+    expect(t.text()).toBe('');
+    t.load('A');
+    expect(t.text()).toBe('A');
+  });
 
-  // Repro of a confirmed bug (stale entries stay in `sent`). Remove `.fails` once fixed.
-  it.fails('a saved query that equals text the parent never echoed still loads', () => {
+  // Tester finding F1: a stale entry kept for an echo that never came.
+  it('a saved query that equals text the parent never echoed still loads', () => {
     const t = setup({ echo: false });
     t.replaceAll('SELECT 1');
     t.replaceAll('SELECT 2');
