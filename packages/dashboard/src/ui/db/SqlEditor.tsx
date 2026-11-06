@@ -17,6 +17,7 @@ import type { DecorationSet } from '@codemirror/view';
 import { Decoration, EditorView, keymap, placeholder } from '@codemirror/view';
 import { tags } from '@lezer/highlight';
 import { useEffect, useRef, useState } from 'react';
+import { COMPLETION_INTERACTION_DELAY_MS } from './sql-completion.js';
 
 export interface SqlEditorProps {
   /**
@@ -145,7 +146,7 @@ export default function SqlEditor(p: SqlEditorProps) {
             },
           ]),
           history(),
-          autocompletion(),
+          autocompletion({ interactionDelay: COMPLETION_INTERACTION_DELAY_MS }),
           // Completion keys first, so Escape closes an open list before it leaves.
           keymap.of([...completionKeymap, ...defaultKeymap, ...historyKeymap]),
           keymap.of([

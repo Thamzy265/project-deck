@@ -9,6 +9,7 @@ import { DbError } from '@project-deck/core';
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { FakeLiveDatabase } from '../../db-sqlite/dist/testing/index.js';
+import { COMPLETION_INTERACTION_DELAY_MS } from '../src/ui/db/sql-completion.js';
 import type { ScriptedDaemon, SpawnedDaemon } from './daemons.js';
 import { spawnFakeDaemon, startScriptedDaemon } from './daemons.js';
 import {
@@ -20,8 +21,8 @@ import {
 } from './helpers.js';
 
 const WRITES_ON = { db: { allowWrites: true } };
-/** CodeMirror's `interactionDelay` (75 ms by default), with a margin for timer rounding. */
-const COMPLETION_INTERACTION_DELAY_MS = 100;
+/** The editor's completion `interactionDelay`, with a margin for timer rounding. */
+const COMPLETION_SETTLE_MS = COMPLETION_INTERACTION_DELAY_MS + 25;
 
 async function openOrders(page: Page, url: string): Promise<void> {
   await openDashboard(page, url);
@@ -344,9 +345,9 @@ test.describe('fake mode', () => {
     await page.keyboard.type('SELECT item FROM ord');
     const orders = page.getByRole('listbox').getByRole('option', { name: /orders/ });
     await expect(orders).toHaveAttribute('aria-selected', 'true');
-    // CodeMirror ignores Enter for its first 75 ms (`interactionDelay`), so a key meant
-    // as a new line doesn't pick an option that just appeared.
-    await page.waitForTimeout(COMPLETION_INTERACTION_DELAY_MS);
+    // A just-opened list ignores Enter for its `interactionDelay`, so a key meant as a
+    // new line doesn't pick an option that just appeared.
+    await page.waitForTimeout(COMPLETION_SETTLE_MS);
     await page.keyboard.press('Enter');
     await expect(editor).toHaveText('SELECT item FROM orders');
     await expect(page.getByRole('listbox')).toBeHidden();
