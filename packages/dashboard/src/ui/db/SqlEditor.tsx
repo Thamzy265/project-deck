@@ -98,6 +98,8 @@ export default function SqlEditor(p: SqlEditorProps) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | undefined>(undefined);
   const schemaSlot = useRef(new Compartment());
+  // Texts sent with onChange that `value` hasn't come back with yet, oldest first.
+  const sent = useRef<string[]>([]);
   // The latest callbacks, read by the key bindings made once.
   const latest = useRef(p);
   useEffect(() => {
@@ -186,7 +188,10 @@ export default function SqlEditor(p: SqlEditorProps) {
               : { 'aria-description': latest.current.description }),
           }),
           EditorView.updateListener.of((u) => {
-            if (u.docChanged) latest.current.onChange(u.state.doc.toString());
+            if (!u.docChanged) return;
+            const text = u.state.doc.toString();
+            sent.current.push(text);
+            latest.current.onChange(text);
           }),
         ],
       }),
@@ -199,12 +204,22 @@ export default function SqlEditor(p: SqlEditorProps) {
     };
   }, []);
 
-  // A saved query loaded from the menu replaces the text.
+  // A saved query loaded from the menu replaces the text. A value the editor sent
+  // itself is an echo: React can render an older one after more keys went in (a busy
+  // page), and putting it back would drop those keys.
   const { value, schema, errorLine } = p;
   useEffect(() => {
+    const echo = sent.current.indexOf(value);
+    if (echo !== -1) {
+      sent.current.splice(0, echo + 1);
+      return;
+    }
     const ed = view.current;
-    if (ed === undefined || ed.state.doc.toString() === value) return;
-    ed.dispatch({ changes: { from: 0, to: ed.state.doc.length, insert: value } });
+    if (ed !== undefined && ed.state.doc.toString() !== value) {
+      ed.dispatch({ changes: { from: 0, to: ed.state.doc.length, insert: value } });
+    }
+    // The parent has this text already: no echo of it comes back.
+    sent.current = [];
   }, [value]);
 
   useEffect(() => {
