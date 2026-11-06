@@ -2,6 +2,16 @@
 
 Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
 
+## 2026-11-06 — Dashboard Database-tab e2e flakes — in review
+
+- Changed: `fix/dashboard-e2e-flakes`. Size: small (`packages/dashboard`: the SQL editor and its e2e tests). Three `e2e/database.spec.ts` tests failed once each on docs-only commits (PR #49, PR #50 runs on a773502, f6b223a and 9ff8882), which blocked M4's PR #50.
+- Decisions: PM (2026-11-06), on the PR #50 e2e failure: "Re-run, merge on green (Recommended)". After the re-run failed again, the PM asked to do this fix in the M4 session: "Do this task here: “Fix flaky dashboard Database-tab e2e tests”".
+- Developer (2026-11-06): root causes. (1) Product bug: `SqlEditor` copied every parent `value` back into CodeMirror, so a stale React render overwrote newer typing and lost the first key after Enter ("near ROM"); a user on a busy machine loses the same keys. (2) Test race: Enter came within CodeMirror's 75 ms `interactionDelay` after the completion list opened. (3) Test race: Export was clicked while the filtered page was reloading and the button was `aria-disabled`. Commits da39544, 81b1ad3. Local runs: 7 failures in 170 before, 0 in 360 after (workers 2, up to 6x CPU throttle).
+- Tester (2026-11-06): 30347ef. F1 medium-low (the echo skip swallowed a deliberate parent reset; regression against `main`), F2 Low (unbounded store of sent texts). Fixed in 0b78dea (render-number echo detection) and e7ce3d9 (locator comment). Tester re-check: F1 and F2 confirmed fixed; 8 more regression locks (StrictMode, transforming parents, transitions, rapid loads, remount); 150/150 e2e runs at 4–6x throttle. Residual Low: a parent that applies `value` with `useDeferredValue` or a separate transition could pair a newer render number with an older value; `SqlView` uses neither.
+- Gates: developer pass · tester pass · reviewer open · QA open (product code changed) · CI open.
+- Open findings: none.
+- Blockers: Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead none.
+
 ## 2026-11-03 — O1 daemon client stale ready — merged
 
 - Changed: `fix/daemon-client-stale-ready` fixes reviewer finding O1 (pre-existing, raised on `fix/ci-flakes`). Size: small (`packages/mcp`, plus the `flutterdeck stop` exit code in `packages/cli` tests). When a daemon answers `/api/health` but drops a call, the client no longer takes that same daemon (same port, token and pid in `runtime.json`) for a new start. It retries the call once on it, then says the daemon is stuck, with port, pid and route, and starts nothing. This holds for `start: false` calls too. A start ignores a `runtime.json` that still names the daemon that dropped the call. `flutterdeck stop` on such a daemon now exits 1 and names the process to quit, instead of "isn't running" with exit 0.
