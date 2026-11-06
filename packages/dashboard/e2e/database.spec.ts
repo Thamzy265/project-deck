@@ -438,6 +438,7 @@ test.describe('fake mode', () => {
     await page.keyboard.press('ControlOrMeta+a');
     // Typed, the Enter after "orders" could pick that table from the list instead.
     await page.keyboard.insertText('SELECT *\nFROM orders\nWHER id = 1');
+    // CodeMirror's lines have no role, and the textbox's text drops the line breaks.
     await expect(page.locator('.cm-line')).toHaveText(['SELECT *', 'FROM orders', 'WHER id = 1']);
     await page.keyboard.press('ControlOrMeta+Enter');
     await expect(page.getByRole('alert')).toContainText('(line 3)');
