@@ -36,4 +36,6 @@ const result = await runCli(process.argv.slice(2), {
   runMcp: runMcpServer,
 });
 // exitCode rather than exit(): output written to a pipe is flushed first.
+// Wait for the last writes to land: a write error is reported after the call returns.
+await std?.flush();
 if (result !== 'serving') process.exitCode = result === 0 && std?.failed() ? 1 : result;

@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { PassThrough } from 'node:stream';
+import { PassThrough, Writable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { createStdIo } from './stdio-io.js';
@@ -64,4 +64,31 @@ describe('main.js with a closed stdout', () => {
     },
     20_000,
   );
+});
+
+describe('createStdIo flush', () => {
+  it('waits for pending writes and sees a write error that arrives after the call', async () => {
+    const out = new Writable({
+      write: (_c, _e, cb) => setImmediate(() => cb(errnoError('EBADF'))),
+    });
+    const std = createStdIo(out, new PassThrough());
+    std.io.out('last');
+    expect(std.failed()).toBe(false);
+    await std.flush();
+    expect(std.failed()).toBe(true);
+  });
+
+  it('treats several queued writes after one EPIPE as one closed pipe, not a failure', async () => {
+    const out = new Writable({
+      write: (_c, _e, cb) => setImmediate(() => cb(errnoError('EPIPE'))),
+    });
+    const std = createStdIo(out, new PassThrough());
+    for (const line of ['a', 'b', 'c']) std.io.out(line);
+    await std.flush();
+    expect(std.failed()).toBe(false);
+  });
+
+  it('does not hang when nothing is pending', async () => {
+    await createStdIo(new PassThrough(), new PassThrough()).flush();
+  });
 });
