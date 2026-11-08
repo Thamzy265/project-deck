@@ -16,10 +16,20 @@ import { Compartment, EditorState, StateEffect, StateField } from '@codemirror/s
 import type { DecorationSet } from '@codemirror/view';
 import { Decoration, EditorView, keymap, placeholder } from '@codemirror/view';
 import { tags } from '@lezer/highlight';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { COMPLETION_INTERACTION_DELAY_MS } from './sql-completion.js';
 
 export interface SqlEditorProps {
+  /**
+   * The text. A value other than the last one sent with `onChange` (a saved query)
+   * replaces what is in the editor.
+   */
   value: string;
+  /**
+   * Called with the new text on each change. The parent must store it and pass it back
+   * as `value` synchronously and unchanged: no transition, deferred value or transform.
+   * Otherwise a later echo looks like a new value and keys typed meanwhile can be lost.
+   */
   onChange: (value: string) => void;
   /** Table name to its column names, for autocomplete. */
   schema: Record<string, string[]>;
@@ -98,6 +108,10 @@ export default function SqlEditor(p: SqlEditorProps) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | undefined>(undefined);
   const schemaSlot = useRef(new Compartment());
+  // The last text sent with onChange, set as state in the same call, so React commits it
+  // in the same render as the parent's echo of that text. A render's `value` that equals
+  // it is that echo.
+  const [sentText, setSentText] = useState<string | undefined>();
   // The latest callbacks, read by the key bindings made once.
   const latest = useRef(p);
   useEffect(() => {
@@ -132,7 +146,7 @@ export default function SqlEditor(p: SqlEditorProps) {
             },
           ]),
           history(),
-          autocompletion(),
+          autocompletion({ interactionDelay: COMPLETION_INTERACTION_DELAY_MS }),
           // Completion keys first, so Escape closes an open list before it leaves.
           keymap.of([...completionKeymap, ...defaultKeymap, ...historyKeymap]),
           keymap.of([
@@ -186,7 +200,10 @@ export default function SqlEditor(p: SqlEditorProps) {
               : { 'aria-description': latest.current.description }),
           }),
           EditorView.updateListener.of((u) => {
-            if (u.docChanged) latest.current.onChange(u.state.doc.toString());
+            if (!u.docChanged) return;
+            const text = u.state.doc.toString();
+            setSentText(text);
+            latest.current.onChange(text);
           }),
         ],
       }),
@@ -199,12 +216,16 @@ export default function SqlEditor(p: SqlEditorProps) {
     };
   }, []);
 
-  // A saved query loaded from the menu replaces the text.
+  // A saved query loaded from the menu replaces the text. An echo doesn't: a key can
+  // come in after React commits the echo of the text before it and before this effect
+  // runs (a busy page), and putting that older text back would drop the key.
   const { value, schema, errorLine } = p;
   useEffect(() => {
+    if (value === sentText) return;
     const ed = view.current;
     if (ed === undefined || ed.state.doc.toString() === value) return;
     ed.dispatch({ changes: { from: 0, to: ed.state.doc.length, insert: value } });
+    // Only a new `value` runs this; `sentText` is the one from the same render.
   }, [value]);
 
   useEffect(() => {

@@ -9,6 +9,7 @@ import { DbError } from '@project-deck/core';
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { FakeLiveDatabase } from '../../db-sqlite/dist/testing/index.js';
+import { COMPLETION_INTERACTION_DELAY_MS } from '../src/ui/db/sql-completion.js';
 import type { ScriptedDaemon, SpawnedDaemon } from './daemons.js';
 import { spawnFakeDaemon, startScriptedDaemon } from './daemons.js';
 import {
@@ -20,6 +21,8 @@ import {
 } from './helpers.js';
 
 const WRITES_ON = { db: { allowWrites: true } };
+/** The editor's completion `interactionDelay`, with a margin for timer rounding. */
+const COMPLETION_SETTLE_MS = COMPLETION_INTERACTION_DELAY_MS + 25;
 
 async function openOrders(page: Page, url: string): Promise<void> {
   await openDashboard(page, url);
@@ -307,21 +310,26 @@ test.describe('fake mode', () => {
     await page.getByRole('alertdialog').getByRole('button', { name: 'Run change' }).click();
     await details.getByRole('button', { name: 'Close' }).click();
     await page.getByRole('searchbox', { name: 'Filter rows' }).fill('HYPERLINK');
+    // The filter waits 200 ms, and the "Coffee" page can still be on screen with one row
+    // until the change re-reads it, empty. Wait for the HYPERLINK page itself.
+    await expect(grid(page).getByText('=HYPERLINK("http://x")')).toBeVisible();
     await expect(grid(page).getByRole('row')).toHaveCount(2);
-    await page.getByRole('button', { name: 'Export' }).click();
-    const [csv] = await Promise.all([
-      page.waitForEvent('download'),
-      page.getByRole('button', { name: 'CSV' }).click(),
-    ]);
+    const exportButton = page.getByRole('button', { name: 'Export' });
+    await expect(exportButton).not.toHaveAttribute('aria-disabled', 'true');
+    await exportButton.click();
+    await expect(exportButton).toHaveAttribute('aria-expanded', 'true');
+    const csvDownload = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'CSV' }).click();
+    const csv = await csvDownload;
     expect(csv.suggestedFilename()).toBe('orders.csv');
     const text = await readFile(await csv.path(), 'utf8');
     expect(text.split('\r\n')[0]).toBe('"id","item","status","created","customer_id"');
     expect(text).toContain(`"'=HYPERLINK(""http://x"")"`);
-    await page.getByRole('button', { name: 'Export' }).click();
-    const [json] = await Promise.all([
-      page.waitForEvent('download'),
-      page.getByRole('button', { name: 'JSON' }).click(),
-    ]);
+    await exportButton.click();
+    await expect(exportButton).toHaveAttribute('aria-expanded', 'true');
+    const jsonDownload = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'JSON' }).click();
+    const json = await jsonDownload;
     const parsed = JSON.parse(await readFile(await json.path(), 'utf8')) as { rows: unknown[][] };
     expect(parsed.rows[0]?.[1]).toBe('=HYPERLINK("http://x")');
   });
@@ -335,9 +343,16 @@ test.describe('fake mode', () => {
     const editor = page.getByRole('textbox', { name: 'SQL' });
     await editor.click();
     await page.keyboard.type('SELECT item FROM ord');
-    await expect(page.getByRole('listbox').getByRole('option', { name: /orders/ })).toBeVisible();
+    const orders = page.getByRole('listbox').getByRole('option', { name: /orders/ });
+    await expect(orders).toHaveAttribute('aria-selected', 'true');
+    // A just-opened list ignores Enter for its `interactionDelay`, so a key meant as a
+    // new line doesn't pick an option that just appeared.
+    await page.waitForTimeout(COMPLETION_SETTLE_MS);
     await page.keyboard.press('Enter');
+    await expect(editor).toHaveText('SELECT item FROM orders');
+    await expect(page.getByRole('listbox')).toBeHidden();
     await page.keyboard.type(' WHERE id = 1');
+    await expect(editor).toHaveText('SELECT item FROM orders WHERE id = 1');
     await page.keyboard.press('ControlOrMeta+Enter');
     await expect(page.getByText(/^1 row in \d+ ms$/)).toBeVisible();
     await expect(
@@ -422,7 +437,10 @@ test.describe('fake mode', () => {
     await screenshotM3(page, 'sql-refused-420');
     await editor.click();
     await page.keyboard.press('ControlOrMeta+a');
-    await page.keyboard.type('SELECT *\nFROM orders\nWHER id = 1');
+    // Typed, the Enter after "orders" could pick that table from the list instead.
+    await page.keyboard.insertText('SELECT *\nFROM orders\nWHER id = 1');
+    // CodeMirror's lines have no role, and the textbox's text drops the line breaks.
+    await expect(page.locator('.cm-line')).toHaveText(['SELECT *', 'FROM orders', 'WHER id = 1']);
     await page.keyboard.press('ControlOrMeta+Enter');
     await expect(page.getByRole('alert')).toContainText('(line 3)');
     await expect(page.locator('.cm-deck-error')).toHaveCount(1);
