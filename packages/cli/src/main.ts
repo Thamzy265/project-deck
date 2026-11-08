@@ -10,8 +10,12 @@ import { openBrowser } from './browser.js';
 import { runCli } from './cli.js';
 import type { Io } from './io.js';
 import { runTool } from './prerequisites.js';
+import { createStdIo } from './stdio-io.js';
 
-const io: Io = {
+// `mcp` owns stdout for JSON-RPC: the MCP transport handles that stream itself, and a
+// closed stdout must still end it as before, so only the other commands get the guard.
+const std = process.argv[2] === 'mcp' ? undefined : createStdIo(process.stdout, process.stderr);
+const io: Io = std?.io ?? {
   out: (line) => process.stdout.write(`${line}\n`),
   err: (line) => process.stderr.write(`${line}\n`),
 };
@@ -32,4 +36,4 @@ const result = await runCli(process.argv.slice(2), {
   runMcp: runMcpServer,
 });
 // exitCode rather than exit(): output written to a pipe is flushed first.
-if (result !== 'serving') process.exitCode = result;
+if (result !== 'serving') process.exitCode = result === 0 && std?.failed() ? 1 : result;
