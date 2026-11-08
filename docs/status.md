@@ -2,6 +2,15 @@
 
 Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
 
+## 2026-11-08 — M4 and flake fix merged; clean-up done
+
+- Changed: PR #51 merged (279af35) and PR #50 merged (92f59c7) by the lead after all 9 CI checks passed on each (standing approval, 2026-10-24). Both M4 boxes are ticked on `main`.
+- Deleted (standing approvals of 2026-10-14 and 2026-10-15; all commits already on `main`): remote and local branches `feat/plugin-commands` and `fix/dashboard-e2e-flakes`; local tag `pre-review-rewrite`; the worktree `.claude/worktrees/dashboard-e2e-flakes`. QA artifacts from both worktrees were copied to `qa-artifacts/` in the main checkout first.
+- Gates: n/a — log only.
+- Open findings: R2-4 (Low, documented). Cleanup notes N1 and M1 from the flake fix (see its entry).
+- Decisions: none.
+- Blockers: Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead none.
+
 ## 2026-11-06 — M4 plugin commands — merged
 
 - Changed: PR #50 `feat/plugin-commands` merged by the lead once CI passed (standing approval, 2026-10-24). Both M4 boxes ticked in PLAN.md; CLAUDE.md "Current status" updated.
