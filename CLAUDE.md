@@ -208,4 +208,5 @@ Follows [GitHub flow](https://docs.github.com/en/get-started/using-github/github
 
 - **M1 done** (14 Oct 2026): scaffold, `core`, daemon, `connector-dart`, `logs-android`, `.mcp.json` example, sample app, acceptance check.
 - **M2 done** (16 Oct 2026): dashboard, MCP server with masking, CLI (`init`, `start`, `stop`, `open`, `mcp`), plugin with hooks and notifications; PM acceptance check passed.
+- **M4 done** (6 Nov 2026): plugin commands `/check` and `/db` (`plugin/skills/`), PR #50. QA passed on CLI 2.1.236 and Desktop's 2.1.317; the PM check was dropped by the PM (5 Nov 2026).
 - **M3 in progress** (Drift inspector). Plan of record: `docs/design/m3-drift-inspector.md`, `docs/ui/m3-database-tab.md`, ADRs 0004–0005. Merged: batches 1–5 (PRs #33–#37). M3 acceptance passed (23 Oct 2026). IDE breakpoint check passed (24 Oct 2026). Remaining: the validation checkpoint. Drafts of the demo, install guide and post text are in `docs/marketing/` (25 Oct 2026); the PM records, publishes and collects feedback.
