@@ -12,7 +12,8 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 const MAIN = fileURLToPath(new URL('../dist/main.js', import.meta.url));
-const PRELOAD = fileURLToPath(new URL('./testing/count-error-listeners.mjs', import.meta.url));
+// `--import` takes a URL: a raw absolute path fails on Windows (drive letter as scheme).
+const PRELOAD = new URL('./testing/count-error-listeners.mjs', import.meta.url).href;
 
 let scratch: string;
 beforeEach(async () => {
