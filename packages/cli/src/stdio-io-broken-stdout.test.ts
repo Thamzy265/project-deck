@@ -41,7 +41,7 @@ describe('main.js with a stdout that fails for another reason', () => {
         env: { HOME: home, USERPROFILE: home, PATH: '' },
       });
       let stderr = '';
-      child.stderr?.on('data', (d: Buffer) => (stderr += String(d)));
+      child.stderr?.on('error', () => undefined).on('data', (d: Buffer) => (stderr += String(d)));
       child.on('error', () => undefined);
       const [code] = (await once(child, 'close')) as [number | null];
       return { code, stderr };

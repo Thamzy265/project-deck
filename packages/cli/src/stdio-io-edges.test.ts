@@ -51,13 +51,15 @@ describe('createStdIo on real streams', () => {
     expect(std.failed()).toBe(false);
   });
 
-  it('ignores writes to a stream that was destroyed without an error', () => {
+  it('does not throw on a late write to a stream destroyed without an error, and reports it', async () => {
     const out = new PassThrough();
     const std = createStdIo(out, new PassThrough());
     out.destroy();
-    // Node reports ERR_STREAM_DESTROYED only to a write callback, never as an event.
+    // Node reports ERR_STREAM_DESTROYED only to the write callback, never as an event;
+    // with no earlier failure that is lost output, not a closed pipe.
     expect(() => std.io.out('late')).not.toThrow();
-    expect(std.failed()).toBe(false);
+    await std.flush();
+    expect(std.failed()).toBe(true);
   });
 
   it('EPIPE on stderr leaves stdout working', () => {
@@ -175,7 +177,10 @@ describe('main.js with stdout or stderr gone', () => {
     const result: Result = { code: null, stdout: '', stderr: '' };
     for (const name of ['stdout', 'stderr'] as const) {
       if (gone.includes(name)) child[name].destroy();
-      else child[name].on('data', (d: Buffer) => (result[name] += String(d)));
+      else
+        child[name]
+          .on('error', () => undefined)
+          .on('data', (d: Buffer) => (result[name] += String(d)));
     }
     child.on('error', () => undefined);
     [result.code] = (await once(child, 'close')) as [number | null];
