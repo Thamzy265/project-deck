@@ -53,13 +53,16 @@ describe('createStdIo on real streams', () => {
 
   it('does not throw on a late write to a stream destroyed without an error, and reports it', async () => {
     const out = new PassThrough();
-    const std = createStdIo(out, new PassThrough());
+    const err = new PassThrough();
+    const seenErr = collect(err);
+    const std = createStdIo(out, err);
     out.destroy();
     // Node reports ERR_STREAM_DESTROYED only to the write callback, never as an event;
     // with no earlier failure that is lost output, not a closed pipe.
     expect(() => std.io.out('late')).not.toThrow();
     await std.flush();
     expect(std.failed()).toBe(true);
+    expect(seenErr()).toContain("Couldn't write output");
   });
 
   it('EPIPE on stderr leaves stdout working', () => {

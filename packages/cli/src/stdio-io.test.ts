@@ -122,14 +122,22 @@ describe('createStdIo report and release', () => {
     expect(seen.join('')).toContain("Couldn't write output");
   });
 
-  it('release removes the listeners and writes raw afterwards', () => {
+  it('release removes both listeners and writes raw afterwards', () => {
     const out = new PassThrough();
-    const std = createStdIo(out, new PassThrough());
+    const err = new PassThrough();
+    const std = createStdIo(out, err);
+    expect(out.listenerCount('error')).toBe(1);
+    expect(err.listenerCount('error')).toBe(1);
     std.release();
     expect(out.listenerCount('error')).toBe(0);
-    const seen: string[] = [];
-    out.on('data', (d: Buffer) => seen.push(String(d)));
+    expect(err.listenerCount('error')).toBe(0);
+    const seenOut: string[] = [];
+    const seenErr: string[] = [];
+    out.on('data', (d: Buffer) => seenOut.push(String(d)));
+    err.on('data', (d: Buffer) => seenErr.push(String(d)));
     std.io.out('raw');
-    expect(seen.join('')).toBe('raw\n');
+    std.io.err('raw err');
+    expect(seenOut.join('')).toBe('raw\n');
+    expect(seenErr.join('')).toBe('raw err\n');
   });
 });
