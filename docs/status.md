@@ -2,7 +2,7 @@
 
 Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
 
-## 2026-11-09 — CLI EPIPE crash on piped output — ready to merge
+## 2026-11-09 — CLI EPIPE crash on piped output — merged
 
 - Changed: `fix/cli-epipe`. Size: small (`packages/cli` only; no new data, integration or trust boundary). Found by QA during M4: `flutterdeck start … | head -1` crashed the CLI with an unhandled EPIPE. The PM asked to fix it in the M4 session: "Do this task here: “Fix CLI EPIPE crash on piped output”". Tracked here, not as a plan box, like earlier bug fixes.
 - Developer: new `packages/cli/src/stdio-io.ts` guards stdout and stderr ('error' listeners, writes with callbacks, `flush()` before the exit code). A closed pipe (EPIPE) is quiet and keeps the command's own exit code; any other write error prints "Couldn't write output" once and exits 1. A real `mcp` serve releases the guard and runs as on `main`. Windows: libuv maps a closed pipe on write to EPIPE (`uv_translate_write_sys_error`, source read, not run). Commits cbf6d56, 849ad9b, 84075a4, 3cad69f.
@@ -11,7 +11,9 @@ Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry re
 - QA (2026-11-09): pass 5/5, cc8f3ed, [qa/M4.md](qa/M4.md) "CLI EPIPE fix (2026-11-09)". On `main` all seven commands crash with the pipe closed; on the branch all exit 0 with no stack trace; the daemon from `start` stays up; a read-only stdout gives "Couldn't write output" and exit 1; `mcp` lists 7 tools over stdio. One unexplained failure in 1 of 6 full runs was most likely the reviewer's build running in the same worktree at the same time; the cli suite then passed 20 runs in a row with no concurrent build.
 - Known limit: a reader that stops reading but keeps the pipe open keeps the CLI waiting, as on `main`. While `mcp` serves, stdout and stderr have no 'error' listener, as on `main` (by design: the MCP transport owns stdio).
 - Also: PR #52's first CI run failed in `flutterdeck-drift` on a hash mismatch of the downloaded `libsqlite3.x64.linux.so` (sqlite3 build hook); the re-run passed, so it was a bad download. Branch `docs/log-m4-cleanup` deleted locally and on GitHub after the merge (standing approval).
-- Gates: developer pass · tester pass · reviewer approve with notes · QA pass · CI open · merge by the lead on green (standing approval, 24 Oct 2026).
+- CI: the first run failed on Windows (Node 22 and 24) in `stdio-release.test.ts` only: the preload path given to `--import` was a raw `D:\…` path, which Node's ESM loader reads as a URL scheme. Fixed in 1a1e180 (file URL, test-only); the next run passed all 9 checks.
+- Gates: developer pass · tester pass · reviewer approve with notes · QA pass · CI pass · PR #53 merged by the lead (standing approval, 24 Oct 2026).
+- To delete after the merge (standing approval): remote and local branch `fix/cli-epipe`.
 - Open findings: none above Low. R4 skipped (cleanup).
 
 ## 2026-11-08 — M4 and flake fix merged; clean-up done
