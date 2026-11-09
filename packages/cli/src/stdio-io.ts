@@ -10,6 +10,7 @@ import { messageOf } from './io.js';
 export interface OutStream {
   write: (chunk: string, callback: (err?: Error | null) => void) => unknown;
   on: (event: 'error', listener: (err: Error) => void) => unknown;
+  off: (event: 'error', listener: (err: Error) => void) => unknown;
 }
 
 export interface StdIo {
@@ -21,6 +22,11 @@ export interface StdIo {
    * failed write only after the call returns, so check `failed()` after this, not before.
    */
   flush: () => Promise<void>;
+  /**
+   * Hands both streams back as they were: removes the listeners, and later writes go
+   * straight to the streams. For `mcp` serving, which must behave as it did before.
+   */
+  release: () => void;
 }
 
 /**
@@ -48,18 +54,24 @@ export function createStdIo(stdout: OutStream, stderr: OutStream): StdIo {
     if ((err as NodeJS.ErrnoException).code === CLOSED_READER) return;
     failed = true;
     // stderr is the only place left to say so; if stderr itself broke, nothing is.
-    if (name === 'out' && !closed.err) {
-      stderr.write(`Couldn't write output: ${messageOf(err)}\n`, () => undefined);
-    }
+    // Through the tracked path, so flush() waits for it. It cannot loop: a failing
+    // stderr only marks itself closed.
+    if (name === 'out') write(stderr, 'err', `Couldn't write output: ${messageOf(err)}`);
   };
 
-  const guard = (stream: OutStream, name: 'out' | 'err'): void => {
-    stream.on('error', (err: Error) => onError(name, err));
+  const listeners = {
+    out: (err: Error): void => onError('out', err),
+    err: (err: Error): void => onError('err', err),
   };
-  guard(stdout, 'out');
-  guard(stderr, 'err');
+  stdout.on('error', listeners.out);
+  stderr.on('error', listeners.err);
+  let released = false;
 
   const write = (stream: OutStream, name: 'out' | 'err', line: string): void => {
+    if (released) {
+      stream.write(`${line}\n`, () => undefined);
+      return;
+    }
     if (closed[name]) return;
     pending += 1;
     stream.write(`${line}\n`, (err) => {
@@ -85,6 +97,11 @@ export function createStdIo(stdout: OutStream, stderr: OutStream): StdIo {
       err: (line) => write(stderr, 'err', line),
     },
     failed: () => failed,
+    release: () => {
+      released = true;
+      stdout.off('error', listeners.out);
+      stderr.off('error', listeners.err);
+    },
     flush: () => (pending === 0 ? Promise.resolve() : new Promise((r) => idle.push(r))),
   };
 }

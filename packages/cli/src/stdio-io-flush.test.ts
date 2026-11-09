@@ -113,6 +113,8 @@ describe('createStdIo flush()', () => {
     const failure = errno('EIO');
     out.finish(0, failure);
     out.emit('error', failure);
+    // The report on stderr is a tracked write: flush waits for it.
+    err.finish(0);
     await std.flush();
     expect(std.failed()).toBe(true);
     expect(err.written).toHaveLength(1);
@@ -129,6 +131,7 @@ describe('createStdIo flush()', () => {
     out.finish(0, errno('EIO'));
     out.finish(1, errno('ERR_STREAM_DESTROYED'));
     out.finish(2, errno('ERR_STREAM_DESTROYED'));
+    err.finish(0);
     await std.flush();
     expect(std.failed()).toBe(true);
     expect(err.written).toHaveLength(1);

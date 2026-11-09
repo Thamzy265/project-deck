@@ -57,7 +57,7 @@ describe('main.js with a closed stdout', () => {
       });
       child.stdout.destroy();
       let stderr = '';
-      child.stderr.on('data', (d: Buffer) => (stderr += String(d)));
+      child.stderr.on('error', () => undefined).on('data', (d: Buffer) => (stderr += String(d)));
       const [code] = (await once(child, 'close')) as [number | null];
       expect(stderr).not.toMatch(/EPIPE|at .*\.js:\d+/);
       expect(code).toBe(arg === 'bogus' ? 2 : 0);
@@ -90,5 +90,46 @@ describe('createStdIo flush', () => {
 
   it('does not hang when nothing is pending', async () => {
     await createStdIo(new PassThrough(), new PassThrough()).flush();
+  });
+});
+
+describe('main.js mcp usage output with a closed stdout', () => {
+  // `mcp --help` never serves, so it keeps the guard (R1 of the review).
+  it('`mcp --help` ends without a stack trace', async () => {
+    const child = spawn(process.execPath, [MAIN, 'mcp', '--help'], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { PATH: '' },
+    });
+    child.stdout.destroy();
+    let stderr = '';
+    child.stderr.on('error', () => undefined).on('data', (d: Buffer) => (stderr += String(d)));
+    const [code] = (await once(child, 'close')) as [number | null];
+    expect(stderr).not.toMatch(/EPIPE|at .*\.js:\d+/);
+    expect(code).toBe(0);
+  }, 20_000);
+});
+
+describe('createStdIo report and release', () => {
+  it('flush waits for the "Couldn\'t write output" report on stderr', async () => {
+    const out = new Writable({ write: (_c, _e, cb) => cb(errnoError('EBADF')) });
+    const seen: string[] = [];
+    const err = new Writable({
+      write: (c, _e, cb) => setImmediate(() => (seen.push(String(c)), cb())),
+    });
+    const std = createStdIo(out, err);
+    std.io.out('x');
+    await std.flush();
+    expect(seen.join('')).toContain("Couldn't write output");
+  });
+
+  it('release removes the listeners and writes raw afterwards', () => {
+    const out = new PassThrough();
+    const std = createStdIo(out, new PassThrough());
+    std.release();
+    expect(out.listenerCount('error')).toBe(0);
+    const seen: string[] = [];
+    out.on('data', (d: Buffer) => seen.push(String(d)));
+    std.io.out('raw');
+    expect(seen.join('')).toBe('raw\n');
   });
 });
