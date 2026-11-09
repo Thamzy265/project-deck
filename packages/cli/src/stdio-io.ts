@@ -63,11 +63,13 @@ export function createStdIo(stdout: OutStream, stderr: OutStream): StdIo {
     if (closed[name]) return;
     pending += 1;
     stream.write(`${line}\n`, (err) => {
-      // Writes queued before the pipe failed are destroyed with it: that is the same
-      // closed pipe, already handled, not a new failure.
-      if (err && (err as NodeJS.ErrnoException).code !== 'ERR_STREAM_DESTROYED') {
-        onError(name, err);
-      }
+      // Writes queued before the stream failed are destroyed with it: that is the same
+      // failure, already handled. A stream destroyed with no earlier error is new, so it
+      // must not hide lost output.
+      const destroyedAfterError =
+        (err as NodeJS.ErrnoException | null | undefined)?.code === 'ERR_STREAM_DESTROYED' &&
+        closed[name];
+      if (err && !destroyedAfterError) onError(name, err);
       pending -= 1;
       if (pending === 0) {
         const waiting = idle;
