@@ -2,6 +2,20 @@
 
 Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
 
+## 2026-11-09 — CLI EPIPE crash on piped output — ready to merge
+
+- Changed: `fix/cli-epipe`. Size: small (`packages/cli` only; no new data, integration or trust boundary). Found by QA during M4: `flutterdeck start … | head -1` crashed the CLI with an unhandled EPIPE. The PM asked to fix it in the M4 session: "Do this task here: “Fix CLI EPIPE crash on piped output”". Tracked here, not as a plan box, like earlier bug fixes.
+- Developer: new `packages/cli/src/stdio-io.ts` guards stdout and stderr ('error' listeners, writes with callbacks, `flush()` before the exit code). A closed pipe (EPIPE) is quiet and keeps the command's own exit code; any other write error prints "Couldn't write output" once and exits 1. A real `mcp` serve releases the guard and runs as on `main`. Windows: libuv maps a closed pipe on write to EPIPE (`uv_translate_write_sys_error`, source read, not run). Commits cbf6d56, 849ad9b, 84075a4, 3cad69f.
+- Tester: 6d40980, 8b2abfa, plus repros folded into the fixes. B1 (medium: exit code read before the async write error) fixed in 849ad9b; B2 (low: a destroyed stream hid lost output) fixed in 84075a4. Process tests deterministic in 10 runs plus 3 runs under CPU load.
+- Reviewer: code review at high and security review on this worktree (diff confirmed to be this branch): approve with notes twice, no security or privacy finding. R1 (`mcp --help` still crashed), R2 (stale test), R3 (failure report not flushed), R5 (child stream listeners in tests) fixed in 3cad69f and 2132fc1; R6 (no test failed if the mcp release was removed) and R7 (test overclaimed) fixed in 03d18f3. R4 (Low, cleanup: duplicated test helpers) skipped by the lead; its only real risk, a stale test, was R2 and is fixed. Not a correctness, security or privacy finding.
+- QA (2026-11-09): pass 5/5, cc8f3ed, [qa/M4.md](qa/M4.md) "CLI EPIPE fix (2026-11-09)". On `main` all seven commands crash with the pipe closed; on the branch all exit 0 with no stack trace; the daemon from `start` stays up; a read-only stdout gives "Couldn't write output" and exit 1; `mcp` lists 7 tools over stdio. One unexplained failure in 1 of 6 full runs was most likely the reviewer's build running in the same worktree at the same time; the cli suite then passed 20 runs in a row with no concurrent build.
+- Known limit: a reader that stops reading but keeps the pipe open keeps the CLI waiting, as on `main`. While `mcp` serves, stdout and stderr have no 'error' listener, as on `main` (by design: the MCP transport owns stdio).
+- Also: PR #52's first CI run failed in `flutterdeck-drift` on a hash mismatch of the downloaded `libsqlite3.x64.linux.so` (sqlite3 build hook); the re-run passed, so it was a bad download. Branch `docs/log-m4-cleanup` deleted locally and on GitHub after the merge (standing approval).
+- Gates: developer pass · tester pass · reviewer approve with notes · QA pass · CI open · merge by the lead on green (standing approval, 24 Oct 2026).
+- Open findings: none above Low. R4 skipped (cleanup).
+- Decisions: none.
+- Blockers: Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead none.
+
 ## 2026-11-06 — M4 plugin commands — merged
 
 - Changed: PR #50 `feat/plugin-commands` merged by the lead once CI passed (standing approval, 2026-10-24). Both M4 boxes ticked in PLAN.md; CLAUDE.md "Current status" updated.
