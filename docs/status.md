@@ -2,7 +2,7 @@
 
 Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
 
-## 2026-11-10 — M5 batch 1: rename to Pitdeck — ready to merge
+## 2026-11-10 — M5 batch 1: rename to Pitdeck — merged
 
 - Changed: `refactor/rename-pitdeck`. The CLI is `pitdeck`, the folders are `.pitdeck/` and `~/.pitdeck/`, the Dart package is `dart/pitdeck_drift` with `ext.pitdeck.drift.*` extensions, the plugin is `pitdeck` from the dev marketplace `pitdeck-dev`; CI jobs, scripts, README, CLAUDE.md and current docs follow. No behaviour change. History records (this log, `docs/qa/**`, old decks, dated PLAN lines) keep the old name. The npm scope `@project-deck/*` stays (ADR 0006). Developer commits 08b7759, 85e03d5, a41b5e7.
 - Tester: 027dbe9, 23 tests (Dart and TS agree on extension names; old `.flutterdeck/` folders are never read or changed; the `.gitignore` block covers every file the daemon writes; the plugin hook reads the new paths). No defects.
@@ -10,7 +10,9 @@ Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry re
 - Marketing: the live M3 drafts (install guide, demo script, post, voice) renamed to Pitdeck, 8dc5280; the M3 checkpoint is still open, so the PM may publish them.
 - QA (2026-11-10): 6/7 pass, [qa/M5.md](qa/M5.md) "Batch 1 — rename to Pitdeck". Commands, `.pitdeck/` files (runtime.json 0600, git-ignored), dashboard title, Host/Origin/token rejections, 68/68 Playwright e2e, MCP `pitdeck` with the same 7 tools, Android logs 9/9 on the Pixel_3a AVD (the Pixel_9_Pro AVD is out of storage). QA used `ADB_VENDOR_KEYS` pointing at the PM's real adb key, read-only, so the emulator trusted the scratch-HOME adb. Criterion 7, installing the plugin under the new name, needs the PM (steps in qa/M5.md "PM check").
 - Lead: `main` has no branch protection (GitHub reports "Branch not protected"). The M5 design's abuse-case mitigation assumes it; raised to the PM for the release batch.
-- Gates: developer pass · tester pass · reviewer approve with notes (re-check open) · QA pass (PM step after merge) · CI open.
+- Reviewer re-check (2026-11-10): approve. R1–R6 fixed; `pnpm check` passes at every code commit (3939, 3943, 3943, 3966). Two optional test cleanups left (compare exported constants instead of searching the hook source; use a recursive `readdir`).
+- Gates: developer pass · tester pass · reviewer approve · QA pass (PM step after merge) · CI pass · merged by the lead on green (standing approval, 24 Oct 2026).
+- To delete after the merge (standing approval): remote and local branch `refactor/rename-pitdeck`.
 - Open findings: none above Low.
 - Blockers: Developer none · Tester none · Reviewer none · QA none (Pixel_9_Pro AVD full; not blocking) · Marketer none · Lead none.
 
