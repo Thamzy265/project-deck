@@ -13,6 +13,7 @@ import {
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, sep } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { SpawnFn } from './spawn.js';
 import { daemonMainPath, spawnDaemon } from './spawn.js';
@@ -22,6 +23,16 @@ describe('spawnDaemon', () => {
     const path = daemonMainPath();
     expect(path.endsWith(['daemon', 'dist', 'main.js'].join(sep))).toBe(true);
     expect(existsSync(path)).toBe(true);
+  });
+
+  it('prefers a daemon.js next to the code, as in the npm bundle', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'deck-spawn-bundle-'));
+    try {
+      await writeFile(join(dir, 'daemon.js'), '');
+      expect(daemonMainPath(pathToFileURL(join(dir, 'chunk-abc.js')))).toBe(join(dir, 'daemon.js'));
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 
   it('runs node on the daemon entry, detached and quiet, and lets go of it', () => {
