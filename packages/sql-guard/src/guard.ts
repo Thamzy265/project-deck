@@ -23,7 +23,7 @@ export interface SqlGuardOptions {
   checkTimeoutMs?: number;
   /** Scratch databases kept, one per schema. */
   maxSchemas?: number;
-  /** Test seam: the worker script. Defaults to the built worker next to this file. */
+  /** Test seam: the worker script. Defaults to the built guard-worker.js next to this file. */
   workerUrl?: URL;
 }
 
@@ -53,7 +53,7 @@ export function createSqlGuard(opts: SqlGuardOptions = {}): SqlGuard {
   const initTimeoutMs = opts.initTimeoutMs ?? 10_000;
   const checkTimeoutMs = opts.checkTimeoutMs ?? 1000;
   const schemaTimeoutMs = opts.schemaTimeoutMs ?? 5000;
-  const workerUrl = opts.workerUrl ?? new URL('./worker.js', import.meta.url);
+  const workerUrl = opts.workerUrl ?? new URL('./guard-worker.js', import.meta.url);
   let live: Worker | undefined;
   let starting: Promise<Worker | undefined> | undefined;
   let queue: Promise<unknown> = Promise.resolve();
