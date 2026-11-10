@@ -2,6 +2,18 @@
 
 Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
 
+## 2026-11-10 — M5 batch 1: rename to Pitdeck — ready to merge
+
+- Changed: `refactor/rename-pitdeck`. The CLI is `pitdeck`, the folders are `.pitdeck/` and `~/.pitdeck/`, the Dart package is `dart/pitdeck_drift` with `ext.pitdeck.drift.*` extensions, the plugin is `pitdeck` from the dev marketplace `pitdeck-dev`; CI jobs, scripts, README, CLAUDE.md and current docs follow. No behaviour change. History records (this log, `docs/qa/**`, old decks, dated PLAN lines) keep the old name. The npm scope `@project-deck/*` stays (ADR 0006). Developer commits 08b7759, 85e03d5, a41b5e7.
+- Tester: 027dbe9, 23 tests (Dart and TS agree on extension names; old `.flutterdeck/` folders are never read or changed; the `.gitignore` block covers every file the daemon writes; the plugin hook reads the new paths). No defects.
+- Reviewer: code review at high and security review on this worktree; each commit built and tested on its own. Approve with notes, no security finding. R1 (a homoglyph attack test missed by the rename), R2 (CI and QA scripts fixed one commit late), R3 (keep the old `.flutterdeck/*` ignore lines so an old build's token can't be committed), R4 (old paths in the plan's security text), R6 (upgrade note for dev checkouts) fixed in the rewritten commits above. R5: the Later line about the old `.gitignore` marker fired with the rename; closed and removed by the lead, because `init` adding a second block is the intended, tested behaviour and no released user has the old block.
+- Marketing: the live M3 drafts (install guide, demo script, post, voice) renamed to Pitdeck, 8dc5280; the M3 checkpoint is still open, so the PM may publish them.
+- QA (2026-11-10): 6/7 pass, [qa/M5.md](qa/M5.md) "Batch 1 — rename to Pitdeck". Commands, `.pitdeck/` files (runtime.json 0600, git-ignored), dashboard title, Host/Origin/token rejections, 68/68 Playwright e2e, MCP `pitdeck` with the same 7 tools, Android logs 9/9 on the Pixel_3a AVD (the Pixel_9_Pro AVD is out of storage). QA used `ADB_VENDOR_KEYS` pointing at the PM's real adb key, read-only, so the emulator trusted the scratch-HOME adb. Criterion 7, installing the plugin under the new name, needs the PM (steps in qa/M5.md "PM check").
+- Lead: `main` has no branch protection (GitHub reports "Branch not protected"). The M5 design's abuse-case mitigation assumes it; raised to the PM for the release batch.
+- Gates: developer pass · tester pass · reviewer approve with notes (re-check open) · QA pass (PM step after merge) · CI open.
+- Open findings: none above Low.
+- Blockers: Developer none · Tester none · Reviewer none · QA none (Pixel_9_Pro AVD full; not blocking) · Marketer none · Lead none.
+
 ## 2026-11-10 — M5 started — plan approved
 
 - Changed: PM asked to start M5 ("start M5"). Branch `docs/m5-plan`. Size: large (public release, new outside services: npm, pub.dev, the Claude Code plugin marketplace). Design note and deck come first; the developer is briefed only after the PM approves the deck.
