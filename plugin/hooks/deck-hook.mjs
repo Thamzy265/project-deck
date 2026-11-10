@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 // @ts-check
 /**
- * FlutterDeck's Claude Code hook: tells the project's local daemon when Claude finishes,
+ * Pitdeck's Claude Code hook: tells the project's local daemon when Claude finishes,
  * waits for the developer, or reloads the app through the Dart MCP server. It reads the
  * hook's JSON from stdin and POSTs a small event to http://127.0.0.1:<port>/api/events,
- * with the port and token from `.flutterdeck/runtime.json`.
+ * with the port and token from `.pitdeck/runtime.json`.
  *
  * Rules (docs/design/m2-dashboard.md, "Failure plan" and "Privacy"):
  * - It never blocks Claude: everything ends within 2 s, the exit code is always 0 and
@@ -14,7 +14,7 @@
  *   Never `last_assistant_message`, `transcript_path`, `cwd` or the tool's input (whose
  *   app URI holds a VM service auth code).
  * - The project folder may come from a cloned repository, so it never follows a link in
- *   `.flutterdeck/` and does nothing unless the folder was set up by `flutterdeck init`.
+ *   `.pitdeck/` and does nothing unless the folder was set up by `pitdeck init`.
  *
  * Standalone on purpose: no dependencies and no build, so it works wherever the plugin is.
  */
@@ -290,10 +290,10 @@ async function readPlainFile(path, maxBytes) {
  * @returns {Promise<{ port: number, token: string } | undefined>}
  */
 export async function readDaemonAddress(projectDir) {
-  const stateDir = join(projectDir, '.flutterdeck');
+  const stateDir = join(projectDir, '.pitdeck');
   const dir = lstatSync(stateDir, { throwIfNoEntry: false });
   if (dir === undefined || dir.isSymbolicLink() || !dir.isDirectory()) return undefined;
-  // `flutterdeck init` writes config.json; without it the folder isn't set up.
+  // `pitdeck init` writes config.json; without it the folder isn't set up.
   const config = lstatSync(join(stateDir, 'config.json'), { throwIfNoEntry: false });
   if (config === undefined || !config.isFile()) return undefined;
   const text = await readPlainFile(join(stateDir, 'runtime.json'), MAX_RUNTIME_BYTES);
@@ -350,7 +350,7 @@ function call(opts) {
 
 /**
  * This project's id as its daemon shows it on /api/health: the first 12 hex characters of
- * SHA-256(salt + project path), the salt from the user's `~/.flutterdeck/ports.json`. The
+ * SHA-256(salt + project path), the salt from the user's `~/.pitdeck/ports.json`. The
  * same as core's readProjectIdentity, kept here so the hook needs no build. Read only;
  * undefined when the registry is missing, a link or damaged.
  * @param {string} projectDir
@@ -358,7 +358,7 @@ function call(opts) {
  */
 export async function ownProjectId(projectDir, home = homedir()) {
   try {
-    const text = await readPlainFile(join(home, '.flutterdeck', 'ports.json'), 8_388_608);
+    const text = await readPlainFile(join(home, '.pitdeck', 'ports.json'), 8_388_608);
     if (text === undefined) return undefined;
     /** @type {unknown} */
     const registry = JSON.parse(text);
@@ -384,7 +384,7 @@ export async function ownProjectId(projectDir, home = homedir()) {
 }
 
 /**
- * Sends the event if the daemon on the port is this project's FlutterDeck. The health
+ * Sends the event if the daemon on the port is this project's Pitdeck. The health
  * check comes first, so the token is never handed to another program that took a stale
  * port, or to another project's daemon (a project id that isn't ours, or one we can't work
  * out, means no send).

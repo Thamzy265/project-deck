@@ -25,7 +25,7 @@ export const RunningAppSchema = z.object({
 export type RunningApp = z.infer<typeof RunningAppSchema>;
 
 /**
- * Who started a reload. Absent means FlutterDeck did (the dashboard or the API);
+ * Who started a reload. Absent means Pitdeck did (the dashboard or the API);
  * `external` is anyone else, such as Claude through the Dart MCP server or the IDE.
  */
 export const ReloadSourceSchema = z.enum(['deck', 'external']);

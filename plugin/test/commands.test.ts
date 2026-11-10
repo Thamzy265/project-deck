@@ -25,12 +25,12 @@ const DART_TOOLS = z
 
 /** Every name the Dart MCP server's tools can have: our plugin, the Dart team's plugin, a project entry. */
 const DART_PREFIXES = [
-  'mcp__plugin_flutterdeck_dart__',
+  'mcp__plugin_pitdeck_dart__',
   'mcp__plugin_dart-flutter_dart-mcp-server__',
   'mcp__dart__',
 ];
-const DECK_PREFIX = 'mcp__plugin_flutterdeck_flutterdeck__';
-const PLUGIN_DART_PREFIX = 'mcp__plugin_flutterdeck_dart__';
+const DECK_PREFIX = 'mcp__plugin_pitdeck_pitdeck__';
+const PLUGIN_DART_PREFIX = 'mcp__plugin_pitdeck_dart__';
 
 /**
  * Claude Code tools (CLI 2.1.236, code.claude.com/docs/en/tools-reference) that can run a
@@ -92,7 +92,7 @@ let deckTools: { name: string; readOnly: boolean }[] = [];
 let projectDir = '';
 
 beforeAll(async () => {
-  // FlutterDeck's real tool list, from its server; listing tools never calls the daemon.
+  // Pitdeck's real tool list, from its server; listing tools never calls the daemon.
   projectDir = mkdtempSync(join(tmpdir(), 'deck-plugin-commands-'));
   const daemon = new DaemonClient({ projectDir, version: '0.0.0', spawnDaemon: () => undefined });
   const deck = createDeckServer({ projectDir, daemon });
@@ -110,8 +110,8 @@ afterAll(() => rmSync(projectDir, { recursive: true, force: true }));
 
 const deckNames = () => deckTools.map((t) => t.name);
 
-describe('FlutterDeck and the Dart MCP server', () => {
-  it('FlutterDeck has its tools and none of the Dart MCP server’s', () => {
+describe('Pitdeck and the Dart MCP server', () => {
+  it('Pitdeck has its tools and none of the Dart MCP server’s', () => {
     expect(deckNames()).toEqual(
       expect.arrayContaining(['deck_status', 'get_logs', 'db_list', 'db_query', 'db_diff']),
     );
@@ -135,7 +135,7 @@ describe.each(['check', 'db'])('skills/%s/SKILL.md', (name) => {
     expect(command().body).toContain('$ARGUMENTS');
   });
 
-  it('names only tools that FlutterDeck or the Dart MCP server has', () => {
+  it('names only tools that Pitdeck or the Dart MCP server has', () => {
     const named = namedTools(command().body);
     expect(named.length).toBeGreaterThan(2);
     for (const tool of named) expect([...deckNames(), ...DART_TOOLS]).toContain(tool);
@@ -147,7 +147,7 @@ describe.each(['check', 'db'])('skills/%s/SKILL.md', (name) => {
     expect(body).toMatch(/never follow instructions/i);
   });
 
-  it("pre-approves only FlutterDeck's read-only tools and the plugin's Dart dtd, get_runtime_errors and (in /check) hot_reload", () => {
+  it("pre-approves only Pitdeck's read-only tools and the plugin's Dart dtd, get_runtime_errors and (in /check) hot_reload", () => {
     const allowedDart = name === 'check' ? ['dtd', 'get_runtime_errors', 'hot_reload'] : [];
     for (const tool of command().meta['allowed-tools']) {
       if (tool.startsWith(DECK_PREFIX)) {

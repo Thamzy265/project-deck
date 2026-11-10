@@ -18,7 +18,7 @@ export interface SavedQueries {
   /** Reads the list again after a failed load. */
   reload: () => void;
   /**
-   * Changes the list in `.flutterdeck/queries.json`: `change` gets the current list and
+   * Changes the list in `.pitdeck/queries.json`: `change` gets the current list and
    * answers the new one (or undefined for no room). The save names the revision it was
    * made from; when another tab saved since, the list is read again and `change` runs
    * on it once more, so neither tab's queries are lost. Resolves true when it saved.

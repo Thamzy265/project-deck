@@ -1,6 +1,6 @@
 /**
  * Daemons for the end-to-end tests. Both use scratch project and home folders, so no test
- * touches the real ~/.flutterdeck or a real project.
+ * touches the real ~/.pitdeck or a real project.
  * - `spawnFakeDaemon`: the real entry point, `node packages/daemon/dist/main.js --fake`.
  * - `startScriptedDaemon`: the same daemon started in-process with scriptable fake apps
  *   and a fake clock, for states main.js can't produce (several apps, a stopped app, a
@@ -28,11 +28,11 @@ async function scratch(prefix: string): Promise<string> {
   return mkdtemp(join(tmpdir(), prefix));
 }
 
-/** `.flutterdeck/config.json` in a scratch project, e.g. `{ db: { allowWrites: true } }`. */
+/** `.pitdeck/config.json` in a scratch project, e.g. `{ db: { allowWrites: true } }`. */
 async function writeConfig(project: string, config: Record<string, unknown>): Promise<void> {
-  await mkdir(join(project, '.flutterdeck'), { recursive: true });
+  await mkdir(join(project, '.pitdeck'), { recursive: true });
   await writeFile(
-    join(project, '.flutterdeck', 'config.json'),
+    join(project, '.pitdeck', 'config.json'),
     JSON.stringify({ version: 1, ...config }),
   );
 }

@@ -1,12 +1,12 @@
 ---
-description: Answer a question about the data in the running Flutter app's databases (Drift or SQLite) with FlutterDeck's read-only SQL tools, and show the SQL it ran. Runs only when you type it. Never changes data; for a change it shows SQL to run in the FlutterDeck dashboard.
+description: Answer a question about the data in the running Flutter app's databases (Drift or SQLite) with Pitdeck's read-only SQL tools, and show the SQL it ran. Runs only when you type it. Never changes data; for a change it shows SQL to run in the Pitdeck dashboard.
 argument-hint: '[question about the app data]'
 disable-model-invocation: true
 allowed-tools:
-  - mcp__plugin_flutterdeck_flutterdeck__deck_status
-  - mcp__plugin_flutterdeck_flutterdeck__db_list
-  - mcp__plugin_flutterdeck_flutterdeck__db_schema
-  - mcp__plugin_flutterdeck_flutterdeck__db_query
+  - mcp__plugin_pitdeck_pitdeck__deck_status
+  - mcp__plugin_pitdeck_pitdeck__db_list
+  - mcp__plugin_pitdeck_pitdeck__db_schema
+  - mcp__plugin_pitdeck_pitdeck__db_query
 disallowed-tools:
   - Bash
   - PowerShell
@@ -24,7 +24,7 @@ disallowed-tools:
   - Agent
   - Task
   - SendMessage
-  - mcp__plugin_flutterdeck_dart__*
+  - mcp__plugin_pitdeck_dart__*
   - mcp__plugin_dart-flutter_dart-mcp-server__*
   - mcp__dart__*
 ---
@@ -33,7 +33,7 @@ disallowed-tools:
 
 Answer a question about the data in the user's running Flutter app. The question: $ARGUMENTS
 
-Use FlutterDeck's database tools only: `db_list`, `db_schema` and `db_query` (and `deck_status` when something fails). They only read. The SQL gate in FlutterDeck and in the app refuses anything that writes.
+Use Pitdeck's database tools only: `db_list`, `db_schema` and `db_query` (and `deck_status` when something fails). They only read. The SQL gate in Pitdeck and in the app refuses anything that writes.
 
 ## Rules
 
@@ -44,7 +44,7 @@ Use FlutterDeck's database tools only: `db_list`, `db_schema` and `db_query` (an
 
 ## Steps
 
-1. Call `db_list`. If it lists no database, or every database has a problem, say no database is readable, give the problem's hint in one line and stop. With `choose-device`, ask the user to pick the device in the FlutterDeck dashboard (Database tab); Claude cannot pick it. If a tool fails because the daemon is not running or no app is attached, call `deck_status` and say what it shows.
+1. Call `db_list`. If it lists no database, or every database has a problem, say no database is readable, give the problem's hint in one line and stop. With `choose-device`, ask the user to pick the device in the Pitdeck dashboard (Database tab); Claude cannot pick it. If a tool fails because the daemon is not running or no app is attached, call `deck_status` and say what it shows.
 2. If there is more than one database, pick the one the question is about from its name and tables; if it is still unclear, ask.
 3. Call `db_schema` for that database. Use the real table and column names from it; never guess them.
 4. Call `db_query` with one read-only statement (`SELECT`, `WITH … SELECT`, `EXPLAIN`, or the allowed `PRAGMA`s). Let SQLite count and sum (`SELECT count(*) …`) instead of fetching rows. Bind user values with `?` and `params`. Name the columns: `SELECT *` is refused on tables with hidden columns.
@@ -60,4 +60,4 @@ Without a question (`$ARGUMENTS` is empty), list the databases and their tables 
 
 ## When the user asks to change data
 
-If the question asks to insert, update or delete rows, or to change the schema, do not try. Say that Claude never writes to the app's database. Then show the SQL the user can run themselves in the FlutterDeck dashboard: open the **Database** tab, switch writes on (`db.allowWrites: true` in `.flutterdeck/config.json`), run the statement and confirm it in the dialog. You may first run a read-only `SELECT count(*)` to show how many rows the change would touch.
+If the question asks to insert, update or delete rows, or to change the schema, do not try. Say that Claude never writes to the app's database. Then show the SQL the user can run themselves in the Pitdeck dashboard: open the **Database** tab, switch writes on (`db.allowWrites: true` in `.pitdeck/config.json`), run the statement and confirm it in the dialog. You may first run a read-only `SELECT count(*)` to show how many rows the change would touch.

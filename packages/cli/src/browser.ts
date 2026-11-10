@@ -1,5 +1,5 @@
 /**
- * `flutterdeck open --browser`: shows the dashboard in the default browser. One fixed
+ * `pitdeck open --browser`: shows the dashboard in the default browser. One fixed
  * program per system, by absolute path, with no shell: `/usr/bin/open` (macOS),
  * `xdg-open` from /usr/bin or /usr/local/bin (Linux), `%SystemRoot%\explorer.exe`
  * (Windows; `cmd /c start` would parse the URL as shell text). The URL must be exactly a

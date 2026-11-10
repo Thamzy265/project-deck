@@ -12,7 +12,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 import type { Daemon } from './daemon.js';
 import { startDaemon } from './daemon.js';
 
-const INDEX = '<!doctype html><title>FlutterDeck</title><div id="root"></div>';
+const INDEX = '<!doctype html><title>Pitdeck</title><div id="root"></div>';
 const SCRIPT = 'console.log("dashboard")';
 const SECRET = 'SECRET-OUTSIDE-ASSETS';
 
@@ -302,7 +302,7 @@ describe('missing builds', () => {
     const d = await start('none');
     const auth = await cookieAuth(d);
     const page = await send(d, '/', auth);
-    expect(page.body).toContain('FlutterDeck is running');
+    expect(page.body).toContain('Pitdeck is running');
     expect((await send(d, '/assets/index-abc.js', auth)).status).toBe(404);
     expect((await send(d, '/assets/index-abc.js')).status).toBe(401);
   });

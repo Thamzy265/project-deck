@@ -3,7 +3,7 @@ import { useDeck } from '../state/DeckProvider.js';
 
 function bannerText(c: ConnectionState): string {
   if (c.kind === 'connecting') return 'Connecting…';
-  if (c.kind === 'retrying') return `Lost connection to FlutterDeck — retrying (${c.attempt})…`;
+  if (c.kind === 'retrying') return `Lost connection to Pitdeck — retrying (${c.attempt})…`;
   return '';
 }
 

@@ -2,7 +2,7 @@
 
 Status: draft for the PM to approve (10 Nov 2026). No release copy is written from this file until the PM approves it. The earlier M3 drafts in this folder predate it; the marketer re-checks them against it after approval.
 
-"FlutterDeck" is the working name (open decision, see `name-shortlist.md`). This file says "the product" so it survives a rename.
+The product was called "FlutterDeck" until the PM renamed it Pitdeck (10 Nov 2026; the shortlist is in `name-shortlist.md`). This file says "the product" so it survives a rename.
 
 ## Audience
 
@@ -23,7 +23,7 @@ Status: draft for the PM to approve (10 Nov 2026). No release copy is written fr
 ## Words we use
 
 - **attach** (to a running app), **running app**, **debug mode**
-- **read-only through FlutterDeck's tools**, when we describe Claude and the database
+- **read-only through Pitdeck's tools**, when we describe Claude and the database
 - **early preview**, **installs from a git checkout** (until npm and pub.dev are live)
 - **tested on** plus the exact setup (for example "macOS, Android emulator")
 - **open source (MIT)**
@@ -43,7 +43,7 @@ Status: draft for the PM to approve (10 Nov 2026). No release copy is written fr
 
 1. Every factual claim traces to QA evidence (`docs/qa/<milestone>.md#<row>`) or a cited source. If it does not, reword it until it is true, or leave it out.
 2. Describe only features marked PASS in the QA evidence. Everything else goes under "Not included" in the draft.
-3. Scope the safety claims. "Claude can't change data" always means "through FlutterDeck's tools". Claude Code's own shell, file and Browser pane tools are not covered (risks accepted by the PM, `docs/status.md`).
+3. Scope the safety claims. "Claude can't change data" always means "through Pitdeck's tools". Claude Code's own shell, file and Browser pane tools are not covered (risks accepted by the PM, `docs/status.md`).
 4. Say what was tested and what was not: macOS with an Android emulator is tested. Windows, Linux and iOS devices are not.
 5. No comparison with another tool without evidence QA has verified.
 6. No promise about the future (roadmap items, dates) in launch copy. Plans live in `docs/PLAN.md`.
@@ -57,4 +57,4 @@ Each one traces to a verified claim in `m3-post.md` (claims 1, 3, 4 and 2, 18).
 
 - "Your Drift tables show up live in Claude Desktop's Browser pane, and new rows flash as your app adds them."
 - "It attaches to the app your IDE already runs, so your breakpoints still hit."
-- "Through FlutterDeck, Claude can read your database but not change it: its database tools refuse every query that writes."
+- "Through Pitdeck, Claude can read your database but not change it: its database tools refuse every query that writes."

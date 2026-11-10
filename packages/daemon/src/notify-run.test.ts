@@ -116,8 +116,8 @@ describe('systemNotifier', () => {
     const { spawn, children, calls } = fakeSpawn();
     const log = vi.fn();
     const notify = systemNotifier({ platform: 'darwin', env: {}, spawn, log });
-    notify('FlutterDeck', 'Claude is waiting — secret text');
-    notify('FlutterDeck', 'again');
+    notify('Pitdeck', 'Claude is waiting — secret text');
+    notify('Pitdeck', 'again');
     for (const child of children) child.emit('exit', 1, null);
     await vi.waitFor(() => expect(log).toHaveBeenCalledTimes(1));
     expect(calls.map((c) => c.file)).toEqual(['/usr/bin/osascript', '/usr/bin/osascript']);
@@ -136,8 +136,8 @@ describe('systemNotifier', () => {
       log,
       findNotifySend: () => undefined,
     });
-    notify('FlutterDeck', 'a');
-    notify('FlutterDeck', 'b');
+    notify('Pitdeck', 'a');
+    notify('Pitdeck', 'b');
     expect(calls).toEqual([]);
     expect(log.mock.calls).toEqual([
       ['notify-send not found in /usr/bin or /usr/local/bin; OS notifications are off'],
@@ -154,8 +154,8 @@ describe('systemNotifier', () => {
       log: vi.fn(),
       findNotifySend,
     });
-    notify('FlutterDeck', 'a');
-    notify('FlutterDeck', 'b');
+    notify('Pitdeck', 'a');
+    notify('Pitdeck', 'b');
     expect(findNotifySend).toHaveBeenCalledTimes(1);
     expect(calls.map((c) => c.file)).toEqual([
       '/usr/local/bin/notify-send',
@@ -193,13 +193,13 @@ describe('notifier clean-up', () => {
   it('close() kills notifiers still running, and later calls run nothing', () => {
     const { spawn, children, calls } = fakeSpawn();
     const notify = systemNotifier({ platform: 'darwin', env: {}, spawn, log: vi.fn() });
-    notify('FlutterDeck', 'a');
-    notify('FlutterDeck', 'b');
+    notify('Pitdeck', 'a');
+    notify('Pitdeck', 'b');
     children[0]?.emit('exit', 0, null);
     notify.close?.();
     expect(children[0]?.killed).toEqual([]);
     expect(children[1]?.killed).toEqual(['SIGKILL']);
-    notify('FlutterDeck', 'c');
+    notify('Pitdeck', 'c');
     expect(calls).toHaveLength(2);
   });
 });

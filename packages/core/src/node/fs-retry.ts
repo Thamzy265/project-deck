@@ -1,6 +1,6 @@
 /**
  * Windows refuses to rename over (or remove) a file while another process has it open,
- * with EPERM, EACCES or EBUSY. FlutterDeck's readers hold a file only for a moment, so
+ * with EPERM, EACCES or EBUSY. Pitdeck's readers hold a file only for a moment, so
  * those operations are tried again for about a second, as graceful-fs does.
  */
 import { setTimeout as sleep } from 'node:timers/promises';

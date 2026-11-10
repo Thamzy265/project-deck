@@ -98,7 +98,7 @@ describe('dashboard login cookie', () => {
     const d = await start();
     const res = await send(d, '/', NAVIGATION);
     expect(res.status).toBe(200);
-    expect(res.body).toContain('FlutterDeck');
+    expect(res.body).toContain('Pitdeck');
     expect(res.setCookie).toHaveLength(1);
     const [pair, ...attrs] = (res.setCookie[0] ?? '').split(';').map((p) => p.trim());
     expect(pair).toMatch(new RegExp(`^deck_session_${d.port}=[A-Za-z0-9_-]{43,}$`));

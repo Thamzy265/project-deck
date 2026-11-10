@@ -1,5 +1,5 @@
 /**
- * The `flutterdeck` command line: parses the arguments and runs one command. Returns the
+ * The `pitdeck` command line: parses the arguments and runs one command. Returns the
  * exit code, or 'serving' for `mcp`, which keeps running until Claude closes stdin.
  */
 import { stat } from 'node:fs/promises';
@@ -34,7 +34,7 @@ export const USAGE = [
   '  stop     Stop it',
   '  open     Let the dashboard log in again and print its address',
   '           (--browser also opens it in the default browser)',
-  '  mcp      Run the FlutterDeck MCP server over stdio (for Claude)',
+  '  mcp      Run the Pitdeck MCP server over stdio (for Claude)',
   '',
   '--project defaults to the current folder.',
 ];

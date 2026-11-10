@@ -1,6 +1,6 @@
 /**
  * Edge cases of the closed-pipe guard: unit tests on real Node streams, then the built
- * entrypoint as a process with stdout or stderr gone (`flutterdeck stop | head -1`).
+ * entrypoint as a process with stdout or stderr gone (`pitdeck stop | head -1`).
  * Only fakes and scratch folders: no daemon is started, no network, no real HOME.
  */
 import { spawn } from 'node:child_process';

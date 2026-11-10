@@ -280,7 +280,7 @@ const DIFF_HINT =
 export function problemHint(code: string): string | undefined {
   switch (code) {
     case 'choose-device':
-      return 'More than one device or simulator has this app. Ask the user to pick one in the FlutterDeck dashboard (Database tab), then try again. Claude cannot pick it.';
+      return 'More than one device or simulator has this app. Ask the user to pick one in the Pitdeck dashboard (Database tab), then try again. Claude cannot pick it.';
     case 'unsupported':
       return "This app or platform has no database inspection (for example a Linux or Windows desktop app). Don't retry.";
     case 'busy':
@@ -288,11 +288,11 @@ export function problemHint(code: string): string | undefined {
     case 'timeout':
       return 'It took too long and was stopped. Narrow the query (WHERE, LIMIT, fewer columns) or try again.';
     case 'setup-needed':
-      return 'The app needs the flutterdeck_drift package for live reads; the dashboard Database tab shows the setup.';
+      return 'The app needs the pitdeck_drift package for live reads; the dashboard Database tab shows the setup.';
     case 'update-needed':
-      return 'Update the flutterdeck_drift package in the app.';
+      return 'Update the pitdeck_drift package in the app.';
     case 'not-debuggable':
-      return 'Android lets FlutterDeck copy files only from a debug build of the app.';
+      return 'Android lets Pitdeck copy files only from a debug build of the app.';
     case 'app-gone':
       return 'No app is attached. Ask the user to start the app from their IDE or flutter run; call deck_status to check.';
     case 'not-found':

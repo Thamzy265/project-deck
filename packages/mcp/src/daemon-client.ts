@@ -45,8 +45,8 @@ import { daemonLogPath } from './spawn.js';
 import { setTimeout as sleep } from 'node:timers/promises';
 import type { z } from 'zod';
 
-export const NOT_RUNNING = "FlutterDeck daemon isn't running: run `flutterdeck start`";
-export const NOT_SET_UP = "FlutterDeck isn't set up in this folder. Run `flutterdeck init` first.";
+export const NOT_RUNNING = "Pitdeck daemon isn't running: run `pitdeck start`";
+export const NOT_SET_UP = "Pitdeck isn't set up in this folder. Run `pitdeck init` first.";
 /**
  * The daemon still answers /api/health but dropped the same call twice. Starting another
  * would only exit at once (one daemon per project), so the user has to stop this one.
@@ -54,17 +54,17 @@ export const NOT_SET_UP = "FlutterDeck isn't set up in this folder. Run `flutter
  * wording is easy to change.
  */
 export function droppedCallText(port: number, pid: number, route: string): string {
-  return `FlutterDeck daemon on port ${port} (pid ${pid}) answers but dropped ${route}. Run \`flutterdeck stop\`, then try again.`;
+  return `Pitdeck daemon on port ${port} (pid ${pid}) answers but dropped ${route}. Run \`pitdeck stop\`, then try again.`;
 }
 /**
  * The daemon answers health but dropped POST /api/shutdown (R-O1-1). `stop` has no other
- * way to stop it, and FlutterDeck never signals a process itself, so the user quits it.
+ * way to stop it, and Pitdeck never signals a process itself, so the user quits it.
  */
 export function droppedShutdownText(port: number, pid: number): string {
-  return `FlutterDeck daemon on port ${port} (pid ${pid}) answers health but dropped POST /api/shutdown. Quit process ${pid} by hand, then try again.`;
+  return `Pitdeck daemon on port ${port} (pid ${pid}) answers health but dropped POST /api/shutdown. Quit process ${pid} by hand, then try again.`;
 }
 const TOKEN_REJECTED =
-  'FlutterDeck daemon rejected the token in .flutterdeck/runtime.json. Run `flutterdeck stop`, then try again.';
+  'Pitdeck daemon rejected the token in .pitdeck/runtime.json. Run `pitdeck stop`, then try again.';
 export const DEFAULT_TIMEOUT_MS = 5000;
 export const DEFAULT_READY_TIMEOUT_MS = 10_000;
 export const DEFAULT_STOP_TIMEOUT_MS = 10_000;
@@ -83,7 +83,7 @@ export class DaemonError extends Error {}
 /** What a failed tool call tells Claude: the daemon's message, or that the server failed. */
 export function errorText(err: unknown): string {
   if (err instanceof DaemonError) return err.message;
-  return `FlutterDeck MCP server failed: ${err instanceof Error ? err.message : String(err)}`;
+  return `Pitdeck MCP server failed: ${err instanceof Error ? err.message : String(err)}`;
 }
 
 /**
@@ -117,7 +117,7 @@ export class DaemonDbError extends DaemonError {
   }
 }
 
-/** No daemon answered: nothing listens, or it isn't a FlutterDeck. */
+/** No daemon answered: nothing listens, or it isn't a Pitdeck. */
 class Unreachable extends Error {
   constructor(readonly route: string) {
     super(route);
@@ -297,11 +297,11 @@ export class DaemonClient {
       await sleep(this.pollMs);
     }
     throw new DaemonError(
-      `FlutterDeck daemon on port ${conn.port} didn't stop within ${this.stopTimeoutMs / 1000} s.`,
+      `Pitdeck daemon on port ${conn.port} didn't stop within ${this.stopTimeoutMs / 1000} s.`,
     );
   }
 
-  /** `connect`, after refusing a linked `.flutterdeck` (its files would be read through it). */
+  /** `connect`, after refusing a linked `.pitdeck` (its files would be read through it). */
   private async connectChecked(): Promise<Connection | undefined> {
     try {
       await checkStateDir(this.opts.projectDir);
@@ -313,7 +313,7 @@ export class DaemonClient {
   }
 
   private async withDaemon<T>(call: (c: Connection) => Promise<T>): Promise<Answer<T>> {
-    // Lead decision 14 Oct 2026: only a folder `flutterdeck init` set up gets a daemon,
+    // Lead decision 14 Oct 2026: only a folder `pitdeck init` set up gets a daemon,
     // so opening Claude in any other folder starts nothing and writes nothing there.
     if (!(await this.isSetUp())) throw new DaemonError(NOT_SET_UP);
     return this.callDaemon(call, await this.connect(), true);
@@ -394,34 +394,34 @@ export class DaemonClient {
         HealthResponse,
       );
     } catch {
-      // Nothing listens, it hangs, or it isn't a FlutterDeck: either way not ours.
+      // Nothing listens, it hangs, or it isn't a Pitdeck: either way not ours.
       return undefined;
     }
     const ours = await this.ownProjectId();
     if (ours !== undefined && health.projectId === undefined) {
       // Can't tell it is ours, so it doesn't get the token.
       throw new ForeignDaemonError(
-        `The program on port ${info.port} didn't say which project it serves, so FlutterDeck didn't send it the token. Run \`flutterdeck stop\` and try again.`,
+        `The program on port ${info.port} didn't say which project it serves, so Pitdeck didn't send it the token. Run \`pitdeck stop\` and try again.`,
         info.port,
       );
     }
     if (ours !== undefined && health.projectId !== undefined && health.projectId !== ours) {
       throw new DaemonError(
-        `Another project's FlutterDeck (project ${health.projectId}) is on port ${info.port}, not this project's (project ${ours}). Stop it, or give this project another port in .flutterdeck/config.json.`,
+        `Another project's Pitdeck (project ${health.projectId}) is on port ${info.port}, not this project's (project ${ours}). Stop it, or give this project another port in .pitdeck/config.json.`,
       );
     }
     const warnings =
       health.version === this.opts.version
         ? []
         : [
-            `FlutterDeck daemon version ${health.version} differs from this MCP server (${this.opts.version}). Run \`flutterdeck stop\`; the next call starts the matching daemon.`,
+            `Pitdeck daemon version ${health.version} differs from this MCP server (${this.opts.version}). Run \`pitdeck stop\`; the next call starts the matching daemon.`,
           ];
     return { port: info.port, token: info.token, pid: info.pid, warnings };
   }
 
   private async isSetUp(): Promise<boolean> {
     try {
-      // A linked .flutterdeck is refused with its own message, before anything else.
+      // A linked .pitdeck is refused with its own message, before anything else.
       await checkStateDir(this.opts.projectDir);
     } catch (err) {
       if (err instanceof StateDirError) throw new DaemonError(err.message);
@@ -482,7 +482,7 @@ export class DaemonClient {
       const line = await lastLogLine(daemonLogPath(this.opts.projectDir), this.scrub);
       return line === undefined
         ? { kind: 'gone' }
-        : { kind: 'failed', reason: `FlutterDeck daemon couldn't start: ${line}` };
+        : { kind: 'failed', reason: `Pitdeck daemon couldn't start: ${line}` };
     })().finally(() => {
       this.starting = undefined;
       this.startStale.length = 0;
@@ -522,9 +522,7 @@ export class DaemonClient {
       });
     } catch {
       if (signal.aborted) {
-        throw new DaemonError(
-          `FlutterDeck daemon didn't answer ${route} within ${timeoutMs / 1000} s`,
-        );
+        throw new DaemonError(`Pitdeck daemon didn't answer ${route} within ${timeoutMs / 1000} s`);
       }
       throw new Unreachable(route);
     }
@@ -534,7 +532,7 @@ export class DaemonClient {
       if (dbError.success) {
         const { error, code, detail, devices } = dbError.data;
         throw new DaemonDbError(
-          `FlutterDeck daemon refused ${route}: ${error} (${res.status})`,
+          `Pitdeck daemon refused ${route}: ${error} (${res.status})`,
           code,
           error,
           detail,
@@ -543,11 +541,11 @@ export class DaemonClient {
       }
       const error = ErrorResponse.safeParse(body);
       const reason = error.success ? error.data.error : 'no reason given';
-      throw new DaemonError(`FlutterDeck daemon refused ${route}: ${reason} (${res.status})`);
+      throw new DaemonError(`Pitdeck daemon refused ${route}: ${reason} (${res.status})`);
     }
     const parsed = schema.safeParse(body);
     if (!parsed.success) {
-      throw new DaemonError(`FlutterDeck daemon sent an unexpected answer to ${route}`);
+      throw new DaemonError(`Pitdeck daemon sent an unexpected answer to ${route}`);
     }
     return parsed.data;
   }
@@ -583,7 +581,7 @@ function withWarnings(err: unknown, warnings: string[]): DaemonError {
     );
   }
   const message =
-    err instanceof DaemonError ? err.message : `FlutterDeck daemon call failed: ${String(err)}`;
+    err instanceof DaemonError ? err.message : `Pitdeck daemon call failed: ${String(err)}`;
   return new DaemonError([message, ...warnings].join('\n'));
 }
 

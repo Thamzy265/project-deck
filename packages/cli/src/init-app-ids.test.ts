@@ -1,5 +1,5 @@
 /**
- * `init` writes android.applicationId and ios.bundleId into .flutterdeck/config.json
+ * `init` writes android.applicationId and ios.bundleId into .pitdeck/config.json
  * when the project shows them plainly (docs/notes/untrusted-project-files.md), and
  * keeps every value the config already has.
  */
@@ -54,7 +54,7 @@ function init(opts: Partial<InitOptions> = {}): Promise<number> {
 }
 
 const config = async (): Promise<unknown> =>
-  parse(await readFile(join(project, '.flutterdeck', 'config.json'), 'utf8'));
+  parse(await readFile(join(project, '.pitdeck', 'config.json'), 'utf8'));
 
 async function android(gradle: string): Promise<void> {
   await mkdir(join(project, 'android', 'app'), { recursive: true });
@@ -76,26 +76,26 @@ describe('init writes the app ids it can read safely', () => {
       version: 1,
       port: 9147,
       android: { applicationId: 'com.example.shop_app' },
-      ios: { bundleId: 'dev.flutterdeck.flutterdeckSample' },
+      ios: { bundleId: 'dev.pitdeck.pitdeckSample' },
     });
     await expect(readConfig(project)).resolves.toMatchObject({
       android: { applicationId: 'com.example.shop_app' },
-      ios: { bundleId: 'dev.flutterdeck.flutterdeckSample' },
+      ios: { bundleId: 'dev.pitdeck.pitdeckSample' },
     });
     const text = lines.join('\n');
     expect(text).toContain('android.applicationId com.example.shop_app');
-    expect(text).toContain('ios.bundleId dev.flutterdeck.flutterdeckSample');
+    expect(text).toContain('ios.bundleId dev.pitdeck.pitdeckSample');
   });
 
   it('adds missing ids to an existing config and keeps its settings and layout', async () => {
     await android('applicationId = "com.example.shop_app"\n');
     await ios();
-    await mkdir(join(project, '.flutterdeck'));
+    await mkdir(join(project, '.pitdeck'));
     const before =
       '{\n    "version": 1,\n    "port": 9300,\n    "db": { "hiddenColumns": ["users.email"] }\n}\n';
-    await writeFile(join(project, '.flutterdeck', 'config.json'), before);
+    await writeFile(join(project, '.pitdeck', 'config.json'), before);
     expect(await init()).toBe(0);
-    const after = await readFile(join(project, '.flutterdeck', 'config.json'), 'utf8');
+    const after = await readFile(join(project, '.pitdeck', 'config.json'), 'utf8');
     // Its own four-space layout, and the db line as the user wrote it.
     expect(after).toContain('\n    "db": { "hiddenColumns": ["users.email"] }');
     expect(after).toContain('\n    "android": {');
@@ -104,36 +104,36 @@ describe('init writes the app ids it can read safely', () => {
       port: 9300,
       db: { hiddenColumns: ['users.email'] },
       android: { applicationId: 'com.example.shop_app' },
-      ios: { bundleId: 'dev.flutterdeck.flutterdeckSample' },
+      ios: { bundleId: 'dev.pitdeck.pitdeckSample' },
     });
     expect(lines.join('\n')).toMatch(
-      /updated +\.flutterdeck\/config\.json \(added android\.applicationId/,
+      /updated +\.pitdeck\/config\.json \(added android\.applicationId/,
     );
   });
 
   it('never replaces ids the config already has', async () => {
     await android('applicationId = "com.example.other"\n');
     await ios();
-    await mkdir(join(project, '.flutterdeck'));
+    await mkdir(join(project, '.pitdeck'));
     const before = JSON.stringify({
       version: 1,
       port: 9300,
       android: { applicationId: 'com.mine.app' },
       ios: { bundleId: 'com.mine.app' },
     });
-    await writeFile(join(project, '.flutterdeck', 'config.json'), before);
+    await writeFile(join(project, '.pitdeck', 'config.json'), before);
     expect(await init()).toBe(0);
-    expect(await readFile(join(project, '.flutterdeck', 'config.json'), 'utf8')).toBe(before);
-    expect(lines.join('\n')).toMatch(/unchanged +\.flutterdeck\/config\.json/);
+    expect(await readFile(join(project, '.pitdeck', 'config.json'), 'utf8')).toBe(before);
+    expect(lines.join('\n')).toMatch(/unchanged +\.pitdeck\/config\.json/);
   });
 
   it('changes nothing on a second run', async () => {
     await android('applicationId = "com.example.shop_app"\n');
     await ios();
     await init();
-    const first = await readFile(join(project, '.flutterdeck', 'config.json'), 'utf8');
+    const first = await readFile(join(project, '.pitdeck', 'config.json'), 'utf8');
     await init();
-    expect(await readFile(join(project, '.flutterdeck', 'config.json'), 'utf8')).toBe(first);
+    expect(await readFile(join(project, '.pitdeck', 'config.json'), 'utf8')).toBe(first);
   });
 
   it('writes no ids for a project without android or ios folders', async () => {
@@ -158,14 +158,14 @@ describe('init writes the app ids it can read safely', () => {
   it('asks the user to set ios.bundleId when the project uses a build variable', async () => {
     await mkdir(join(project, 'ios', 'Runner.xcodeproj'), { recursive: true });
     const text = (await readFile(SAMPLE_PBXPROJ, 'utf8')).replaceAll(
-      'PRODUCT_BUNDLE_IDENTIFIER = dev.flutterdeck.flutterdeckSample;',
-      'PRODUCT_BUNDLE_IDENTIFIER = "dev.flutterdeck.$(FLAVOR)";',
+      'PRODUCT_BUNDLE_IDENTIFIER = dev.pitdeck.pitdeckSample;',
+      'PRODUCT_BUNDLE_IDENTIFIER = "dev.pitdeck.$(FLAVOR)";',
     );
     await writeFile(join(project, 'ios', 'Runner.xcodeproj', 'project.pbxproj'), text);
     expect(await init()).toBe(0);
     expect(await config()).toEqual({ version: 1, port: 9147 });
     const out = lines.join('\n');
-    expect(out).toContain('set ios.bundleId in .flutterdeck/config.json');
+    expect(out).toContain('set ios.bundleId in .pitdeck/config.json');
     expect(out).not.toContain('$(FLAVOR)');
   });
 
@@ -175,10 +175,7 @@ describe('init writes the app ids it can read safely', () => {
     const secret = ['org', 'private', 'outside'].join('.');
     await writeFile(
       join(real, 'project.pbxproj'),
-      (await readFile(SAMPLE_PBXPROJ, 'utf8')).replaceAll(
-        'dev.flutterdeck.flutterdeckSample',
-        secret,
-      ),
+      (await readFile(SAMPLE_PBXPROJ, 'utf8')).replaceAll('dev.pitdeck.pitdeckSample', secret),
     );
     await mkdir(join(project, 'ios'));
     await symlink(real, join(project, 'ios', 'Runner.xcodeproj'), 'dir');
@@ -189,7 +186,7 @@ describe('init writes the app ids it can read safely', () => {
       join(project, 'android', 'app', 'build.gradle.kts'),
     );
     expect(await init()).toBe(0);
-    const written = await readFile(join(project, '.flutterdeck', 'config.json'), 'utf8');
+    const written = await readFile(join(project, '.pitdeck', 'config.json'), 'utf8');
     expect(written).not.toContain(secret);
     expect(lines.join('\n')).not.toContain(secret);
   });

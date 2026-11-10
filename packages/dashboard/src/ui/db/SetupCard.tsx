@@ -3,10 +3,10 @@ import { useState } from 'react';
 import { button } from '../styles.js';
 import { VisibleText } from './VisibleText.js';
 
-const SNIPPET = "FlutterDeckDrift.register(db, name: 'app');";
+const SNIPPET = "PitdeckDrift.register(db, name: 'app');";
 
 /**
- * No database to show (UI spec, database picker "Empty"): how to add flutterdeck_drift,
+ * No database to show (UI spec, database picker "Empty"): how to add pitdeck_drift,
  * and on Android and the iOS simulator, a snapshot instead. Backend problems (for
  * example a release app Android won't copy from) are said as the daemon words them.
  */
@@ -35,7 +35,7 @@ export function SetupCard({
       className="m-2 flex flex-col gap-2 rounded-md border border-border p-3"
     >
       <h2 id="db-setup-title" className="font-medium">
-        Add flutterdeck_drift to see your database live.
+        Add pitdeck_drift to see your database live.
       </h2>
       <p>In your app's main(), after you create the database:</p>
       <div className="flex flex-wrap items-center gap-2">

@@ -10,7 +10,7 @@ import { EXTENSION_PREFIX } from './protocol.js';
 
 /**
  * Makes a DriftInspector for any attached session that offers app extensions. The
- * app may register flutterdeck_drift later (or not at all); until it does, calls
+ * app may register pitdeck_drift later (or not at all); until it does, calls
  * answer `setup-needed`, which the dashboard shows as the setup help.
  */
 export class DriftInspectorFactory implements DbInspectorFactory {

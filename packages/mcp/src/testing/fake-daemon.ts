@@ -41,10 +41,10 @@ export const FAKE_STATUS: Status = {
   attached: null,
 };
 
-/** Marks `projectDir` as set up for FlutterDeck, as `flutterdeck init` does. */
+/** Marks `projectDir` as set up for Pitdeck, as `pitdeck init` does. */
 export async function initProject(projectDir: string): Promise<void> {
-  await mkdir(join(projectDir, '.flutterdeck'), { recursive: true });
-  await writeFile(join(projectDir, '.flutterdeck', 'config.json'), '{"version":1}\n');
+  await mkdir(join(projectDir, '.pitdeck'), { recursive: true });
+  await writeFile(join(projectDir, '.pitdeck', 'config.json'), '{"version":1}\n');
 }
 
 export class FakeDaemon {

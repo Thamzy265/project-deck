@@ -71,7 +71,7 @@ export async function detectFlutterProject(projectDir: string): Promise<Detectio
     return {
       ok: false,
       reason:
-        "pubspec.yaml is a link. FlutterDeck doesn't follow links in a project; run init where the real file is.",
+        "pubspec.yaml is a link. Pitdeck doesn't follow links in a project; run init where the real file is.",
     };
   }
   if (file.kind !== 'file') {
@@ -88,7 +88,7 @@ export async function detectFlutterProject(projectDir: string): Promise<Detectio
   if (!pubspec.flutter) {
     return {
       ok: false,
-      reason: 'pubspec.yaml has no flutter dependency. FlutterDeck works with Flutter apps.',
+      reason: 'pubspec.yaml has no flutter dependency. Pitdeck works with Flutter apps.',
     };
   }
   return pubspec.name === undefined ? { ok: true } : { ok: true, name: pubspec.name };

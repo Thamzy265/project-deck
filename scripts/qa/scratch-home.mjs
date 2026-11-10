@@ -1,5 +1,5 @@
 // A scratch home folder for the daemons the QA scripts start. Since M2 the daemon keeps a
-// per-user port registry in ~/.flutterdeck, so with the real HOME a QA run would write
+// per-user port registry in ~/.pitdeck, so with the real HOME a QA run would write
 // there. The Dart data folder (DTD discovery) and the Android SDK are found from the real
 // home, so they are passed explicitly.
 import { mkdtemp, rm } from 'node:fs/promises';

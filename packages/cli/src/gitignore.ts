@@ -1,5 +1,5 @@
 /**
- * The `.gitignore` block `init` adds once: the files under `.flutterdeck/` that hold the
+ * The `.gitignore` block `init` adds once: the files under `.pitdeck/` that hold the
  * token, the daemon's messages or locks. `config.json` stays out of it, so a team can
  * commit its settings.
  */
@@ -9,12 +9,12 @@ import { lineEnding } from './text-format.js';
 export const GITIGNORE_BEGIN = `# >>> ${CLI_NAME} (added by \`${CLI_NAME} init\`)`;
 export const GITIGNORE_END = `# <<< ${CLI_NAME}`;
 export const IGNORED: readonly string[] = [
-  '.flutterdeck/state.json',
-  '.flutterdeck/runtime.json',
-  '.flutterdeck/daemon.log',
-  '.flutterdeck/*.lock',
-  '.flutterdeck/*.tmp',
-  '.flutterdeck/*.stale',
+  '.pitdeck/state.json',
+  '.pitdeck/runtime.json',
+  '.pitdeck/daemon.log',
+  '.pitdeck/*.lock',
+  '.pitdeck/*.tmp',
+  '.pitdeck/*.stale',
 ];
 
 /**

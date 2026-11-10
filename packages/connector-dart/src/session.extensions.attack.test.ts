@@ -19,8 +19,8 @@ import {
 } from './testing/fixtures.js';
 
 const app: RunningApp = { id: 'dart-x', name: 'shop', framework: 'flutter', startedBy: 'ide' };
-const LIST = 'ext.flutterdeck.drift.v1.list';
-const KIND = 'flutterdeck.drift.tables';
+const LIST = 'ext.pitdeck.drift.v1.list';
+const KIND = 'pitdeck.drift.tables';
 let server: FakeRpcServer | undefined;
 let session: DartAppSession | undefined;
 
@@ -63,20 +63,20 @@ describe('DartAppSession extensions under attack', () => {
     const { server, session } = await attach([
       'ext.flutter.exit',
       'ext.drift.database',
-      'ext.Flutterdeck.x',
+      'ext.Pitdeck.x',
     ]);
     server.notify(serviceExtensionAdded('ext.flutter.reassemble', 'isolates/1'));
-    server.notify(serviceExtensionAdded('ext.flutterdeckx.y', 'isolates/1'));
+    server.notify(serviceExtensionAdded('ext.pitdeckx.y', 'isolates/1'));
     server.notify(serviceExtensionAdded(LIST, 'isolates/1'));
     await until(() => session.extensions.has(LIST));
     const before = server.calls.length;
     for (const method of [
       'ext.flutter.exit',
       'ext.drift.database',
-      'ext.Flutterdeck.x',
+      'ext.Pitdeck.x',
       'ext.flutter.reassemble',
-      'ext.flutterdeckx.y',
-      'ext.flutterdeck',
+      'ext.pitdeckx.y',
+      'ext.pitdeck',
       'getIsolate',
       'kill',
     ]) {
@@ -165,7 +165,7 @@ describe('DartAppSession extensions under attack', () => {
     session.extensions.onEvent(KIND, (d) => seen.push(d));
     server.notify(serviceExtensionAdded('ext.flutter.exit', 'isolates/3'));
     server.notify(extensionEvent(KIND, { from: 3 }, 'isolates/3'));
-    server.notify(serviceExtensionAdded('ext.flutterdeck.drift.v1.diff', 'isolates/4'));
+    server.notify(serviceExtensionAdded('ext.pitdeck.drift.v1.diff', 'isolates/4'));
     server.notify(extensionEvent(KIND, { from: 4 }, 'isolates/4'));
     server.notify(isolateEvent('IsolateExit', 'isolates/4'));
     server.notify(extensionEvent(KIND, { from: 'gone 4' }, 'isolates/4'));

@@ -1,5 +1,5 @@
 /**
- * The per-user registry `~/.flutterdeck/ports.json` (project path → port, plus a salt),
+ * The per-user registry `~/.pitdeck/ports.json` (project path → port, plus a salt),
  * as clients read it. Only the daemon and `init` write it (daemon/src/port-registry.ts).
  */
 import { createHash } from 'node:crypto';
@@ -10,7 +10,7 @@ import { join, resolve } from 'node:path';
 import { z } from 'zod';
 import { NotRegularFileError, readRegularFile } from './safe-file.js';
 
-export const REGISTRY_DIR = '.flutterdeck';
+export const REGISTRY_DIR = '.pitdeck';
 export const REGISTRY_FILE = 'ports.json';
 
 export const RegistrySchema = z.object({

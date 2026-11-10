@@ -1,5 +1,5 @@
 /**
- * `.flutterdeck/config.json` as `init` writes it: a new file gets the version, the port
+ * `.pitdeck/config.json` as `init` writes it: a new file gets the version, the port
  * and the app ids init found; an existing one only gains what it lacks (the port, an app
  * id), every other setting and its layout kept.
  */

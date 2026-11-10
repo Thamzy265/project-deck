@@ -76,14 +76,14 @@ describe('init in a fresh Flutter project', () => {
   it('writes config, the gitignore block and the launch.json entry, and says so', async () => {
     expect(await init()).toBe(0);
     expect(errors).toEqual([]);
-    expect(await readJson('.flutterdeck', 'config.json')).toEqual({ version: 1, port: 9147 });
+    expect(await readJson('.pitdeck', 'config.json')).toEqual({ version: 1, port: 9147 });
     expect(countBlocks(await read('.gitignore'))).toBe(1);
     expect(await readJson('.claude', 'launch.json')).toEqual({
       version: '0.0.1',
       configurations: [launchEntry(9147)],
     });
     const text = lines.join('\n');
-    expect(text).toMatch(/created +\.flutterdeck\/config\.json/);
+    expect(text).toMatch(/created +\.pitdeck\/config\.json/);
     expect(text).toMatch(/created +\.gitignore/);
     expect(text).toMatch(/created +\.claude\/launch\.json/);
     expect(text).toContain('shop_app');
@@ -92,20 +92,20 @@ describe('init in a fresh Flutter project', () => {
 
   it('records the port in the per-user registry in the given home', async () => {
     await init();
-    const registry = JSON.parse(
-      await readFile(join(home, '.flutterdeck', 'ports.json'), 'utf8'),
-    ) as { projects: Record<string, number> };
+    const registry = JSON.parse(await readFile(join(home, '.pitdeck', 'ports.json'), 'utf8')) as {
+      projects: Record<string, number>;
+    };
     expect(Object.values(registry.projects)).toEqual([9147]);
   });
 
-  it('prints an .mcp.json snippet that runs `flutterdeck mcp` through the CLI, as valid JSON', async () => {
+  it('prints an .mcp.json snippet that runs `pitdeck mcp` through the CLI, as valid JSON', async () => {
     await init({ cliMainPath: 'C:\\Users\\Jo Doe\\deck\\packages\\cli\\dist\\main.js' });
     const text = lines.join('\n');
     const json = text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1);
     expect(JSON.parse(json)).toEqual({
       mcpServers: {
         dart: { type: 'stdio', command: 'dart', args: ['mcp-server'] },
-        flutterdeck: {
+        pitdeck: {
           type: 'stdio',
           command: 'node',
           args: ['C:\\Users\\Jo Doe\\deck\\packages\\cli\\dist\\main.js', 'mcp'],
@@ -120,18 +120,18 @@ describe('init in a fresh Flutter project', () => {
     await writeFile(
       join(checkout, '.claude-plugin', 'marketplace.json'),
       JSON.stringify({
-        name: 'flutterdeck-dev',
-        plugins: [{ name: 'flutterdeck', source: './plugin' }],
+        name: 'pitdeck-dev',
+        plugins: [{ name: 'pitdeck', source: './plugin' }],
       }),
     );
     await init({ cliMainPath: join(checkout, 'packages', 'cli', 'dist', 'main.js') });
     const text = lines.join('\n');
     expect(text).toContain(`claude plugin marketplace add "${checkout}"`);
-    expect(text).toContain('claude plugin install flutterdeck@flutterdeck-dev');
+    expect(text).toContain('claude plugin install pitdeck@pitdeck-dev');
     // The raw MCP config stays, for use without the plugin or with other agents.
     expect(text.indexOf('claude plugin install')).toBeLessThan(text.indexOf('"mcpServers"'));
     const json = text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1);
-    expect(JSON.parse(json)).toHaveProperty('mcpServers.flutterdeck.command', 'node');
+    expect(JSON.parse(json)).toHaveProperty('mcpServers.pitdeck.command', 'node');
   });
 
   it('prints the MCP config only when the CLI is not in a checkout with the plugin', async () => {
@@ -155,7 +155,7 @@ describe('init run twice', () => {
     expect(await init()).toBe(0);
     expect(await snapshot()).toEqual(before);
     const text = lines.join('\n');
-    expect(text).toMatch(/unchanged +\.flutterdeck\/config\.json/);
+    expect(text).toMatch(/unchanged +\.pitdeck\/config\.json/);
     expect(text).toMatch(/unchanged +\.gitignore/);
     expect(text).toMatch(/unchanged +\.claude\/launch\.json/);
   });
@@ -163,13 +163,13 @@ describe('init run twice', () => {
 
 describe('init with existing files', () => {
   it('adds only a missing port to config.json and keeps every setting', async () => {
-    await mkdir(join(project, '.flutterdeck'));
+    await mkdir(join(project, '.pitdeck'));
     await writeFile(
-      join(project, '.flutterdeck', 'config.json'),
+      join(project, '.pitdeck', 'config.json'),
       '{\n  "version": 1,\n  "logs": { "redact": false, "rules": ["secret-\\\\d+"] }\n}\n',
     );
     expect(await init()).toBe(0);
-    expect(await readJson('.flutterdeck', 'config.json')).toEqual({
+    expect(await readJson('.pitdeck', 'config.json')).toEqual({
       version: 1,
       logs: { redact: false, rules: ['secret-\\d+'] },
       port: 9147,
@@ -178,19 +178,19 @@ describe('init with existing files', () => {
   });
 
   it('keeps a port the config already has, and uses it in launch.json', async () => {
-    await mkdir(join(project, '.flutterdeck'));
+    await mkdir(join(project, '.pitdeck'));
     const config = '{ "version": 1, "port": 9300 }\n';
-    await writeFile(join(project, '.flutterdeck', 'config.json'), config);
+    await writeFile(join(project, '.pitdeck', 'config.json'), config);
     expect(await init()).toBe(0);
-    expect(await read('.flutterdeck', 'config.json')).toBe(config);
+    expect(await read('.pitdeck', 'config.json')).toBe(config);
     expect(await readJson('.claude', 'launch.json')).toMatchObject({
       configurations: [launchEntry(9300)],
     });
   });
 
   it('refuses an invalid config.json and changes nothing', async () => {
-    await mkdir(join(project, '.flutterdeck'));
-    await writeFile(join(project, '.flutterdeck', 'config.json'), '{ "version": 1, "prot": 1 }');
+    await mkdir(join(project, '.pitdeck'));
+    await writeFile(join(project, '.pitdeck', 'config.json'), '{ "version": 1, "prot": 1 }');
     const before = await snapshot();
     expect(await init()).toBe(1);
     expect(errors.join('\n')).toContain('config.json');
@@ -236,7 +236,7 @@ describe('init and links planted in the project', () => {
   links.each([
     ['.gitignore', ['.gitignore']],
     ['.claude/launch.json', ['.claude', 'launch.json']],
-    ['.flutterdeck/config.json', ['.flutterdeck', 'config.json']],
+    ['.pitdeck/config.json', ['.pitdeck', 'config.json']],
   ])('refuses a linked %s, leaves the target alone and writes nothing', async (shown, parts) => {
     const target = await plantTarget();
     if (parts.length > 1) await mkdir(join(project, parts[0] ?? ''));
@@ -249,7 +249,7 @@ describe('init and links planted in the project', () => {
     expect(await snapshot()).toEqual(before);
   });
 
-  links.each([['.claude'], ['.flutterdeck']])(
+  links.each([['.claude'], ['.pitdeck']])(
     'refuses a linked %s folder and writes nothing into its target',
     async (name) => {
       await symlink(outside, join(project, name), 'dir');
@@ -273,9 +273,9 @@ describe('init in other folders', () => {
       await writeFile(join(second, 'pubspec.yaml'), PUBSPEC);
       await init();
       await init({ projectDir: second });
-      expect(await readJson('.flutterdeck', 'config.json')).toMatchObject({ port: 9147 });
+      expect(await readJson('.pitdeck', 'config.json')).toMatchObject({ port: 9147 });
       const other = JSON.parse(
-        await readFile(join(second, '.flutterdeck', 'config.json'), 'utf8'),
+        await readFile(join(second, '.pitdeck', 'config.json'), 'utf8'),
       ) as unknown;
       expect(other).toMatchObject({ port: 9148 });
     } finally {

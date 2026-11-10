@@ -69,7 +69,7 @@ export const authSuccess = {
 };
 
 /** The plugin's own Dart server: mcp__plugin_<plugin>_<server>__<tool>. */
-export const PLUGIN_RELOAD_TOOL = 'mcp__plugin_flutterdeck_dart__hot_reload';
+export const PLUGIN_RELOAD_TOOL = 'mcp__plugin_pitdeck_dart__hot_reload';
 
 export const reloadSucceeded = {
   ...common,
@@ -135,7 +135,7 @@ export const reloadInterrupted = { ...reloadFailed, is_interrupt: true };
 
 export const otherMcpTool = {
   ...reloadSucceeded,
-  tool_name: 'mcp__plugin_flutterdeck_flutterdeck__deck_status',
+  tool_name: 'mcp__plugin_pitdeck_pitdeck__deck_status',
 };
 
 /** Another server's hot_reload tool, not the Dart MCP server's. */

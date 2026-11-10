@@ -1,21 +1,21 @@
-# FlutterDeck sample app
+# Pitdeck sample app
 
-A one-screen Flutter app for trying FlutterDeck by hand. It proves that a breakpoint set in your IDE still hits while the FlutterDeck daemon is attached to the app and reloading it. It also keeps a list of orders in a Drift database, for trying FlutterDeck's database inspector.
+A one-screen Flutter app for trying Pitdeck by hand. It proves that a breakpoint set in your IDE still hits while the Pitdeck daemon is attached to the app and reloading it. It also keeps a list of orders in a Drift database, for trying Pitdeck's database inspector.
 
 The screen has:
 
 - a line of text (`reloadMarker` in `lib/main.dart`) to edit and hot reload;
 - a tap counter;
-- a **Hit breakpoint** button. Each tap runs `onHitBreakpoint()` and writes three log lines: a `print`, a `developer.log` line named `flutterdeck.sample`, and an Android logcat line with the tag `FlutterDeckSample`;
+- a **Hit breakpoint** button. Each tap runs `onHitBreakpoint()` and writes three log lines: a `print`, a `developer.log` line named `pitdeck.sample`, and an Android logcat line with the tag `PitdeckSample`;
 - an **Add order** button and the list of orders, newest first. Each tap adds a pending order (Coffee, Tea, Cake, Bagel, Juice in turn). Tap an order's status to move it to `shipped`, then `cancelled`, then `pending` again.
 
 ## The orders database
 
-- `lib/database.dart` defines the Drift table `orders`: `id` (auto increment), `item`, `status` (`pending`, `shipped` or `cancelled`; `pending` by default) and `created_at`. `driftDatabase(name: 'sample')` stores it in `sample.sqlite` in the app's documents folder (on Android: `/data/data/dev.flutterdeck.flutterdeck_sample/app_flutter/sample.sqlite`).
+- `lib/database.dart` defines the Drift table `orders`: `id` (auto increment), `item`, `status` (`pending`, `shipped` or `cancelled`; `pending` by default) and `created_at`. `driftDatabase(name: 'sample')` stores it in `sample.sqlite` in the app's documents folder (on Android: `/data/data/dev.pitdeck.pitdeck_sample/app_flutter/sample.sqlite`).
 - `lib/database.g.dart` is generated and committed, so you need no code generation to run the app. After you change `lib/database.dart`, run `dart run build_runner build` in this folder and commit the new `lib/database.g.dart`.
-- `main()` in `lib/main.dart` calls `FlutterDeckDrift.register(db, name: 'sample');`. The package comes from `../../dart/flutterdeck_drift` (a path dependency). It does nothing in release builds. In a debug build it lets FlutterDeck read the database live; see [its README](../../dart/flutterdeck_drift/README.md).
+- `main()` in `lib/main.dart` calls `PitdeckDrift.register(db, name: 'sample');`. The package comes from `../../dart/pitdeck_drift` (a path dependency). It does nothing in release builds. In a debug build it lets Pitdeck read the database live; see [its README](../../dart/pitdeck_drift/README.md).
 
-FlutterDeck's Database tab and its database tools for Claude come in later M3 batches. Their steps will be added here then.
+Pitdeck's Database tab and its database tools for Claude come in later M3 batches. Their steps will be added here then.
 
 ## Open it in Android Studio
 
@@ -25,7 +25,7 @@ FlutterDeck's Database tab and its database tools for Claude come in later M3 ba
 
 ## The breakpoint line
 
-In `lib/main.dart`, find the line that ends with `// FLUTTERDECK: put the breakpoint on this line` (inside `onHitBreakpoint()`). Click in the gutter next to it to add a red dot. Tap **Hit breakpoint** in the app and Android Studio stops on that line.
+In `lib/main.dart`, find the line that ends with `// PITDECK: put the breakpoint on this line` (inside `onHitBreakpoint()`). Click in the gutter next to it to add a red dot. Tap **Hit breakpoint** in the app and Android Studio stops on that line.
 
 ## Use it with the daemon
 
@@ -49,8 +49,8 @@ Then run these commands in the second terminal, at the repo root.
 1. Load the session token and port:
 
    ```bash
-   TOKEN=$(node -p "require('./.flutterdeck/runtime.json').token")
-   PORT=$(node -p "require('./.flutterdeck/runtime.json').port")
+   TOKEN=$(node -p "require('./.pitdeck/runtime.json').token")
+   PORT=$(node -p "require('./.pitdeck/runtime.json').port")
    ```
 
    Expected: no output.
@@ -61,16 +61,16 @@ Then run these commands in the second terminal, at the repo root.
    curl -s -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:$PORT/api/apps" | node -e "for (const a of JSON.parse(require('fs').readFileSync(0, 'utf8'))) console.log(a.id, a.name)"
    ```
 
-   Expected: one line per app, with its id and name. Before attach the daemon knows only the DTD name, for example `Kind: Flutter - Device: sdk gphone64 arm64 - Package: flutterdeck_sample`.
+   Expected: one line per app, with its id and name. Before attach the daemon knows only the DTD name, for example `Kind: Flutter - Device: sdk gphone64 arm64 - Package: pitdeck_sample`.
 
 3. Keep the id of the sample app. If it runs on more than one device, the Android emulator (`sdk gphone`) wins:
 
    ```bash
-   APP_ID=$(curl -s -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:$PORT/api/apps" | node -e "const m = JSON.parse(require('fs').readFileSync(0, 'utf8')).filter((x) => (x.name ?? '').includes('flutterdeck_sample')); const a = m.find((x) => /Device: sdk gphone/i.test(x.name)) ?? m[0]; console.log(a ? a.id : '')")
+   APP_ID=$(curl -s -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:$PORT/api/apps" | node -e "const m = JSON.parse(require('fs').readFileSync(0, 'utf8')).filter((x) => (x.name ?? '').includes('pitdeck_sample')); const a = m.find((x) => /Device: sdk gphone/i.test(x.name)) ?? m[0]; console.log(a ? a.id : '')")
    echo "$APP_ID"
    ```
 
-   Expected: the id of the step 2 line that contains `Package: flutterdeck_sample`. If it is empty, the daemon does not see the sample app yet.
+   Expected: the id of the step 2 line that contains `Package: pitdeck_sample`. If it is empty, the daemon does not see the sample app yet.
 
 4. Attach to it:
 
@@ -100,7 +100,7 @@ Then run these commands in the second terminal, at the repo root.
    curl -s -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:$PORT/api/logs?limit=10&text=Tap"
    ```
 
-   Expected: `{"entries":[...],"truncated":...}` with three lines per tap: the `print` line, the `flutterdeck.sample` line and the `FlutterDeckSample` logcat line.
+   Expected: `{"entries":[...],"truncated":...}` with three lines per tap: the `print` line, the `pitdeck.sample` line and the `PitdeckSample` logcat line.
 
 7. Clean up. Stop the daemon with Ctrl+C in its terminal, then undo the edit:
 

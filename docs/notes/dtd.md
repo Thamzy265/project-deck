@@ -46,7 +46,7 @@ Checked against source on 15 Oct 2026: dart-lang/sdk main (`sdk/lib/vmservice/vm
   - DDS: `_makeAuthToken()` (`kTokenByteSize = 8`).
   - DTD: `_generateSecret()` (`kTokenByteSize = 8`, falls back to `Random()` where secure randomness isn't supported). It makes both the URI auth code and the trusted-client secret.
 - So a code is 12 characters: 11 base64url characters and one `=`. Logged URIs show it padded, but a log or a tool that strips the `=` leaves 11 characters. The 11th character carries only 4 bits, so it is one of `A E I M Q U Y c g k o s w 0 4 8`.
-- FlutterDeck's masking uses this shape for unpadded codes on a loopback port (design D4).
+- Pitdeck's masking uses this shape for unpadded codes on a loopback port (design D4).
 
 ## Reload and restart
 
@@ -61,10 +61,10 @@ Checked against source on 15 Oct 2026: dart-lang/sdk main (`sdk/lib/vmservice/vm
 Checked against dart-lang/sdk main: `runtime/vm/service/service.md` (header says protocol 4.23, body still says 4.22), `runtime/vm/service_event.cc` and `runtime/vm/isolate_reload.cc`. Then verified by QA on a real app (Flutter 3.44.6, Dart 3.12.2, Android emulator) with the official Dart MCP server's `hot_reload` and `hot_restart`. The recording is `packages/connector-dart/src/testing/fixtures/isolate-reload.recorded.json`; evidence is in `docs/qa/M2.md`.
 
 - The event is `IsolateReload` on the `Isolate` stream. The VM posts it for a hot reload of an isolate group, whoever asked for it (Claude through the Dart MCP server, the IDE, `flutter run`'s `r`, or us).
-- It is posted per isolate group and skips system groups. It carries `isolateGroup` and **no `isolate`**. FlutterDeck matches the group against the main isolate's group.
+- It is posted per isolate group and skips system groups. It carries `isolateGroup` and **no `isolate`**. Pitdeck matches the group against the main isolate's group.
 - The spec allows `status: "failure"` with `reloadFailureReason`, but no recorded case produced one:
   - **A reload that fails to compile posts no event at all.** flutter_tools stops before it asks the VM, so a compile error by someone else doesn't show in Activity. (The batch-5 PostToolUse hook is meant to report Claude's failed reloads.)
-  - **A reload the VM rejects (for example an enum redefined as a class) posts `status: "success"`**, with no `reloadFailureReason`. No other event on the Isolate, Debug, Extension, Service, VM or Timeline streams tells it apart. Lead decision: FlutterDeck reports what the VM says, so such a reload shows as "Reloaded" in Activity. This is a known limitation.
+  - **A reload the VM rejects (for example an enum redefined as a class) posts `status: "success"`**, with no `reloadFailureReason`. No other event on the Isolate, Debug, Extension, Service, VM or Timeline streams tells it apart. Lead decision: Pitdeck reports what the VM says, so such a reload shows as "Reloaded" in Activity. This is a known limitation.
   - The connector still handles `"failure"` (spec-built tests) in case another VM or tool posts it.
 - A reload with no changed libraries posts no event, so such a reload by someone else doesn't show in Activity.
 - **A hot restart posts no `IsolateReload`** (verified). It posts `IsolateExit` for the old main isolate, then `IsolateStart` and `IsolateRunnable` for a new main isolate in a **new isolate group**. The connector takes the new group straight from those events, so later reloads are matched at once. When the main isolate moves to a new group without an own restart, it reports a hot restart by someone else (`kind: "hot-restart"`, `source: "external"`).

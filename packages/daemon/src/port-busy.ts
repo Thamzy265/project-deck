@@ -4,17 +4,17 @@ import { z } from 'zod';
 export const HEALTH_PROBE_TIMEOUT_MS = 2000;
 
 const HOW_TO_CHANGE =
-  'run `flutterdeck init`, or change "port" in .flutterdeck/config.json and the url in .claude/launch.json.';
+  'run `pitdeck init`, or change "port" in .pitdeck/config.json and the url in .claude/launch.json.';
 
 /** The configured port is taken. Never names a process: we never run a process lookup. */
 export class PortBusyError extends Error {
   constructor(
     readonly port: number,
-    readonly holder: { kind: 'flutterdeck'; projectId: string | undefined } | { kind: 'other' },
+    readonly holder: { kind: 'pitdeck'; projectId: string | undefined } | { kind: 'other' },
   ) {
     super(
-      holder.kind === 'flutterdeck'
-        ? `Another FlutterDeck (project ${holder.projectId ?? 'unknown'}) uses port ${port}. Stop it with \`flutterdeck stop\` in that project, or pick another port here: ${HOW_TO_CHANGE}`
+      holder.kind === 'pitdeck'
+        ? `Another Pitdeck (project ${holder.projectId ?? 'unknown'}) uses port ${port}. Stop it with \`pitdeck stop\` in that project, or pick another port here: ${HOW_TO_CHANGE}`
         : `Another program uses port ${port}. Stop it, or pick another port: ${HOW_TO_CHANGE}`,
     );
   }
@@ -28,7 +28,7 @@ const HealthSchema = z.object({
     .optional(),
 });
 
-/** Asks whatever listens on `port` whether it is a FlutterDeck daemon. */
+/** Asks whatever listens on `port` whether it is a Pitdeck daemon. */
 export async function identifyPortHolder(port: number): Promise<PortBusyError> {
   try {
     const res = await fetch(`http://127.0.0.1:${port}/api/health`, {
@@ -38,7 +38,7 @@ export async function identifyPortHolder(port: number): Promise<PortBusyError> {
     if (res.status === 200) {
       const health = HealthSchema.safeParse(await res.json());
       if (health.success) {
-        return new PortBusyError(port, { kind: 'flutterdeck', projectId: health.data.projectId });
+        return new PortBusyError(port, { kind: 'pitdeck', projectId: health.data.projectId });
       }
     } else {
       await res.body?.cancel();

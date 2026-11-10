@@ -41,7 +41,7 @@ export interface DeckClient {
   clearLogs(): Promise<void>;
 }
 
-const NOT_UNDERSTOOD = "FlutterDeck's answer wasn't understood";
+const NOT_UNDERSTOOD = "Pitdeck's answer wasn't understood";
 
 export function createClient(fetchFn: typeof fetch = fetch.bind(globalThis)): DeckClient {
   async function call<S extends z.ZodType>(

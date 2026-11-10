@@ -14,7 +14,7 @@ const log = (ts: number, message: string, level: 'info' | 'error' = 'info') => (
 describe('page states', () => {
   it('shows loading until connected, then the project, app and Logs tab', async () => {
     const t = renderDashboard();
-    expect(screen.getByText('Loading FlutterDeck…')).toBeInTheDocument();
+    expect(screen.getByText('Loading Pitdeck…')).toBeInTheDocument();
     await t.connect();
     expect(await screen.findByText('shop_app')).toHaveAttribute('title', 'shop_app');
     expect(screen.getByRole('combobox', { name: 'App' })).toHaveDisplayValue(
@@ -29,7 +29,7 @@ describe('page states', () => {
     const t = renderDashboard();
     t.client.status.mockRejectedValue(new TypeError('Failed to fetch'));
     await t.drop();
-    expect(await screen.findByText(/Can't reach FlutterDeck/)).toBeInTheDocument();
+    expect(await screen.findByText(/Can't reach Pitdeck/)).toBeInTheDocument();
   });
 
   it('reloads once on a refused cookie, then shows "Login needed"', async () => {
@@ -38,7 +38,7 @@ describe('page states', () => {
     t.client.status.mockRejectedValue(new HttpError(401, 'Missing or invalid token'));
     await t.drop();
     await waitFor(() => expect(t.reloadPage).toHaveBeenCalledTimes(1));
-    expect(screen.getByText('Reconnecting to FlutterDeck…')).toBeInTheDocument();
+    expect(screen.getByText('Reconnecting to Pitdeck…')).toBeInTheDocument();
     t.unmount();
 
     // The reloaded page still can't log in.
@@ -57,7 +57,7 @@ describe('page states', () => {
     t.client.status.mockRejectedValue(new TypeError('Failed to fetch'));
     await t.drop();
     expect(
-      await screen.findByText('Lost connection to FlutterDeck — retrying (1)…'),
+      await screen.findByText('Lost connection to Pitdeck — retrying (1)…'),
     ).toBeInTheDocument();
     expect(screen.getByText('kept line')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Reload' })).toHaveAttribute(
@@ -107,7 +107,7 @@ describe('apps', () => {
     );
     await t.connect();
     expect(await screen.findByText('No app running')).toBeInTheDocument();
-    expect(screen.getByText(/FlutterDeck finds it automatically/)).toBeInTheDocument();
+    expect(screen.getByText(/Pitdeck finds it automatically/)).toBeInTheDocument();
   });
 
   it('offers to try again when attaching fails', async () => {
@@ -170,7 +170,7 @@ describe('reload and restart', () => {
     await userEvent.keyboard(' ');
     expect(sw).toHaveAccessibleName('Keyboard shortcuts r / R: off');
     expect(sw).toHaveAttribute('aria-checked', 'false');
-    expect(t.prefs.getItem('flutterdeck.shortcuts')).toBe('off');
+    expect(t.prefs.getItem('pitdeck.shortcuts')).toBe('off');
     (document.activeElement as HTMLElement | null)?.blur();
     await userEvent.keyboard('r');
     expect(t.client.reload).not.toHaveBeenCalled();

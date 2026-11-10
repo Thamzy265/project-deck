@@ -61,9 +61,9 @@ function matches(matcher: string | undefined, value: string): boolean {
 }
 
 describe('plugin manifest', () => {
-  it('is named flutterdeck and carries FlutterDeck’s version', () => {
+  it('is named pitdeck and carries Pitdeck’s version', () => {
     const manifest = Manifest.parse(read('.claude-plugin/plugin.json'));
-    expect(manifest.name).toBe('flutterdeck');
+    expect(manifest.name).toBe('pitdeck');
     expect(manifest.version).toBe(DECK_VERSION);
   });
 });
@@ -77,14 +77,14 @@ describe('development marketplace', () => {
         plugins: z.tuple([z.object({ name: z.string(), source: z.string() })]),
       })
       .parse(read('../.claude-plugin/marketplace.json'));
-    expect(market.name).toBe('flutterdeck-dev');
-    expect(market.plugins[0]).toMatchObject({ name: 'flutterdeck', source: './plugin' });
+    expect(market.name).toBe('pitdeck-dev');
+    expect(market.plugins[0]).toMatchObject({ name: 'pitdeck', source: './plugin' });
   });
 });
 
 describe('.mcp.json', () => {
   const servers = z
-    .strictObject({ mcpServers: z.strictObject({ dart: Stdio, flutterdeck: Stdio }) })
+    .strictObject({ mcpServers: z.strictObject({ dart: Stdio, pitdeck: Stdio }) })
     .parse(read('.mcp.json')).mcpServers;
 
   it('runs the official Dart MCP server', () => {
@@ -92,19 +92,19 @@ describe('.mcp.json', () => {
   });
 
   it("runs this repo's CLI build next to the plugin folder (M2: local build, npx comes in M5)", () => {
-    expect(servers.flutterdeck).toEqual({
+    expect(servers.pitdeck).toEqual({
       type: 'stdio',
       command: 'node',
       args: ['${CLAUDE_PLUGIN_ROOT}/../packages/cli/dist/main.js', 'mcp'],
     });
     const cli = z
-      .object({ bin: z.object({ flutterdeck: z.string() }) })
+      .object({ bin: z.object({ pitdeck: z.string() }) })
       .parse(read('../packages/cli/package.json'));
     const target = resolve(
       ROOT,
-      (servers.flutterdeck.args[0] ?? '').replace('${CLAUDE_PLUGIN_ROOT}/', ''),
+      (servers.pitdeck.args[0] ?? '').replace('${CLAUDE_PLUGIN_ROOT}/', ''),
     );
-    expect(target).toBe(resolve(ROOT, '..', 'packages', 'cli', cli.bin.flutterdeck));
+    expect(target).toBe(resolve(ROOT, '..', 'packages', 'cli', cli.bin.pitdeck));
   });
 });
 
@@ -141,15 +141,15 @@ describe('hooks/hooks.json', () => {
     (event) => {
       for (const tool of [
         PLUGIN_RELOAD_TOOL,
-        'mcp__plugin_flutterdeck_dart__hot_restart',
+        'mcp__plugin_pitdeck_dart__hot_restart',
         'mcp__dart__hot_reload',
         'mcp__plugin_dart-flutter_dart-mcp-server__hot_restart',
       ]) {
         expect(matches(matcher(event), tool)).toBe(true);
       }
       for (const tool of [
-        'mcp__plugin_flutterdeck_flutterdeck__deck_status',
-        'mcp__plugin_flutterdeck_dart__get_runtime_errors',
+        'mcp__plugin_pitdeck_pitdeck__deck_status',
+        'mcp__plugin_pitdeck_dart__get_runtime_errors',
         'mcp__vite__hot_reload',
         'Bash',
       ]) {

@@ -11,7 +11,7 @@ const busy = (): DbError => new DbError('busy', 'The app is writing; try Refresh
 const tooLarge = (): DbError =>
   new DbError(
     'too-large',
-    'The database is over 50 MB, too large to copy. Add flutterdeck_drift to read it live.',
+    'The database is over 50 MB, too large to copy. Add pitdeck_drift to read it live.',
   );
 
 /**

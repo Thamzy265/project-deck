@@ -6,7 +6,7 @@ import { VisibleText } from './VisibleText.js';
 
 /**
  * More than one device or simulator could hold the app's database (`choose-device`):
- * the user picks one; FlutterDeck never guesses.
+ * the user picks one; Pitdeck never guesses.
  */
 export function DevicePicker({
   source,

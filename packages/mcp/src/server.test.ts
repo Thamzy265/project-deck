@@ -90,8 +90,8 @@ async function call(
 }
 
 async function writeConfig(config: unknown): Promise<void> {
-  await mkdir(join(projectDir, '.flutterdeck'), { recursive: true });
-  await writeFile(join(projectDir, '.flutterdeck', 'config.json'), JSON.stringify(config));
+  await mkdir(join(projectDir, '.pitdeck'), { recursive: true });
+  await writeFile(join(projectDir, '.pitdeck', 'config.json'), JSON.stringify(config));
 }
 
 const line = (message: string, extra: Partial<LogEntry> = {}): LogEntry => ({
@@ -133,9 +133,9 @@ describe('tool list', () => {
   });
 });
 
-describe('a folder without FlutterDeck', () => {
+describe('a folder without Pitdeck', () => {
   it('gets the same answer from both tools, and no daemon is started', async () => {
-    await rm(join(projectDir, '.flutterdeck'), { recursive: true, force: true });
+    await rm(join(projectDir, '.pitdeck'), { recursive: true, force: true });
     let spawned = 0;
     const client = await connect({
       spawnDaemon: () => {
@@ -144,7 +144,7 @@ describe('a folder without FlutterDeck', () => {
     });
     const status = await call(client, 'deck_status');
     const logs = await call(client, 'get_logs');
-    const message = "FlutterDeck isn't set up in this folder. Run `flutterdeck init` first.";
+    const message = "Pitdeck isn't set up in this folder. Run `pitdeck init` first.";
     expect(status.json.problem).toBe(message);
     expect(logs.isError).toBe(true);
     expect(logs.text).toBe(message);
@@ -152,15 +152,15 @@ describe('a folder without FlutterDeck', () => {
   });
 });
 
-describe('a .flutterdeck that is a link', () => {
+describe('a .pitdeck that is a link', () => {
   it.skipIf(process.platform === 'win32')(
     'is refused by both tools, and no daemon is started',
     async () => {
       const elsewhere = await mkdtemp(join(tmpdir(), 'deck-elsewhere-'));
       try {
         await writeFile(join(elsewhere, 'config.json'), '{"version":1}');
-        await rm(join(projectDir, '.flutterdeck'), { recursive: true, force: true });
-        await symlink(elsewhere, join(projectDir, '.flutterdeck'));
+        await rm(join(projectDir, '.pitdeck'), { recursive: true, force: true });
+        await symlink(elsewhere, join(projectDir, '.pitdeck'));
         let spawned = 0;
         const client = await connect({
           spawnDaemon: () => {
@@ -170,7 +170,7 @@ describe('a .flutterdeck that is a link', () => {
         const status = await call(client, 'deck_status');
         const logs = await call(client, 'get_logs');
         expect(String(status.json.problem)).toMatch(
-          /\.flutterdeck in this project is not a real folder/,
+          /\.pitdeck in this project is not a real folder/,
         );
         expect(logs.isError).toBe(true);
         expect(logs.text).toMatch(/not a real folder/);
@@ -182,7 +182,7 @@ describe('a .flutterdeck that is a link', () => {
   );
 });
 
-describe("a .flutterdeck linked to another tool's folder", () => {
+describe("a .pitdeck linked to another tool's folder", () => {
   it.skipIf(process.platform === 'win32')(
     "never shows that folder's keys, and keeps the built-in masking",
     async () => {
@@ -192,8 +192,8 @@ describe("a .flutterdeck linked to another tool's folder", () => {
           join(elsewhere, 'config.json'),
           '{"auths":{"registry.example":{"auth":"c2VjcmV0"}},"credsStore":"osxkeychain"}',
         );
-        await rm(join(projectDir, '.flutterdeck'), { recursive: true, force: true });
-        await symlink(elsewhere, join(projectDir, '.flutterdeck'));
+        await rm(join(projectDir, '.pitdeck'), { recursive: true, force: true });
+        await symlink(elsewhere, join(projectDir, '.pitdeck'));
         const client = await connect();
         const outs = [await call(client, 'deck_status'), await call(client, 'get_logs')];
         for (const out of outs) {
@@ -277,7 +277,7 @@ describe('deck_status', () => {
     const out = await call(await connect(), 'deck_status');
     expect(out.isError).toBe(false);
     expect(out.json.daemon).toBe('unavailable');
-    expect(out.json.problem).toContain("Another project's FlutterDeck (project bbbbbbbbbbbb)");
+    expect(out.json.problem).toContain("Another project's Pitdeck (project bbbbbbbbbbbb)");
     expect(out.json.project).toBeUndefined();
   });
 
@@ -402,7 +402,7 @@ describe('get_logs', () => {
     f.health = { ...f.health, projectId: 'bbbbbbbbbbbb' };
     const out = await call(await connect(), 'get_logs');
     expect(out.isError).toBe(true);
-    expect(out.text).toContain("Another project's FlutterDeck");
+    expect(out.text).toContain("Another project's Pitdeck");
   });
 
   it('adds a version mismatch to errors', async () => {
@@ -418,14 +418,12 @@ describe('get_logs', () => {
   it('never shows the project folder or the home folder in an error', async () => {
     const f = await fake();
     const real = await realpath(projectDir);
-    const reason = `can't read ${projectDir}/.flutterdeck/a, ${real}/b or ${homedir()}/.flutterdeck/c`;
+    const reason = `can't read ${projectDir}/.pitdeck/a, ${real}/b or ${homedir()}/.pitdeck/c`;
     f.route('GET', '/api/logs', () => ({ status: 500, body: { error: reason } }));
     f.route('GET', '/api/status', () => ({ status: 500, body: { error: reason } }));
     const client = await connect();
     for (const out of [await call(client, 'get_logs'), await call(client, 'deck_status')]) {
-      expect(out.text).toContain(
-        "can't read <project>/.flutterdeck/a, <project>/b or ~/.flutterdeck/c",
-      );
+      expect(out.text).toContain("can't read <project>/.pitdeck/a, <project>/b or ~/.pitdeck/c");
       expect(out.text).not.toContain(projectDir);
       expect(out.text).not.toContain(homedir());
     }
@@ -434,7 +432,7 @@ describe('get_logs', () => {
   it("says the daemon isn't running when it can't be started", async () => {
     const out = await call(await connect(), 'get_logs');
     expect(out.isError).toBe(true);
-    expect(out.text).toBe("FlutterDeck daemon isn't running: run `flutterdeck start`");
+    expect(out.text).toBe("Pitdeck daemon isn't running: run `pitdeck start`");
   });
 });
 

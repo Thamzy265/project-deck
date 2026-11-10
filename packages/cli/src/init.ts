@@ -1,5 +1,5 @@
 /**
- * `flutterdeck init`: sets a Flutter project up for FlutterDeck (plan, "flutterdeck init";
+ * `pitdeck init`: sets a Flutter project up for Pitdeck (plan, "pitdeck init";
  * design note D2). It checks everything first and writes only when every file is safe to
  * change, so a refusal leaves the project as it was. It only adds: a missing port and
  * missing app ids in config.json, one .gitignore block, one launch.json entry.
@@ -107,7 +107,7 @@ export async function runInit(opts: InitOptions): Promise<number> {
       opts.acquireLock ?? acquireFileLock,
     );
 
-    io.out(`FlutterDeck init in ${projectDir}`);
+    io.out(`Pitdeck init in ${projectDir}`);
     const name = project.name ?? 'this app';
     io.out(
       `Flutter project: ${name}${applicationId === undefined ? '' : ` (Android app id ${applicationId})`}`,
@@ -160,7 +160,7 @@ const INIT_LOCK_STALE_MS = 10_000;
 const INIT_LOCK = 'init.lock';
 
 /**
- * Runs `fn` holding `.flutterdeck/init.lock`. The folder is made for the lock when it is
+ * Runs `fn` holding `.pitdeck/init.lock`. The folder is made for the lock when it is
  * missing, and removed again (only if still empty) when `fn` fails, so a refused init
  * leaves the project as it was.
  */
@@ -171,7 +171,7 @@ async function withInitLock<T>(
   fn: () => Promise<T>,
   acquire: typeof acquireFileLock,
 ): Promise<T> {
-  // A linked .flutterdeck is refused before the lock goes into it.
+  // A linked .pitdeck is refused before the lock goes into it.
   await checkStateDir(projectDir);
   const stateDir = join(projectDir, STATE_DIR);
   let made = false;
@@ -197,7 +197,7 @@ async function withInitLock<T>(
         () => new Refused(ANOTHER_INIT),
       );
     } catch (err) {
-      // A concurrent run that refused removed the .flutterdeck it made, between the
+      // A concurrent run that refused removed the .pitdeck it made, between the
       // folder's creation and this lock's.
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') throw new Refused(ANOTHER_INIT);
       throw err;
@@ -231,7 +231,7 @@ async function checkWritable(dir: string, shown: string): Promise<void> {
 
 /** Reads and checks every file init may change, before anything is written. */
 async function inspect(projectDir: string): Promise<Plan> {
-  // withInitLock has already refused a linked .flutterdeck, checked that it can write
+  // withInitLock has already refused a linked .pitdeck, checked that it can write
   // there, and made the folder.
   const configState = await inspectFile(configPath(projectDir), CONFIG_SHOWN);
   let settings: DeckConfig | undefined;
@@ -359,7 +359,7 @@ async function apply(
     changes.push([
       GITIGNORE_SHOWN,
       ignore.kind === 'file' ? 'updated' : 'created',
-      `ignores FlutterDeck's token, log and lock files`,
+      `ignores Pitdeck's token, log and lock files`,
     ]);
   }
 
@@ -374,7 +374,7 @@ async function apply(
     changes.push([
       LAUNCH_SHOWN,
       launch.kind === 'file' ? 'updated' : 'created',
-      `"FlutterDeck" opens http://127.0.0.1:${port}`,
+      `"Pitdeck" opens http://127.0.0.1:${port}`,
     ]);
   }
 
@@ -382,20 +382,20 @@ async function apply(
   if (plan.claudeDir === 'missing' && merged.kind === 'changed') {
     await mkdir(join(projectDir, CLAUDE_DIR), { recursive: true });
   }
-  // Temp files go in .flutterdeck, where `*.tmp` is git-ignored, and are renamed across.
+  // Temp files go in .pitdeck, where `*.tmp` is git-ignored, and are renamed across.
   const tmpDir = join(projectDir, STATE_DIR);
   for (const write of writes) await writeAtomic(write.path, write.text, write.mode, { tmpDir });
   return changes;
 }
 
 /** The development marketplace at the root of a checkout (plugin/README.md). */
-const DEV_MARKETPLACE = 'flutterdeck-dev';
-const PLUGIN_NAME = 'flutterdeck';
+const DEV_MARKETPLACE = 'pitdeck-dev';
+const PLUGIN_NAME = 'pitdeck';
 
 /**
  * The checkout this CLI runs from (`<root>/packages/cli/dist/main.js`), if it holds the
  * plugin's development marketplace: a regular file (never through a link) named
- * `flutterdeck-dev` that lists the `flutterdeck` plugin. Any other marketplace there, such
+ * `pitdeck-dev` that lists the `pitdeck` plugin. Any other marketplace there, such
  * as a project's own when the CLI is installed inside it, isn't ours. Until the M5 release
  * that marketplace is how the plugin loads.
  */
@@ -419,14 +419,14 @@ async function nextSteps(cliMainPath: string): Promise<string[]> {
   const snippet = {
     mcpServers: {
       dart: { type: 'stdio', command: 'dart', args: ['mcp-server'] },
-      flutterdeck: { type: 'stdio', command: 'node', args: [cliMainPath, 'mcp'] },
+      pitdeck: { type: 'stdio', command: 'node', args: [cliMainPath, 'mcp'] },
     },
   };
   const mcp =
     checkout === undefined
       ? ['  3. Give Claude the MCP servers: add these to .mcp.json in the project:']
       : [
-          '  3. Give Claude the FlutterDeck plugin (the Dart MCP server, the FlutterDeck MCP server',
+          '  3. Give Claude the Pitdeck plugin (the Dart MCP server, the Pitdeck MCP server',
           '     and the hooks), then start a new Claude session in this project:',
           `       claude plugin marketplace add "${checkout}"`,
           `       claude plugin install ${PLUGIN_NAME}@${DEV_MARKETPLACE}`,
@@ -435,7 +435,7 @@ async function nextSteps(cliMainPath: string): Promise<string[]> {
   return [
     'Next steps:',
     `  1. Start the dashboard: ${CLI_NAME} start`,
-    '  2. In Claude Desktop, open the Browser pane and choose "FlutterDeck".',
+    '  2. In Claude Desktop, open the Browser pane and choose "Pitdeck".',
     ...mcp,
     '',
     ...JSON.stringify(snippet, null, 2).split('\n'),

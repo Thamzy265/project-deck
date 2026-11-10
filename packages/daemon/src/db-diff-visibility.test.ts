@@ -53,7 +53,7 @@ async function serviceFor(inspector: DbInspector, guard: SqlGuard = realGuard): 
 
 const H = (n: number): string => n.toString(16).padStart(16, '0');
 
-/** A flutterdeck_drift app whose hashes change between two snapshot calls. */
+/** A pitdeck_drift app whose hashes change between two snapshot calls. */
 function driftApp(): FakeDriftApp {
   const users = ['id', 'name', 'email', 'email_lower', 'email_upper'];
   const before: RowHashes = {

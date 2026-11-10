@@ -27,7 +27,7 @@ import {
   readReply,
 } from './protocol.js';
 
-/** Most rows flutterdeck_drift returns in one reply. */
+/** Most rows pitdeck_drift returns in one reply. */
 const APP_MAX_ROWS = 5000;
 
 /**
@@ -52,7 +52,7 @@ export interface DriftInspectorOptions {
 }
 
 /**
- * The live Drift backend: `flutterdeck_drift`'s `ext.flutterdeck.drift.v1.*` extensions
+ * The live Drift backend: `pitdeck_drift`'s `ext.pitdeck.drift.v1.*` extensions
  * over the session's app extensions (ADR 0004). Callers pass only SQL the daemon's
  * read-only gate accepted; the app checks again on its read-only connection (ADR 0005).
  */
@@ -223,7 +223,7 @@ export class DriftInspector implements DbInspector {
 function schemaTooLarge(): DbError {
   return new DbError(
     'too-large',
-    "This database's schema is too large for FlutterDeck to check queries safely, so queries are off.",
+    "This database's schema is too large for Pitdeck to check queries safely, so queries are off.",
   );
 }
 
@@ -236,7 +236,7 @@ function callError(action: Action, err: unknown): DbError {
     case 'not-found':
       return new DbError(
         'setup-needed',
-        "Add flutterdeck_drift to see your database live. In your app's main(), after you create the database: FlutterDeckDrift.register(db, name: 'app');",
+        "Add pitdeck_drift to see your database live. In your app's main(), after you create the database: PitdeckDrift.register(db, name: 'app');",
       );
     case 'timeout':
       return new DbError(

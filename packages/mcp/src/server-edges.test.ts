@@ -108,8 +108,8 @@ async function call(
 }
 
 async function writeConfig(config: unknown): Promise<void> {
-  await mkdir(join(projectDir, '.flutterdeck'), { recursive: true });
-  await writeFile(join(projectDir, '.flutterdeck', 'config.json'), JSON.stringify(config));
+  await mkdir(join(projectDir, '.pitdeck'), { recursive: true });
+  await writeFile(join(projectDir, '.pitdeck', 'config.json'), JSON.stringify(config));
 }
 
 const line = (message: string, extra: Partial<LogEntry> = {}): LogEntry => ({

@@ -105,7 +105,7 @@ describe('DaemonClient', () => {
         },
       }).status(),
     );
-    expect(err.message).toContain("Another project's FlutterDeck (project bbbbbbbbbbbb)");
+    expect(err.message).toContain("Another project's Pitdeck (project bbbbbbbbbbbb)");
     expect(err.message).toContain(`port ${f.port}`);
     expect(f.requests.every((r) => r.headers['x-deck-token'] === undefined)).toBe(true);
     expect(spawned).toBe(0);
@@ -122,7 +122,7 @@ describe('DaemonClient', () => {
     });
     const err = await rejection(c.status());
     expect(err.message).toBe(
-      `The program on port ${f.port} didn't say which project it serves, so FlutterDeck didn't send it the token. Run \`flutterdeck stop\` and try again.`,
+      `The program on port ${f.port} didn't say which project it serves, so Pitdeck didn't send it the token. Run \`pitdeck stop\` and try again.`,
     );
     expect(f.requests.every((r) => r.headers['x-deck-token'] === undefined)).toBe(true);
     expect(spawned).toBe(0);
@@ -137,7 +137,7 @@ describe('DaemonClient', () => {
     f.health = { ...f.health, projectId: 'bbbbbbbbbbbb' };
     // Unknown the first time: no check. Known the second time: the mismatch is found.
     expect((await c.status()).value.projectName).toBe('shop_app');
-    expect((await rejection(c.status())).message).toContain("Another project's FlutterDeck");
+    expect((await rejection(c.status())).message).toContain("Another project's Pitdeck");
   });
 
   it('skips the project check when either id is unknown', async () => {
@@ -152,7 +152,7 @@ describe('DaemonClient', () => {
     f.health = { ...f.health, version: '0.0.1' };
     const answer = await client({ version: '0.1.0' }).status();
     expect(answer.warnings).toEqual([
-      'FlutterDeck daemon version 0.0.1 differs from this MCP server (0.1.0). Run `flutterdeck stop`; the next call starts the matching daemon.',
+      'Pitdeck daemon version 0.0.1 differs from this MCP server (0.1.0). Run `pitdeck stop`; the next call starts the matching daemon.',
     ]);
   });
 
@@ -169,10 +169,10 @@ describe('DaemonClient', () => {
     const f = await fake();
     f.route('GET', '/api/status', () => ({ status: 200, body: { version: 1 } }));
     const err = await rejection(client().status());
-    expect(err.message).toBe('FlutterDeck daemon sent an unexpected answer to GET /api/status');
+    expect(err.message).toBe('Pitdeck daemon sent an unexpected answer to GET /api/status');
   });
 
-  it('treats a non-FlutterDeck health answer as no daemon', async () => {
+  it('treats a non-Pitdeck health answer as no daemon', async () => {
     const f = await fake();
     f.route('GET', '/api/health', () => ({ status: 200, body: { hello: 'world' } }));
     const err = await rejection(client({ readyTimeoutMs: GIVE_UP_MS }).status());
@@ -186,7 +186,7 @@ describe('DaemonClient', () => {
     const start = Date.now();
     const err = await rejection(client({ timeoutMs: 100 }).status());
     expect(Date.now() - start).toBeLessThan(2000);
-    expect(err.message).toBe("FlutterDeck daemon didn't answer GET /api/status within 0.1 s");
+    expect(err.message).toBe("Pitdeck daemon didn't answer GET /api/status within 0.1 s");
   });
 
   it('reports a rejected token without showing it', async () => {
@@ -196,7 +196,7 @@ describe('DaemonClient', () => {
       body: { error: 'Missing or invalid token' },
     }));
     const err = await rejection(client().status());
-    expect(err.message).toContain('rejected the token in .flutterdeck/runtime.json');
+    expect(err.message).toContain('rejected the token in .pitdeck/runtime.json');
     expect(err.message).not.toContain(f.token);
   });
 
@@ -204,7 +204,7 @@ describe('DaemonClient', () => {
     const f = await fake();
     f.route('GET', '/api/logs', () => ({ status: 400, body: { error: 'Invalid request' } }));
     const err = await rejection(client().logs({}));
-    expect(err.message).toBe('FlutterDeck daemon refused GET /api/logs: Invalid request (400)');
+    expect(err.message).toBe('Pitdeck daemon refused GET /api/logs: Invalid request (400)');
   });
 
   it('opens the login window with the token', async () => {
@@ -270,7 +270,7 @@ describe('DaemonClient when the daemon is down', () => {
     });
     const start = Date.now();
     const err = await rejection(c.status());
-    expect(err.message).toContain("Another project's FlutterDeck (project bbbbbbbbbbbb)");
+    expect(err.message).toContain("Another project's Pitdeck (project bbbbbbbbbbbb)");
     expect(Date.now() - start).toBeLessThan(2000);
   });
 
@@ -280,8 +280,8 @@ describe('DaemonClient when the daemon is down', () => {
       spawnDaemon: (_dir, onExit) => {
         track(
           writeFile(
-            join(projectDir, '.flutterdeck', 'daemon.log'),
-            'project-deck daemon starting\nAnother program uses port 9147. Change "port" in .flutterdeck/config.json.\n\n',
+            join(projectDir, '.pitdeck', 'daemon.log'),
+            'project-deck daemon starting\nAnother program uses port 9147. Change "port" in .pitdeck/config.json.\n\n',
           ).then(() => onExit(1)),
         );
       },
@@ -289,7 +289,7 @@ describe('DaemonClient when the daemon is down', () => {
     const start = Date.now();
     const err = await rejection(c.status());
     expect(err.message).toBe(
-      'FlutterDeck daemon couldn\'t start: Another program uses port 9147. Change "port" in .flutterdeck/config.json.',
+      'Pitdeck daemon couldn\'t start: Another program uses port 9147. Change "port" in .pitdeck/config.json.',
     );
     expect(Date.now() - start).toBeLessThan(2000);
   });
@@ -304,8 +304,8 @@ describe('DaemonClient when the daemon is down', () => {
           // Up, then stopped (exit 0) before this call saw it: gone, not a failure.
           track(
             writeFile(
-              join(projectDir, '.flutterdeck', 'daemon.log'),
-              `Token in ${projectDir}/.flutterdeck/runtime.json\n`,
+              join(projectDir, '.pitdeck', 'daemon.log'),
+              `Token in ${projectDir}/.pitdeck/runtime.json\n`,
             ).then(() => onExit(0)),
           );
         } else {
@@ -326,7 +326,7 @@ describe('DaemonClient when the daemon is down', () => {
       const c = client({
         readyTimeoutMs: 5000,
         spawnDaemon: (_dir, onExit) => {
-          const log = join(projectDir, '.flutterdeck', 'daemon.log');
+          const log = join(projectDir, '.pitdeck', 'daemon.log');
           track(
             rm(log, { force: true })
               .then(() => symlink(secret, log))
@@ -341,20 +341,18 @@ describe('DaemonClient when the daemon is down', () => {
   );
 
   it('hides the home folder in a start failure even where the line is cut', async () => {
-    const line = `${'E'.repeat(290)} ${homedir()}/.flutterdeck/ports.json is damaged`;
+    const line = `${'E'.repeat(290)} ${homedir()}/.pitdeck/ports.json is damaged`;
     const c = client({
       readyTimeoutMs: 5000,
       spawnDaemon: (_dir, onExit) => {
         track(
-          writeFile(join(projectDir, '.flutterdeck', 'daemon.log'), `${line}\n`).then(() =>
-            onExit(1),
-          ),
+          writeFile(join(projectDir, '.pitdeck', 'daemon.log'), `${line}\n`).then(() => onExit(1)),
         );
       },
     });
     const err = await rejection(c.status());
-    expect(err.message.startsWith("FlutterDeck daemon couldn't start: EEE")).toBe(true);
-    expect(err.message).toContain(' ~/.flu');
+    expect(err.message.startsWith("Pitdeck daemon couldn't start: EEE")).toBe(true);
+    expect(err.message).toContain(' ~/.pit');
     expect(err.message).not.toContain(homedir().slice(0, 8));
   });
 
@@ -470,7 +468,7 @@ describe('DaemonClient when the daemon is down', () => {
       }).status(),
     );
     expect(err.message).toBe(NOT_RUNNING);
-    expect(NOT_RUNNING).toBe("FlutterDeck daemon isn't running: run `flutterdeck start`");
+    expect(NOT_RUNNING).toBe("Pitdeck daemon isn't running: run `pitdeck start`");
     expect(spawned).toBe(1);
   });
 
@@ -497,7 +495,7 @@ describe('DaemonClient when the daemon is down', () => {
   });
 });
 
-describe('DaemonClient in a folder without FlutterDeck', () => {
+describe('DaemonClient in a folder without Pitdeck', () => {
   it('neither starts nor contacts a daemon, and writes nothing', async () => {
     const bare = await mkdtemp(join(tmpdir(), 'deck-bare-'));
     try {
@@ -515,9 +513,7 @@ describe('DaemonClient in a folder without FlutterDeck', () => {
         const err = await rejection(call());
         expect(err.message).toBe(NOT_SET_UP);
       }
-      expect(NOT_SET_UP).toBe(
-        "FlutterDeck isn't set up in this folder. Run `flutterdeck init` first.",
-      );
+      expect(NOT_SET_UP).toBe("Pitdeck isn't set up in this folder. Run `pitdeck init` first.");
       expect(spawned).toBe(0);
       expect(await readdir(bare)).toEqual([]);
     } finally {

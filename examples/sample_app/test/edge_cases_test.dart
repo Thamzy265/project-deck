@@ -5,9 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:flutterdeck_sample/main.dart';
+import 'package:pitdeck_sample/main.dart';
 
-const _marker = '// FLUTTERDECK: put the breakpoint on this line';
+const _marker = '// PITDECK: put the breakpoint on this line';
 
 TestDefaultBinaryMessengerBinding get _binding =>
     TestDefaultBinaryMessengerBinding.instance;
@@ -99,7 +99,7 @@ void main() {
         ),
       );
 
-      expect(printed, ['flutterdeck.sample print: Tap 1']);
+      expect(printed, ['pitdeck.sample print: Tap 1']);
     });
   });
 
@@ -188,7 +188,7 @@ void main() {
     final readme = File('README.md').readAsStringSync();
     final dart = File('lib/main.dart').readAsStringSync();
     final kotlin = File(
-      'android/app/src/main/kotlin/dev/flutterdeck/flutterdeck_sample/'
+      'android/app/src/main/kotlin/dev/pitdeck/pitdeck_sample/'
       'MainActivity.kt',
     ).readAsStringSync();
 
@@ -217,18 +217,15 @@ void main() {
     });
 
     test('the developer.log name matches the README', () {
-      expect(
-        readme,
-        contains('`developer.log` line named `flutterdeck.sample`'),
-      );
-      expect(dart, contains("name: 'flutterdeck.sample'"));
+      expect(readme, contains('`developer.log` line named `pitdeck.sample`'));
+      expect(dart, contains("name: 'pitdeck.sample'"));
     });
 
     test('the logcat tag and channel name match on both sides', () {
-      expect(readme, contains('tag `FlutterDeckSample`'));
-      expect(kotlin, contains('Log.i("FlutterDeckSample"'));
-      expect(dart, contains("MethodChannel('flutterdeck/sample')"));
-      expect(kotlin, contains('"flutterdeck/sample"'));
+      expect(readme, contains('tag `PitdeckSample`'));
+      expect(kotlin, contains('Log.i("PitdeckSample"'));
+      expect(dart, contains("MethodChannel('pitdeck/sample')"));
+      expect(kotlin, contains('"pitdeck/sample"'));
       expect(dart, contains("invokeMethod<void>('log'"));
       expect(kotlin, contains('call.method == "log"'));
     });

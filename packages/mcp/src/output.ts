@@ -120,7 +120,7 @@ function hint(shown: number): string {
  */
 export function fitStatus(
   value: Record<string, unknown>,
-  problem = 'FlutterDeck status was too large to show.',
+  problem = 'Pitdeck status was too large to show.',
 ): Record<string, unknown> {
   const whole = { ...value, truncated: false };
   if (fitsOutput(whole)) return whole;

@@ -1,5 +1,5 @@
 /**
- * The SQL editor's saved queries, in `.flutterdeck/queries.json` (design note, Data).
+ * The SQL editor's saved queries, in `.pitdeck/queries.json` (design note, Data).
  * The file can come with a cloned repository, so it is read without following a link
  * and replaced by a fresh file renamed into place, never written through one. Saved
  * queries run through the read-only gate like any other query.

@@ -5,4 +5,4 @@ max_turns: 25
 allowed_tools: [Skill, Read, Grep, Glob]
 ---
 
-/flutterdeck:check I changed the order list
+/pitdeck:check I changed the order list

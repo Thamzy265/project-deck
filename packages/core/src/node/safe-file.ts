@@ -1,6 +1,6 @@
 /**
- * Files under a project's `.flutterdeck/` come with the repository, so a cloned repo can
- * plant a symlink there that points at one of the user's own files. FlutterDeck never
+ * Files under a project's `.pitdeck/` come with the repository, so a cloned repo can
+ * plant a symlink there that points at one of the user's own files. Pitdeck never
  * follows one: reads refuse anything but a regular file, and writes create new files
  * exclusively (see the writers). Windows has no O_NOFOLLOW, so there an lstat check
  * comes first; the small race left is accepted there.
@@ -9,7 +9,7 @@ import { constants } from 'node:fs';
 import { lstat, open } from 'node:fs/promises';
 import { join } from 'node:path';
 
-export const STATE_DIR = '.flutterdeck';
+export const STATE_DIR = '.pitdeck';
 
 /** Thrown for a symlink, a folder or anything else that isn't a plain file. */
 export class NotRegularFileError extends Error {
@@ -62,11 +62,11 @@ export async function readRegularFile(
   }
 }
 
-/** A `.flutterdeck` that exists but is a symlink (or a file) in a cloned repository. */
+/** A `.pitdeck` that exists but is a symlink (or a file) in a cloned repository. */
 export class StateDirError extends Error {}
 
 /**
- * Checks the project's `.flutterdeck`: missing or a real folder is fine. A symlink would
+ * Checks the project's `.pitdeck`: missing or a real folder is fine. A symlink would
  * send every read and write to wherever it points, so it is refused.
  */
 export async function checkStateDir(projectDir: string): Promise<void> {
@@ -79,7 +79,7 @@ export async function checkStateDir(projectDir: string): Promise<void> {
   }
   if (stat.isSymbolicLink() || !stat.isDirectory()) {
     throw new StateDirError(
-      `${STATE_DIR} in this project is not a real folder (it is a link or a file). FlutterDeck doesn't follow links there: replace it with a folder.`,
+      `${STATE_DIR} in this project is not a real folder (it is a link or a file). Pitdeck doesn't follow links there: replace it with a folder.`,
     );
   }
 }

@@ -68,7 +68,7 @@ describe('database shapes', () => {
       indexes: [],
       error: {
         code: 'unsupported',
-        message: "FlutterDeck can't read coffee: no such function: REGEXP",
+        message: "Pitdeck can't read coffee: no such function: REGEXP",
       },
     };
     expect(TableInfoSchema.parse(unusable)).toEqual(unusable);
@@ -117,7 +117,7 @@ describe('database shapes', () => {
     }
   });
 
-  it('carry non-finite doubles as text, the form flutterdeck_drift sends', () => {
+  it('carry non-finite doubles as text, the form pitdeck_drift sends', () => {
     for (const value of ['Infinity', '-Infinity', 'NaN']) {
       const cell = { type: 'real', value };
       expect(CellSchema.parse(cell)).toEqual(cell);

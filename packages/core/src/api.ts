@@ -105,7 +105,7 @@ export const DbEditConfirmInput = z.object({
 /** `POST /api/db/execute/cancel`: the user pressed "Cancel" or closed the dialog. */
 export const DbEditCancelInput = z.object({ requestId: EditRequestId });
 
-/** One saved query of the SQL editor (`.flutterdeck/queries.json`). */
+/** One saved query of the SQL editor (`.pitdeck/queries.json`). */
 export const SavedQuerySchema = z.object({
   name: z.string().min(1).max(100),
   sql: Sql,
@@ -115,13 +115,13 @@ export type SavedQuery = z.infer<typeof SavedQuerySchema>;
 /** Most saved queries per project. */
 export const MAX_SAVED_QUERIES = 200;
 
-/** A list of saved queries, as in `.flutterdeck/queries.json`. */
+/** A list of saved queries, as in `.pitdeck/queries.json`. */
 export const SavedQueriesSchema = z.object({
   queries: z.array(SavedQuerySchema).max(MAX_SAVED_QUERIES),
 });
 
 /**
- * Names one content of `.flutterdeck/queries.json`: the sha256 of the file, or `none`
+ * Names one content of `.pitdeck/queries.json`: the sha256 of the file, or `none`
  * when there is no file. A save names the revision it started from (review R1).
  */
 export const SavedQueriesRevision = z.string().regex(/^(none|[0-9a-f]{64})$/);

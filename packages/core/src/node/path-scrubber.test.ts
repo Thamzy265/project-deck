@@ -4,18 +4,16 @@ import { pathScrubber } from './path-scrubber.js';
 describe('pathScrubber', () => {
   it('replaces the project folder first, then the home folder', () => {
     const scrub = pathScrubber('/home/jo/apps/shop', { home: '/home/jo', platform: 'linux' });
-    expect(scrub('/home/jo/apps/shop/lib/main.dart and /home/jo/.flutterdeck/ports.json')).toBe(
-      '<project>/lib/main.dart and ~/.flutterdeck/ports.json',
+    expect(scrub('/home/jo/apps/shop/lib/main.dart and /home/jo/.pitdeck/ports.json')).toBe(
+      '<project>/lib/main.dart and ~/.pitdeck/ports.json',
     );
   });
 
   it('on Windows ignores case and also finds the forward-slash form', () => {
     const scrub = pathScrubber('C:\\Users\\Jo\\shop', { home: 'C:\\Users\\Jo', platform: 'win32' });
     expect(
-      scrub(
-        'c:\\users\\jo\\shop\\a, C:/Users/Jo/shop/b, c:/USERS/jo/.flutterdeck and C:\\Users\\Jo',
-      ),
-    ).toBe('<project>\\a, <project>/b, ~/.flutterdeck and ~');
+      scrub('c:\\users\\jo\\shop\\a, C:/Users/Jo/shop/b, c:/USERS/jo/.pitdeck and C:\\Users\\Jo'),
+    ).toBe('<project>\\a, <project>/b, ~/.pitdeck and ~');
   });
 
   it('keeps case on other systems, where it matters', () => {

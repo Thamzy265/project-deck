@@ -5,8 +5,8 @@ import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:flutterdeck_sample/database.dart';
-import 'package:flutterdeck_sample/main.dart';
+import 'package:pitdeck_sample/database.dart';
+import 'package:pitdeck_sample/main.dart';
 
 void main() {
   setUpAll(() => driftRuntimeOptions.dontWarnAboutMultipleDatabases = true);
@@ -131,9 +131,9 @@ void main() {
     });
   });
 
-  test('main registers the database with FlutterDeck as "sample"', () {
+  test('main registers the database with Pitdeck as "sample"', () {
     final dart = File('lib/main.dart').readAsStringSync();
-    expect(dart, contains("FlutterDeckDrift.register(db, name: 'sample');"));
+    expect(dart, contains("PitdeckDrift.register(db, name: 'sample');"));
     final database = File('lib/database.dart').readAsStringSync();
     expect(database, contains("driftDatabase(name: 'sample')"));
   });

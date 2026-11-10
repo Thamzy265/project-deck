@@ -16,9 +16,9 @@ afterEach(async () => {
   for (const dir of [projectDir, outside]) await rm(dir, { recursive: true, force: true });
 });
 
-const path = () => join(projectDir, '.flutterdeck', QUERIES_FILE);
+const path = () => join(projectDir, '.pitdeck', QUERIES_FILE);
 
-describe('SavedQueryStore (.flutterdeck/queries.json)', () => {
+describe('SavedQueryStore (.pitdeck/queries.json)', () => {
   it('reads no queries when the file is missing, then keeps what it wrote', async () => {
     const store = new SavedQueryStore(projectDir);
     expect(await store.read()).toEqual([]);
@@ -27,11 +27,11 @@ describe('SavedQueryStore (.flutterdeck/queries.json)', () => {
     expect(await store.read()).toEqual(queries);
     expect(JSON.parse(await readFile(path(), 'utf8'))).toEqual({ version: 1, queries });
     // No temp files left behind.
-    expect(await readdir(join(projectDir, '.flutterdeck'))).toEqual([QUERIES_FILE]);
+    expect(await readdir(join(projectDir, '.pitdeck'))).toEqual([QUERIES_FILE]);
   });
 
   it('says the file is broken instead of guessing, and never quotes it', async () => {
-    await mkdir(join(projectDir, '.flutterdeck'));
+    await mkdir(join(projectDir, '.pitdeck'));
     await writeFile(path(), '{"queries": "secret text"');
     const err: unknown = await new SavedQueryStore(projectDir).read().catch((e: unknown) => e);
     expect(err).toMatchObject({ code: 'internal' });
@@ -47,7 +47,7 @@ describe('SavedQueryStore (.flutterdeck/queries.json)', () => {
     async () => {
       const target = join(outside, 'notes.txt');
       await writeFile(target, 'my notes\n');
-      await mkdir(join(projectDir, '.flutterdeck'));
+      await mkdir(join(projectDir, '.pitdeck'));
       await symlink(target, path());
       const store = new SavedQueryStore(projectDir);
       await expect(store.read()).rejects.toMatchObject({ code: 'internal' });
@@ -59,8 +59,8 @@ describe('SavedQueryStore (.flutterdeck/queries.json)', () => {
     },
   );
 
-  it.skipIf(process.platform === 'win32')('refuses a .flutterdeck that is a link', async () => {
-    await symlink(outside, join(projectDir, '.flutterdeck'));
+  it.skipIf(process.platform === 'win32')('refuses a .pitdeck that is a link', async () => {
+    await symlink(outside, join(projectDir, '.pitdeck'));
     const store = new SavedQueryStore(projectDir);
     await expect(store.replace([{ name: 'a', sql: 'SELECT 1' }], 'none')).rejects.toMatchObject({
       code: 'conflict',
@@ -86,11 +86,11 @@ describe('SavedQueryStore: file mode, races and odd files (tester probes)', () =
     await Promise.allSettled(lists.map((l) => store.replace(l, 'none')));
     const read = await store.read();
     expect(lists).toContainEqual(read);
-    expect(await readdir(join(projectDir, '.flutterdeck'))).toEqual([QUERIES_FILE]);
+    expect(await readdir(join(projectDir, '.pitdeck'))).toEqual([QUERIES_FILE]);
   });
 
   it('says the file is broken for a directory, a huge file or a wrong version', async () => {
-    await mkdir(join(projectDir, '.flutterdeck'));
+    await mkdir(join(projectDir, '.pitdeck'));
     await mkdir(path());
     await expect(new SavedQueryStore(projectDir).read()).rejects.toMatchObject({
       code: 'internal',
@@ -133,7 +133,7 @@ describe('SavedQueryStore: revisions (review R1)', () => {
   });
 
   it('never replaces a file it can not read', async () => {
-    await mkdir(join(projectDir, '.flutterdeck'));
+    await mkdir(join(projectDir, '.pitdeck'));
     await writeFile(path(), '{"broken');
     const store = new SavedQueryStore(projectDir);
     await expect(store.state()).rejects.toMatchObject({ code: 'internal' });

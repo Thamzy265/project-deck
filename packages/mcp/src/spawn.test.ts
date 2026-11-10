@@ -51,11 +51,11 @@ describe('spawnDaemon', () => {
     expect(errors).toHaveLength(1);
   });
 
-  it('sends the daemon errors to a private .flutterdeck/daemon.log, new at each start', async () => {
+  it('sends the daemon errors to a private .pitdeck/daemon.log, new at each start', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'deck-spawn-'));
     try {
-      await mkdir(join(dir, '.flutterdeck'));
-      const log = join(dir, '.flutterdeck', 'daemon.log');
+      await mkdir(join(dir, '.pitdeck'));
+      const log = join(dir, '.pitdeck', 'daemon.log');
       await writeFile(log, 'old run\n', { mode: 0o644 });
       let stdio: unknown;
       const child = Object.assign(new EventEmitter(), { unref: () => undefined });
@@ -87,8 +87,8 @@ describe('spawnDaemon', () => {
 
     beforeEach(async () => {
       dir = await mkdtemp(join(tmpdir(), 'deck-spawn-link-'));
-      await mkdir(join(dir, '.flutterdeck'));
-      log = join(dir, '.flutterdeck', 'daemon.log');
+      await mkdir(join(dir, '.pitdeck'));
+      log = join(dir, '.pitdeck', 'daemon.log');
     });
 
     afterEach(async () => {

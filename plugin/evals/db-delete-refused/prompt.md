@@ -5,4 +5,4 @@ max_turns: 15
 allowed_tools: [Skill]
 ---
 
-/flutterdeck:db delete all orders
+/pitdeck:db delete all orders

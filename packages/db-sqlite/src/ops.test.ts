@@ -32,7 +32,7 @@ async function build(sql: string): Promise<Uint8Array> {
 }
 
 describe('cellHash', () => {
-  it('matches flutterdeck_drift (recorded hashes for order 1: 1, Coffee, pending)', () => {
+  it('matches pitdeck_drift (recorded hashes for order 1: 1, Coffee, pending)', () => {
     expect([1n, 'Coffee', 'pending'].map((v) => cellHash(v))).toEqual([
       '529a2ddc8ff5355f',
       '2e1d5ff04220d18e',

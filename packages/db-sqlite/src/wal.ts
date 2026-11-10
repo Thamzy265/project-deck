@@ -19,7 +19,7 @@ export function checkHeader(db: Uint8Array): void {
   if (db.length < 100 || !MAGIC.equals(db.subarray(0, 16))) {
     throw new DbError(
       'unsupported',
-      "This file isn't a SQLite database, or it is encrypted, so FlutterDeck can't read it.",
+      "This file isn't a SQLite database, or it is encrypted, so Pitdeck can't read it.",
     );
   }
 }
@@ -133,7 +133,7 @@ export function mergeWal(db: Uint8Array, wal: Uint8Array | undefined, maxBytes: 
     if (f === undefined) continue;
     if (f.commit > 0) bound = f.commit;
     if (f.pgno < 1 || f.pgno > bound) {
-      throw new DbError('internal', "The WAL file is damaged, so FlutterDeck can't read it.");
+      throw new DbError('internal', "The WAL file is damaged, so Pitdeck can't read it.");
     }
   }
   for (const f of committed) {

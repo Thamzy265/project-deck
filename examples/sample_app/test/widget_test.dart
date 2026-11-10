@@ -2,7 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:flutterdeck_sample/main.dart';
+import 'package:pitdeck_sample/main.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -55,7 +55,7 @@ void main() {
   test('the breakpoint marker sits on the live counter line', () {
     final marked = File('lib/main.dart')
         .readAsLinesSync()
-        .where((line) => line.contains('// FLUTTERDECK: put the breakpoint'))
+        .where((line) => line.contains('// PITDECK: put the breakpoint'))
         .toList();
 
     expect(marked, hasLength(1));

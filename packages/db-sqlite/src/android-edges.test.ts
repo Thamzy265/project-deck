@@ -1,7 +1,7 @@
 /**
  * Tester probes for the Android snapshot source: argument validation for the device
  * shell (design review S7) and which device and package are read when several are
- * connected ("FlutterDeck never guesses").
+ * connected ("Pitdeck never guesses").
  * Tests marked `it.fails` (DB-n) are repros of open tester findings: they turn into
  * plain `it` tests when the fix lands.
  */

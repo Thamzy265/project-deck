@@ -18,7 +18,7 @@ We will judge every SQL statement from the dashboard or Claude with the real SQL
   1. there is exactly one statement (empty tail after whitespace and comments);
   2. `sqlite3_stmt_readonly` is 1, or `sqlite3_stmt_isexplain` is set and the explained statement is itself read-only;
   3. an authorizer allowlist sees only `SQLITE_SELECT`, `SQLITE_READ`, `SQLITE_FUNCTION` (minus a deny list such as `load_extension`), `SQLITE_RECURSIVE`, and `SQLITE_PRAGMA` for `table_info`, `table_xinfo`, `index_list`, `index_info` and `foreign_key_list` without a value.
-- The app checks again: `flutterdeck_drift` runs reads on a separate read-only connection (`OpenMode.readOnly`, `PRAGMA query_only=1`) and requires `isReadOnly` with `checkNoTail`.
+- The app checks again: `pitdeck_drift` runs reads on a separate read-only connection (`OpenMode.readOnly`, `PRAGMA query_only=1`) and requires `isReadOnly` with `checkNoTail`.
 - Writes (only when `db.allowWrites` is on and the user confirms) skip the read-only rule but still pass a single-statement check and a deny list for `ATTACH`, `DETACH`, `VACUUM` and `PRAGMA` writes.
 
 ## Consequences

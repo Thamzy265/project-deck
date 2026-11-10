@@ -42,7 +42,7 @@ const DOCUMENTED_KEYS = [
 ];
 
 const DART_PREFIXES = [
-  'mcp__plugin_flutterdeck_dart__',
+  'mcp__plugin_pitdeck_dart__',
   'mcp__plugin_dart-flutter_dart-mcp-server__',
   'mcp__dart__',
 ];
@@ -184,10 +184,10 @@ describe.each(['check', 'db'])(
 );
 
 describe('/db stays read-only', () => {
-  it('has no tool that can write in allowed-tools, and no non-FlutterDeck tool at all', () => {
+  it('has no tool that can write in allowed-tools, and no non-Pitdeck tool at all', () => {
     for (const tool of toolList(frontmatter('db')['allowed-tools'])) {
       expect(tool).toMatch(
-        /^mcp__plugin_flutterdeck_flutterdeck__(deck_status|db_list|db_schema|db_query)$/,
+        /^mcp__plugin_pitdeck_pitdeck__(deck_status|db_list|db_schema|db_query)$/,
       );
     }
   });

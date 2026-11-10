@@ -44,7 +44,7 @@ afterAll(() => {
 });
 
 async function setup(config: unknown = { version: 1 }) {
-  await writeFile(join(projectDir, '.flutterdeck', 'config.json'), JSON.stringify(config));
+  await writeFile(join(projectDir, '.pitdeck', 'config.json'), JSON.stringify(config));
   const registry = new Registry();
   const connector = new FakeAppConnector('fake', [fakeApp()]);
   registry.connectors.register(connector);
@@ -148,7 +148,7 @@ describe('database tools with the real daemon and gate', { timeout: 30_000 }, ()
     ]) {
       const out = await call(mcp, 'db_query', { db: 'app', sql });
       expect(out.isError, sql).toBe(true);
-      expect(out.text, sql).toMatch(/^FlutterDeck couldn't do that \(refused\)/);
+      expect(out.text, sql).toMatch(/^Pitdeck couldn't do that \(refused\)/);
     }
     const count = await call(mcp, 'db_query', { db: 'app', sql: 'SELECT count(*) FROM orders' });
     expect(count.json.rows).toEqual([[3]]);

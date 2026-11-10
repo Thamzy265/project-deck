@@ -28,8 +28,8 @@ export function AppPicker() {
       <div className="min-w-0 flex-1">
         <p className="font-medium">No app running</p>
         <p className="text-sm text-muted">
-          Start your app from your IDE or <code className="font-mono">flutter run</code>;
-          FlutterDeck finds it automatically
+          Start your app from your IDE or <code className="font-mono">flutter run</code>; Pitdeck
+          finds it automatically
         </p>
       </div>
     );

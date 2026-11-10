@@ -1,5 +1,5 @@
 /**
- * `.flutterdeck/config.json`: per-project settings the user may commit.
+ * `.pitdeck/config.json`: per-project settings the user may commit.
  * A missing file means DEFAULT_CONFIG. Unknown keys are rejected so a typo never
  * silently leaves a safety setting (such as masking) at a value the user didn't mean.
  */

@@ -183,7 +183,7 @@ function complain(text: string): void {
 function notDebuggable(): DbError {
   return new DbError(
     'not-debuggable',
-    "This app isn't debuggable, so Android won't let FlutterDeck copy its database.",
+    "This app isn't debuggable, so Android won't let Pitdeck copy its database.",
   );
 }
 
@@ -195,7 +195,7 @@ function missingFile(err: unknown): boolean {
   );
 }
 
-/** An adb failure in FlutterDeck's words: device output is never repeated. */
+/** An adb failure in Pitdeck's words: device output is never repeated. */
 function adbError(err: unknown): DbError {
   if (isDbError(err)) return err;
   if (err instanceof AdbExitError) {
@@ -227,7 +227,7 @@ const chooseDevice = (serials: readonly string[]): DbError =>
  * `android.applicationId` or a package-shaped app name. Without either, the one device
  * that runs any package at that pid (its process name is the id, flavor suffix
  * included). When more than one device is still possible the user must pick:
- * FlutterDeck never guesses which device to copy from.
+ * Pitdeck never guesses which device to copy from.
  */
 export async function resolveAndroidSource(
   adb: AdbRunner,
@@ -277,7 +277,7 @@ export async function resolveAndroidSource(
         if (id === undefined) {
           throw new DbError(
             'unavailable',
-            `The app running on ${device.serial} isn't this app, so FlutterDeck won't copy its database. Set android.applicationId in .flutterdeck/config.json if this is a flavor of it.`,
+            `The app running on ${device.serial} isn't this app, so Pitdeck won't copy its database. Set android.applicationId in .pitdeck/config.json if this is a flavor of it.`,
           );
         }
         return new AndroidSource(adb, device.serial, id);
@@ -286,7 +286,7 @@ export async function resolveAndroidSource(
       if (devices.length === 1) {
         throw new DbError(
           'unavailable',
-          "FlutterDeck couldn't find this app on the device. Set android.applicationId in .flutterdeck/config.json.",
+          "Pitdeck couldn't find this app on the device. Set android.applicationId in .pitdeck/config.json.",
         );
       }
     }
@@ -320,6 +320,6 @@ function appIdOf(process: string, wanted: ReadonlySet<string>): string | undefin
 function missingId(): DbError {
   return new DbError(
     'unavailable',
-    "FlutterDeck couldn't tell this app's id. Set android.applicationId in .flutterdeck/config.json.",
+    "Pitdeck couldn't tell this app's id. Set android.applicationId in .pitdeck/config.json.",
   );
 }

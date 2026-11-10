@@ -47,7 +47,7 @@ afterAll(() => {
 });
 
 async function setup(config: unknown = { version: 1 }) {
-  await writeFile(join(projectDir, '.flutterdeck', 'config.json'), JSON.stringify(config));
+  await writeFile(join(projectDir, '.pitdeck', 'config.json'), JSON.stringify(config));
   const registry = new Registry();
   registry.connectors.register(new FakeAppConnector('fake', [fakeApp()]));
   const holder: { live?: FakeLiveDatabase } = {};

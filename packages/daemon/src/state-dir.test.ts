@@ -19,12 +19,12 @@ afterEach(async () => {
   await rm(elsewhere, { recursive: true, force: true });
 });
 
-describe('a .flutterdeck that is not a real folder', () => {
+describe('a .pitdeck that is not a real folder', () => {
   it.skipIf(process.platform === 'win32')(
     'is refused when it is a link, and nothing is written where it points',
     async () => {
       await writeFile(join(elsewhere, 'config.json'), '{"version":1}');
-      await symlink(elsewhere, join(projectDir, '.flutterdeck'));
+      await symlink(elsewhere, join(projectDir, '.pitdeck'));
       await expect(
         startDaemon({ projectDir, registry: new Registry(), port: 0, log: () => undefined }),
       ).rejects.toBeInstanceOf(StateDirError);
@@ -33,14 +33,14 @@ describe('a .flutterdeck that is not a real folder', () => {
   );
 
   it('is refused when it is a file', async () => {
-    await writeFile(join(projectDir, '.flutterdeck'), '');
+    await writeFile(join(projectDir, '.pitdeck'), '');
     await expect(
       startDaemon({ projectDir, registry: new Registry(), port: 0, log: () => undefined }),
     ).rejects.toThrow(/not a real folder/);
   });
 
   it('is fine as a real folder', async () => {
-    await mkdir(join(projectDir, '.flutterdeck'));
+    await mkdir(join(projectDir, '.pitdeck'));
     const d = await startDaemon({
       projectDir,
       registry: new Registry(),

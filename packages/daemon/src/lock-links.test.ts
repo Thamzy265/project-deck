@@ -15,8 +15,8 @@ beforeEach(async () => {
   projectDir = await mkdtemp(join(tmpdir(), 'deck-locklink-'));
   homeDir = await mkdtemp(join(tmpdir(), 'deck-locklink-home-'));
   outside = await mkdtemp(join(tmpdir(), 'deck-locklink-out-'));
-  await mkdir(join(projectDir, '.flutterdeck'));
-  await mkdir(join(homeDir, '.flutterdeck'));
+  await mkdir(join(projectDir, '.pitdeck'));
+  await mkdir(join(homeDir, '.pitdeck'));
 });
 
 afterEach(async () => {
@@ -30,10 +30,10 @@ async function usersFile(name: string, content: string): Promise<string> {
   return path;
 }
 
-describe.skipIf(process.platform === 'win32')('links planted where FlutterDeck keeps state', () => {
+describe.skipIf(process.platform === 'win32')('links planted where Pitdeck keeps state', () => {
   it('a startup.lock link is removed, not followed, and the daemon starts at once', async () => {
     const target = await usersFile('notes.txt', 'my notes\n');
-    await symlink(target, join(projectDir, '.flutterdeck', 'startup.lock'));
+    await symlink(target, join(projectDir, '.pitdeck', 'startup.lock'));
     const d = await startDaemon({
       projectDir,
       homeDir,
@@ -47,7 +47,7 @@ describe.skipIf(process.platform === 'win32')('links planted where FlutterDeck k
 
   it('a ports.json.lock link is removed, not followed', async () => {
     const target = await usersFile('notes.txt', 'my notes\n');
-    await symlink(target, join(homeDir, '.flutterdeck', 'ports.json.lock'));
+    await symlink(target, join(homeDir, '.pitdeck', 'ports.json.lock'));
     expect(await allocatePort(projectDir, { homeDir, isFree: () => Promise.resolve(true) })).toBe(
       9147,
     );

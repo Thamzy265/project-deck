@@ -5,8 +5,8 @@
 export type StorageLike = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 export type StorageSource = () => StorageLike;
 
-const RELOAD_FLAG = 'flutterdeck.reloadedForLogin';
-const SHORTCUTS_KEY = 'flutterdeck.shortcuts';
+const RELOAD_FLAG = 'pitdeck.reloadedForLogin';
+const SHORTCUTS_KEY = 'pitdeck.shortcuts';
 
 export interface SessionGuard {
   /** True (and remembered) the first time; false until `clear()`, even across reloads. */

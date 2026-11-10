@@ -1,5 +1,5 @@
-name: flutterdeck_sample
-description: "One-screen sample app for trying FlutterDeck: a breakpoint line, a hot reload marker and logs on every tap."
+name: pitdeck_sample
+description: "One-screen sample app for trying Pitdeck: a breakpoint line, a hot reload marker and logs on every tap."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -32,8 +32,8 @@ dependencies:
   drift_flutter: ^0.3.1
   flutter:
     sdk: flutter
-  flutterdeck_drift:
-    path: ../../dart/flutterdeck_drift
+  pitdeck_drift:
+    path: ../../dart/pitdeck_drift
 
 dev_dependencies:
   flutter_test:

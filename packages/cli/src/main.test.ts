@@ -71,19 +71,19 @@ describe('main.js', () => {
     // The snippet is JSON, so a Windows path shows with escaped backslashes: parse it.
     const out = result.stdout;
     const snippet = JSON.parse(out.slice(out.indexOf('{'), out.lastIndexOf('}') + 1)) as {
-      mcpServers: { flutterdeck: { command: string; args: string[] } };
+      mcpServers: { pitdeck: { command: string; args: string[] } };
     };
-    const { command, args } = snippet.mcpServers.flutterdeck;
+    const { command, args } = snippet.mcpServers.pitdeck;
     expect(command).toBe('node');
     expect(args).toHaveLength(2);
     expect(args[0]?.endsWith(join('packages', 'cli', 'dist', 'main.js'))).toBe(true);
     expect(args[1]).toBe('mcp');
-    const config = JSON.parse(
-      await readFile(join(project, '.flutterdeck', 'config.json'), 'utf8'),
-    ) as { port: number };
+    const config = JSON.parse(await readFile(join(project, '.pitdeck', 'config.json'), 'utf8')) as {
+      port: number;
+    };
     expect(config.port).toBeGreaterThanOrEqual(9147);
     // The registry went to the scratch HOME.
-    await readFile(join(home, '.flutterdeck', 'ports.json'), 'utf8');
+    await readFile(join(home, '.pitdeck', 'ports.json'), 'utf8');
   }, 30_000);
 
   it('runs three init processes at once into one block and one entry (BUG-CLI-T1)', async () => {
@@ -95,7 +95,7 @@ describe('main.js', () => {
     const results = await Promise.all([1, 2, 3].map(() => run(['init', '--project', project])));
     expect(results.map((r) => r.code)).toEqual([0, 0, 0]);
     const ignore = await readFile(join(project, '.gitignore'), 'utf8');
-    expect(ignore.split('\n').filter((l) => l.startsWith('# >>> flutterdeck'))).toHaveLength(1);
+    expect(ignore.split('\n').filter((l) => l.startsWith('# >>> pitdeck'))).toHaveLength(1);
     const launch = JSON.parse(await readFile(join(project, '.claude', 'launch.json'), 'utf8')) as {
       configurations: unknown[];
     };
@@ -121,6 +121,6 @@ describe('main.js', () => {
     expect(tools.map((t) => t.name).sort()).toEqual(ALL_TOOLS);
     const status = await client.callTool({ name: 'deck_status', arguments: {} });
     const text = (status.content as { text: string }[])[0]?.text ?? '';
-    expect(text).toContain('flutterdeck init');
+    expect(text).toContain('pitdeck init');
   }, 30_000);
 });

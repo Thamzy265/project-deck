@@ -7,14 +7,14 @@ Research notes behind [the M3 design](../design/m3-drift-inspector.md), ADR 0004
 - Drift registers one service extension, `ext.drift.database`, the first time a database is created. Source: [drift/lib/src/runtime/devtools/service_extension.dart](https://github.com/simolus3/drift/blob/develop/drift/lib/src/runtime/devtools/service_extension.dart) (`registerExtension('ext.drift.database', …)`).
 - It is on in every build that isn't a product (release) build: `const _enable = !bool.fromEnvironment('dart.vm.product')` in [devtools.dart](https://github.com/simolus3/drift/blob/develop/drift/lib/src/runtime/devtools/devtools.dart). So profile builds have it too. The library is `@internal`.
 - Its actions: `get-supported-features`, `download`, `subscribe-to-tables`, `unsubscribe-from-tables`, `execute-query`, `collect-expected-schema`, `clear`, `notify-update`.
-- `execute-query` runs whatever it is given through `customSelect`, `customInsert`, `customUpdate` or `customStatement`, chosen by the caller. There is no read-only rule and no row limit, and `clear` deletes data. **Consequence:** FlutterDeck never calls `ext.drift.*`. `core` blocks the prefix outright, with `ext.flutter.`, `ext.dart.`, `ext.dds.` and dart:ui's `ext.ui.` (`BLOCKED_PREFIXES` in `packages/core/src/extensions.ts`), whatever the registry allows (ADR 0004, amended).
+- `execute-query` runs whatever it is given through `customSelect`, `customInsert`, `customUpdate` or `customStatement`, chosen by the caller. There is no read-only rule and no row limit, and `clear` deletes data. **Consequence:** Pitdeck never calls `ext.drift.*`. `core` blocks the prefix outright, with `ext.flutter.`, `ext.dart.`, `ext.dds.` and dart:ui's `ext.ui.` (`BLOCKED_PREFIXES` in `packages/core/src/extensions.ts`), whatever the registry allows (ADR 0004, amended).
 
 ## Table change notifications
 
 Source: [drift/lib/src/runtime/api/connection_user.dart](https://github.com/simolus3/drift/blob/develop/drift/lib/src/runtime/api/connection_user.dart).
 
 - `tableUpdates([TableUpdateQuery])` streams sets of `TableUpdate`s that happened atomically. A `TableUpdate` carries the table name and an optional `UpdateKind` (insert, update, delete).
-- `customStatement` "does not update stream queries on this drift database". After a raw write, call `notifyUpdates` (or `markTablesUpdated`) yourself. **Consequence:** `flutterdeck_drift`'s confirmed writes must call `notifyUpdates` for the tables they touched (design note, "Execute").
+- `customStatement` "does not update stream queries on this drift database". After a raw write, call `notifyUpdates` (or `markTablesUpdated`) yourself. **Consequence:** `pitdeck_drift`'s confirmed writes must call `notifyUpdates` for the tables they touched (design note, "Execute").
 - `notifyUpdates` is more precise than `markTablesUpdated` when triggers or foreign keys write to other tables.
 
 ## package:sqlite3 (inside the app)
@@ -61,14 +61,14 @@ Found by the tester in batch 1 (SG-1, SG-3, SG-4) and confirmed with `EXPLAIN` l
 
 Sources: [runtime/vm/service/service.md](https://github.com/dart-lang/sdk/blob/main/runtime/vm/service/service.md), [runtime/vm/service.cc](https://github.com/dart-lang/sdk/blob/main/runtime/vm/service.cc), [sdk/lib/vmservice/running_isolates.dart](https://github.com/dart-lang/sdk/blob/main/sdk/lib/vmservice/running_isolates.dart), [dart:developer ServiceExtensionResponse](https://api.dart.dev/dart-developer/ServiceExtensionResponse-class.html).
 
-- There is no `callServiceExtension` RPC on the wire: that is package:vm_service's helper. The method name itself (`ext.flutterdeck.drift.v1.query`) is sent as the JSON-RPC method, with `isolateId` and the extension's parameters, which dart:developer hands to the handler as `Map<String, String>`. ADR 0004 therefore takes string parameters only.
+- There is no `callServiceExtension` RPC on the wire: that is package:vm_service's helper. The method name itself (`ext.pitdeck.drift.v1.query`) is sent as the JSON-RPC method, with `isolateId` and the extension's parameters, which dart:developer hands to the handler as `Map<String, String>`. ADR 0004 therefore takes string parameters only.
 - An unregistered method answers JSON-RPC `-32601` (`kMethodNotFound`, `PrintUnrecognizedMethodError` in service.cc). Errors from the extension come back with its own code, in `-32016` … `-32000` (`extensionErrorMin` … `extensionErrorMax`).
 - An `isolateId` that no longer exists (for example after a hot restart) is not an error: `running_isolates.dart` answers a `Sentinel` with `kind: "Collected"`. `connector-dart` drops that isolate's extensions, re-reads the main isolate and retries once.
 - Extensions registered before we attach are listed in `Isolate.extensionRPCs` (`getIsolate`). Later ones arrive as `ServiceExtensionAdded` on the `Isolate` stream, with `extensionRPC` and the `isolate`. DDS keeps history only for the Extension, Timer, Logging, Stderr and Stdout streams (`loggingRepositoryStreams` in [pkg/dds/lib/src/stream_manager.dart](https://github.com/dart-lang/sdk/blob/main/pkg/dds/lib/src/stream_manager.dart)), not Isolate, so `getIsolate` at attach is needed.
-- `postEvent(kind, data)` in the app arrives as an `Extension` event on the `Extension` stream, with `extensionKind`, `extensionData` and the `isolate`. FlutterDeck subscribes to `Extension` at attach and passes events on only from isolates that announced an allowed extension (ADR 0004, amended).
-- DDS replays the Extension stream's history to every new subscriber. Replayed events arrive before `getIsolate` has named the extension's isolate, so `connector-dart` drops them; they are stale anyway. **For batch 2:** `flutterdeck_drift` must register its extensions before it posts its first event, or that event is dropped.
+- `postEvent(kind, data)` in the app arrives as an `Extension` event on the `Extension` stream, with `extensionKind`, `extensionData` and the `isolate`. Pitdeck subscribes to `Extension` at attach and passes events on only from isolates that announced an allowed extension (ADR 0004, amended).
+- DDS replays the Extension stream's history to every new subscriber. Replayed events arrive before `getIsolate` has named the extension's isolate, so `connector-dart` drops them; they are stale anyway. **For batch 2:** `pitdeck_drift` must register its extensions before it posts its first event, or that event is dropped.
 - An extension's handler is Dart code in the app's isolate, so it can't answer while the isolate is paused at a breakpoint. Every extension call therefore has a timeout (5 s by default).
-- Fixtures in `packages/connector-dart/src/testing/fixtures.ts` for these messages are spec-built; batch 2 replaces them with a recorded `flutterdeck_drift` session.
+- Fixtures in `packages/connector-dart/src/testing/fixtures.ts` for these messages are spec-built; batch 2 replaces them with a recorded `pitdeck_drift` session.
 
 ## Database files on the device
 

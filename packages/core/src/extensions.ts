@@ -1,6 +1,6 @@
 /**
  * App extensions (ADR 0004): named calls into the running app and events back from it,
- * e.g. `flutterdeck_drift`'s `ext.flutterdeck.drift.v1.*` service extensions. Connectors
+ * e.g. `pitdeck_drift`'s `ext.pitdeck.drift.v1.*` service extensions. Connectors
  * implement them over their own channel; backends such as db-drift use them through
  * `AppSession.extensions` without knowing the protocol.
  *
@@ -56,7 +56,7 @@ export interface AppExtensions {
   onEvent(kind: string, cb: (data: unknown) => void): () => void;
 }
 
-export const DEFAULT_EXTENSION_PREFIXES: readonly string[] = ['ext.flutterdeck.'];
+export const DEFAULT_EXTENSION_PREFIXES: readonly string[] = ['ext.pitdeck.'];
 /** Never callable, whatever prefixes are registered. ext.ui. is dart:ui's (Flutter engine). */
 const BLOCKED_PREFIXES = ['ext.flutter.', 'ext.drift.', 'ext.dart.', 'ext.dds.', 'ext.ui.'];
 
@@ -88,7 +88,7 @@ export function isAllowedExtensionMethod(method: string, prefixes: readonly stri
   );
 }
 
-/** Event kinds mirror the method prefixes without `ext.`: `flutterdeck.drift.tables`. */
+/** Event kinds mirror the method prefixes without `ext.`: `pitdeck.drift.tables`. */
 export function eventKindAllowed(kind: string, prefixes: readonly string[]): boolean {
   if (kind.length > MAX_NAME || !EVENT_KIND.test(kind)) return false;
   return prefixes.some((p) => {

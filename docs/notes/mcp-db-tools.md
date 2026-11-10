@@ -1,6 +1,6 @@
 # MCP database tools and init app ids: facts and differences from the plan
 
-Batch 5 of [the M3 design](../design/m3-drift-inspector.md) (`feat/mcp-db-tools`): the MCP tools `db_list`, `db_schema`, `db_query`, `db_snapshot` and `db_diff`, `flutterdeck init` writing the app ids, and the sql-guard `written` hardening. Checked on 20 Oct 2026 against @modelcontextprotocol/sdk 1.32.1 (already pinned) and the daemon's `/api/db` routes on `main` (d17e423).
+Batch 5 of [the M3 design](../design/m3-drift-inspector.md) (`feat/mcp-db-tools`): the MCP tools `db_list`, `db_schema`, `db_query`, `db_snapshot` and `db_diff`, `pitdeck init` writing the app ids, and the sql-guard `written` hardening. Checked on 20 Oct 2026 against @modelcontextprotocol/sdk 1.32.1 (already pinned) and the daemon's `/api/db` routes on `main` (d17e423).
 
 ## Facts checked
 
@@ -16,7 +16,7 @@ Batch 5 of [the M3 design](../design/m3-drift-inspector.md) (`feat/mcp-db-tools`
 2. **`db_list` leaves out `writesAllowed` and the device list** of a `choose-device` problem. Claude can't write and can't pick a device, so both would only invite it to try; the hint asks the user to pick in the dashboard.
 3. **`db_schema` is compact:** columns show `pk`, `notNull` and `default` only when set. Past 20 kB whole tables are left out and named in `leftOutNames` (at most 200 names).
 4. **`db_diff` past 20 kB** first lists fewer rows per table, then fewer tables; `counts` always stay the real totals and `truncated` says so.
-5. **Errors are plain text**: `FlutterDeck couldn't do that (<code>): "<daemon's reason, quoted as JSON>".` (MCP-7) plus a hint per code (`refused`, `unsupported`, `choose-device`, `busy`, `timeout`, `setup-needed`, `update-needed`, `not-debuggable`, `app-gone`, `not-found`).
+5. **Errors are plain text**: `Pitdeck couldn't do that (<code>): "<daemon's reason, quoted as JSON>".` (MCP-7) plus a hint per code (`refused`, `unsupported`, `choose-device`, `busy`, `timeout`, `setup-needed`, `update-needed`, `not-debuggable`, `app-gone`, `not-found`).
 6. **`db_snapshot` is marked read-only** (`readOnlyHint`): it stores hashes in the daemon's memory and changes nothing in the app.
 7. **`init` and the Android id**: the Gradle file is read as text only. An id inside a block comment is ignored, and two different ids (flavors that set their own) give none, so snapshots fall back to the running app's id (notes/db-backends.md item 5). The id must match core's `ANDROID_APPLICATION_ID`, which config.json and db-sqlite use.
 8. **`init` and the iOS id**: read from the Runner target's Debug configuration with a small linear parser for Xcode's property lists; details in [untrusted-project-files.md](untrusted-project-files.md). A build variable or anything else unusable prints a note asking the user to set `ios.bundleId`.

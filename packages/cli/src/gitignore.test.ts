@@ -10,12 +10,12 @@ describe('addIgnoreBlock', () => {
   it('ignores the files that hold the token, logs and locks, and not config.json', () => {
     expect(IGNORED).toEqual(
       expect.arrayContaining([
-        '.flutterdeck/state.json',
-        '.flutterdeck/runtime.json',
-        '.flutterdeck/daemon.log',
-        '.flutterdeck/*.lock',
-        '.flutterdeck/*.tmp',
-        '.flutterdeck/*.stale',
+        '.pitdeck/state.json',
+        '.pitdeck/runtime.json',
+        '.pitdeck/daemon.log',
+        '.pitdeck/*.lock',
+        '.pitdeck/*.tmp',
+        '.pitdeck/*.stale',
       ]),
     );
     expect(IGNORED.some((line) => line.includes('config'))).toBe(false);
@@ -39,7 +39,7 @@ describe('addIgnoreBlock', () => {
   });
 
   it('leaves a block the user edited alone', () => {
-    const edited = `build/\n${GITIGNORE_BEGIN}\n.flutterdeck/runtime.json\n${GITIGNORE_END}\n`;
+    const edited = `build/\n${GITIGNORE_BEGIN}\n.pitdeck/runtime.json\n${GITIGNORE_END}\n`;
     expect(addIgnoreBlock(edited)).toBeUndefined();
   });
 

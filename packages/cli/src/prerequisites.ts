@@ -1,5 +1,5 @@
 /**
- * What `init` reports about the tools FlutterDeck uses. It runs three fixed commands
+ * What `init` reports about the tools Pitdeck uses. It runs three fixed commands
  * with fixed arguments and never fails because of them: a missing tool is a line in the
  * report. Only a version number is taken from their output.
  */

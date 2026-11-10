@@ -3,16 +3,16 @@ description: Check the running Flutter app after a code change. Hot reloads it w
 argument-hint: '[what you changed]'
 disable-model-invocation: true
 allowed-tools:
-  - mcp__plugin_flutterdeck_flutterdeck__deck_status
-  - mcp__plugin_flutterdeck_flutterdeck__get_logs
-  - mcp__plugin_flutterdeck_flutterdeck__db_list
-  - mcp__plugin_flutterdeck_flutterdeck__db_snapshot
-  - mcp__plugin_flutterdeck_flutterdeck__db_diff
-  - mcp__plugin_flutterdeck_dart__dtd
-  - mcp__plugin_flutterdeck_dart__hot_reload
-  - mcp__plugin_flutterdeck_dart__get_runtime_errors
+  - mcp__plugin_pitdeck_pitdeck__deck_status
+  - mcp__plugin_pitdeck_pitdeck__get_logs
+  - mcp__plugin_pitdeck_pitdeck__db_list
+  - mcp__plugin_pitdeck_pitdeck__db_snapshot
+  - mcp__plugin_pitdeck_pitdeck__db_diff
+  - mcp__plugin_pitdeck_dart__dtd
+  - mcp__plugin_pitdeck_dart__hot_reload
+  - mcp__plugin_pitdeck_dart__get_runtime_errors
 disallowed-tools:
-  - mcp__plugin_flutterdeck_dart__hot_restart
+  - mcp__plugin_pitdeck_dart__hot_restart
   - mcp__plugin_dart-flutter_dart-mcp-server__hot_restart
   - mcp__dart__hot_restart
 ---
@@ -23,7 +23,7 @@ Check the user's running Flutter app after a code change. What the user changed:
 
 Two MCP servers do the work:
 
-- **FlutterDeck** (`deck_status`, `get_logs`, `db_list`, `db_snapshot`, `db_diff`): the attached app, its logs and its databases. All read-only.
+- **Pitdeck** (`deck_status`, `get_logs`, `db_list`, `db_snapshot`, `db_diff`): the attached app, its logs and its databases. All read-only.
 - **The Dart MCP server** (`dtd`, `hot_reload`, `get_runtime_errors`): reload and runtime errors. Its tools can come from a server named `dart` (this plugin or a project `.mcp.json`) or `dart-mcp-server` (the Dart team's plugin). Use whichever is there; the tool names are the same.
 
 ## Rules
@@ -36,11 +36,11 @@ Two MCP servers do the work:
 
 ## Steps
 
-1. **App.** Call `deck_status`. If the daemon is unavailable or `attached` is null, say so in one line, tell the user to start the app from their IDE or with `flutter run` (FlutterDeck attaches by itself), and stop.
+1. **App.** Call `deck_status`. If the daemon is unavailable or `attached` is null, say so in one line, tell the user to start the app from their IDE or with `flutter run` (Pitdeck attaches by itself), and stop.
 2. **Dart connection.** If the Dart MCP server is not connected to DTD in this session, call `dtd` with `listDtdUris`, then `connect` with the URI whose app matches the attached app from step 1. If more than one app is connected, use `listConnectedApps` and pass that app's URI as `appUri` to the Dart tools. If this fails, report the error's first line and stop.
 3. **Log mark.** Call `get_logs` with `limit: 1`. Remember the `ts` of the newest entry as the mark (none if there are no entries).
 4. **Databases.** Call `db_list` and keep each database without a problem.
-   - `choose-device`: ask the user to pick the device in the FlutterDeck dashboard (Database tab); Claude cannot pick it. Leave that database out.
+   - `choose-device`: ask the user to pick the device in the Pitdeck dashboard (Database tab); Claude cannot pick it. Leave that database out.
    - No databases, or every database has a problem: leave out the Database line.
 5. **Reload.** Call `hot_reload` with `clearRuntimeErrors: true`. If it fails, note the first line of the error, and still do steps 6 to 9.
 6. **Runtime errors.** Call `get_runtime_errors`.

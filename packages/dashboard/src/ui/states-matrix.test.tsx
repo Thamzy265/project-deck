@@ -28,7 +28,7 @@ async function ready(daemon = fakeDaemon({ logs: [log(1, 'Tap 1')] })) {
 async function goOffline(t: Awaited<ReturnType<typeof ready>>) {
   t.client.status.mockRejectedValue(new TypeError('Failed to fetch'));
   await t.drop();
-  await screen.findByText(/Lost connection to FlutterDeck — retrying \(1\)…/);
+  await screen.findByText(/Lost connection to Pitdeck — retrying \(1\)…/);
 }
 
 afterEach(() => {
@@ -417,7 +417,7 @@ describe('Connection banner and whole page', () => {
     await act(() => new Promise((r) => setTimeout(r, 600)));
     await t.drop();
     expect(
-      await screen.findByText('Lost connection to FlutterDeck — retrying (2)…'),
+      await screen.findByText('Lost connection to Pitdeck — retrying (2)…'),
     ).toBeInTheDocument();
   });
 
@@ -425,7 +425,7 @@ describe('Connection banner and whole page', () => {
     await ready();
     expect(screen.getByRole('banner')).toBeInTheDocument();
     expect(screen.getByRole('main')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { level: 1, name: 'FlutterDeck' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'Pitdeck' })).toBeInTheDocument();
     expect(screen.getByRole('tabpanel', { name: 'Logs' })).toBeInTheDocument();
     expect(screen.getByRole('contentinfo')).toBeInTheDocument();
   });

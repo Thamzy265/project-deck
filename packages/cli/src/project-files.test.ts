@@ -83,7 +83,7 @@ describe('inspectDir', () => {
 
 describe('writeAtomic temp files (review K4)', () => {
   it('writes its temp file in the given folder and renames it across', async () => {
-    const tmpDir = join(dir, '.flutterdeck');
+    const tmpDir = join(dir, '.pitdeck');
     await mkdir(tmpDir);
     const moves: string[] = [];
     await writeAtomic(join(dir, '.gitignore'), 'x\n', 0o644, {
@@ -101,7 +101,7 @@ describe('writeAtomic temp files (review K4)', () => {
   });
 
   it('removes its temp file when the rename fails', async () => {
-    const tmpDir = join(dir, '.flutterdeck');
+    const tmpDir = join(dir, '.pitdeck');
     await mkdir(tmpDir);
     const failure = Object.assign(new Error('nope'), { code: 'EACCES' });
     await expect(
@@ -111,7 +111,7 @@ describe('writeAtomic temp files (review K4)', () => {
   });
 
   it('retries once next to the target when the temp folder is on another mount (EXDEV)', async () => {
-    const tmpDir = join(dir, '.flutterdeck');
+    const tmpDir = join(dir, '.pitdeck');
     await mkdir(tmpDir);
     const moves: string[] = [];
     await writeAtomic(join(dir, '.gitignore'), 'x\n', 0o644, {
@@ -126,11 +126,11 @@ describe('writeAtomic temp files (review K4)', () => {
     expect(basename(moves[1] ?? '')).toMatch(/^\.gitignore\.[0-9a-f]+\.tmp$/);
     expect(await readFile(join(dir, '.gitignore'), 'utf8')).toBe('x\n');
     expect(await readdir(tmpDir)).toEqual([]);
-    expect((await readdir(dir)).sort()).toEqual(['.flutterdeck', '.gitignore']);
+    expect((await readdir(dir)).sort()).toEqual(['.gitignore', '.pitdeck']);
   });
 
   it('gives up after the one EXDEV retry and leaves no temp file in either folder', async () => {
-    const tmpDir = join(dir, '.flutterdeck');
+    const tmpDir = join(dir, '.pitdeck');
     await mkdir(tmpDir);
     const failure = Object.assign(new Error('cross-device'), { code: 'EXDEV' });
     let calls = 0;
@@ -145,7 +145,7 @@ describe('writeAtomic temp files (review K4)', () => {
     ).rejects.toBe(failure);
     expect(calls).toBe(2);
     expect(await readdir(tmpDir)).toEqual([]);
-    expect(await readdir(dir)).toEqual(['.flutterdeck']);
+    expect(await readdir(dir)).toEqual(['.pitdeck']);
   });
 
   it('does not retry EXDEV when the temp file is already next to the target', async () => {

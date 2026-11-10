@@ -357,7 +357,7 @@ describe('status and login window with start: false (O1 probe)', () => {
     });
     expect(await c.running()).toBe(true);
     const err = await rejection(c.status({ start: false }));
-    // The daemon is alive, so "run `flutterdeck start`" would be wrong: the same
+    // The daemon is alive, so "run `pitdeck start`" would be wrong: the same
     // stuck-daemon text as the default path, after one retry, and never a start.
     expect(err.message).toBe(droppedCallText(d.port, d.pid, 'GET /api/status'));
     expect(err.message).not.toContain(d.token);
@@ -728,7 +728,7 @@ describe('errors that are not a dropped call', () => {
         },
       }).status(),
     );
-    expect(err.message).toBe("FlutterDeck daemon didn't answer GET /api/status within 0.1 s");
+    expect(err.message).toBe("Pitdeck daemon didn't answer GET /api/status within 0.1 s");
     expect(err.message).not.toContain('dropped');
     expect(d.calls).toBe(1);
     expect(spawned).toBe(0);
@@ -739,7 +739,7 @@ describe('errors that are not a dropped call', () => {
       if (n === 1) req.socket.destroy();
     });
     const err = await rejection(client({ timeoutMs: 100 }).status());
-    expect(err.message).toBe("FlutterDeck daemon didn't answer GET /api/status within 0.1 s");
+    expect(err.message).toBe("Pitdeck daemon didn't answer GET /api/status within 0.1 s");
     expect(d.calls).toBe(2);
   });
 
@@ -749,7 +749,7 @@ describe('errors that are not a dropped call', () => {
       res.end(JSON.stringify({ error: 'boom' }));
     });
     const err = await rejection(client().status());
-    expect(err.message).toBe('FlutterDeck daemon refused GET /api/status: boom (500)');
+    expect(err.message).toBe('Pitdeck daemon refused GET /api/status: boom (500)');
     expect(d.calls).toBe(1);
   });
 

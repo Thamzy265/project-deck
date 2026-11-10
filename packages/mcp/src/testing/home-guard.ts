@@ -1,5 +1,5 @@
 /**
- * Guards the user's real ~/.flutterdeck while tests run: the global setup snapshots it
+ * Guards the user's real ~/.pitdeck while tests run: the global setup snapshots it
  * before and checks it after, so a test that escapes the scratch HOME fails the run.
  */
 import { readdirSync, statSync } from 'node:fs';

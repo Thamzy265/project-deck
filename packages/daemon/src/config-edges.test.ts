@@ -9,7 +9,7 @@ let projectDir: string;
 
 beforeEach(async () => {
   projectDir = await mkdtemp(join(tmpdir(), 'deck-config-edges-'));
-  await mkdir(join(projectDir, '.flutterdeck'), { recursive: true });
+  await mkdir(join(projectDir, '.pitdeck'), { recursive: true });
 });
 
 afterEach(async () => {
@@ -32,7 +32,7 @@ async function refusal(): Promise<string> {
 describe('readConfig: file contents', () => {
   it('refuses an empty file and names it', async () => {
     await write('');
-    expect(await refusal()).toMatch(/^\.flutterdeck[/\\]config\.json is not valid JSON/);
+    expect(await refusal()).toMatch(/^\.pitdeck[/\\]config\.json is not valid JSON/);
   });
 
   it('refuses a file of only whitespace', async () => {
@@ -84,7 +84,7 @@ describe('readConfig: file contents', () => {
   ])('refuses version %s as unknown and leaves the file as it is', async (_name, version) => {
     const text = `{"version":${version}}`;
     await write(text);
-    expect(await refusal()).toContain('this FlutterDeck reads version 1');
+    expect(await refusal()).toContain('this Pitdeck reads version 1');
     expect(await readFile(configPath(projectDir), 'utf8')).toBe(text);
   });
 
@@ -183,8 +183,8 @@ describe('readConfig: the file system', () => {
     expect(await refusal()).toMatch(/is not a regular file/);
   });
 
-  it('uses the defaults when .flutterdeck itself is missing', async () => {
-    await rm(join(projectDir, '.flutterdeck'), { recursive: true });
+  it('uses the defaults when .pitdeck itself is missing', async () => {
+    await rm(join(projectDir, '.pitdeck'), { recursive: true });
     expect(await readConfig(projectDir)).toEqual(DEFAULT_CONFIG);
   });
 
@@ -192,7 +192,7 @@ describe('readConfig: the file system', () => {
     expect(await readConfig(join(projectDir, 'nope'))).toEqual(DEFAULT_CONFIG);
   });
 
-  // Changed 15 Oct 2026 (review R1): links under .flutterdeck are never followed, so a
+  // Changed 15 Oct 2026 (review R1): links under .pitdeck are never followed, so a
   // dangling one is refused like any other link instead of meaning "no config".
   it.skipIf(process.platform === 'win32')('refuses a dangling symlink', async () => {
     await symlink(join(projectDir, 'gone.json'), configPath(projectDir));
@@ -215,7 +215,7 @@ describe('readConfig: the file system', () => {
   );
 
   it('never writes the file, also after reading defaults', async () => {
-    await rm(join(projectDir, '.flutterdeck'), { recursive: true });
+    await rm(join(projectDir, '.pitdeck'), { recursive: true });
     await readConfig(projectDir);
     await expect(readFile(configPath(projectDir))).rejects.toMatchObject({ code: 'ENOENT' });
   });

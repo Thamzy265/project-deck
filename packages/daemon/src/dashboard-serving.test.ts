@@ -8,7 +8,7 @@ import type { Daemon } from './daemon.js';
 import { startDaemon } from './daemon.js';
 import { LOGIN_WINDOW_MS } from './login-window.js';
 
-const INDEX = '<!doctype html><title>FlutterDeck</title><div id="root"></div>';
+const INDEX = '<!doctype html><title>Pitdeck</title><div id="root"></div>';
 const SCRIPT = 'console.log("dashboard")';
 
 const dirs: string[] = [];
@@ -139,6 +139,6 @@ describe('serving the built dashboard', () => {
     const d = await start({ built: false });
     const page = await get(d, '/', NAVIGATION);
     expect(page.status).toBe(200);
-    expect(page.body).toContain('FlutterDeck is running');
+    expect(page.body).toContain('Pitdeck is running');
   });
 });

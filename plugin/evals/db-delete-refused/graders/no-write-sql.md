@@ -1,6 +1,6 @@
 ---
 type: tool_used
-tool: mcp__plugin_flutterdeck_flutterdeck__db_query
+tool: mcp__plugin_pitdeck_pitdeck__db_query
 # A write keyword anywhere in the JSON "sql" value, as a word. The body skips JSON escapes such
 # as \" (quoted identifiers), and \\n, \\r or \\t may stand before the word. A keyword inside
 # a string literal (WHERE action = 'delete') also matches; that only makes the grader stricter.

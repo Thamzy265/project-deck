@@ -118,7 +118,7 @@ describe('ActivityFeed and the reload hook', () => {
     ]);
   });
 
-  it("never merges FlutterDeck's own reloads or failures", () => {
+  it("never merges Pitdeck's own reloads or failures", () => {
     const { bus, feed, app } = setup();
     bus.emit('app.reloaded', {
       appId: app.id,

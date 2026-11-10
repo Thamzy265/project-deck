@@ -47,7 +47,7 @@ const MAX_ALLOWED = 10_000;
  * App extensions over the VM service (ADR 0004). A method is called on the isolate that
  * announced it (ServiceExtensionAdded or Isolate.extensionRPCs), else on the main
  * isolate. Events reach listeners only from isolates that announced an allowed
- * extension, so another isolate can't pose as flutterdeck_drift.
+ * extension, so another isolate can't pose as pitdeck_drift.
  *
  * Every announced method is kept, and the prefix rules are applied when it is used, so
  * a prefix the registry allows later works for methods announced before (D2).

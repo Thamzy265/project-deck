@@ -168,7 +168,7 @@ export class DartAppSession implements AppSession {
   private readonly stdoutDecoder = new StringDecoder('utf8');
   private readonly stderrDecoder = new StringDecoder('utf8');
   private currentApp: RunningApp;
-  /** Calls into flutterdeck_drift and friends (ADR 0004). */
+  /** Calls into pitdeck_drift and friends (ADR 0004). */
   readonly extensions: VmExtensions;
 
   private constructor(

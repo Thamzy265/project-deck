@@ -8,7 +8,7 @@ Accepted (PM decision D1, 14 Oct 2026)
 
 ## Context
 
-The daemon's API and WebSocket need the session token from `.flutterdeck/runtime.json`. The plan said the dashboard gets the token from the URL on first load. Claude Desktop's Browser pane rejects a localhost URL with a path or query, and project rules forbid tokens in URLs. The other option was to write the token into the served HTML, where any page script (and any XSS bug) could read it.
+The daemon's API and WebSocket need the session token from `.pitdeck/runtime.json`. The plan said the dashboard gets the token from the URL on first load. Claude Desktop's Browser pane rejects a localhost URL with a path or query, and project rules forbid tokens in URLs. The other option was to write the token into the served HTML, where any page script (and any XSS bug) could read it.
 
 ## Decision
 

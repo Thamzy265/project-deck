@@ -102,9 +102,9 @@ describe('DbService: listing and reading', () => {
     });
     services.push(service);
     const app = fakeApp();
-    // A session with app extensions, but no flutterdeck_drift in the app.
+    // A session with app extensions, but no pitdeck_drift in the app.
     const drift = new FakeDriftApp();
-    drift.extensions.remove('ext.flutterdeck.drift.v1.list');
+    drift.extensions.remove('ext.pitdeck.drift.v1.list');
     await service.attach(app, new FakeAppSession(app, { extensions: drift.extensions }));
     const list = await service.list();
     expect(list.databases).toEqual([{ name: 'other', backend: 'live', source: 'fake' }]);

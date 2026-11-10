@@ -19,7 +19,7 @@ describe('launchJsonProblem', () => {
     ['{', 'is not valid JSON'],
     ['[]', 'is not a JSON object'],
     ['{"version":1,"version":2}', 'twice'],
-    ['{"configurations":[{"name":"FlutterDeck"},{"name":"FlutterDeck"}]}', 'keep one'],
+    ['{"configurations":[{"name":"Pitdeck"},{"name":"Pitdeck"}]}', 'keep one'],
   ])('names the problem with %j', (text, reason) => {
     expect(launchJsonProblem(text)).toContain(reason);
   });
@@ -86,7 +86,7 @@ describe('mergeLaunchJson', () => {
         version: '0.0.1',
         configurations: [
           { name: 'web', url: 'http://localhost:3000' },
-          { name: 'FlutterDeck', url: 'http://127.0.0.1:9147', port: 9147 },
+          { name: 'Pitdeck', url: 'http://127.0.0.1:9147', port: 9147 },
         ],
       },
       null,
@@ -100,9 +100,9 @@ describe('mergeLaunchJson', () => {
     ]);
   });
 
-  it('replaces a FlutterDeck entry that would start a command', () => {
+  it('replaces a Pitdeck entry that would start a command', () => {
     const text = JSON.stringify({
-      configurations: [{ name: 'FlutterDeck', runtimeExecutable: 'sh', port: 9147 }],
+      configurations: [{ name: 'Pitdeck', runtimeExecutable: 'sh', port: 9147 }],
     });
     expect(parse(changed(text))).toEqual({ configurations: [launchEntry(9147)] });
   });
@@ -123,10 +123,7 @@ describe('mergeLaunchJson', () => {
     ['not JSON', '{ "configurations": [ '],
     ['an array', '[]'],
     ['configurations not a list', '{ "configurations": {} }'],
-    [
-      'two FlutterDeck entries',
-      '{ "configurations": [{"name":"FlutterDeck"},{"name":"FlutterDeck"}] }',
-    ],
+    ['two Pitdeck entries', '{ "configurations": [{"name":"Pitdeck"},{"name":"Pitdeck"}] }'],
   ])('refuses a file that is %s, without quoting it', (_label, text) => {
     const result = mergeLaunchJson(text, 9147);
     expect(result.kind).toBe('refused');

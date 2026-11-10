@@ -82,7 +82,7 @@ describe('Database picker', () => {
               error: {
                 code: 'not-debuggable',
                 message:
-                  "This app isn't debuggable, so Android won't let FlutterDeck copy its database.",
+                  "This app isn't debuggable, so Android won't let Pitdeck copy its database.",
               },
             },
           ],
@@ -93,10 +93,10 @@ describe('Database picker', () => {
     const t = await open(db);
     expect(
       await screen.findByRole('heading', {
-        name: 'Add flutterdeck_drift to see your database live.',
+        name: 'Add pitdeck_drift to see your database live.',
       }),
     ).toBeInTheDocument();
-    expect(screen.getByText("FlutterDeckDrift.register(db, name: 'app');")).toBeInTheDocument();
+    expect(screen.getByText("PitdeckDrift.register(db, name: 'app');")).toBeInTheDocument();
     expect(screen.getByText('It does nothing in release builds.')).toBeInTheDocument();
     expect(screen.getByRole('alert')).toHaveTextContent("This app isn't debuggable");
     await t.user.click(screen.getByRole('button', { name: 'Take a snapshot' }));

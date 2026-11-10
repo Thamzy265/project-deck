@@ -10,7 +10,7 @@ import { visibleText } from './notify-command.js';
 import type { Notifier } from './notify-run.js';
 
 export const NOTIFY_RATE_WINDOW_MS = 30_000;
-const TITLE = 'FlutterDeck';
+const TITLE = 'Pitdeck';
 /** From the UI spec: "Claude is waiting — <first 100 chars of the message>". */
 const WAITING_CHARS = 100;
 

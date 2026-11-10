@@ -37,7 +37,7 @@ export const ActivityEntrySchema = z.discriminatedUnion('kind', [
   z.object({ ...App, kind: z.literal('app.reloaded'), result: ReloadResultSchema }),
   /** The app went away without an error log line just before. */
   z.object({ ...App, kind: z.literal('app.stopped'), code: z.number().int().optional() }),
-  /** The app went away, not by FlutterDeck, within 5 s of an error log line. */
+  /** The app went away, not by Pitdeck, within 5 s of an error log line. */
   z.object({ ...App, kind: z.literal('app.crashed'), code: z.number().int().optional() }),
   z.object({ ...Base, kind: z.literal('claude.done'), sessionId: z.string().optional() }),
   z.object({

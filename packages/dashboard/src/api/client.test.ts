@@ -59,11 +59,11 @@ describe('API client', () => {
 
   it('rejects answers that do not match the schema', async () => {
     const client = createClient(respond({ ...status, apps: 'nope' }));
-    await expect(client.status()).rejects.toThrow("FlutterDeck's answer wasn't understood");
+    await expect(client.status()).rejects.toThrow("Pitdeck's answer wasn't understood");
   });
 
   it('rejects answers that are not JSON', async () => {
     const client = createClient(() => Promise.resolve(new Response('<html>', { status: 200 })));
-    await expect(client.status()).rejects.toThrow("FlutterDeck's answer wasn't understood");
+    await expect(client.status()).rejects.toThrow("Pitdeck's answer wasn't understood");
   });
 });

@@ -186,7 +186,7 @@ export interface IosResolveOptions {
 /**
  * The container of the app on a booted simulator. Only booted simulators count, never
  * a physical device. With more than one booted simulator that has the app the user
- * must pick, unless the app's own device id names one: FlutterDeck never guesses.
+ * must pick, unless the app's own device id names one: Pitdeck never guesses.
  */
 export async function resolveIosSource(
   xcrun: XcrunRunner,
@@ -200,7 +200,7 @@ export async function resolveIosSource(
   if (bundleId === undefined || !IOS_BUNDLE_ID.test(bundleId) || bundleId.length > 155) {
     throw new DbError(
       'unavailable',
-      "FlutterDeck doesn't know this app's bundle id. Set ios.bundleId in .flutterdeck/config.json.",
+      "Pitdeck doesn't know this app's bundle id. Set ios.bundleId in .pitdeck/config.json.",
     );
   }
   let listed: z.infer<typeof SimctlList>;

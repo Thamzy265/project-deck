@@ -76,7 +76,7 @@ describe('notifications end to end, with a fake spawn', () => {
     expect(spawned).toHaveLength(1);
     const [cmd] = spawned;
     expect(cmd?.file).toBe('/usr/bin/osascript');
-    expect(cmd?.args.slice(0, 4)).toEqual(['-e', cmd?.args[1], '--', 'FlutterDeck']);
+    expect(cmd?.args.slice(0, 4)).toEqual(['-e', cmd?.args[1], '--', 'Pitdeck']);
     expect(cmd?.args).toHaveLength(5);
     const text = cmd?.args[4] ?? '';
     expect(text.startsWith('Claude is waiting — "; do shell script')).toBe(true);
@@ -99,7 +99,7 @@ describe('notifications end to end, with a fake spawn', () => {
           expect(arg).not.toContain(piece);
         }
       }
-      expect(cmd.env?.DECK_NOTIFY_TITLE).toBe('FlutterDeck');
+      expect(cmd.env?.DECK_NOTIFY_TITLE).toBe('Pitdeck');
     }
     expect(spawned[0]?.env?.DECK_NOTIFY_TEXT).toContain('</text><actions>');
     // A DECK_NOTIFY_TEXT already in the daemon's environment never wins.
@@ -112,7 +112,7 @@ describe('notifications end to end, with a fake spawn', () => {
     await flush();
     expect(spawned[0]?.args).toEqual([
       '--',
-      'FlutterDeck',
+      'Pitdeck',
       'Claude is waiting — &lt;b&gt;Allow&lt;/b&gt; &amp; go',
     ]);
   });
