@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import type { LogEntry } from '@project-deck/core';
-import { Registry } from '@project-deck/core';
+import { DECK_VERSION, Registry } from '@project-deck/core';
 import { FakeAppConnector, fakeApp } from '@project-deck/core/testing';
 import type { Daemon } from '@project-deck/daemon';
 import { projectIdentity, startDaemon } from '@project-deck/daemon';
@@ -453,6 +453,8 @@ describe('with a real daemon and fake apps', () => {
     const connector = new FakeAppConnector('fake', [fakeApp()]);
     let started: Promise<Daemon> | undefined;
     const client = await connect({
+      // The real daemon reports DECK_VERSION; a different client version adds a warning.
+      version: DECK_VERSION,
       projectId: () => projectIdentity(projectDir),
       readyTimeoutMs: 5000,
       spawnDaemon: () => {
