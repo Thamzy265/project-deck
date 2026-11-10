@@ -410,6 +410,7 @@ _Changed 24 Oct 2026 (PM decisions, see "Task providers and the Linear handoff")
 
 ### M5 — Packaging and public release
 
+- PM decisions (10 Nov 2026): M5 runs in parallel with the open M3 validation checkpoint (as M4 did); publishing steps still need the PM's approval at the time. The project name is chosen by the PM from the marketer's shortlist before anything is published; name-independent M5 work goes on meanwhile.
 - [ ] Claude Code plugin and marketplace entry; npm release of the CLI; pub.dev release of `flutterdeck_drift`
 - [ ] `flutterdeck doctor`; smoke tests on Windows, macOS and Linux
 - [ ] README with demo GIF, `ADAPTERS.md`, `CONTRIBUTING.md`, licence
