@@ -5,4 +5,4 @@ max_turns: 25
 allowed_tools: [Skill]
 ---
 
-/flutterdeck:check I added an order in the app
+/pitdeck:check I added an order in the app

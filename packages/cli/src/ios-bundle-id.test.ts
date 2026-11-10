@@ -53,7 +53,7 @@ describe('bundleIdFromPbxproj', () => {
   it("reads the Runner target's Debug id from the sample app's real project file", async () => {
     expect(bundleIdFromPbxproj(await readFile(SAMPLE, 'utf8'))).toEqual({
       kind: 'found',
-      id: 'dev.flutterdeck.flutterdeckSample',
+      id: 'dev.pitdeck.pitdeckSample',
     });
   });
 

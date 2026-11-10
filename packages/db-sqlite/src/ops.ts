@@ -26,7 +26,7 @@ export interface OpenDb {
   db: Db;
 }
 
-/** Most rows one reply holds, as in flutterdeck_drift. */
+/** Most rows one reply holds, as in pitdeck_drift. */
 export const MAX_ROWS = 5000;
 /** Most bytes one reply holds (design D6: 8 MB per reply). */
 export const MAX_REPLY_BYTES = 8 * 1024 * 1024;
@@ -68,7 +68,7 @@ export function openImage(sqlite: Sqlite3, bytes: Uint8Array): OpenDb {
   );
   if (rc !== SQLITE_OK) {
     db.close();
-    throw new DbError('unsupported', "FlutterDeck couldn't open this database file.");
+    throw new DbError('unsupported', "Pitdeck couldn't open this database file.");
   }
   capi.sqlite3_limit(pointer, capi.SQLITE_LIMIT_LENGTH, LENGTH_LIMIT);
   capi.sqlite3_limit(pointer, capi.SQLITE_LIMIT_SQL_LENGTH, 100_000);
@@ -119,7 +119,7 @@ export function closeImage(open: OpenDb): void {
   open.db.close();
 }
 
-// FNV-1a, 64 bit, in two 32-bit halves: the same hash as flutterdeck_drift's
+// FNV-1a, 64 bit, in two 32-bit halves: the same hash as pitdeck_drift's
 // cellHash, so the two backends' hashes mean the same thing.
 const FNV_OFFSET_HI = 0xcbf29ce4;
 const FNV_OFFSET_LO = 0x84222325;
@@ -182,7 +182,7 @@ export function cellHash(value: SqlValue): string {
   return h.hex();
 }
 
-/** A value as JSON without losing type or digits (as flutterdeck_drift's encodeCell). */
+/** A value as JSON without losing type or digits (as pitdeck_drift's encodeCell). */
 function encode(value: SqlValue, wholeBlob: boolean): Cell {
   if (value === null || typeof value === 'string') return value;
   if (typeof value === 'bigint') {
@@ -273,7 +273,7 @@ function sqlError(open: OpenDb): DbError {
   if (open.sqlite.capi.sqlite3_errcode(pointer) === SQLITE_NOMEM) {
     return new DbError(
       'too-large',
-      'That query needed more memory than FlutterDeck allows, so it was stopped.',
+      'That query needed more memory than Pitdeck allows, so it was stopped.',
     );
   }
   const message = open.sqlite.capi.sqlite3_errmsg(pointer);
@@ -561,7 +561,7 @@ export function schema(open: OpenDb): { tables: TableInfo[]; sqlSchema: string[]
         indexes: [],
         error: {
           code: 'unsupported',
-          message: `FlutterDeck can't read ${e.name}: ${errText(err)}`,
+          message: `Pitdeck can't read ${e.name}: ${errText(err)}`,
         },
       });
     }
@@ -718,7 +718,7 @@ export function hashes(open: OpenDb): RowHashes {
         name: e.name,
         error: {
           code: err instanceof DbError ? err.code : 'unsupported',
-          message: `FlutterDeck can't read ${e.name}: ${errText(err)}`,
+          message: `Pitdeck can't read ${e.name}: ${errText(err)}`,
         },
       });
     }

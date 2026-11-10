@@ -131,9 +131,9 @@ export const DbErrorCodeSchema = z.enum([
   'not-allowed',
   /** Something changed since the caller read it (a saved-queries revision). */
   'conflict',
-  /** The app has no flutterdeck_drift: show the setup help. */
+  /** The app has no pitdeck_drift: show the setup help. */
   'setup-needed',
-  /** flutterdeck_drift speaks another protocol version. */
+  /** pitdeck_drift speaks another protocol version. */
   'update-needed',
   /** The app stopped or was detached. */
   'app-gone',

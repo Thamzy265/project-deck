@@ -34,9 +34,9 @@ async function freePort(): Promise<number> {
 beforeEach(async () => {
   project = await mkdtemp(join(tmpdir(), 'deck-cli-daemon-'));
   port = await freePort();
-  await mkdir(join(project, '.flutterdeck'));
+  await mkdir(join(project, '.pitdeck'));
   await writeFile(
-    join(project, '.flutterdeck', 'config.json'),
+    join(project, '.pitdeck', 'config.json'),
     JSON.stringify({ version: 1, port }) + '\n',
   );
   lines = [];
@@ -89,7 +89,7 @@ describe('start, open and stop', () => {
   it('starts the daemon, reopens the window when already running, and stops it', async () => {
     expect(await runStart(options())).toBe(0);
     expect(errors).toEqual([]);
-    expect(lines[0]).toBe('FlutterDeck started.');
+    expect(lines[0]).toBe('Pitdeck started.');
     expect(lines).toContain(`Dashboard: http://127.0.0.1:${port}/`);
     expect(await health()).toBe(true);
     const info = await readRuntime(project);
@@ -115,7 +115,7 @@ describe('start, open and stop', () => {
 
     lines = [];
     expect(await runStop(options())).toBe(0);
-    expect(lines).toEqual(['FlutterDeck stopped.']);
+    expect(lines).toEqual(['Pitdeck stopped.']);
     expect(await readRuntime(project)).toBeUndefined();
     expect(await health()).toBe(false);
     // Never the token in anything printed.
@@ -138,21 +138,21 @@ describe('start, open and stop', () => {
 describe('without a running daemon', () => {
   it('stop says so and succeeds', async () => {
     expect(await runStop(options())).toBe(0);
-    expect(lines).toEqual(["FlutterDeck isn't running for this project."]);
+    expect(lines).toEqual(["Pitdeck isn't running for this project."]);
     expect(children).toEqual([]);
   });
 
   it('open says to run start, and starts nothing', async () => {
     const code = await runOpen({ ...options(), browser: true, openBrowser: () => true });
     expect(code).toBe(1);
-    expect(errors.join('\n')).toContain('flutterdeck start');
+    expect(errors.join('\n')).toContain('pitdeck start');
     expect(children).toEqual([]);
   });
 
   it('start refuses a folder init never set up', async () => {
-    await rm(join(project, '.flutterdeck'), { recursive: true });
+    await rm(join(project, '.pitdeck'), { recursive: true });
     expect(await runStart(options())).toBe(1);
-    expect(errors.join('\n')).toContain('flutterdeck init');
+    expect(errors.join('\n')).toContain('pitdeck init');
     expect(children).toEqual([]);
   });
 });

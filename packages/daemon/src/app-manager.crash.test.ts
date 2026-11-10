@@ -76,7 +76,7 @@ describe('AppManager: stopped or crashed', () => {
     expect(exits[0]?.crashed).toBe(false);
   });
 
-  it('never reports an exit when FlutterDeck detaches', async () => {
+  it('never reports an exit when Pitdeck detaches', async () => {
     const { manager, session, exits } = await setup();
     session.logs().push({ ts: LIVE_TS, level: 'error', source: 'app', message: 'boom' });
     await manager.detach();

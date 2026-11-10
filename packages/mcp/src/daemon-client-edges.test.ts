@@ -1,7 +1,7 @@
 /**
  * Tester probes of the daemon client: odd HTTP answers (redirect, HTML, slow or huge
  * body, a socket cut mid-answer), a damaged or hostile runtime.json, spawn storms, and
- * that the token only ever goes to 127.0.0.1 in a header, after a FlutterDeck health
+ * that the token only ever goes to 127.0.0.1 in a header, after a Pitdeck health
  * answer. Local sockets only.
  */
 import { randomBytes } from 'node:crypto';
@@ -138,8 +138,8 @@ function expectNoSecret(text: string): void {
 }
 
 async function writeRawRuntime(content: string): Promise<void> {
-  await mkdir(join(projectDir, '.flutterdeck'), { recursive: true });
-  await writeFile(join(projectDir, '.flutterdeck', 'runtime.json'), content, { mode: 0o600 });
+  await mkdir(join(projectDir, '.pitdeck'), { recursive: true });
+  await writeFile(join(projectDir, '.pitdeck', 'runtime.json'), content, { mode: 0o600 });
 }
 
 describe('odd answers from the daemon', () => {
@@ -150,7 +150,7 @@ describe('odd answers from the daemon', () => {
       res.end();
     });
     const err = await rejection(client().status());
-    expect(err.message).toBe('FlutterDeck daemon refused GET /api/status: no reason given (302)');
+    expect(err.message).toBe('Pitdeck daemon refused GET /api/status: no reason given (302)');
     expect(elsewhere.seen).toEqual([]);
     expect(d.seen.map((s) => s.path)).toEqual(['/api/health', '/api/status']);
     expectNoSecret(err.message);
@@ -180,7 +180,7 @@ describe('odd answers from the daemon', () => {
       res.end('<html><body>Internal error at /home/jane/secret</body></html>');
     });
     const err = await rejection(client().status());
-    expect(err.message).toBe('FlutterDeck daemon refused GET /api/status: no reason given (500)');
+    expect(err.message).toBe('Pitdeck daemon refused GET /api/status: no reason given (500)');
   });
 
   it('reports a 200 with an HTML body as an unexpected answer', async () => {
@@ -189,7 +189,7 @@ describe('odd answers from the daemon', () => {
       res.end('<html></html>');
     });
     const err = await rejection(client().status());
-    expect(err.message).toBe('FlutterDeck daemon sent an unexpected answer to GET /api/status');
+    expect(err.message).toBe('Pitdeck daemon sent an unexpected answer to GET /api/status');
   });
 
   async function slowBody(): Promise<void> {
@@ -209,7 +209,7 @@ describe('odd answers from the daemon', () => {
   it('BUG-MCP-T10: calls a body that never ends a timeout, not a wrong answer', async () => {
     await slowBody();
     const err = await rejection(client({ timeoutMs: 200 }).status());
-    expect(err.message).toBe("FlutterDeck daemon didn't answer GET /api/status within 0.2 s");
+    expect(err.message).toBe("Pitdeck daemon didn't answer GET /api/status within 0.2 s");
   });
 
   it('refuses a huge answer of the wrong shape with a short message', async () => {
@@ -228,7 +228,7 @@ describe('odd answers from the daemon', () => {
       res.end(JSON.stringify({ error: 'bad regex' }));
     });
     const err = await rejection(client().logs({ regex: '(' }));
-    expect(err.message).toBe('FlutterDeck daemon refused GET /api/logs: bad regex (400)');
+    expect(err.message).toBe('Pitdeck daemon refused GET /api/logs: bad regex (400)');
   });
 });
 
@@ -376,7 +376,7 @@ describe('the token', () => {
       () => client().openLoginWindow(),
     ]) {
       const err = await rejection(call());
-      expect(err.message).toContain("Another project's FlutterDeck");
+      expect(err.message).toContain("Another project's Pitdeck");
       expectNoSecret(err.message);
     }
     expect(f.requests.every((r) => r.path === '/api/health')).toBe(true);

@@ -128,7 +128,7 @@ export async function acquireFileLock(
       const code = (err as NodeJS.ErrnoException).code;
       if (code === undefined || !HELD_CODES.has(code)) throw err;
     }
-    // A link is never a FlutterDeck lock: a cloned repository planted it. Remove the link
+    // A link is never a Pitdeck lock: a cloned repository planted it. Remove the link
     // itself (never what it points at) and try again.
     if (linksRemoved < 3 && (await lstat(path).catch(() => undefined))?.isSymbolicLink() === true) {
       linksRemoved++;

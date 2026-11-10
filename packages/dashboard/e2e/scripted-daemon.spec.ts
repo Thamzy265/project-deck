@@ -44,9 +44,7 @@ test('"Login needed" once the 2-minute window has closed; an old cookie still wo
   const late = await browser.newContext();
   const latePage = await late.newPage();
   await latePage.goto(deck.url);
-  await expect(
-    latePage.getByText(/Login needed\. Run flutterdeck open in your project/),
-  ).toBeVisible();
+  await expect(latePage.getByText(/Login needed\. Run pitdeck open in your project/)).toBeVisible();
   expect(await late.cookies()).toEqual([]);
   await late.close();
   await page.reload();
@@ -299,7 +297,7 @@ test('connection loss: banner, then reconnect without a page reload and fill the
   });
   await Promise.all(sockets.map((s) => s.close()));
   await expect(
-    page.getByRole('status').filter({ hasText: /Lost connection to FlutterDeck — retrying/ }),
+    page.getByRole('status').filter({ hasText: /Lost connection to Pitdeck — retrying/ }),
   ).toBeVisible();
   push({ message: 'logged while disconnected' });
   refuse = false;

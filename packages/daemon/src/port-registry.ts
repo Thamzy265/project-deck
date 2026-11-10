@@ -1,5 +1,5 @@
 /**
- * Per-user registry `~/.flutterdeck/ports.json`: project path → dashboard port, plus a
+ * Per-user registry `~/.pitdeck/ports.json`: project path → dashboard port, plus a
  * random salt for project ids. It lets `init` give every project its own port even
  * while no daemon runs, and lets the daemon spot a committed config port that another
  * project on this machine already uses.
@@ -47,12 +47,10 @@ async function withRegistryLock<T>(homeDir: string, fn: () => Promise<T>): Promi
   const release = await acquireFileLock(
     join(homeDir, REGISTRY_DIR),
     LOCK_FILE,
-    // The lock may be the first thing in ~/.flutterdeck: create the folder private.
+    // The lock may be the first thing in ~/.pitdeck: create the folder private.
     { staleMs: LOCK_STALE_MS, retryMs: 20, dirMode: 0o700 },
     () =>
-      new PortRegistryError(
-        `${registryPath(homeDir)} is locked by another FlutterDeck; try again.`,
-      ),
+      new PortRegistryError(`${registryPath(homeDir)} is locked by another Pitdeck; try again.`),
   );
   try {
     return await fn();
@@ -176,14 +174,12 @@ async function load(homeDir: string): Promise<PortRegistry> {
   if (read.state === 'unreadable') {
     throw new PortRegistryError(
       read.code === 'ENOTREG'
-        ? `${path} is not a regular file (a link or a folder). FlutterDeck doesn't follow links there.`
+        ? `${path} is not a regular file (a link or a folder). Pitdeck doesn't follow links there.`
         : `${path} can't be read (${read.code})`,
     );
   }
   // Replacing it would change every project id and forget every port, so leave it be.
-  throw new PortRegistryError(
-    `${path} is damaged. Fix or delete it, then run \`flutterdeck init\`.`,
-  );
+  throw new PortRegistryError(`${path} is damaged. Fix or delete it, then run \`pitdeck init\`.`);
 }
 
 /**

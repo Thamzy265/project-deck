@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * `flutterdeck` (working name; see name.ts). Until the npm release:
+ * `pitdeck` (working name; see name.ts). Until the npm release:
  *   node packages/cli/dist/main.js <command> [--project <folder>]
  */
 import { fileURLToPath } from 'node:url';

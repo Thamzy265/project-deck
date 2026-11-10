@@ -149,12 +149,12 @@ afterEach(async () => {
 });
 
 async function initProject(port: number, opts: { config?: boolean } = {}): Promise<void> {
-  await mkdir(join(projectDir, '.flutterdeck'), { recursive: true });
+  await mkdir(join(projectDir, '.pitdeck'), { recursive: true });
   if (opts.config !== false) {
-    await writeFile(join(projectDir, '.flutterdeck', 'config.json'), '{"version":1}\n');
+    await writeFile(join(projectDir, '.pitdeck', 'config.json'), '{"version":1}\n');
   }
   await writeFile(
-    join(projectDir, '.flutterdeck', 'runtime.json'),
+    join(projectDir, '.pitdeck', 'runtime.json'),
     JSON.stringify({ pid: process.pid, port, token: TOKEN, startedAt: 1 }),
     { mode: 0o600 },
   );
@@ -207,7 +207,7 @@ describe('the hook process', () => {
       'POST /api/events',
     ]);
     const [health, sent] = daemon.received;
-    // The token goes only with the event, after the health check said it is FlutterDeck.
+    // The token goes only with the event, after the health check said it is Pitdeck.
     expect(health?.headers['x-deck-token']).toBeUndefined();
     expect(sent?.headers['x-deck-token']).toBe(TOKEN);
     expect(sent?.headers['content-type']).toBe('application/json');
@@ -236,10 +236,10 @@ describe('the hook process', () => {
     expect(daemon.received).toEqual([]);
   });
 
-  it('does nothing in a folder FlutterDeck was never set up in', async () => {
+  it('does nothing in a folder Pitdeck was never set up in', async () => {
     daemon = await fakeDaemon();
     expectSilentSuccess(await runHook(JSON.stringify(fx.stop), { CLAUDE_PROJECT_DIR: projectDir }));
-    // runtime.json without config.json: not set up by `flutterdeck init`.
+    // runtime.json without config.json: not set up by `pitdeck init`.
     await initProject(daemon.port, { config: false });
     expectSilentSuccess(await runHook(JSON.stringify(fx.stop), { CLAUDE_PROJECT_DIR: projectDir }));
     expect(daemon.received).toEqual([]);
@@ -248,7 +248,7 @@ describe('the hook process', () => {
   it('does nothing when the daemon is not running (no runtime.json)', async () => {
     daemon = await fakeDaemon();
     await initProject(daemon.port);
-    await rm(join(projectDir, '.flutterdeck', 'runtime.json'));
+    await rm(join(projectDir, '.pitdeck', 'runtime.json'));
     expectSilentSuccess(await runHook(JSON.stringify(fx.stop), { CLAUDE_PROJECT_DIR: projectDir }));
     expect(daemon.received).toEqual([]);
   });
@@ -261,13 +261,13 @@ describe('the hook process', () => {
       elsewhere,
       JSON.stringify({ pid: 1, port: daemon.port, token: TOKEN, startedAt: 1 }),
     );
-    await rm(join(projectDir, '.flutterdeck', 'runtime.json'));
-    await symlink(elsewhere, join(projectDir, '.flutterdeck', 'runtime.json'));
+    await rm(join(projectDir, '.pitdeck', 'runtime.json'));
+    await symlink(elsewhere, join(projectDir, '.pitdeck', 'runtime.json'));
     expectSilentSuccess(await runHook(JSON.stringify(fx.stop), { CLAUDE_PROJECT_DIR: projectDir }));
     expect(daemon.received).toEqual([]);
   });
 
-  links('never follows a linked .flutterdeck folder', async () => {
+  links('never follows a linked .pitdeck folder', async () => {
     daemon = await fakeDaemon();
     const real = await mkdtemp(join(tmpdir(), 'deck-hook-real-'));
     try {
@@ -276,7 +276,7 @@ describe('the hook process', () => {
         join(real, 'runtime.json'),
         JSON.stringify({ pid: 1, port: daemon.port, token: TOKEN, startedAt: 1 }),
       );
-      await symlink(real, join(projectDir, '.flutterdeck'), 'dir');
+      await symlink(real, join(projectDir, '.pitdeck'), 'dir');
       expectSilentSuccess(
         await runHook(JSON.stringify(fx.stop), { CLAUDE_PROJECT_DIR: projectDir }),
       );
@@ -296,7 +296,7 @@ describe('the hook process', () => {
     ],
   ])('does nothing when runtime.json holds %s', async (_, text) => {
     await initProject(1);
-    await writeFile(join(projectDir, '.flutterdeck', 'runtime.json'), text);
+    await writeFile(join(projectDir, '.pitdeck', 'runtime.json'), text);
     expectSilentSuccess(await runHook(JSON.stringify(fx.stop), { CLAUDE_PROJECT_DIR: projectDir }));
   });
 
@@ -319,7 +319,7 @@ describe('the hook process', () => {
     expect(events(daemon)).toHaveLength(1);
   });
 
-  it('never sends the token to a program that is not FlutterDeck', async () => {
+  it('never sends the token to a program that is not Pitdeck', async () => {
     daemon = await fakeDaemon('other-program');
     await initProject(daemon.port);
     expectSilentSuccess(await runHook(JSON.stringify(fx.stop), { CLAUDE_PROJECT_DIR: projectDir }));
@@ -377,7 +377,7 @@ describe('the hook process: project id (S2)', () => {
   // A home folder per test, passed to the hook as HOME: test files run in parallel and
   // share the global scratch HOME, where a registry would change other files' results.
   let home: string;
-  const registryDir = () => join(home, '.flutterdeck');
+  const registryDir = () => join(home, '.pitdeck');
   const salt = () => randomBytes(32).toString('base64url');
   const run = (input: unknown) =>
     runHook(JSON.stringify(input), {

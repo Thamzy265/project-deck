@@ -20,7 +20,7 @@ if (typeof args !== 'object' || args === null || Array.isArray(args)) {
   throw new Error('Arguments must be a JSON object, for example {"minLevel":"warn"}');
 }
 
-const client = new Client({ name: 'flutterdeck-qa', version: '0.0.0' });
+const client = new Client({ name: 'pitdeck-qa', version: '0.0.0' });
 await client.connect(
   new StdioClientTransport({
     command: process.execPath,

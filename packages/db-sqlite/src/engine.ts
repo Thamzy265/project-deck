@@ -214,7 +214,7 @@ export class SnapshotEngine {
         const err = this.outOfMemory.has(w)
           ? new DbError(
               'too-large',
-              'That query needed more memory than FlutterDeck allows, so it was stopped.',
+              'That query needed more memory than Pitdeck allows, so it was stopped.',
             )
           : new DbError('internal', 'The snapshot engine stopped.');
         finish(() => reject(err));

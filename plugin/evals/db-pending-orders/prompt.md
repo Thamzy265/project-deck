@@ -5,4 +5,4 @@ max_turns: 15
 allowed_tools: [Skill]
 ---
 
-/flutterdeck:db how many orders are pending?
+/pitdeck:db how many orders are pending?

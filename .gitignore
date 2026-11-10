@@ -3,6 +3,13 @@ dist/
 coverage/
 *.tsbuildinfo
 .DS_Store
+.pitdeck/state.json
+.pitdeck/runtime.json
+.pitdeck/daemon.log
+.pitdeck/startup.lock
+.pitdeck/*.tmp
+.pitdeck/*.stale
+# Rename leftover: an old build's token must not be committed either.
 .flutterdeck/state.json
 .flutterdeck/runtime.json
 .flutterdeck/daemon.log

@@ -85,7 +85,7 @@ describe('AndroidSource', () => {
     const source = new AndroidSource(adbWith('not-debuggable'), FIXTURE_SERIAL, FIXTURE_PACKAGE);
     await expect(source.list()).rejects.toMatchObject({
       code: 'not-debuggable',
-      message: "This app isn't debuggable, so Android won't let FlutterDeck copy its database.",
+      message: "This app isn't debuggable, so Android won't let Pitdeck copy its database.",
     });
     // exec-out on older adb puts run-as's complaint on stdout and exits 0.
     const merged: AdbRunner = {

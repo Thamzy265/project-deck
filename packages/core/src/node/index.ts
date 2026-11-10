@@ -1,5 +1,5 @@
 /**
- * Node-only helpers shared by the daemon and its clients: files under `.flutterdeck/`
+ * Node-only helpers shared by the daemon and its clients: files under `.pitdeck/`
  * and the per-user registry. A separate entry, so the browser dashboard never pulls in
  * `node:` modules through the main one.
  */

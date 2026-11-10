@@ -16,7 +16,7 @@ afterEach(async () => {
 });
 
 async function write(content: string): Promise<void> {
-  await mkdir(join(projectDir, '.flutterdeck'), { recursive: true });
+  await mkdir(join(projectDir, '.pitdeck'), { recursive: true });
   await writeFile(configPath(projectDir), content);
 }
 
@@ -36,7 +36,7 @@ describe('readConfig', () => {
     await write('{ "version": 1, ');
     const err = await readConfig(projectDir).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ConfigError);
-    expect((err as Error).message).toMatch(/\.flutterdeck[\\/]config\.json is not valid JSON/);
+    expect((err as Error).message).toMatch(/\.pitdeck[\\/]config\.json is not valid JSON/);
   });
 
   it('lists each invalid key with its path', async () => {

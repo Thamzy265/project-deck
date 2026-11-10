@@ -10,7 +10,7 @@ import type { Node, ParseError } from 'jsonc-parser';
 import { getNodeValue, parseTree } from 'jsonc-parser';
 import { setJsonValue } from './text-format.js';
 
-export const LAUNCH_ENTRY_NAME = 'FlutterDeck';
+export const LAUNCH_ENTRY_NAME = 'Pitdeck';
 const LAUNCH_VERSION = '0.0.1';
 
 export interface LaunchEntry {
@@ -56,7 +56,7 @@ function parse(text: string): Parsed | string {
   return { root, configurations, ours: matches[0] ?? -1 };
 }
 
-/** Keys FlutterDeck reads or writes; only these are named in a message. */
+/** Keys Pitdeck reads or writes; only these are named in a message. */
 const KNOWN_KEYS = new Set(['version', 'configurations', 'name', 'url', 'port']);
 
 /**
@@ -113,7 +113,7 @@ export function launchJsonProblem(text: string): string | undefined {
 }
 
 /**
- * Adds the FlutterDeck entry, or replaces ours when it differs (another port, or a
+ * Adds the Pitdeck entry, or replaces ours when it differs (another port, or a
  * command someone added). `text` undefined means no file yet.
  */
 export function mergeLaunchJson(text: string | undefined, port: number): LaunchMerge {

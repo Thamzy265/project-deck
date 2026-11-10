@@ -62,7 +62,7 @@ export interface DbClient {
   saveQueries(queries: SavedQuery[], revision: string): Promise<SavedQueriesState>;
 }
 
-const NOT_UNDERSTOOD = "FlutterDeck's answer wasn't understood";
+const NOT_UNDERSTOOD = "Pitdeck's answer wasn't understood";
 
 /** Same origin and the login cookie only; nothing secret ever goes in a URL. */
 export function createDbClient(fetchFn: typeof fetch = fetch.bind(globalThis)): DbClient {

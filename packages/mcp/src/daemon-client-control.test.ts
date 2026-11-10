@@ -72,11 +72,11 @@ describe('DaemonClient.running', () => {
     expect((await rejection(client().running())).message).toContain('Another project');
   });
 
-  it('refuses a linked .flutterdeck before reading anything', async () => {
+  it('refuses a linked .pitdeck before reading anything', async () => {
     const other = await mkdtemp(join(tmpdir(), 'deck-mcp-control-other-'));
     try {
-      await rm(join(projectDir, '.flutterdeck'), { recursive: true });
-      await symlink(other, join(projectDir, '.flutterdeck'), 'dir');
+      await rm(join(projectDir, '.pitdeck'), { recursive: true });
+      await symlink(other, join(projectDir, '.pitdeck'), 'dir');
       expect((await rejection(client().running())).message).toContain('not a real folder');
     } finally {
       await rm(other, { recursive: true, force: true });
@@ -160,7 +160,7 @@ describe('DaemonClient.shutdown', () => {
   });
 
   it('works in a folder without config.json (a daemon started by hand)', async () => {
-    await rm(join(projectDir, '.flutterdeck', 'config.json'));
+    await rm(join(projectDir, '.pitdeck', 'config.json'));
     const f = await fake();
     f.route('POST', '/api/shutdown', () => {
       setTimeout(() => void rm(runtimePath(projectDir), { force: true }), 10);

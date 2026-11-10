@@ -178,8 +178,8 @@ describe('toDeckEvent: tool names', () => {
     'xmcp__dart__hot_reload',
     'mcp__dart__hot_reload ',
     'mcp__dart__hot_rebuild',
-    'mcp__flutterdeck__hot_reload',
-    'mcp__plugin_flutterdeck_flutterdeck__hot_restart',
+    'mcp__pitdeck__hot_reload',
+    'mcp__plugin_pitdeck_pitdeck__hot_restart',
     'hot_reload',
     'mcp____hot_reload',
   ])('ignores %j', (tool) => {
@@ -241,7 +241,7 @@ describe('the hooks.json matcher and the script agree on tool names', () => {
       ['mcp__Dart__hot_reload', true],
       ['mcp__DART__hot_restart', true],
       ['mcp__DartMCP__hot_restart', true],
-      ['mcp__plugin_flutterdeck_dart__hot_reload', true],
+      ['mcp__plugin_pitdeck_dart__hot_reload', true],
       ['mcp__plugin_dart-flutter_dart-mcp-server__hot_restart', true],
       ['mcp__dartboard__hot_reload', true],
       ['mcp__vite__hot_reload', false],
@@ -477,7 +477,7 @@ describe('projectDirOf: more inputs', () => {
 describe('readDaemonAddress: odd project folders', () => {
   let dir: string;
   const token = () => randomBytes(24).toString('hex');
-  const state = (...parts: string[]) => join(dir, '.flutterdeck', ...parts);
+  const state = (...parts: string[]) => join(dir, '.pitdeck', ...parts);
 
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), 'deck-hook-edges-'));
@@ -548,7 +548,7 @@ describe('readDaemonAddress: odd project folders', () => {
     expect(await readDaemonAddress(dir)).toBeUndefined();
   });
 
-  it('does nothing when .flutterdeck is a file', async () => {
+  it('does nothing when .pitdeck is a file', async () => {
     await rm(state(), { recursive: true });
     await writeFile(state(), '{}');
     expect(await readDaemonAddress(dir)).toBeUndefined();

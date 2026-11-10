@@ -57,8 +57,8 @@ async function startServer(
 
 beforeEach(async () => {
   project = await mkdtemp(join(tmpdir(), 'deck-cli-foreign-'));
-  await mkdir(join(project, '.flutterdeck'));
-  await writeFile(join(project, '.flutterdeck', 'config.json'), '{"version":1}\n');
+  await mkdir(join(project, '.pitdeck'));
+  await writeFile(join(project, '.pitdeck', 'config.json'), '{"version":1}\n');
   shutdowns = 0;
 });
 
@@ -95,8 +95,8 @@ describe('stop with a daemon it can’t stop', () => {
     const text = errors.join('\n');
     expect(text).toContain(`port ${port}`);
     expect(text).toContain('packages/daemon/dist/main.js');
-    expect(text).toContain('delete .flutterdeck/runtime.json');
-    expect(text).not.toContain('run `flutterdeck stop`');
+    expect(text).toContain('delete .pitdeck/runtime.json');
+    expect(text).not.toContain('run `pitdeck stop`');
     // Still running, and its runtime.json is left for the user to decide.
     expect(server.listening).toBe(true);
     expect(await readRuntime(project)).toBeDefined();

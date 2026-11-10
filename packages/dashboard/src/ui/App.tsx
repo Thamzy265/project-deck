@@ -72,7 +72,7 @@ export function App({
         />
         <ConnectionBanner />
         <main className="flex min-h-0 flex-1 flex-col">
-          <h1 className="sr-only">FlutterDeck</h1>
+          <h1 className="sr-only">Pitdeck</h1>
           <Tabs<TabId>
             selected={tab}
             onSelect={setTab}

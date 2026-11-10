@@ -40,8 +40,8 @@ async function freePort(): Promise<number> {
 async function newProject(port: number): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), 'deck-cli-dedge-'));
   dirs.push(dir);
-  await mkdir(join(dir, '.flutterdeck'));
-  await writeFile(join(dir, '.flutterdeck', 'config.json'), JSON.stringify({ version: 1, port }));
+  await mkdir(join(dir, '.pitdeck'));
+  await writeFile(join(dir, '.pitdeck', 'config.json'), JSON.stringify({ version: 1, port }));
   return dir;
 }
 
@@ -74,7 +74,7 @@ function options(projectDir: string, extra: Partial<DaemonCommandOptions> = {}) 
     io: { out: (l: string) => lines.push(l), err: (l: string) => errors.push(l) },
     spawnDaemon: (dir: string, onExit: (code: number | null) => void) => {
       // stderr to daemon.log, as the real spawnDaemon does: the client reads its reason.
-      const log = openSync(join(dir, '.flutterdeck', 'daemon.log'), 'w', 0o600);
+      const log = openSync(join(dir, '.pitdeck', 'daemon.log'), 'w', 0o600);
       const child = spawn(process.execPath, [DAEMON_MAIN, '--project', dir, '--fake'], {
         stdio: ['ignore', 'ignore', log],
         windowsHide: true,
@@ -140,7 +140,7 @@ describe('stop with a bad runtime.json', () => {
     const project = await newProject(await freePort());
     await writeFile(runtimePath(project), text);
     expect(await runStop(options(project))).toBe(0);
-    expect(lines).toEqual(["FlutterDeck isn't running for this project."]);
+    expect(lines).toEqual(["Pitdeck isn't running for this project."]);
     expect(await readFile(runtimePath(project), 'utf8')).toBe(text);
   });
 
@@ -153,7 +153,7 @@ describe('stop with a bad runtime.json', () => {
       startedAt: 1,
     });
     expect(await runStop(options(project))).toBe(0);
-    expect(lines).toEqual(["FlutterDeck isn't running for this project."]);
+    expect(lines).toEqual(["Pitdeck isn't running for this project."]);
     expect(children).toEqual([]);
   });
 

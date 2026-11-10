@@ -1,5 +1,5 @@
 /**
- * The FlutterDeck MCP server: `deck_status`, `get_logs` and the read-only database tools
+ * The Pitdeck MCP server: `deck_status`, `get_logs` and the read-only database tools
  * (db-tools.ts), forwarded to the daemon.
  * Every tool's output, errors included, goes through the Masker before it is cut to
  * size and returned (design D4).
@@ -41,7 +41,7 @@ export function createDeckServer(opts: DeckServerOptions): DeckServer {
   const readSettings = opts.readSettings ?? readMaskSettings;
   const maskers = new MaskerCache();
   const scrub = pathScrubber(opts.projectDir);
-  const server = new McpServer({ name: 'flutterdeck', version: DECK_VERSION });
+  const server = new McpServer({ name: 'pitdeck', version: DECK_VERSION });
   const annotations = { readOnlyHint: true, openWorldHint: false };
   /** Holds the masker for the whole call, so a config change can't close it underneath. */
   const withMasker = async <T>(settings: MaskSettings, use: (m: Masker) => Promise<T>) => {
@@ -55,7 +55,7 @@ export function createDeckServer(opts: DeckServerOptions): DeckServer {
 
   server.registerTool(
     'deck_status',
-    { title: 'FlutterDeck status', description: DECK_STATUS_DESCRIPTION, annotations },
+    { title: 'Pitdeck status', description: DECK_STATUS_DESCRIPTION, annotations },
     async () => {
       const settings = await readSettings(opts.projectDir);
       let body: { [key: string]: JsonValue };

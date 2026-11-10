@@ -47,9 +47,9 @@ function deps(): CliDeps {
 describe('runCli', () => {
   it('prints usage for help (exit 0) and for no command (exit 2)', async () => {
     expect(await runCli(['--help'], deps())).toBe(0);
-    expect(out[0]).toContain('Usage: flutterdeck');
+    expect(out[0]).toContain('Usage: pitdeck');
     expect(await runCli([], deps())).toBe(2);
-    expect(err[0]).toContain('Usage: flutterdeck');
+    expect(err[0]).toContain('Usage: pitdeck');
   });
 
   it('refuses an unknown command or option', async () => {
@@ -76,7 +76,7 @@ describe('runCli', () => {
       'name: a\ndependencies:\n  flutter:\n    sdk: flutter\n',
     );
     expect(await runCli(['init'], deps())).toBe(0);
-    expect(out.join('\n')).toContain('FlutterDeck init in');
+    expect(out.join('\n')).toContain('Pitdeck init in');
   });
 
   it('accepts --browser and --no-browser for open', async () => {

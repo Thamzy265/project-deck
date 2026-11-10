@@ -81,7 +81,7 @@ function send(
 
 const NAVIGATION = { 'sec-fetch-site': 'none', 'sec-fetch-mode': 'navigate' };
 const LOGIN_NEEDED =
-  'Login needed. Run `flutterdeck open` in your project (or start a Claude session with the plugin), then reload this page.';
+  'Login needed. Run `pitdeck open` in your project (or start a Claude session with the plugin), then reload this page.';
 
 const cookieOf = (reply: Reply): string => (reply.setCookie[0] ?? '').split(';')[0] ?? '';
 const sameOrigin = (d: Daemon, cookie: string) => ({

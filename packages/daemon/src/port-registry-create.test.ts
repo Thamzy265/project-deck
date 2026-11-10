@@ -22,7 +22,7 @@ const VALID = JSON.stringify({ version: 1, salt: 's'.repeat(43), projects: {} })
 
 /** An empty registry that another process fills in a moment later. */
 async function beingCreated(): Promise<void> {
-  await mkdir(join(homeDir, '.flutterdeck'), { recursive: true });
+  await mkdir(join(homeDir, '.pitdeck'), { recursive: true });
   await writeFile(registryPath(homeDir), '');
   setTimeout(() => void writeFile(registryPath(homeDir), VALID), 40);
 }
@@ -43,6 +43,6 @@ describe('ports.json while it is being created', () => {
       Array.from({ length: 12 }, () => projectIdentity(projectDir, { homeDir })),
     );
     expect(new Set(ids).size).toBe(1);
-    expect(await readdir(join(homeDir, '.flutterdeck'))).toEqual(['ports.json']);
+    expect(await readdir(join(homeDir, '.pitdeck'))).toEqual(['ports.json']);
   });
 });

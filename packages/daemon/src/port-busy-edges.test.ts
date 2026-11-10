@@ -121,7 +121,7 @@ describe('identifyPortHolder', () => {
     ['the right body on a 500', json({ ok: true, name: 'project-deck' }, 500)],
     ['the right body on a 401', json({ ok: true, name: 'project-deck' }, 401)],
     [
-      'a redirect to a FlutterDeck',
+      'a redirect to a Pitdeck',
       (_req: IncomingMessage, res: ServerResponse) => {
         res.writeHead(302, { location: 'http://127.0.0.1:1/api/health' });
         res.end();
@@ -133,7 +133,7 @@ describe('identifyPortHolder', () => {
     expect(err).toBeInstanceOf(PortBusyError);
     expect(err.holder).toEqual({ kind: 'other' });
     expect(err.message).toBe(
-      `Another program uses port ${port}. Stop it, or pick another port: run \`flutterdeck init\`, or change "port" in .flutterdeck/config.json and the url in .claude/launch.json.`,
+      `Another program uses port ${port}. Stop it, or pick another port: run \`pitdeck init\`, or change "port" in .pitdeck/config.json and the url in .claude/launch.json.`,
     );
   });
 
@@ -147,12 +147,12 @@ describe('identifyPortHolder', () => {
     expect(target.requests).toEqual([]);
   });
 
-  it('recognises an older FlutterDeck without a project id', async () => {
+  it('recognises an older Pitdeck without a project id', async () => {
     const { port } = await serve(json({ ok: true, name: 'project-deck', version: '0.0.0' }));
     const err = await identifyPortHolder(port);
-    expect(err.holder).toEqual({ kind: 'flutterdeck', projectId: undefined });
-    expect(err.message).toContain('Another FlutterDeck (project unknown)');
-    expect(err.message).toContain('flutterdeck stop');
+    expect(err.holder).toEqual({ kind: 'pitdeck', projectId: undefined });
+    expect(err.message).toContain('Another Pitdeck (project unknown)');
+    expect(err.message).toContain('pitdeck stop');
   });
 
   it.each([
@@ -173,14 +173,14 @@ describe('identifyPortHolder', () => {
       json({ ok: true, name: 'project-deck', projectId: '0123456789ab' }),
     );
     const err = await identifyPortHolder(port);
-    expect(err.holder).toEqual({ kind: 'flutterdeck', projectId: '0123456789ab' });
-    expect(err.message).toContain(`Another FlutterDeck (project 0123456789ab) uses port ${port}`);
+    expect(err.holder).toEqual({ kind: 'pitdeck', projectId: '0123456789ab' });
+    expect(err.message).toContain(`Another Pitdeck (project 0123456789ab) uses port ${port}`);
   });
 
   it('copes with a large JSON answer', async () => {
     const { port } = await serve(
       json({ ok: true, name: 'project-deck', projectId: '0123456789ab', pad: 'x'.repeat(5e6) }),
     );
-    expect((await identifyPortHolder(port)).holder.kind).toBe('flutterdeck');
+    expect((await identifyPortHolder(port)).holder.kind).toBe('pitdeck');
   });
 });

@@ -74,7 +74,7 @@ describe('projectIdentity', () => {
   });
 
   it('refuses a corrupt registry instead of replacing it', async () => {
-    await mkdir(join(homeDir, '.flutterdeck'), { recursive: true });
+    await mkdir(join(homeDir, '.pitdeck'), { recursive: true });
     await writeFile(registryPath(homeDir), '{ nope');
     await expect(projectIdentity(projectA, { homeDir })).rejects.toBeInstanceOf(PortRegistryError);
     expect(await readFile(registryPath(homeDir), 'utf8')).toBe('{ nope');
@@ -83,16 +83,16 @@ describe('projectIdentity', () => {
 
 describe('allocatePort', () => {
   it.skipIf(process.platform === 'win32')(
-    'creates ~/.flutterdeck readable by the user only, also when the lock comes first',
+    'creates ~/.pitdeck readable by the user only, also when the lock comes first',
     async () => {
       await allocatePort(projectA, { homeDir, isFree: allFree });
-      expect((await stat(join(homeDir, '.flutterdeck'))).mode & 0o777).toBe(0o700);
+      expect((await stat(join(homeDir, '.pitdeck'))).mode & 0o777).toBe(0o700);
     },
   );
 
   it('takes over a registry lock left behind by a crashed process', async () => {
-    await mkdir(join(homeDir, '.flutterdeck'), { recursive: true });
-    const lock = join(homeDir, '.flutterdeck', 'ports.json.lock');
+    await mkdir(join(homeDir, '.pitdeck'), { recursive: true });
+    const lock = join(homeDir, '.pitdeck', 'ports.json.lock');
     // pid 2^22 + 1 is above every default pid limit, so it is never alive.
     await writeFile(lock, JSON.stringify({ pid: 4_194_305, createdAt: Date.now() }));
     expect(await allocatePort(projectA, { homeDir, isFree: allFree })).toBe(9147);

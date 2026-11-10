@@ -1,5 +1,5 @@
 /**
- * Masking settings from `.flutterdeck/config.json`, read on every call so a change
+ * Masking settings from `.pitdeck/config.json`, read on every call so a change
  * (masking switched back on, say) counts at once, without restarting Claude.
  */
 import { ConfigError, StateDirError, readConfig } from '@project-deck/core/node';
@@ -16,11 +16,11 @@ export async function readMaskSettings(projectDir: string): Promise<LoadedSettin
     return { mask: { redact: config.logs.redact, rules: config.logs.rules }, warnings: [] };
   } catch (err) {
     // A broken file never switches masking off: keep the built-in patterns.
-    // Both messages are fixed texts or name only FlutterDeck's own settings.
+    // Both messages are fixed texts or name only Pitdeck's own settings.
     const reason =
       err instanceof ConfigError || err instanceof StateDirError
         ? err.message
-        : '.flutterdeck/config.json failed';
+        : '.pitdeck/config.json failed';
     // The error messages are sentences already; one full stop, not two.
     const sentence = reason.replace(/\.+$/, '');
     return {

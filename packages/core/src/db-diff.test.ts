@@ -60,7 +60,7 @@ describe('diffTableHashes', () => {
 });
 
 describe('row hash shapes', () => {
-  it('accept the recorded flutterdeck_drift snapshot reply, with per-table errors', () => {
+  it('accept the recorded pitdeck_drift snapshot reply, with per-table errors', () => {
     const reply = {
       takenAt: 1792176214286,
       tables: [

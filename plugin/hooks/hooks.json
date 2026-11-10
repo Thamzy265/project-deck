@@ -1,5 +1,5 @@
 {
-  "description": "FlutterDeck: tells the project's local dashboard when Claude finishes, waits for you, or reloads the app",
+  "description": "Pitdeck: tells the project's local dashboard when Claude finishes, waits for you, or reloads the app",
   "hooks": {
     "Stop": [
       {

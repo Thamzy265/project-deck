@@ -6,7 +6,7 @@ import { join } from 'node:path';
 /**
  * The daemon keeps a per-user port registry in the home folder. Point HOME (and
  * USERPROFILE on Windows) at a scratch folder so no test, including the main.js child
- * processes, ever touches the real ~/.flutterdeck.
+ * processes, ever touches the real ~/.pitdeck.
  */
 export default function setup(): () => void {
   const home = mkdtempSync(join(tmpdir(), 'deck-test-home-'));

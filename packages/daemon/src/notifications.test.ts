@@ -28,7 +28,7 @@ describe('OS notifications', () => {
     const { bus, notify, app } = setup();
     bus.emit('app.exit', { appId: app.id, code: 1, crashed: true });
     await flush();
-    expect(notify.mock.calls).toEqual([['FlutterDeck', 'App crashed — shop_app']]);
+    expect(notify.mock.calls).toEqual([['Pitdeck', 'App crashed — shop_app']]);
   });
 
   it('stays quiet when the app stops without a crash, when attached or when Claude finishes', async () => {
@@ -43,7 +43,7 @@ describe('OS notifications', () => {
     const { notify, failReload } = setup();
     failReload();
     await flush();
-    expect(notify.mock.calls).toEqual([['FlutterDeck', 'Reload failed — shop_app']]);
+    expect(notify.mock.calls).toEqual([['Pitdeck', 'Reload failed — shop_app']]);
   });
 
   it("tells about Claude's failed reload or restart, without the tool's message", async () => {
@@ -54,8 +54,8 @@ describe('OS notifications', () => {
     bus.emit('claude.reload', { ok: true, kind: 'hot-reload' });
     await flush();
     expect(notify.mock.calls).toEqual([
-      ['FlutterDeck', 'Reload failed — shop_app'],
-      ['FlutterDeck', 'Reload failed — shop_app'],
+      ['Pitdeck', 'Reload failed — shop_app'],
+      ['Pitdeck', 'Reload failed — shop_app'],
     ]);
   });
 
@@ -67,7 +67,7 @@ describe('OS notifications', () => {
     });
     bus.emit('claude.reload', { ok: false, kind: 'hot-reload' });
     await flush();
-    expect(notify.mock.calls).toEqual([['FlutterDeck', 'Reload failed — shop_app']]);
+    expect(notify.mock.calls).toEqual([['Pitdeck', 'Reload failed — shop_app']]);
   });
 
   it('C2 shows no notification for a failed reload with no app attached (Activity only)', async () => {
@@ -81,7 +81,7 @@ describe('OS notifications', () => {
     clock.now += 1;
     bus.emit('claude.reload', { ok: false, kind: 'hot-reload' });
     await flush();
-    expect(notify.mock.calls).toEqual([['FlutterDeck', 'Reload failed — shop_app']]);
+    expect(notify.mock.calls).toEqual([['Pitdeck', 'Reload failed — shop_app']]);
   });
 
   it('C6 starts the count again when the next event comes more than two windows later', async () => {
@@ -93,7 +93,7 @@ describe('OS notifications', () => {
     clock.now += 2 * NOTIFY_RATE_WINDOW_MS + 1;
     failReload();
     await flush();
-    expect(notify.mock.calls.at(-1)).toEqual(['FlutterDeck', 'Reload failed — shop_app']);
+    expect(notify.mock.calls.at(-1)).toEqual(['Pitdeck', 'Reload failed — shop_app']);
   });
 
   it('R2-5 notifies once for a row that is replaced, and never counts it as held', async () => {
@@ -110,7 +110,7 @@ describe('OS notifications', () => {
     clock.now += NOTIFY_RATE_WINDOW_MS;
     failReload();
     await flush();
-    expect(notify.mock.calls.at(-1)).toEqual(['FlutterDeck', 'Reload failed — shop_app']);
+    expect(notify.mock.calls.at(-1)).toEqual(['Pitdeck', 'Reload failed — shop_app']);
   });
 
   it('C6 still counts held events in the next one within two windows', async () => {
@@ -121,7 +121,7 @@ describe('OS notifications', () => {
     clock.now += 2 * NOTIFY_RATE_WINDOW_MS - 1000;
     failReload();
     await flush();
-    expect(notify.mock.calls.at(-1)).toEqual(['FlutterDeck', 'Reload failed (2 times) — shop_app']);
+    expect(notify.mock.calls.at(-1)).toEqual(['Pitdeck', 'Reload failed (2 times) — shop_app']);
   });
 
   it('skips reloads that never ran: no app attached, or the app cannot reload', async () => {
@@ -145,7 +145,7 @@ describe('OS notifications', () => {
     expect(first?.[1]).toBe(
       `Claude is waiting — ${`Claude needs your permission to use Bash ${'x'.repeat(200)}`.slice(0, 100)}`,
     );
-    expect(second).toEqual(['FlutterDeck', 'Claude is waiting']);
+    expect(second).toEqual(['Pitdeck', 'Claude is waiting']);
   });
 
   it('honours each switch in config', async () => {
@@ -173,17 +173,17 @@ describe('OS notifications', () => {
     failReload();
     await flush();
     expect(notify.mock.calls).toEqual([
-      ['FlutterDeck', 'Reload failed — shop_app'],
-      ['FlutterDeck', 'Claude is waiting — Allow?'],
+      ['Pitdeck', 'Reload failed — shop_app'],
+      ['Pitdeck', 'Claude is waiting — Allow?'],
     ]);
     clock.now += 1;
     failReload();
     await flush();
-    expect(notify.mock.calls.at(-1)).toEqual(['FlutterDeck', 'Reload failed (4 times) — shop_app']);
+    expect(notify.mock.calls.at(-1)).toEqual(['Pitdeck', 'Reload failed (4 times) — shop_app']);
     clock.now += NOTIFY_RATE_WINDOW_MS;
     failReload();
     await flush();
-    expect(notify.mock.calls.at(-1)).toEqual(['FlutterDeck', 'Reload failed — shop_app']);
+    expect(notify.mock.calls.at(-1)).toEqual(['Pitdeck', 'Reload failed — shop_app']);
   });
 
   it('stops listening', async () => {

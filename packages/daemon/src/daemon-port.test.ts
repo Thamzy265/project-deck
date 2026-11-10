@@ -29,8 +29,8 @@ afterEach(async () => {
 });
 
 async function writeConfig(dir: string, port: number): Promise<void> {
-  await mkdir(join(dir, '.flutterdeck'), { recursive: true });
-  await writeFile(join(dir, '.flutterdeck', 'config.json'), JSON.stringify({ version: 1, port }));
+  await mkdir(join(dir, '.pitdeck'), { recursive: true });
+  await writeFile(join(dir, '.pitdeck', 'config.json'), JSON.stringify({ version: 1, port }));
 }
 
 async function start(
@@ -71,7 +71,7 @@ async function freePort(): Promise<number> {
   return port;
 }
 
-describe('fixed port from .flutterdeck/config.json', () => {
+describe('fixed port from .pitdeck/config.json', () => {
   it('uses exactly the configured port and reports the project id on /api/health', async () => {
     const port = await freePort();
     await writeConfig(projectDir, port);
@@ -92,20 +92,20 @@ describe('fixed port from .flutterdeck/config.json', () => {
     const err = await start().catch((e: unknown) => e);
     expect(err).toBeInstanceOf(PortBusyError);
     expect((err as Error).message).toBe(
-      `Another program uses port ${port}. Stop it, or pick another port: run \`flutterdeck init\`, or change "port" in .flutterdeck/config.json and the url in .claude/launch.json.`,
+      `Another program uses port ${port}. Stop it, or pick another port: run \`pitdeck init\`, or change "port" in .pitdeck/config.json and the url in .claude/launch.json.`,
     );
-    expect((err as Error).message).toContain('flutterdeck init');
+    expect((err as Error).message).toContain('pitdeck init');
     expect(await readRuntime(projectDir)).toBeUndefined();
   });
 
-  it('exits with "Another FlutterDeck (project <id>)" when another daemon holds the port', async () => {
+  it('exits with "Another Pitdeck (project <id>)" when another daemon holds the port', async () => {
     const other = await start({ dir: otherDir, port: 0 });
     await writeConfig(projectDir, other.port);
     const err = await start().catch((e: unknown) => e);
     expect(err).toBeInstanceOf(PortBusyError);
     const otherId = await projectIdentity(otherDir, { homeDir });
     expect((err as Error).message).toMatch(
-      new RegExp(`^Another FlutterDeck \\(project ${otherId}\\) uses port ${other.port}\\b`),
+      new RegExp(`^Another Pitdeck \\(project ${otherId}\\) uses port ${other.port}\\b`),
     );
   });
 
@@ -120,11 +120,11 @@ describe('fixed port from .flutterdeck/config.json', () => {
     expect(d.port).toBe(port);
     const otherId = await projectIdentity(otherDir, { homeDir });
     expect(messages).toContain(
-      `Port ${port} is also registered to another project (project ${otherId}); if both run at once one will fail. Run \`flutterdeck init\` to pick a new port.`,
+      `Port ${port} is also registered to another project (project ${otherId}); if both run at once one will fail. Run \`pitdeck init\` to pick a new port.`,
     );
   });
 
-  it('says another FlutterDeck holds the port when the other checkout is running', async () => {
+  it('says another Pitdeck holds the port when the other checkout is running', async () => {
     const port = await freePort();
     await writeConfig(otherDir, port);
     await start({ dir: otherDir });
@@ -133,14 +133,14 @@ describe('fixed port from .flutterdeck/config.json', () => {
     expect(err).toBeInstanceOf(PortBusyError);
     const otherId = await projectIdentity(otherDir, { homeDir });
     expect((err as Error).message).toMatch(
-      new RegExp(`^Another FlutterDeck \\(project ${otherId}\\) uses port ${port}\\b`),
+      new RegExp(`^Another Pitdeck \\(project ${otherId}\\) uses port ${port}\\b`),
     );
     expect(await readRuntime(projectDir)).toBeUndefined();
   });
 
   it('refuses to start with a broken config file', async () => {
-    await mkdir(join(projectDir, '.flutterdeck'), { recursive: true });
-    await writeFile(join(projectDir, '.flutterdeck', 'config.json'), '{"version":1,"prot":1}');
+    await mkdir(join(projectDir, '.pitdeck'), { recursive: true });
+    await writeFile(join(projectDir, '.pitdeck', 'config.json'), '{"version":1,"prot":1}');
     await expect(start()).rejects.toBeInstanceOf(ConfigError);
   });
 
@@ -157,8 +157,8 @@ describe('fixed port from .flutterdeck/config.json', () => {
   });
 
   it('starts without a project id when the registry is damaged and there is no config port', async () => {
-    await mkdir(join(homeDir, '.flutterdeck'), { recursive: true });
-    await writeFile(join(homeDir, '.flutterdeck', 'ports.json'), '{ damaged');
+    await mkdir(join(homeDir, '.pitdeck'), { recursive: true });
+    await writeFile(join(homeDir, '.pitdeck', 'ports.json'), '{ damaged');
     const messages: string[] = [];
     const d = await start({ port: 0, messages });
     expect(d.projectId).toBeUndefined();
@@ -170,8 +170,8 @@ describe('fixed port from .flutterdeck/config.json', () => {
   });
 
   it('still refuses to start with a damaged registry when the config has a port', async () => {
-    await mkdir(join(homeDir, '.flutterdeck'), { recursive: true });
-    await writeFile(join(homeDir, '.flutterdeck', 'ports.json'), '{ damaged');
+    await mkdir(join(homeDir, '.pitdeck'), { recursive: true });
+    await writeFile(join(homeDir, '.pitdeck', 'ports.json'), '{ damaged');
     await writeConfig(projectDir, await freePort());
     await expect(start()).rejects.toThrow(/is damaged/);
   });

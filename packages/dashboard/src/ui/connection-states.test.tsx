@@ -63,7 +63,7 @@ describe('drops during the first load', () => {
     const t = renderDashboard();
     await t.drop();
     expect(await screen.findByText('shop_app')).toBeInTheDocument();
-    expect(screen.getByText(/Lost connection to FlutterDeck — retrying \(1\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Lost connection to Pitdeck — retrying \(1\)/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Reload' })).toHaveAttribute(
       'title',
       'Not connected',
@@ -134,7 +134,7 @@ describe('a daemon restart while a reload is in flight', () => {
     t.client.status.mockRejectedValue(new HttpError(401, 'Missing or invalid token'));
     await t.drop();
     await waitFor(() => expect(t.reloadPage).toHaveBeenCalledTimes(1));
-    expect(screen.getByText('Reconnecting to FlutterDeck…')).toBeInTheDocument();
+    expect(screen.getByText('Reconnecting to Pitdeck…')).toBeInTheDocument();
   });
 });
 

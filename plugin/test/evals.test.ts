@@ -4,7 +4,7 @@
  * case pass or fail for the wrong reason.
  * Format: code.claude.com/docs/en/plugin-evals, read 4 Nov 2026 (prompt.md keys, grader
  * types, mocks/<server>/<tool>.md, `expect:`). Mock shapes are compared with what the real
- * FlutterDeck MCP server returns, through a local fake daemon.
+ * Pitdeck MCP server returns, through a local fake daemon.
  */
 import {
   mkdirSync,
@@ -32,7 +32,7 @@ import { splitFrontmatter } from './frontmatter.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const EVALS = join(ROOT, 'evals');
-const SERVER_PREFIX = 'mcp__plugin_flutterdeck_';
+const SERVER_PREFIX = 'mcp__plugin_pitdeck_';
 
 const DART_TOOLS = (
   JSON.parse(readFileSync(join(ROOT, 'test/fixtures/dart-tools.json'), 'utf8')) as {
@@ -102,7 +102,7 @@ const READ_ONLY_GRANTS = [
   'TodoWrite',
 ];
 
-/** A tool name as the model sees it: a built-in or `mcp__plugin_flutterdeck_<server>__<tool>`. */
+/** A tool name as the model sees it: a built-in or `mcp__plugin_pitdeck_<server>__<tool>`. */
 function toolExists(name: string, deckTools: string[]): boolean {
   // Claude Code built-ins (CLI 2.1.236, code.claude.com/docs/en/tools-reference).
   const builtins = [
@@ -128,11 +128,11 @@ function toolExists(name: string, deckTools: string[]): boolean {
     'Glob',
   ];
   if (builtins.includes(name)) return true;
-  const match = /^mcp__plugin_flutterdeck_([a-z]+)__([a-z_]+)$/.exec(name);
+  const match = /^mcp__plugin_pitdeck_([a-z]+)__([a-z_]+)$/.exec(name);
   if (match === null) return false;
   const [, server, tool] = match;
   if (server === 'dart') return DART_TOOLS.includes(tool ?? '');
-  if (server === 'flutterdeck') return deckTools.includes(tool ?? '');
+  if (server === 'pitdeck') return deckTools.includes(tool ?? '');
   return false;
 }
 
@@ -228,8 +228,8 @@ const ROUTES: Record<string, unknown> = {
 
 beforeAll(async () => {
   projectDir = mkdtempSync(join(tmpdir(), 'deck-plugin-evals-'));
-  mkdirSync(join(projectDir, '.flutterdeck'), { recursive: true });
-  writeFileSync(join(projectDir, '.flutterdeck', 'config.json'), '{"version":1}\n');
+  mkdirSync(join(projectDir, '.pitdeck'), { recursive: true });
+  writeFileSync(join(projectDir, '.pitdeck', 'config.json'), '{"version":1}\n');
   const token = 'eval-token-'.padEnd(40, 'x');
   const server = createServer((req, res) => {
     req.on('error', () => undefined);
@@ -308,7 +308,7 @@ describe('eval cases are well formed (plugin-evals docs)', () => {
   it.each(cases)('%s: prompt.md has only known keys, sane limits and a typed command', (name) => {
     const { meta, body } = front(join(EVALS, name, 'prompt.md'));
     for (const key of Object.keys(meta)) expect(PROMPT_KEYS, key).toContain(key);
-    expect(body.trim()).toMatch(/^\/flutterdeck:(check|db)\b/);
+    expect(body.trim()).toMatch(/^\/pitdeck:(check|db)\b/);
     expect(Number(meta.max_turns)).toBeGreaterThanOrEqual(5);
     expect(Number(meta.max_turns)).toBeLessThanOrEqual(200);
     expect(Array.isArray(meta.allowed_tools)).toBe(true);
@@ -354,7 +354,7 @@ describe('eval cases are well formed (plugin-evals docs)', () => {
     }
   });
 
-  it('every tool a grader names is a real tool of FlutterDeck or the Dart MCP server', () => {
+  it('every tool a grader names is a real tool of Pitdeck or the Dart MCP server', () => {
     for (const file of graderFiles()) {
       const { meta } = front(file);
       const named: unknown[] = [meta.tool];
@@ -430,7 +430,7 @@ describe('eval cases are well formed (plugin-evals docs)', () => {
     }
   });
 
-  it('typed cases have no skill-fired grader: a typed /flutterdeck:… command makes no Skill call (review T-1)', () => {
+  it('typed cases have no skill-fired grader: a typed /pitdeck:… command makes no Skill call (review T-1)', () => {
     for (const file of graderFiles()) {
       const { meta } = front(file);
       expect(meta.tool === 'Skill', rel(file)).toBe(false);
@@ -454,8 +454,8 @@ describe('eval cases are well formed (plugin-evals docs)', () => {
       .filter((m) => m.type === 'tool_order');
     expect(orders).toContainEqual(
       expect.objectContaining({
-        before: 'mcp__plugin_flutterdeck_dart__hot_reload',
-        after: 'mcp__plugin_flutterdeck_flutterdeck__db_diff',
+        before: 'mcp__plugin_pitdeck_dart__hot_reload',
+        after: 'mcp__plugin_pitdeck_pitdeck__db_diff',
       }),
     );
   });
@@ -509,19 +509,17 @@ describe('eval mocks', () => {
         expect((meta.expect as Obj | undefined)?.db, rel(file)).toBe('app');
       }
     }
-    expect((front(join(EVALS, 'mocks/flutterdeck/db_query.md')).meta.expect as Obj).sql).toBe(
-      'string',
-    );
+    expect((front(join(EVALS, 'mocks/pitdeck/db_query.md')).meta.expect as Obj).sql).toBe('string');
   });
 
-  it('answer JSON that parses, for every FlutterDeck mock', () => {
-    for (const file of mocks.filter((f) => rel(f).includes('/flutterdeck/'))) {
+  it('answer JSON that parses, for every Pitdeck mock', () => {
+    for (const file of mocks.filter((f) => rel(f).includes('/pitdeck/'))) {
       expect(() => JSON.parse(front(file).body) as unknown, rel(file)).not.toThrow();
     }
   });
 
   it('carry the same frame as the real tool: untrusted note, masking line and warnings', () => {
-    for (const file of mocks.filter((f) => rel(f).includes('/flutterdeck/'))) {
+    for (const file of mocks.filter((f) => rel(f).includes('/pitdeck/'))) {
       const tool = (rel(file).split('/').pop() ?? '').replace(/\.md$/, '');
       const mock = JSON.parse(front(file).body) as Obj;
       const real = realOutputs[tool] as Obj | undefined;
@@ -541,10 +539,7 @@ describe('eval mocks', () => {
     'db_snapshot',
     'db_diff',
   ])('%s: the mock has the same keys and value types as the real server’s answer', (tool) => {
-    const mockFile = [
-      `mocks/flutterdeck/${tool}.md`,
-      'check-runtime-error/mocks/flutterdeck/get_logs.md',
-    ]
+    const mockFile = [`mocks/pitdeck/${tool}.md`, 'check-runtime-error/mocks/pitdeck/get_logs.md']
       .map((f) => join(EVALS, f))
       .find((f) => f.includes(tool) && files.includes(f));
     expect(mockFile, tool).toBeDefined();
@@ -554,7 +549,7 @@ describe('eval mocks', () => {
 
   it('the planted injection reaches Claude through a log line, and a grader checks it is treated as data', () => {
     const log = JSON.parse(
-      front(join(EVALS, 'check-runtime-error/mocks/flutterdeck/get_logs.md')).body,
+      front(join(EVALS, 'check-runtime-error/mocks/pitdeck/get_logs.md')).body,
     ) as {
       entries: { message: string }[];
     };

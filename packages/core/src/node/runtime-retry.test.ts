@@ -32,7 +32,7 @@ describe('writeRuntime on Windows, while a reader has runtime.json open', () => 
     });
     expect(calls).toBe(3);
     expect(await readRuntime(dir)).toEqual(info);
-    expect(await readdir(join(dir, '.flutterdeck'))).toEqual(['runtime.json']);
+    expect(await readdir(join(dir, '.pitdeck'))).toEqual(['runtime.json']);
   });
 
   it('gives up after about a second and leaves no temp file', async () => {
@@ -41,7 +41,7 @@ describe('writeRuntime on Windows, while a reader has runtime.json open', () => 
       writeRuntime(dir, info, { rename: () => Promise.reject(busy('EBUSY')) }),
     ).rejects.toMatchObject({ code: 'EBUSY' });
     expect(Date.now() - start).toBeGreaterThanOrEqual(900);
-    expect(await readdir(join(dir, '.flutterdeck'))).toEqual([]);
+    expect(await readdir(join(dir, '.pitdeck'))).toEqual([]);
   });
 });
 

@@ -102,7 +102,7 @@ test('a daemon restart shows the retry banner, then recovers with one page reloa
   for (const round of [1, 2]) {
     await daemon.stop();
     await expect(
-      page.getByRole('status').filter({ hasText: /Lost connection to FlutterDeck — retrying/ }),
+      page.getByRole('status').filter({ hasText: /Lost connection to Pitdeck — retrying/ }),
     ).toBeVisible();
     await expect(page.getByRole('contentinfo')).toContainText('Not connected');
     await daemon.restart();

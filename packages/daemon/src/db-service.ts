@@ -486,7 +486,7 @@ export class DbService {
     if (!this.opts.settings.allowWrites) {
       throw new DbError(
         'not-allowed',
-        'Changing data is off. Turn it on with db.allowWrites in .flutterdeck/config.json.',
+        'Changing data is off. Turn it on with db.allowWrites in .pitdeck/config.json.',
       );
     }
     const current = this.current();

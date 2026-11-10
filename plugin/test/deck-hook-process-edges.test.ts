@@ -143,10 +143,10 @@ afterEach(async () => {
 });
 
 async function initProject(dir: string, port: number): Promise<void> {
-  await mkdir(join(dir, '.flutterdeck'), { recursive: true });
-  await writeFile(join(dir, '.flutterdeck', 'config.json'), '{"version":1}\n');
+  await mkdir(join(dir, '.pitdeck'), { recursive: true });
+  await writeFile(join(dir, '.pitdeck', 'config.json'), '{"version":1}\n');
   await writeFile(
-    join(dir, '.flutterdeck', 'runtime.json'),
+    join(dir, '.pitdeck', 'runtime.json'),
     JSON.stringify({ pid: process.pid, port, token, startedAt: 1 }),
     { mode: 0o600 },
   );
@@ -248,7 +248,7 @@ describe('the hook process under load and failure', () => {
       },
     ],
     [
-      'a name that only starts like FlutterDeck',
+      'a name that only starts like Pitdeck',
       (res: ServerResponse) => {
         res.writeHead(200, { 'content-type': 'application/json' });
         res.end(JSON.stringify({ name: 'project-deck-evil' }));
@@ -367,8 +367,8 @@ describe('the hook process: finding the project', () => {
     await initProject(projectDir, daemon.port);
     const real = join(projectDir, 'elsewhere.json');
     await writeFile(real, '{"version":1}');
-    await rm(join(projectDir, '.flutterdeck', 'config.json'));
-    await symlink(real, join(projectDir, '.flutterdeck', 'config.json'));
+    await rm(join(projectDir, '.pitdeck', 'config.json'));
+    await symlink(real, join(projectDir, '.pitdeck', 'config.json'));
     quiet(await runHook(fx.stop, { CLAUDE_PROJECT_DIR: projectDir }));
     expect(daemon.seen).toEqual([]);
   });

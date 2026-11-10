@@ -21,7 +21,7 @@ afterEach(async () => {
 describe('readProjectIdentity', () => {
   it('computes the id the daemon shows, from the salt and the real path', async () => {
     const salt = 's'.repeat(43);
-    await mkdir(join(home, '.flutterdeck'));
+    await mkdir(join(home, '.pitdeck'));
     await writeFile(registryPath(home), JSON.stringify({ version: 1, salt, projects: {} }));
     const key = await realpath(project);
     const expected = createHash('sha256')
@@ -33,11 +33,11 @@ describe('readProjectIdentity', () => {
 
   it('is unknown without a registry, and creates none', async () => {
     expect(await readProjectIdentity(project, { homeDir: home })).toBeUndefined();
-    await expect(access(join(home, '.flutterdeck'))).rejects.toThrow();
+    await expect(access(join(home, '.pitdeck'))).rejects.toThrow();
   });
 
   it('is unknown for a damaged registry', async () => {
-    await mkdir(join(home, '.flutterdeck'));
+    await mkdir(join(home, '.pitdeck'));
     await writeFile(registryPath(home), '{"version":1');
     expect(await readProjectIdentity(project, { homeDir: home })).toBeUndefined();
   });

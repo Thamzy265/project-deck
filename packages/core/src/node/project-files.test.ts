@@ -12,7 +12,7 @@ let outside: string;
 beforeEach(async () => {
   project = await mkdtemp(join(tmpdir(), 'deck-files-'));
   outside = await mkdtemp(join(tmpdir(), 'deck-outside-'));
-  await mkdir(join(project, '.flutterdeck'));
+  await mkdir(join(project, '.pitdeck'));
 });
 
 afterEach(async () => {
@@ -67,14 +67,14 @@ describe('runtime.json from a cloned repository', () => {
   });
 });
 
-describe('a .flutterdeck linked to another folder', () => {
+describe('a .pitdeck linked to another folder', () => {
   links('is refused by readConfig, and the linked file is not used', async () => {
-    await rm(join(project, '.flutterdeck'), { recursive: true });
+    await rm(join(project, '.pitdeck'), { recursive: true });
     await writeFile(
       join(outside, 'config.json'),
       '{"auths":{"registry.example":{"auth":"c2VjcmV0"}},"credsStore":"osxkeychain"}',
     );
-    await symlink(outside, join(project, '.flutterdeck'));
+    await symlink(outside, join(project, '.pitdeck'));
     let message = '';
     try {
       await readConfig(project);
@@ -89,7 +89,7 @@ describe('a .flutterdeck linked to another folder', () => {
   });
 });
 
-describe('settings FlutterDeck does not know', () => {
+describe('settings Pitdeck does not know', () => {
   it('are counted, never named, while invalid known settings are named', async () => {
     await writeFile(
       configPath(project),

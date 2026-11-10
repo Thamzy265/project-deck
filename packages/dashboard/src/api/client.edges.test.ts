@@ -53,7 +53,7 @@ describe('API client: failure paths', () => {
     const err = await createClient(reply('{"ok":"yes"}', 200))
       .reload()
       .catch((e: unknown) => e);
-    expect(err instanceof HttpError && err.message).toBe("FlutterDeck's answer wasn't understood");
+    expect(err instanceof HttpError && err.message).toBe("Pitdeck's answer wasn't understood");
   });
 
   it('keeps an app id with slashes or dots inside one path segment', async () => {

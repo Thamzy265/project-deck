@@ -157,7 +157,7 @@ describe('db_list', () => {
       ],
       truncated: false,
     });
-    expect(JSON.stringify(out.json.problems)).toMatch(/pick one in the FlutterDeck dashboard/);
+    expect(JSON.stringify(out.json.problems)).toMatch(/pick one in the Pitdeck dashboard/);
     // Claude is never told writes are on: it has no way to write anyway.
     expect(out.text).not.toMatch(/writesAllowed|emulator-5554/);
     const req = daemon.requests.find((r) => r.path === '/api/db');
@@ -283,9 +283,7 @@ describe('db_query', () => {
     );
     const out = await call(client, 'db_query', { db: 'app', sql: 'DELETE FROM orders' });
     expect(out.isError).toBe(true);
-    expect(out.text).toMatch(
-      /^FlutterDeck couldn't do that \(refused\): "This statement changes data/,
-    );
+    expect(out.text).toMatch(/^Pitdeck couldn't do that \(refused\): "This statement changes data/);
     expect(out.text).toMatch(/Claude can't change data/);
     expect(out.text).toMatch(/untrusted data/);
   });
@@ -303,11 +301,11 @@ describe('db_query', () => {
 
   it.each([
     ['unsupported', 422, /no database inspection/],
-    ['choose-device', 409, /pick one in the FlutterDeck dashboard/],
+    ['choose-device', 409, /pick one in the Pitdeck dashboard/],
     ['busy', 503, /Try again in a moment/],
     ['timeout', 504, /Narrow the query/],
     ['app-gone', 409, /No app is attached/],
-    ['setup-needed', 409, /flutterdeck_drift/],
+    ['setup-needed', 409, /pitdeck_drift/],
   ])('explains %s', async (code, status, hint) => {
     const { daemon, client } = await setup();
     daemon.route('POST', '/api/db/query', () => dbError(status, { error: 'Reason here', code }));
@@ -433,7 +431,7 @@ describe('masking only what can be shown (review R8)', () => {
     // A rule that is slow on long runs of x, then a rule for the secret. On 500 rows the
     // first rule runs out of the 200 ms budget and the second never runs.
     await writeFile(
-      join(projectDir, '.flutterdeck', 'config.json'),
+      join(projectDir, '.pitdeck', 'config.json'),
       JSON.stringify({ version: 1, logs: { rules: ['@w*q', 'SECRET-@d+'] } }).replaceAll(
         '@',
         '\\\\',

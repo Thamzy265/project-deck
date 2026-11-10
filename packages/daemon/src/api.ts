@@ -62,7 +62,7 @@ export interface ApiContext {
   regexFilter?: RegexFilter | undefined;
   /** The database layer; without it the `/api/db` routes don't exist. */
   db?: DbService | undefined;
-  /** The SQL editor's saved queries (`.flutterdeck/queries.json`). */
+  /** The SQL editor's saved queries (`.pitdeck/queries.json`). */
   queries?: DbRouteContext['queries'] | undefined;
 }
 
@@ -83,8 +83,8 @@ function logQueryFromSearch(params: Record<string, string>): LogQuery {
 }
 
 const PLACEHOLDER_PAGE =
-  '<!doctype html><html lang="en"><meta charset="utf-8"><title>FlutterDeck</title>' +
-  '<p>FlutterDeck is running.</p></html>';
+  '<!doctype html><html lang="en"><meta charset="utf-8"><title>Pitdeck</title>' +
+  '<p>Pitdeck is running.</p></html>';
 
 const SECURITY_HEADERS: Record<string, string> = {
   'X-Content-Type-Options': 'nosniff',

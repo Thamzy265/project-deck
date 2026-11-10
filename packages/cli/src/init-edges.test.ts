@@ -81,8 +81,8 @@ async function writeLaunch(text: string): Promise<void> {
 }
 
 async function writeConfig(text: string): Promise<void> {
-  await mkdir(join(project, '.flutterdeck'), { recursive: true });
-  await writeFile(join(project, '.flutterdeck', 'config.json'), text);
+  await mkdir(join(project, '.pitdeck'), { recursive: true });
+  await writeFile(join(project, '.pitdeck', 'config.json'), text);
 }
 
 const countBlocks = (text: string) =>
@@ -224,7 +224,7 @@ describe('init: .gitignore variants', () => {
   });
 
   it('leaves a block the user edited by hand alone', async () => {
-    const edited = `build/\n${GITIGNORE_BEGIN}\n.flutterdeck/\n`;
+    const edited = `build/\n${GITIGNORE_BEGIN}\n.pitdeck/\n`;
     await writeFile(join(project, '.gitignore'), edited);
     expect(await init()).toBe(0);
     expect(await read('.gitignore')).toBe(edited);
@@ -270,12 +270,12 @@ describe('init: launch.json variants', () => {
     });
   });
 
-  it('replaces a FlutterDeck entry that points elsewhere, keeping its neighbours', async () => {
+  it('replaces a Pitdeck entry that points elsewhere, keeping its neighbours', async () => {
     await writeLaunch(
       JSON.stringify({
         configurations: [
           { name: 'api', port: 8080 },
-          { name: 'FlutterDeck', url: 'http://example.invalid:80' },
+          { name: 'Pitdeck', url: 'http://example.invalid:80' },
         ],
       }),
     );
@@ -287,10 +287,10 @@ describe('init: launch.json variants', () => {
   });
 
   it('keeps entries that are not objects', async () => {
-    await writeLaunch('{"configurations":[1,null,"FlutterDeck",[]]}');
+    await writeLaunch('{"configurations":[1,null,"Pitdeck",[]]}');
     expect(await init()).toBe(0);
     expect(parse(await read('.claude', 'launch.json'))).toEqual({
-      configurations: [1, null, 'FlutterDeck', [], launchEntry(9147)],
+      configurations: [1, null, 'Pitdeck', [], launchEntry(9147)],
     });
   });
 
@@ -298,8 +298,8 @@ describe('init: launch.json variants', () => {
     ['a top-level list', '[]', 'is not a JSON object'],
     ['a null list', '{"configurations":null}', 'not a list'],
     [
-      'two FlutterDeck entries',
-      '{"configurations":[{"name":"FlutterDeck"},{"name":"FlutterDeck","url":"x"}]}',
+      'two Pitdeck entries',
+      '{"configurations":[{"name":"Pitdeck"},{"name":"Pitdeck","url":"x"}]}',
       'keep one',
     ],
   ])('refuses %s and writes nothing anywhere', async (_label, text, reason) => {
@@ -339,16 +339,16 @@ describe('init: launch.json variants', () => {
   it.each([
     [
       'two "configurations" keys',
-      '{"configurations":[],"configurations":[{"name":"FlutterDeck","url":"http://example.invalid"}]}',
+      '{"configurations":[],"configurations":[{"name":"Pitdeck","url":"http://example.invalid"}]}',
     ],
     ['two "version" keys', '{"version":"0.0.1","version":"9","configurations":[]}'],
     [
-      'two "url" keys in the FlutterDeck entry',
-      '{"configurations":[{"name":"FlutterDeck","url":"http://127.0.0.1:9147","port":9147,"url":"http://example.invalid"}]}',
+      'two "url" keys in the Pitdeck entry',
+      '{"configurations":[{"name":"Pitdeck","url":"http://127.0.0.1:9147","port":9147,"url":"http://example.invalid"}]}',
     ],
     [
       'two "name" keys in one entry',
-      '{"configurations":[{"name":"FlutterDeck","name":"web","url":"http://localhost:3000"}]}',
+      '{"configurations":[{"name":"Pitdeck","name":"web","url":"http://localhost:3000"}]}',
     ],
   ])('BUG-CLI-T5: refuses a launch.json with %s and writes nothing', async (_label, text) => {
     await writeLaunch(text);
@@ -399,7 +399,7 @@ describe('init: config.json variants', () => {
   it('adds the port to a CRLF config with a byte order mark, keeping both', async () => {
     await writeConfig('\uFEFF{\r\n  "version": 1,\r\n  "logs": { "redact": true }\r\n}\r\n');
     expect(await init()).toBe(0);
-    const text = await read('.flutterdeck', 'config.json');
+    const text = await read('.pitdeck', 'config.json');
     expect(text.startsWith('\uFEFF{\r\n')).toBe(true);
     expect(text.replace(/\r\n/g, '')).not.toContain('\n');
     expect(JSON.parse(text.slice(1))).toEqual({ version: 1, logs: { redact: true }, port: 9147 });
@@ -415,8 +415,8 @@ describe('init: config.json variants', () => {
     },
   );
 
-  it('refuses a .flutterdeck that is a file', async () => {
-    await writeFile(join(project, '.flutterdeck'), 'x');
+  it('refuses a .pitdeck that is a file', async () => {
+    await writeFile(join(project, '.pitdeck'), 'x');
     const before = await snapshot();
     expect(await init()).toBe(1);
     expect(await snapshot()).toEqual(before);
@@ -451,7 +451,7 @@ describe('init: concurrency and partial failures', () => {
     const launch = parse(await read('.claude', 'launch.json')) as { configurations: unknown[] };
     expect(launch.configurations).toEqual([launchEntry(9147)]);
     // The lock is gone afterwards.
-    expect(await readdir(join(project, '.flutterdeck'))).toEqual(['config.json']);
+    expect(await readdir(join(project, '.pitdeck'))).toEqual(['config.json']);
   });
 
   it('BUG-CLI-T1: four inits at once over existing files keep the user’s lines and entries', async () => {
@@ -480,19 +480,19 @@ describe('init: concurrency and partial failures', () => {
   });
 
   it('says another init is running when its lock folder vanished (review C3)', async () => {
-    // A concurrent run that refused removed the .flutterdeck it had made, between this
+    // A concurrent run that refused removed the .pitdeck it had made, between this
     // run's mkdir and its lock create.
     const gone = Object.assign(new Error(`ENOENT: no such file or directory, open '${project}'`), {
       code: 'ENOENT',
     });
     const before = await snapshot();
     expect(await init({ acquireLock: () => Promise.reject(gone) })).toBe(1);
-    expect(errors.join('\n')).toContain('Another `flutterdeck init` is running in this project');
+    expect(errors.join('\n')).toContain('Another `pitdeck init` is running in this project');
     expect(errors.join('\n')).not.toContain(base);
     expect(await snapshot()).toEqual(before);
   });
 
-  it('BUG-CLI-T1: a refused init removes the .flutterdeck folder it made for its lock', async () => {
+  it('BUG-CLI-T1: a refused init removes the .pitdeck folder it made for its lock', async () => {
     await writeLaunch('{ "configurations": [');
     const before = await snapshot();
     expect(await init()).toBe(1);
@@ -504,7 +504,7 @@ describe('init: concurrency and partial failures', () => {
     expect(countBlocks(await read('.gitignore'))).toBe(1);
     const launch = parse(await read('.claude', 'launch.json')) as { configurations: unknown[] };
     expect(launch.configurations).toEqual([launchEntry(9147)]);
-    expect(JSON.parse(await read('.flutterdeck', 'config.json'))).toEqual({
+    expect(JSON.parse(await read('.pitdeck', 'config.json'))).toEqual({
       version: 1,
       port: 9147,
     });
@@ -515,7 +515,7 @@ describe('init: concurrency and partial failures', () => {
 
   // BUG-CLI-T2: a .claude folder init can't write to is found only after config.json
   // and .gitignore are already written.
-  posix.each([['.claude'], ['.flutterdeck'], ['.']])(
+  posix.each([['.claude'], ['.pitdeck'], ['.']])(
     'BUG-CLI-T2: a read-only %s folder leaves the project and the registry unchanged',
     async (name) => {
       if (process.getuid?.() === 0) throw new Error('root can write anywhere');
@@ -538,10 +538,10 @@ describe('init: concurrency and partial failures', () => {
   );
 
   it('BUG-CLI-T2: names a damaged registry by ~, never by its absolute path', async () => {
-    await mkdir(join(home, '.flutterdeck'));
-    await writeFile(join(home, '.flutterdeck', 'ports.json'), '{ damaged');
+    await mkdir(join(home, '.pitdeck'));
+    await writeFile(join(home, '.pitdeck', 'ports.json'), '{ damaged');
     expect(await init()).toBe(1);
-    expect(errors.join('\n')).toContain(join('~', '.flutterdeck', 'ports.json'));
+    expect(errors.join('\n')).toContain(join('~', '.pitdeck', 'ports.json'));
     expect(errors.join('\n')).not.toContain(base);
   });
 
@@ -552,9 +552,9 @@ describe('init: concurrency and partial failures', () => {
   });
 
   it('BUG-CLI-T2: shows no absolute path in an unexpected error', async () => {
-    // ~/.flutterdeck is a file, so the registry can't be created: the fs error names
+    // ~/.pitdeck is a file, so the registry can't be created: the fs error names
     // absolute paths.
-    await writeFile(join(home, '.flutterdeck'), 'not a folder');
+    await writeFile(join(home, '.pitdeck'), 'not a folder');
     expect(await init()).toBe(1);
     expect(errors.join('\n')).not.toContain(base);
   });

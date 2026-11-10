@@ -3,7 +3,7 @@
  * Development entrypoint until the CLI exists (M2):
  *   node packages/daemon/dist/main.js [--port 9147] [--project <dir>]
  *     [--dtd-uri <ws://…>]... [--vm-service-uri <ws://…|http://…>]... [--fake]
- * A "port" in .flutterdeck/config.json wins over --port and is never moved: if it is busy
+ * A "port" in .pitdeck/config.json wins over --port and is never moved: if it is busy
  * the daemon exits and says who holds it. Without one, a busy port means the next free one;
  * clients read it from runtime.json.
  * By default it discovers running Dart/Flutter apps through every local DTD, and streams
@@ -77,7 +77,7 @@ const daemon = await startDaemon({
   process.exit(1);
 });
 console.log(`project-deck daemon listening on ${daemon.url}`);
-console.log(`Token in ${resolve(values.project, '.flutterdeck/runtime.json')}`);
+console.log(`Token in ${resolve(values.project, '.pitdeck/runtime.json')}`);
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.once(signal, () => {

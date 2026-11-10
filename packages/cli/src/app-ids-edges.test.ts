@@ -31,7 +31,7 @@ const PUBSPEC = 'name: shop_app\ndependencies:\n  flutter:\n    sdk: flutter\n';
 const SAMPLE_PBXPROJ = fileURLToPath(
   new URL('./testing/fixtures/sample-app.pbxproj', import.meta.url),
 );
-const SAMPLE_ID = 'dev.flutterdeck.flutterdeckSample';
+const SAMPLE_ID = 'dev.pitdeck.pitdeckSample';
 
 /** A minimal project file: one Runner target with the given Debug configurations. */
 function pbxproj(configs: string, ids = 'C1') {
@@ -250,9 +250,7 @@ describe('init with untrusted project files', () => {
   it('reads both ids in a folder with spaces and non-ASCII letters', async () => {
     await androidAndIos();
     expect(await init()).toBe(0);
-    const config: unknown = parse(
-      await readFile(join(project, '.flutterdeck', 'config.json'), 'utf8'),
-    );
+    const config: unknown = parse(await readFile(join(project, '.pitdeck', 'config.json'), 'utf8'));
     expect(config).toMatchObject({
       android: { applicationId: 'com.example.shop_app' },
       ios: { bundleId: SAMPLE_ID },
@@ -272,18 +270,18 @@ describe('init with untrusted project files', () => {
     for (const [path, mtime] of before) expect(after.get(path), path).toBe(mtime);
     const added = [...after.keys()].filter((p) => !before.has(p)).sort();
     for (const path of added) {
-      expect(path.split(/[\\/]/)[0], path).toMatch(/^(\.flutterdeck|\.claude|\.gitignore)$/);
+      expect(path.split(/[\\/]/)[0], path).toMatch(/^(\.pitdeck|\.claude|\.gitignore)$/);
     }
   });
 
   it('adds only the missing iOS id next to an Android id the user set', async () => {
     await androidAndIos();
-    await mkdir(join(project, '.flutterdeck'));
+    await mkdir(join(project, '.pitdeck'));
     const before =
       '{\r\n  "version": 1,\r\n  "port": 9300,\r\n  "android": { "applicationId": "com.mine.app" }\r\n}\r\n';
-    await writeFile(join(project, '.flutterdeck', 'config.json'), before);
+    await writeFile(join(project, '.pitdeck', 'config.json'), before);
     expect(await init()).toBe(0);
-    const text = await readFile(join(project, '.flutterdeck', 'config.json'), 'utf8');
+    const text = await readFile(join(project, '.pitdeck', 'config.json'), 'utf8');
     expect(parse(text)).toEqual({
       version: 1,
       port: 9300,
@@ -296,14 +294,12 @@ describe('init with untrusted project files', () => {
 
   it('refuses a malformed config.json, writes nothing and repeats no id', async () => {
     await androidAndIos();
-    await mkdir(join(project, '.flutterdeck'));
+    await mkdir(join(project, '.pitdeck'));
     const broken = '{ "version": 1, "port": ';
-    await writeFile(join(project, '.flutterdeck', 'config.json'), broken);
+    await writeFile(join(project, '.pitdeck', 'config.json'), broken);
     expect(await init()).not.toBe(0);
-    expect(await readFile(join(project, '.flutterdeck', 'config.json'), 'utf8')).toBe(broken);
-    expect([...lines, ...errors].join('\n')).not.toMatch(
-      /com\.example\.shop_app|flutterdeckSample/,
-    );
+    expect(await readFile(join(project, '.pitdeck', 'config.json'), 'utf8')).toBe(broken);
+    expect([...lines, ...errors].join('\n')).not.toMatch(/com\.example\.shop_app|pitdeckSample/);
   });
 
   it('reads the id from a Gradle file that is not UTF-8 elsewhere', async () => {
@@ -315,9 +311,7 @@ describe('init with untrusted project files', () => {
     ]);
     await writeFile(join(project, 'android', 'app', 'build.gradle.kts'), latin1);
     expect(await init()).toBe(0);
-    const config: unknown = parse(
-      await readFile(join(project, '.flutterdeck', 'config.json'), 'utf8'),
-    );
+    const config: unknown = parse(await readFile(join(project, '.pitdeck', 'config.json'), 'utf8'));
     expect(config).toMatchObject({ android: { applicationId: 'com.example.shop_app' } });
   });
 
@@ -328,9 +322,7 @@ describe('init with untrusted project files', () => {
       `applicationId = "com.example.shop_app"\n${'/'.repeat(1024 * 1024)}\n`,
     );
     expect(await init()).toBe(0);
-    const config: unknown = parse(
-      await readFile(join(project, '.flutterdeck', 'config.json'), 'utf8'),
-    );
+    const config: unknown = parse(await readFile(join(project, '.pitdeck', 'config.json'), 'utf8'));
     expect(config).toEqual({ version: 1, port: 9147 });
   });
 
@@ -349,7 +341,7 @@ describe('init with untrusted project files', () => {
     await symlink(join(outside, 'android'), join(project, 'android'), 'dir');
     await symlink(join(outside, 'ios'), join(project, 'ios'), 'dir');
     expect(await init()).toBe(0);
-    const written = await readFile(join(project, '.flutterdeck', 'config.json'), 'utf8');
+    const written = await readFile(join(project, '.pitdeck', 'config.json'), 'utf8');
     expect(written).not.toContain(secret);
     expect([...lines, ...errors].join('\n')).not.toContain(secret);
     // Nothing was written through the links either.
@@ -363,9 +355,7 @@ describe('init with untrusted project files', () => {
     await mkdir(join(project, 'ios', 'Runner.xcodeproj'), { recursive: true });
     await symlink('/dev/zero', join(project, 'ios', 'Runner.xcodeproj', 'project.pbxproj'));
     expect(await init()).toBe(0);
-    const config: unknown = parse(
-      await readFile(join(project, '.flutterdeck', 'config.json'), 'utf8'),
-    );
+    const config: unknown = parse(await readFile(join(project, '.pitdeck', 'config.json'), 'utf8'));
     expect(config).toEqual({ version: 1, port: 9147 });
   });
 });

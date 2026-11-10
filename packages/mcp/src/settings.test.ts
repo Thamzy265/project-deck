@@ -16,8 +16,8 @@ afterEach(async () => {
 
 describe('readMaskSettings warnings', () => {
   it('joins a reason that ends in a full stop with one full stop (C5)', async () => {
-    await mkdir(join(projectDir, '.flutterdeck'));
-    await writeFile(join(projectDir, '.flutterdeck', 'config.json'), 'not json');
+    await mkdir(join(projectDir, '.pitdeck'));
+    await writeFile(join(projectDir, '.pitdeck', 'config.json'), 'not json');
     const { mask, warnings } = await readMaskSettings(projectDir);
     expect(mask).toEqual({ redact: true, rules: [] });
     expect(warnings).toHaveLength(1);
@@ -26,7 +26,7 @@ describe('readMaskSettings warnings', () => {
   });
 
   it('joins the "not a real folder" reason with one full stop (C5)', async () => {
-    await writeFile(join(projectDir, '.flutterdeck'), 'a file, not a folder');
+    await writeFile(join(projectDir, '.pitdeck'), 'a file, not a folder');
     const { warnings } = await readMaskSettings(projectDir);
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toMatch(/folder\. Masking uses the built-in patterns only/);

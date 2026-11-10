@@ -58,7 +58,7 @@ function pgrepLogcat() {
 }
 
 const project = await mkdtemp(join(tmpdir(), 'deck-qa-android-'));
-// The daemon's port registry goes to a scratch home, never the user's ~/.flutterdeck.
+// The daemon's port registry goes to a scratch home, never the user's ~/.pitdeck.
 const scratchHome = await scratchHomeEnv();
 let daemon;
 let token = '';
@@ -85,7 +85,7 @@ try {
     stream.on('data', (chunk) => daemonOutput.push(chunk));
   }
   const runtime = await waitFor(async () => {
-    const raw = await readFile(join(project, '.flutterdeck', 'runtime.json'), 'utf8');
+    const raw = await readFile(join(project, '.pitdeck', 'runtime.json'), 'utf8');
     return JSON.parse(raw);
   }, 10_000);
   if (

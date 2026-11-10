@@ -1,9 +1,9 @@
 /**
- * Runs the FlutterDeck MCP server over stdio for one project, until Claude closes stdin.
+ * Runs the Pitdeck MCP server over stdio for one project, until Claude closes stdin.
  * It starts the project's daemon at once if it isn't running, so the dashboard is up
  * when the Browser pane opens, and opens the dashboard's login window (ADR 0002, 0003).
  * stdout carries the MCP protocol only; messages go to stderr.
- * Used by this package's main.js and by `flutterdeck mcp`.
+ * Used by this package's main.js and by `pitdeck mcp`.
  */
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { DECK_VERSION } from '@project-deck/core';
@@ -12,10 +12,10 @@ import { createDeckServer } from './server.js';
 import { spawnDaemon } from './spawn.js';
 
 export async function runMcpServer(projectDir: string): Promise<void> {
-  const log = (message: string) => process.stderr.write(`flutterdeck mcp: ${message}\n`);
+  const log = (message: string) => process.stderr.write(`pitdeck mcp: ${message}\n`);
   const reason = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
-  // A stray rejection would end the process, and with it every FlutterDeck tool in Claude.
+  // A stray rejection would end the process, and with it every Pitdeck tool in Claude.
   process.on('unhandledRejection', (err) => log(`Unexpected error: ${reason(err)}`));
 
   const daemon = new DaemonClient({

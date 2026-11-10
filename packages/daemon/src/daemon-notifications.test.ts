@@ -53,16 +53,16 @@ describe('daemon notifications', () => {
     expect(await postWaiting(d, 'Claude needs your permission to use Bash')).toBe(200);
     await vi.waitFor(() =>
       expect(notifier).toHaveBeenCalledWith(
-        'FlutterDeck',
+        'Pitdeck',
         'Claude is waiting — Claude needs your permission to use Bash',
       ),
     );
   });
 
-  it('follows the switches in .flutterdeck/config.json', async () => {
-    await mkdir(join(projectDir, '.flutterdeck'));
+  it('follows the switches in .pitdeck/config.json', async () => {
+    await mkdir(join(projectDir, '.pitdeck'));
     await writeFile(
-      join(projectDir, '.flutterdeck', 'config.json'),
+      join(projectDir, '.pitdeck', 'config.json'),
       JSON.stringify({ version: 1, notifications: { claudeWaiting: false } }),
     );
     const notifier = vi.fn();

@@ -29,7 +29,7 @@ describe('domain schemas', () => {
     ).toBe(true);
   });
 
-  it('mark reloads made by others, whose duration FlutterDeck never sees', () => {
+  it('mark reloads made by others, whose duration Pitdeck never sees', () => {
     expect(ReloadResultSchema.parse({ ok: true, kind: 'hot-reload', source: 'external' })).toEqual({
       ok: true,
       kind: 'hot-reload',

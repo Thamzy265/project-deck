@@ -44,13 +44,13 @@ describe('notifierCommand on macOS', () => {
   const deps = { env: {}, findNotifySend: () => undefined };
 
   it.each(PAYLOADS)('passes %j only as a separate argument after the fixed script', (payload) => {
-    const cmd = notifierCommand('darwin', 'FlutterDeck', payload, deps);
+    const cmd = notifierCommand('darwin', 'Pitdeck', payload, deps);
     expect(cmd?.file).toBe('/usr/bin/osascript');
     expect(cmd?.args).toEqual([
       '-e',
       MACOS_SCRIPT,
       '--',
-      'FlutterDeck',
+      'Pitdeck',
       cleanNotifyText(payload, MAX_NOTIFY_TEXT),
     ]);
     expect(cmd?.env).toBeUndefined();
@@ -107,7 +107,7 @@ describe('notifierCommand on Windows', () => {
   it.each(PAYLOADS)(
     'never puts %j in the arguments, only in two environment variables',
     (payload) => {
-      const cmd = notifierCommand('win32', 'FlutterDeck', payload, deps);
+      const cmd = notifierCommand('win32', 'Pitdeck', payload, deps);
       expect(cmd?.file).toBe('C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe');
       expect(cmd?.args).toEqual([
         '-NoProfile',
@@ -120,7 +120,7 @@ describe('notifierCommand on Windows', () => {
       const cleaned = cleanNotifyText(payload, MAX_NOTIFY_TEXT);
       for (const arg of cmd?.args ?? []) expect(arg).not.toContain(cleaned);
       expect(script).not.toContain(cleaned);
-      expect(cmd?.env?.DECK_NOTIFY_TITLE).toBe('FlutterDeck');
+      expect(cmd?.env?.DECK_NOTIFY_TITLE).toBe('Pitdeck');
       expect(cmd?.env?.DECK_NOTIFY_TEXT).toBe(cleaned);
       // The rest of the environment is kept: PowerShell needs SystemRoot and friends.
       expect(cmd?.env?.SystemRoot).toBe('C:\\Windows');

@@ -270,7 +270,7 @@ const shots = [];
 const traffic = [];
 const daemonOutput = [];
 const project = await mkdtemp(join(tmpdir(), 'deck-qa-m1-'));
-// The daemon's port registry goes to a scratch home, never the user's ~/.flutterdeck.
+// The daemon's port registry goes to a scratch home, never the user's ~/.pitdeck.
 const scratchHome = await scratchHomeEnv();
 // Unique per run, so the clean-up can stop and delete only this run's recording.
 const devicePath = `/sdcard/project-deck-qa-${RUN}-${process.pid}-${Date.now()}.mp4`;
@@ -420,7 +420,7 @@ try {
       stream.on('data', (chunk) => daemonOutput.push(chunk));
     }
     const runtime = await waitFor(
-      async () => JSON.parse(await readFile(join(project, '.flutterdeck', 'runtime.json'), 'utf8')),
+      async () => JSON.parse(await readFile(join(project, '.pitdeck', 'runtime.json'), 'utf8')),
       10_000,
     );
     must('daemon starts (real mode)', runtime !== undefined, runtime ? `port ${runtime.port}` : '');

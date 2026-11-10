@@ -1,9 +1,9 @@
 /**
- * The files `init` writes in the user's project: `.flutterdeck/config.json`, `.gitignore`
+ * The files `init` writes in the user's project: `.pitdeck/config.json`, `.gitignore`
  * and `.claude/launch.json`. A cloned repository may have planted a link at any of them
  * (or at `.claude`) that points at one of the user's own files, so a link is refused
  * with a message, never followed (docs/notes/untrusted-project-files.md). Writes go to a
- * new temp file (in `.flutterdeck/` for init) that is renamed into place: a link that appears in between is replaced,
+ * new temp file (in `.pitdeck/` for init) that is renamed into place: a link that appears in between is replaced,
  * not written through, and readers never see half a file.
  */
 import { randomBytes } from 'node:crypto';
@@ -21,7 +21,7 @@ export type FileState = { kind: 'missing' } | { kind: 'file'; text: string; mode
 
 function linkRefused(shown: string): UnsafeFileError {
   return new UnsafeFileError(
-    `${shown} is a link. FlutterDeck doesn't follow links in a project; replace it with a regular file or folder, then run init again. Nothing was changed.`,
+    `${shown} is a link. Pitdeck doesn't follow links in a project; replace it with a regular file or folder, then run init again. Nothing was changed.`,
   );
 }
 
@@ -104,7 +104,7 @@ export async function inspectDir(path: string, shown: string): Promise<'missing'
 
 export interface WriteAtomicOptions {
   /**
-   * Where the temp file goes. init passes `.flutterdeck`, whose `*.tmp` files are
+   * Where the temp file goes. init passes `.pitdeck`, whose `*.tmp` files are
    * git-ignored, so a crash never leaves a stray temp file git would pick up next to
    * `.gitignore` or `launch.json`. Defaults to the target's own folder, which is also
    * tried once when the rename from `tmpDir` fails with EXDEV (another mount).
@@ -130,7 +130,7 @@ export async function writeAtomic(
   try {
     await writeVia(tmpDir, path, text, mode, move);
   } catch (err) {
-    // `.flutterdeck` may be a mount of its own (a bind mount, a synced folder). A rename
+    // `.pitdeck` may be a mount of its own (a bind mount, a synced folder). A rename
     // can't cross mounts, so try once more with the temp file next to the target.
     if ((err as NodeJS.ErrnoException).code !== 'EXDEV' || tmpDir === dirname(path)) throw err;
     await writeVia(dirname(path), path, text, mode, move);

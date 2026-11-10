@@ -20,8 +20,8 @@ let server: Server;
 
 beforeEach(async () => {
   project = await mkdtemp(join(tmpdir(), 'deck-cli-open-'));
-  await mkdir(join(project, '.flutterdeck'));
-  await writeFile(join(project, '.flutterdeck', 'config.json'), '{"version":1}\n');
+  await mkdir(join(project, '.pitdeck'));
+  await writeFile(join(project, '.pitdeck', 'config.json'), '{"version":1}\n');
   // Answers health and the login window, then goes away before the status call.
   server = createServer((req, res) => {
     const route = `${req.method ?? ''} ${req.url ?? ''}`;
@@ -76,6 +76,6 @@ describe('open', () => {
     });
     expect(spawned).toBe(0);
     expect(code).toBe(1);
-    expect(errors.join('\n')).toContain('flutterdeck start');
+    expect(errors.join('\n')).toContain('pitdeck start');
   });
 });

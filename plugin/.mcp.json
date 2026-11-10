@@ -5,7 +5,7 @@
       "command": "dart",
       "args": ["mcp-server"]
     },
-    "flutterdeck": {
+    "pitdeck": {
       "type": "stdio",
       "command": "node",
       "args": ["${CLAUDE_PLUGIN_ROOT}/../packages/cli/dist/main.js", "mcp"]

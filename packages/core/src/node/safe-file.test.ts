@@ -47,20 +47,20 @@ describe('readRegularFile', () => {
 });
 
 describe('checkStateDir', () => {
-  it('accepts a missing or real .flutterdeck folder', async () => {
+  it('accepts a missing or real .pitdeck folder', async () => {
     await expect(checkStateDir(dir)).resolves.toBeUndefined();
-    await mkdir(join(dir, '.flutterdeck'));
+    await mkdir(join(dir, '.pitdeck'));
     await expect(checkStateDir(dir)).resolves.toBeUndefined();
   });
 
-  links('refuses a .flutterdeck that is a symlink', async () => {
+  links('refuses a .pitdeck that is a symlink', async () => {
     await mkdir(join(dir, 'elsewhere'));
-    await symlink(join(dir, 'elsewhere'), join(dir, '.flutterdeck'));
+    await symlink(join(dir, 'elsewhere'), join(dir, '.pitdeck'));
     await expect(checkStateDir(dir)).rejects.toBeInstanceOf(StateDirError);
   });
 
-  it('refuses a .flutterdeck that is a file', async () => {
-    await writeFile(join(dir, '.flutterdeck'), '');
+  it('refuses a .pitdeck that is a file', async () => {
+    await writeFile(join(dir, '.pitdeck'), '');
     await expect(checkStateDir(dir)).rejects.toThrow(/not a real folder/);
   });
 });

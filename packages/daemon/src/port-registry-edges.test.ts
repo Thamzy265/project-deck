@@ -44,7 +44,7 @@ async function project(name: string): Promise<string> {
 }
 
 async function writeRegistry(content: string): Promise<void> {
-  await mkdir(join(homeDir, '.flutterdeck'), { recursive: true });
+  await mkdir(join(homeDir, '.pitdeck'), { recursive: true });
   await writeFile(registryPath(homeDir), content);
 }
 
@@ -88,7 +88,7 @@ describe('port registry: damaged files', () => {
     expect(await readFile(registryPath(homeDir), 'utf8')).toBe(text);
   });
 
-  it('keeps unknown extra keys readable (a newer FlutterDeck may add some)', async () => {
+  it('keeps unknown extra keys readable (a newer Pitdeck may add some)', async () => {
     await writeRegistry(JSON.stringify({ version: 1, salt: SALT, projects: {}, extra: true }));
     const dir = await project('app');
     expect(await projectIdentity(dir, { homeDir })).toMatch(/^[0-9a-f]{12}$/);
@@ -116,14 +116,14 @@ describe('port registry: damaged files', () => {
 
   it.skipIf(posixOnly)('creates the folder readable by the user only', async () => {
     await projectIdentity(await project('app'), { homeDir });
-    expect((await stat(join(homeDir, '.flutterdeck'))).mode & 0o777).toBe(0o700);
+    expect((await stat(join(homeDir, '.pitdeck'))).mode & 0o777).toBe(0o700);
   });
 
   it('leaves no temp files behind', async () => {
     for (const name of ['a', 'b', 'c']) {
       await allocatePort(await project(name), { homeDir, isFree: allFree });
     }
-    expect(await readdir(join(homeDir, '.flutterdeck'))).toEqual(['ports.json']);
+    expect(await readdir(join(homeDir, '.pitdeck'))).toEqual(['ports.json']);
   });
 });
 

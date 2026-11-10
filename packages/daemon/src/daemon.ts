@@ -37,11 +37,11 @@ export const VERSION = DECK_VERSION;
 const HOST = '127.0.0.1';
 
 export interface DaemonOptions {
-  /** Project root; `.flutterdeck/runtime.json` is written here. */
+  /** Project root; `.pitdeck/runtime.json` is written here. */
   projectDir: string;
   registry: Registry;
   /**
-   * Preferred port when `.flutterdeck/config.json` has none; the next free one is used
+   * Preferred port when `.pitdeck/config.json` has none; the next free one is used
    * if it is busy. 0 picks any free port. A config port always wins and is never moved.
    */
   port?: number;
@@ -96,7 +96,7 @@ export class DaemonAlreadyRunningError extends Error {
 }
 
 export async function startDaemon(opts: DaemonOptions): Promise<Daemon> {
-  // Before anything is created in it: a linked .flutterdeck would send every write
+  // Before anything is created in it: a linked .pitdeck would send every write
   // (runtime.json with the token, the lock) to wherever a cloned repo points it.
   await checkStateDir(opts.projectDir);
   // Held from the "is one running?" check until runtime.json is written, so two daemons
@@ -217,7 +217,7 @@ async function startLocked(opts: DaemonOptions): Promise<Daemon> {
   }
   if (sharedWith !== undefined) {
     log(
-      `Port ${port} is also registered to another project (project ${sharedWith}); if both run at once one will fail. Run \`flutterdeck init\` to pick a new port.`,
+      `Port ${port} is also registered to another project (project ${sharedWith}); if both run at once one will fail. Run \`pitdeck init\` to pick a new port.`,
     );
   }
   try {

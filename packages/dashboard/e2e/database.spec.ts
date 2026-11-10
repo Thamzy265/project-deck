@@ -558,9 +558,9 @@ test.describe('scripted daemon', () => {
     deck = await startScriptedDaemon();
     await openDashboard(page, deck.url);
     await expect(
-      page.getByRole('heading', { name: 'Add flutterdeck_drift to see your database live.' }),
+      page.getByRole('heading', { name: 'Add pitdeck_drift to see your database live.' }),
     ).toBeVisible();
-    await expect(page.getByText("FlutterDeckDrift.register(db, name: 'app');")).toBeVisible();
+    await expect(page.getByText("PitdeckDrift.register(db, name: 'app');")).toBeVisible();
     await expectNoSidewaysScroll(page);
     await expectAccessible(page);
     await screenshotM3(page, 'setup-420');

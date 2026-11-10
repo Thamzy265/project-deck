@@ -91,7 +91,7 @@ export class FakeAppSession implements AppSession {
     this.events.emit('exit', code === undefined ? {} : { code });
   }
 
-  /** Simulates a reload by Claude or the IDE, which FlutterDeck only observes. */
+  /** Simulates a reload by Claude or the IDE, which Pitdeck only observes. */
   simulateExternalReload(result: ReloadResult = { ok: true, kind: 'hot-reload' }): void {
     this.events.emit('reloaded', { ...result, source: 'external' });
   }
