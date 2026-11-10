@@ -11,7 +11,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-const QUERY = 'ext.flutterdeck.drift.v1.query';
+const QUERY = 'ext.pitdeck.drift.v1.query';
 
 describe('DriftInspector replies (tester probes)', () => {
   it('drops fields the protocol does not name, so app extras never reach callers', async () => {

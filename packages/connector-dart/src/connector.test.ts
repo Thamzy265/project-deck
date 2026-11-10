@@ -224,16 +224,16 @@ describe('DartConnector', () => {
       id: 'isolates/1',
       name: 'main',
       runnable: true,
-      extensionRPCs: ['ext.flutterdeck.drift.v1.list'],
+      extensionRPCs: ['ext.pitdeck.drift.v1.list'],
     }));
     const d = await dtd([{ uri: vm.uri, name: 'shop' }]);
-    const prefixes = ['ext.flutterdeck.other.'];
+    const prefixes = ['ext.pitdeck.other.'];
     const c = make([{ wsUri: d.uri, source: 'manual' }], { extensionPrefixes: () => prefixes });
     await c.start();
     const session = await c.attach(appIdFor(vm.uri));
-    expect(session.extensions.has('ext.flutterdeck.drift.v1.list')).toBe(false);
-    prefixes.push('ext.flutterdeck.drift.');
-    expect(session.extensions.has('ext.flutterdeck.drift.v1.list')).toBe(true);
+    expect(session.extensions.has('ext.pitdeck.drift.v1.list')).toBe(false);
+    prefixes.push('ext.pitdeck.drift.');
+    expect(session.extensions.has('ext.pitdeck.drift.v1.list')).toBe(true);
   });
 
   it('runs the dart CLI fallback at most once a minute when there is no pid-file directory', async () => {

@@ -2,7 +2,7 @@ import 'dart:developer' as developer;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutterdeck_drift/flutterdeck_drift.dart';
+import 'package:pitdeck_drift/pitdeck_drift.dart';
 
 import 'database.dart';
 
@@ -10,17 +10,17 @@ import 'database.dart';
 const reloadMarker = 'Edit me, then hot reload: v1';
 
 /// Sends a line to Android logcat with a non-`flutter` tag (see MainActivity.kt).
-const sampleChannel = MethodChannel('flutterdeck/sample');
+const sampleChannel = MethodChannel('pitdeck/sample');
 
 final taps = ValueNotifier<int>(0);
 
 Future<void> onHitBreakpoint() async {
-  taps.value += 1; // FLUTTERDECK: put the breakpoint on this line
+  taps.value += 1; // PITDECK: put the breakpoint on this line
   final message = 'Tap ${taps.value}';
 
   // ignore: avoid_print
-  print('flutterdeck.sample print: $message');
-  developer.log(message, name: 'flutterdeck.sample', level: 800);
+  print('pitdeck.sample print: $message');
+  developer.log(message, name: 'pitdeck.sample', level: 800);
 
   try {
     await sampleChannel.invokeMethod<void>('log', message);
@@ -33,8 +33,8 @@ Future<void> onHitBreakpoint() async {
 
 void main() {
   final db = AppDatabase();
-  // Lets FlutterDeck show the database live. Does nothing in release builds.
-  FlutterDeckDrift.register(db, name: 'sample');
+  // Lets Pitdeck show the database live. Does nothing in release builds.
+  PitdeckDrift.register(db, name: 'sample');
   runApp(SampleApp(database: db));
 }
 
@@ -48,10 +48,10 @@ class SampleApp extends StatelessWidget {
   Widget build(BuildContext context) {
     final db = database;
     return MaterialApp(
-      title: 'FlutterDeck sample',
+      title: 'Pitdeck sample',
       theme: ThemeData(colorSchemeSeed: Colors.indigo),
       home: Scaffold(
-        appBar: AppBar(title: const Text('FlutterDeck sample')),
+        appBar: AppBar(title: const Text('Pitdeck sample')),
         // Slivers, so a long orders list builds only the rows on screen.
         body: CustomScrollView(
           slivers: [

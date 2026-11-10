@@ -243,13 +243,6 @@ packages:
     description: flutter
     source: sdk
     version: "0.0.0"
-  flutterdeck_drift:
-    dependency: "direct main"
-    description:
-      path: "../../dart/flutterdeck_drift"
-      relative: true
-    source: path
-    version: "0.1.0"
   glob:
     dependency: transitive
     description:
@@ -482,6 +475,13 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.3.0"
+  pitdeck_drift:
+    dependency: "direct main"
+    description:
+      path: "../../dart/pitdeck_drift"
+      relative: true
+    source: path
+    version: "0.1.0"
   platform:
     dependency: transitive
     description:

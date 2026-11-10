@@ -255,7 +255,7 @@ describe('/api/db/device (choose-device)', () => {
 });
 
 const queryCalls = (drift: FakeDriftApp) =>
-  drift.extensions.calls.filter((c) => c.method === 'ext.flutterdeck.drift.v1.query');
+  drift.extensions.calls.filter((c) => c.method === 'ext.pitdeck.drift.v1.query');
 
 describe('/api/db security', () => {
   it('keeps the Host, Origin and token checks on every db route', async () => {

@@ -25,22 +25,22 @@ function codeOf(fn: () => unknown): string | undefined {
 }
 
 describe('extension method names', () => {
-  it('allow only methods under an allowed prefix, starting with ext.flutterdeck.', () => {
-    expect(prefixes).toEqual(['ext.flutterdeck.']);
-    expect(isAllowedExtensionMethod('ext.flutterdeck.drift.v1.query', prefixes)).toBe(true);
+  it('allow only methods under an allowed prefix, starting with ext.pitdeck.', () => {
+    expect(prefixes).toEqual(['ext.pitdeck.']);
+    expect(isAllowedExtensionMethod('ext.pitdeck.drift.v1.query', prefixes)).toBe(true);
     for (const method of [
       'ext.flutter.debugDumpApp',
       'ext.drift.database',
       'ext.dart.io.getSocketProfile',
-      'ext.flutterdeck',
-      'ext.flutterdeck.',
-      'ext.flutterdeck..x',
-      'ext.flutterdeck.Drift',
-      'ext.flutterdeck.drift query',
+      'ext.pitdeck',
+      'ext.pitdeck.',
+      'ext.pitdeck..x',
+      'ext.pitdeck.Drift',
+      'ext.pitdeck.drift query',
       'getVM',
       'streamListen',
       's0.reloadSources',
-      `ext.flutterdeck.${'a'.repeat(200)}`,
+      `ext.pitdeck.${'a'.repeat(200)}`,
     ]) {
       expect(isAllowedExtensionMethod(method, prefixes), method).toBe(false);
     }
@@ -52,32 +52,32 @@ describe('extension method names', () => {
     expect(isValidExtensionPrefix('ext.drift.')).toBe(false);
     expect(isValidExtensionPrefix('ext.flutter.')).toBe(false);
     expect(isValidExtensionPrefix('ext.')).toBe(false);
-    expect(isValidExtensionPrefix('ext.flutterdeck')).toBe(false);
-    expect(isValidExtensionPrefix('ext.flutterdeck.drift.')).toBe(true);
+    expect(isValidExtensionPrefix('ext.pitdeck')).toBe(false);
+    expect(isValidExtensionPrefix('ext.pitdeck.drift.')).toBe(true);
   });
 
   it('deliver events only of kinds under the allowed prefixes, without ext.', () => {
-    expect(eventKindAllowed('flutterdeck.drift.tables', prefixes)).toBe(true);
+    expect(eventKindAllowed('pitdeck.drift.tables', prefixes)).toBe(true);
     expect(eventKindAllowed('Flutter.Frame', prefixes)).toBe(false);
-    expect(eventKindAllowed('flutterdeck', prefixes)).toBe(false);
+    expect(eventKindAllowed('pitdeck', prefixes)).toBe(false);
   });
 });
 
 describe('checkExtensionCall', () => {
   it('accepts string parameters and refuses the reserved isolateId', () => {
-    expect(codeOf(() => checkExtensionCall('ext.flutterdeck.a.b', { sql: 'x' }, prefixes))).toBe(
+    expect(codeOf(() => checkExtensionCall('ext.pitdeck.a.b', { sql: 'x' }, prefixes))).toBe(
       undefined,
     );
-    expect(
-      codeOf(() => checkExtensionCall('ext.flutterdeck.a.b', { isolateId: 'x' }, prefixes)),
-    ).toBe('invalid-call');
+    expect(codeOf(() => checkExtensionCall('ext.pitdeck.a.b', { isolateId: 'x' }, prefixes))).toBe(
+      'invalid-call',
+    );
     expect(codeOf(() => checkExtensionCall('ext.flutter.exit', {}, prefixes))).toBe('not-allowed');
   });
 
   it('refuses bad keys, non-string values, too many and too large parameters', () => {
     const call = (params: Record<string, unknown>) =>
       codeOf(() =>
-        checkExtensionCall('ext.flutterdeck.a.b', params as Record<string, string>, prefixes),
+        checkExtensionCall('ext.pitdeck.a.b', params as Record<string, string>, prefixes),
       );
     expect(call({ 'bad key': 'x' })).toBe('invalid-call');
     expect(call({ n: 1 })).toBe('invalid-call');
@@ -98,50 +98,47 @@ describe('checkExtensionCall', () => {
 });
 
 describe('Registry extension prefixes', () => {
-  it('starts with ext.flutterdeck. and adds valid prefixes only', () => {
+  it('starts with ext.pitdeck. and adds valid prefixes only', () => {
     const registry = new Registry();
-    expect(registry.extensionPrefixes()).toEqual(['ext.flutterdeck.']);
-    const remove = registry.allowExtensionPrefix('ext.flutterdeck.drift.');
-    expect(registry.extensionPrefixes()).toContain('ext.flutterdeck.drift.');
+    expect(registry.extensionPrefixes()).toEqual(['ext.pitdeck.']);
+    const remove = registry.allowExtensionPrefix('ext.pitdeck.drift.');
+    expect(registry.extensionPrefixes()).toContain('ext.pitdeck.drift.');
     remove();
-    expect(registry.extensionPrefixes()).toEqual(['ext.flutterdeck.']);
+    expect(registry.extensionPrefixes()).toEqual(['ext.pitdeck.']);
     expect(() => registry.allowExtensionPrefix('ext.drift.')).toThrow();
   });
 });
 
 describe('FakeAppExtensions', () => {
   it('calls programmed handlers and records the calls', async () => {
-    const ext = new FakeAppExtensions().handle('ext.flutterdeck.drift.v1.list', (params) => ({
+    const ext = new FakeAppExtensions().handle('ext.pitdeck.drift.v1.list', (params) => ({
       echo: params,
     }));
-    expect(ext.has('ext.flutterdeck.drift.v1.list')).toBe(true);
-    expect(ext.has('ext.flutterdeck.drift.v1.query')).toBe(false);
-    await expect(ext.call('ext.flutterdeck.drift.v1.list', { a: '1' })).resolves.toEqual({
+    expect(ext.has('ext.pitdeck.drift.v1.list')).toBe(true);
+    expect(ext.has('ext.pitdeck.drift.v1.query')).toBe(false);
+    await expect(ext.call('ext.pitdeck.drift.v1.list', { a: '1' })).resolves.toEqual({
       echo: { a: '1' },
     });
-    expect(ext.calls).toEqual([{ method: 'ext.flutterdeck.drift.v1.list', params: { a: '1' } }]);
+    expect(ext.calls).toEqual([{ method: 'ext.pitdeck.drift.v1.list', params: { a: '1' } }]);
   });
 
   it('rejects a missing extension, a disallowed method and a handler failure with codes', async () => {
-    const ext = new FakeAppExtensions().handle('ext.flutterdeck.x.fail', () => {
+    const ext = new FakeAppExtensions().handle('ext.pitdeck.x.fail', () => {
       throw new Error('boom');
     });
-    await expect(ext.call('ext.flutterdeck.x.none', {})).rejects.toMatchObject({
+    await expect(ext.call('ext.pitdeck.x.none', {})).rejects.toMatchObject({
       code: 'not-found',
     });
     await expect(ext.call('ext.flutter.exit', {})).rejects.toMatchObject({ code: 'not-allowed' });
-    await expect(ext.call('ext.flutterdeck.x.fail', {})).rejects.toMatchObject({
+    await expect(ext.call('ext.pitdeck.x.fail', {})).rejects.toMatchObject({
       code: 'failed',
       message: 'boom',
     });
   });
 
   it('times out a handler that never answers', async () => {
-    const ext = new FakeAppExtensions().handle(
-      'ext.flutterdeck.x.hang',
-      () => new Promise(() => {}),
-    );
-    await expect(ext.call('ext.flutterdeck.x.hang', {}, { timeoutMs: 20 })).rejects.toMatchObject({
+    const ext = new FakeAppExtensions().handle('ext.pitdeck.x.hang', () => new Promise(() => {}));
+    await expect(ext.call('ext.pitdeck.x.hang', {}, { timeoutMs: 20 })).rejects.toMatchObject({
       code: 'timeout',
     });
   });
@@ -149,21 +146,21 @@ describe('FakeAppExtensions', () => {
   it('emits events to listeners of allowed kinds and stops after unsubscribe', () => {
     const ext = new FakeAppExtensions();
     const cb = vi.fn();
-    const off = ext.onEvent('flutterdeck.drift.tables', cb);
-    ext.emit('flutterdeck.drift.tables', { db: 'app' });
-    ext.emit('flutterdeck.other', { db: 'app' });
+    const off = ext.onEvent('pitdeck.drift.tables', cb);
+    ext.emit('pitdeck.drift.tables', { db: 'app' });
+    ext.emit('pitdeck.other', { db: 'app' });
     off();
-    ext.emit('flutterdeck.drift.tables', { db: 'app' });
+    ext.emit('pitdeck.drift.tables', { db: 'app' });
     expect(cb).toHaveBeenCalledExactlyOnceWith({ db: 'app' });
     expect(() => ext.onEvent('Flutter.Frame', cb)).toThrow(AppExtensionError);
   });
 
   it('is offered by a fake session only when given, and stops answering after detach', async () => {
     expect(new FakeAppSession(fakeApp()).extensions).toBeUndefined();
-    const ext = new FakeAppExtensions().handle('ext.flutterdeck.x.ok', () => 'ok');
+    const ext = new FakeAppExtensions().handle('ext.pitdeck.x.ok', () => 'ok');
     const session = new FakeAppSession(fakeApp(), { extensions: ext });
     expect(session.extensions).toBe(ext);
     await session.detach();
-    await expect(ext.call('ext.flutterdeck.x.ok', {})).rejects.toMatchObject({ code: 'detached' });
+    await expect(ext.call('ext.pitdeck.x.ok', {})).rejects.toMatchObject({ code: 'detached' });
   });
 });

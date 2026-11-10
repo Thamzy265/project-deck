@@ -13,7 +13,7 @@ interface Exchange {
 const recorded = JSON.parse(
   readFileSync(
     new URL(
-      '../../connector-dart/src/testing/fixtures/flutterdeck-drift-v1.recorded.json',
+      '../../connector-dart/src/testing/fixtures/pitdeck-drift-v1.recorded.json',
       import.meta.url,
     ),
     'utf8',
@@ -57,7 +57,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('DriftInspector over the recorded flutterdeck_drift session', () => {
+describe('DriftInspector over the recorded pitdeck_drift session', () => {
   it('lists databases, reads the schema and the schema SQL', async () => {
     const db = new DriftInspector(recordedApp());
     expect(db.live).toBe(true);
@@ -143,17 +143,17 @@ describe('DriftInspector parameters', () => {
 });
 
 describe('DriftInspector failure paths', () => {
-  it('asks for setup when the app has no flutterdeck_drift', async () => {
+  it('asks for setup when the app has no pitdeck_drift', async () => {
     const db = new DriftInspector(new FakeAppExtensions());
     await expect(db.listDatabases()).rejects.toMatchObject({
       code: 'setup-needed',
-      message: expect.stringContaining('flutterdeck_drift') as unknown,
+      message: expect.stringContaining('pitdeck_drift') as unknown,
     });
   });
 
   it('asks for an update when the app speaks another protocol version', async () => {
     const app = new FakeDriftApp();
-    app.extensions.handle('ext.flutterdeck.drift.v1.list', () => ({ protocol: 2, databases: [] }));
+    app.extensions.handle('ext.pitdeck.drift.v1.list', () => ({ protocol: 2, databases: [] }));
     await expect(new DriftInspector(app.extensions).listDatabases()).rejects.toMatchObject({
       code: 'update-needed',
     });
@@ -170,7 +170,7 @@ describe('DriftInspector failure paths', () => {
 
   it('says the app stopped, or did not answer (breakpoint), without app text', async () => {
     const ext = new FakeAppExtensions();
-    ext.handle('ext.flutterdeck.drift.v1.list', () => {
+    ext.handle('ext.pitdeck.drift.v1.list', () => {
       throw new AppExtensionError('timeout', 'raw text');
     });
     const db = new DriftInspector(ext);
@@ -203,7 +203,7 @@ describe('DriftInspector failure paths', () => {
 
   it('says an edit that timed out may still have run', async () => {
     const ext = new FakeAppExtensions();
-    ext.handle('ext.flutterdeck.drift.v1.execute', () => {
+    ext.handle('ext.pitdeck.drift.v1.execute', () => {
       throw new AppExtensionError('timeout', 'x');
     });
     await expect(
@@ -222,8 +222,8 @@ describe('DriftInspector failure paths', () => {
     await db.execute('app', 'DELETE FROM orders', [], { token: TOKEN });
     const timeouts = call.mock.calls.map(([method, , opts]) => [method, opts?.timeoutMs]);
     // The app stops a read at 5 s and waits up to 1 s more; an edit can wait 5 s behind it.
-    expect(timeouts).toContainEqual(['ext.flutterdeck.drift.v1.query', 8000]);
-    expect(timeouts).toContainEqual(['ext.flutterdeck.drift.v1.execute', 15_000]);
+    expect(timeouts).toContainEqual(['ext.pitdeck.drift.v1.query', 8000]);
+    expect(timeouts).toContainEqual(['ext.pitdeck.drift.v1.execute', 15_000]);
   });
 
   it('never sends a malformed token or too many keys', async () => {
@@ -287,13 +287,13 @@ describe('the schema SQL for the gate', () => {
           columns: [],
           foreignKeys: [],
           indexes: [],
-          error: { code: 'unsupported', message: "FlutterDeck can't read coffee" },
+          error: { code: 'unsupported', message: "Pitdeck can't read coffee" },
         },
       ],
       sqlSchema: [],
     }));
     const [view] = await new DriftInspector(app.extensions).schema('app');
-    expect(view?.error).toEqual({ code: 'unsupported', message: "FlutterDeck can't read coffee" });
+    expect(view?.error).toEqual({ code: 'unsupported', message: "Pitdeck can't read coffee" });
   });
 });
 
@@ -303,7 +303,7 @@ describe('watch', () => {
     const db = new DriftInspector(app.extensions);
     const cb = vi.fn();
     db.watch('app', 'orders', cb);
-    app.extensions.emit('flutterdeck.drift.tables', recorded.tablesEvent.extensionData);
+    app.extensions.emit('pitdeck.drift.tables', recorded.tablesEvent.extensionData);
     expect(cb).toHaveBeenCalledOnce();
   });
 
@@ -341,7 +341,7 @@ describe('watch', () => {
       { protocol: 1, db: 'app', tables: 'orders' },
       { protocol: 1, db: 'app', tables: [{ name: 7 }] },
     ]) {
-      app.extensions.emit('flutterdeck.drift.tables', bad);
+      app.extensions.emit('pitdeck.drift.tables', bad);
     }
     app.emitTables('other', [{ name: 'orders' }]);
     app.emitTables('app', [{ name: 'lines' }]);

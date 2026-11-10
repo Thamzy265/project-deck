@@ -14,7 +14,7 @@ import {
 import { Registry } from './registry.js';
 
 const prefixes = DEFAULT_EXTENSION_PREFIXES;
-const METHOD = 'ext.flutterdeck.drift.v1.query';
+const METHOD = 'ext.pitdeck.drift.v1.query';
 
 function codeOf(fn: () => unknown): string | undefined {
   try {
@@ -30,24 +30,24 @@ describe('method names that try to slip past the allowlist', () => {
     'ext.Flutter.exit',
     'ext.FLUTTER.exit',
     'ext.flutter.exit',
-    'Ext.flutterdeck.x',
-    'EXT.flutterdeck.x',
-    'ext.flutterdeck',
-    'ext.flutterdeckx.y',
-    'ext.flutterdeck_x.y',
-    'ext.flutterdeck.x.',
-    'ext.flutterdeck.x\n',
-    '\next.flutterdeck.x',
-    ' ext.flutterdeck.x',
-    'ext.flutterdeck.x ',
-    'ext.flutterdeck.x\u0000',
-    'ext.flutterdeck.x/../flutter.exit',
-    'ext.flutterdeck.x;ext.flutter.exit',
-    'ext.flutterdeck․x',
-    'ext.flutterdeсk.x', // Cyrillic es
-    'ext.flutterdeck.ｘ', // full-width x
-    'ext．flutterdeck.x',
-    `ext.flutterdeck.${'a'.repeat(200)}`,
+    'Ext.pitdeck.x',
+    'EXT.pitdeck.x',
+    'ext.pitdeck',
+    'ext.pitdeckx.y',
+    'ext.pitdeck_x.y',
+    'ext.pitdeck.x.',
+    'ext.pitdeck.x\n',
+    '\next.pitdeck.x',
+    ' ext.pitdeck.x',
+    'ext.pitdeck.x ',
+    'ext.pitdeck.x\u0000',
+    'ext.pitdeck.x/../flutter.exit',
+    'ext.pitdeck.x;ext.flutter.exit',
+    'ext.pitdeck․x',
+    'ext.pitdeсk.x', // Cyrillic es
+    'ext.pitdeck.ｘ', // full-width x
+    'ext．pitdeck.x',
+    `ext.pitdeck.${'a'.repeat(200)}`,
     'ext.dds.x',
     'ext.dart.io.getOpenFiles',
     'ext.drift.database',
@@ -58,14 +58,7 @@ describe('method names that try to slip past the allowlist', () => {
   });
 
   it('never lets a broad or blocked prefix reach Flutter, Drift, Dart or DDS', () => {
-    const broad = [
-      'ext.',
-      'ext.flutter.',
-      'ext.drift.',
-      'ext.dart.',
-      'ext.dds.',
-      'ext.flutterdeck',
-    ];
+    const broad = ['ext.', 'ext.flutter.', 'ext.drift.', 'ext.dart.', 'ext.dds.', 'ext.pitdeck'];
     for (const method of ['ext.flutter.exit', 'ext.drift.database', 'ext.dart.io.x', 'ext.dds.x']) {
       expect(isAllowedExtensionMethod(method, broad), method).toBe(false);
     }
@@ -76,8 +69,8 @@ describe('method names that try to slip past the allowlist', () => {
       'ext.drift.',
       'ext.dart.io.',
       'ext.dds.',
-      'EXT.flutterdeck.',
-      'ext.flutterdeck',
+      'EXT.pitdeck.',
+      'ext.pitdeck',
       'ext..',
     ]) {
       expect(isValidExtensionPrefix(prefix), prefix).toBe(false);
@@ -85,13 +78,9 @@ describe('method names that try to slip past the allowlist', () => {
   });
 
   it('keeps the method under the same prefix it matched, not a longer look-alike', () => {
-    expect(isAllowedExtensionMethod('ext.flutterdeckevil.x', ['ext.flutterdeck.'])).toBe(false);
-    expect(isAllowedExtensionMethod('ext.flutterdeck.drift.x', ['ext.flutterdeck.drift.'])).toBe(
-      true,
-    );
-    expect(isAllowedExtensionMethod('ext.flutterdeck.driftx.y', ['ext.flutterdeck.drift.'])).toBe(
-      false,
-    );
+    expect(isAllowedExtensionMethod('ext.pitdeckevil.x', ['ext.pitdeck.'])).toBe(false);
+    expect(isAllowedExtensionMethod('ext.pitdeck.drift.x', ['ext.pitdeck.drift.'])).toBe(true);
+    expect(isAllowedExtensionMethod('ext.pitdeck.driftx.y', ['ext.pitdeck.drift.'])).toBe(false);
   });
 
   // EXT-1: dart:ui registers ext.ui.window.* in every Flutter app; D7 says Flutter's own
@@ -179,15 +168,15 @@ describe('extension parameters', () => {
 
 describe('event kinds', () => {
   it.each([
-    'flutterdeck',
-    'flutterdeck.',
-    'Flutterdeck.drift.tables',
-    'flutterdeckx.drift',
-    'ext.flutterdeck.drift.tables',
+    'pitdeck',
+    'pitdeck.',
+    'Pitdeck.drift.tables',
+    'pitdeckx.drift',
+    'ext.pitdeck.drift.tables',
     'Flutter.Frame',
-    'flutterdeck..x',
-    'flutterdeck.x\n',
-    `flutterdeck.${'x'.repeat(200)}`,
+    'pitdeck..x',
+    'pitdeck.x\n',
+    `pitdeck.${'x'.repeat(200)}`,
   ])('refuses listeners for %j', (kind) => {
     expect(eventKindAllowed(kind, prefixes)).toBe(false);
     expect(codeOf(() => checkEventKind(kind, prefixes))).toBe('not-allowed');
@@ -202,21 +191,21 @@ describe('event kinds', () => {
 describe('Registry extension prefixes', () => {
   it('keeps the default prefix when a backend adds and removes it again', () => {
     const registry = new Registry();
-    const remove = registry.allowExtensionPrefix('ext.flutterdeck.');
+    const remove = registry.allowExtensionPrefix('ext.pitdeck.');
     remove();
     remove();
-    expect(registry.extensionPrefixes()).toEqual(['ext.flutterdeck.']);
+    expect(registry.extensionPrefixes()).toEqual(['ext.pitdeck.']);
   });
 
   // EXT-2: the first backend to remove a shared prefix removes it for every backend.
   it('EXT-2 keeps a prefix two backends added until both remove it', () => {
     const registry = new Registry();
-    const removeA = registry.allowExtensionPrefix('ext.flutterdeck.drift.');
-    const removeB = registry.allowExtensionPrefix('ext.flutterdeck.drift.');
+    const removeA = registry.allowExtensionPrefix('ext.pitdeck.drift.');
+    const removeB = registry.allowExtensionPrefix('ext.pitdeck.drift.');
     removeA();
     removeA();
-    expect(registry.extensionPrefixes()).toContain('ext.flutterdeck.drift.');
+    expect(registry.extensionPrefixes()).toContain('ext.pitdeck.drift.');
     removeB();
-    expect(registry.extensionPrefixes()).toEqual(['ext.flutterdeck.']);
+    expect(registry.extensionPrefixes()).toEqual(['ext.pitdeck.']);
   });
 });

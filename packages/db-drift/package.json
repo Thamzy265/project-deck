@@ -1,7 +1,7 @@
 {
   "name": "@project-deck/db-drift",
   "version": "0.0.0",
-  "description": "project-deck live Drift inspector: reads the app's database through flutterdeck_drift's service extensions.",
+  "description": "project-deck live Drift inspector: reads the app's database through pitdeck_drift's service extensions.",
   "type": "module",
   "license": "MIT",
   "exports": {

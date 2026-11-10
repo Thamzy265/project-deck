@@ -6,8 +6,8 @@ export type FakeDriftHandler = (params: Record<string, string>) => Body;
 
 /**
  * Reply bodies from the recorded session in
- * packages/connector-dart/src/testing/fixtures/flutterdeck-drift-v1.recorded.json
- * (flutterdeck_drift 1, Dart 3.12.2, recorded 2026-10-16), without the envelope.
+ * packages/connector-dart/src/testing/fixtures/pitdeck-drift-v1.recorded.json
+ * (pitdeck_drift 1, Dart 3.12.2, recorded 2026-10-16), without the envelope.
  */
 export const RECORDED_SCHEMA: Body = {
   tables: [
@@ -88,7 +88,7 @@ export const RECORDED_ROWS: Body = {
 const TOKEN = /^[A-Za-z0-9_-]{43}$/;
 
 /**
- * A fake app with flutterdeck_drift registered: answers the `ext.flutterdeck.drift.v1.*`
+ * A fake app with pitdeck_drift registered: answers the `ext.pitdeck.drift.v1.*`
  * extensions with recorded replies, enforces single-use write tokens like the package,
  * and posts table events. Override any method with `handle()`.
  */
@@ -138,7 +138,7 @@ export class FakeDriftApp {
     return this;
   }
 
-  /** Posts a `flutterdeck.drift.tables` event, as the package does after writes. */
+  /** Posts a `pitdeck.drift.tables` event, as the package does after writes. */
   emitTables(db: string, tables: { name: string; kind?: string }[]): void {
     this.extensions.emit(TABLES_EVENT, {
       protocol: PROTOCOL_VERSION,

@@ -76,7 +76,7 @@ describe('readApplicationId', () => {
       'utf8',
     );
     await writeFile(join(dir, 'android', 'app', 'build.gradle.kts'), sample);
-    expect(await readApplicationId(dir)).toBe('dev.flutterdeck.flutterdeck_sample');
+    expect(await readApplicationId(dir)).toBe('dev.pitdeck.pitdeck_sample');
   });
 
   it('reads past a comment opener inside a quoted string (review R6)', () => {

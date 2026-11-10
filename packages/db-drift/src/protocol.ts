@@ -1,5 +1,5 @@
 /**
- * flutterdeck_drift's wire protocol, version 1 (dart/flutterdeck_drift/README.md,
+ * pitdeck_drift's wire protocol, version 1 (dart/pitdeck_drift/README.md,
  * "Protocol"; recorded examples in connector-dart's fixtures). Every reply is
  * untrusted app data and is validated here before anything uses it.
  */
@@ -14,10 +14,10 @@ import {
 import { z } from 'zod';
 
 export const PROTOCOL_VERSION = 1;
-export const EXTENSION_PREFIX = 'ext.flutterdeck.drift.v1.';
-export const TABLES_EVENT = 'flutterdeck.drift.tables';
+export const EXTENSION_PREFIX = 'ext.pitdeck.drift.v1.';
+export const TABLES_EVENT = 'pitdeck.drift.tables';
 
-/** Names `FlutterDeckDrift.register` accepts. */
+/** Names `PitdeckDrift.register` accepts. */
 export const DB_NAME = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}$/;
 export const WRITE_TOKEN = /^[A-Za-z0-9_-]{43}$/;
 
@@ -55,7 +55,7 @@ export function plainText(text: string, max = 500): string {
 }
 
 /**
- * The app's error reply as a DbError. Messages are FlutterDeck's own words, never the
+ * The app's error reply as a DbError. Messages are Pitdeck's own words, never the
  * app's, except SQLite's message for a SQL error, which the user needs to fix the SQL.
  */
 function appError(action: Action, code: string, message: string, db: string): DbError {
@@ -72,20 +72,20 @@ function appError(action: Action, code: string, message: string, db: string): Db
       'busy',
       action === 'execute'
         ? 'The app is busy with another read; try the change again.'
-        : 'The app is writing all the time, so FlutterDeck could not read a copy. Try again, or turn on WAL.',
+        : 'The app is writing all the time, so Pitdeck could not read a copy. Try again, or turn on WAL.',
     ],
     'too-large': ['too-large', 'The answer is over 8 MB. Add a LIMIT or pick fewer columns.'],
     unsupported: [
       'unsupported',
       action === 'query'
-        ? "This app's SQLite can't stop a slow query, so queries are off (Linux apps; see flutterdeck_drift's README). Tables and row details still work."
-        : "FlutterDeck can't open this database: in-memory and encrypted databases are not supported.",
+        ? "This app's SQLite can't stop a slow query, so queries are off (Linux apps; see pitdeck_drift's README). Tables and row details still work."
+        : "Pitdeck can't open this database: in-memory and encrypted databases are not supported.",
     ],
     'bad-token': [
       'bad-token',
       'The app refused the change: its confirm was missing or already used.',
     ],
-    'bad-request': ['internal', "The app did not accept FlutterDeck's request."],
+    'bad-request': ['internal', "The app did not accept Pitdeck's request."],
   };
   if (code === 'sql-error') return new DbError('sql-error', plainText(message));
   const [mapped, text] = map[code] ?? ['internal', "The app couldn't answer."];
@@ -101,17 +101,16 @@ export function readReply<S extends z.ZodType>(
 ): z.infer<S> {
   const envelope = Envelope.safeParse(raw);
   if (!envelope.success)
-    throw new DbError('internal', 'The app sent a reply FlutterDeck could not read.');
+    throw new DbError('internal', 'The app sent a reply Pitdeck could not read.');
   if (envelope.data.protocol !== PROTOCOL_VERSION) {
     throw new DbError(
       'update-needed',
-      `Update flutterdeck_drift: this FlutterDeck speaks protocol ${PROTOCOL_VERSION}.`,
+      `Update pitdeck_drift: this Pitdeck speaks protocol ${PROTOCOL_VERSION}.`,
     );
   }
   const error = ErrorReply.safeParse(raw);
   if (error.success) throw appError(action, error.data.error.code, error.data.error.message, db);
   const body = schema.safeParse(raw);
-  if (!body.success)
-    throw new DbError('internal', 'The app sent a reply FlutterDeck could not read.');
+  if (!body.success) throw new DbError('internal', 'The app sent a reply Pitdeck could not read.');
   return body.data;
 }

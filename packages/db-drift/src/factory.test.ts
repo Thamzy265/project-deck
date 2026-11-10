@@ -38,9 +38,9 @@ describe('DriftInspectorFactory', () => {
     const registry = new Registry();
     const undo = registerDrift(registry);
     expect(registry.dbInspectors.get('drift')).toBeInstanceOf(DriftInspectorFactory);
-    expect(registry.extensionPrefixes()).toContain('ext.flutterdeck.drift.v1.');
+    expect(registry.extensionPrefixes()).toContain('ext.pitdeck.drift.v1.');
     undo();
     expect(registry.dbInspectors.get('drift')).toBeUndefined();
-    expect(registry.extensionPrefixes()).not.toContain('ext.flutterdeck.drift.v1.');
+    expect(registry.extensionPrefixes()).not.toContain('ext.pitdeck.drift.v1.');
   });
 });

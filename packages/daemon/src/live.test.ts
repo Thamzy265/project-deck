@@ -31,9 +31,9 @@ describe('registerLive', () => {
     const registry = new Registry();
     registerLive(registry, { dtdUris: [], vmServiceUris: [] }, () => undefined);
     const opts = seen.options[0] as DartConnectorOptions | undefined;
-    // db-drift's prefix is allowed: it stays inside the default ext.flutterdeck. one.
-    expect(opts?.extensionPrefixes?.()).toEqual(['ext.flutterdeck.', 'ext.flutterdeck.drift.v1.']);
-    registry.allowExtensionPrefix('ext.flutterdeck.other.');
-    expect(opts?.extensionPrefixes?.()).toContain('ext.flutterdeck.other.');
+    // db-drift's prefix is allowed: it stays inside the default ext.pitdeck. one.
+    expect(opts?.extensionPrefixes?.()).toEqual(['ext.pitdeck.', 'ext.pitdeck.drift.v1.']);
+    registry.allowExtensionPrefix('ext.pitdeck.other.');
+    expect(opts?.extensionPrefixes?.()).toContain('ext.pitdeck.other.');
   });
 });

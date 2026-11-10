@@ -273,7 +273,7 @@ export const vmServiceUnregistered = (uri: string) => ({
  * Event.extensionKind/extensionData for Extension on the Extension stream;
  * Isolate.extensionRPCs) and sdk/lib/vmservice/running_isolates.dart (an unknown
  * isolateId answers a `Collected` Sentinel, not an error), checked 16 Oct 2026.
- * Replace with a recorded flutterdeck_drift session in batch 2.
+ * Replace with a recorded pitdeck_drift session in batch 2.
  */
 const isolateRef = (id: string) => ({
   type: '@Isolate',

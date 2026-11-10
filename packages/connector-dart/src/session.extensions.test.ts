@@ -14,8 +14,8 @@ import {
 } from './testing/fixtures.js';
 
 const app: RunningApp = { id: 'dart-x', name: 'shop', framework: 'flutter', startedBy: 'ide' };
-const LIST = 'ext.flutterdeck.drift.v1.list';
-const QUERY = 'ext.flutterdeck.drift.v1.query';
+const LIST = 'ext.pitdeck.drift.v1.list';
+const QUERY = 'ext.pitdeck.drift.v1.query';
 let server: FakeRpcServer | undefined;
 let session: DartAppSession | undefined;
 
@@ -98,14 +98,14 @@ describe('DartAppSession extensions', () => {
       .handle(QUERY, () => {
         throw new RpcFault(-32000, `bad query ${'x'.repeat(5000)}`);
       })
-      .handle('ext.flutterdeck.drift.v1.hang', () => new Promise(() => undefined));
+      .handle('ext.pitdeck.drift.v1.hang', () => new Promise(() => undefined));
     expect((await rejection(session.extensions.call(LIST, {}))).code).toBe('not-found');
     const failed = await rejection(session.extensions.call(QUERY, {}));
     expect(failed.code).toBe('failed');
     expect(failed.message.startsWith('bad query')).toBe(true);
     expect(failed.message.length).toBeLessThanOrEqual(500);
     const slow = await rejection(
-      session.extensions.call('ext.flutterdeck.drift.v1.hang', {}, { timeoutMs: 30 }),
+      session.extensions.call('ext.pitdeck.drift.v1.hang', {}, { timeoutMs: 30 }),
     );
     expect(slow.code).toBe('timeout');
   });
@@ -148,10 +148,10 @@ describe('DartAppSession extensions', () => {
   it('delivers events only from isolates that registered an allowed extension', async () => {
     const { server, session } = await attach();
     const cb = vi.fn();
-    session.extensions.onEvent('flutterdeck.drift.tables', cb);
-    server.notify(extensionEvent('flutterdeck.drift.tables', { db: 'other' }, 'isolates/5'));
-    server.notify(extensionEvent('flutterdeck.drift.other', { db: 'app' }));
-    server.notify(extensionEvent('flutterdeck.drift.tables', { db: 'app' }));
+    session.extensions.onEvent('pitdeck.drift.tables', cb);
+    server.notify(extensionEvent('pitdeck.drift.tables', { db: 'other' }, 'isolates/5'));
+    server.notify(extensionEvent('pitdeck.drift.other', { db: 'app' }));
+    server.notify(extensionEvent('pitdeck.drift.tables', { db: 'app' }));
     await until(() => cb.mock.calls.length === 1);
     expect(cb).toHaveBeenCalledWith({ db: 'app' });
     expect(() => session.extensions.onEvent('Flutter.Frame', cb)).toThrow(AppExtensionError);
@@ -160,11 +160,11 @@ describe('DartAppSession extensions', () => {
   it('keeps delivering when an event listener throws', async () => {
     const { server, session } = await attach();
     const ok = vi.fn();
-    session.extensions.onEvent('flutterdeck.drift.tables', () => {
+    session.extensions.onEvent('pitdeck.drift.tables', () => {
       throw new Error('listener bug');
     });
-    session.extensions.onEvent('flutterdeck.drift.tables', ok);
-    server.notify(extensionEvent('flutterdeck.drift.tables', { n: 1 }));
+    session.extensions.onEvent('pitdeck.drift.tables', ok);
+    server.notify(extensionEvent('pitdeck.drift.tables', { n: 1 }));
     await until(() => ok.mock.calls.length === 1);
   });
 
@@ -173,13 +173,13 @@ describe('DartAppSession extensions', () => {
     asFlutterVmService(server);
     session = await DartAppSession.attach(server.uri, app, {
       serviceWaitMs: 100,
-      extensionPrefixes: () => ['ext.flutterdeck.other.'],
+      extensionPrefixes: () => ['ext.pitdeck.other.'],
     });
     expect((await rejection(session.extensions.call(LIST, {}))).code).toBe('not-allowed');
   });
 
   it('keeps methods announced under a prefix that is allowed only later (D2)', async () => {
-    const prefixes = ['ext.flutterdeck.other.'];
+    const prefixes = ['ext.pitdeck.other.'];
     server = await FakeRpcServer.start('/AbC=/ws');
     asFlutterVmService(server);
     server.handle('getIsolate', (params) => isolateResponse(String(params?.isolateId), [LIST]));
@@ -190,20 +190,20 @@ describe('DartAppSession extensions', () => {
     });
     const s = session;
     server.notify(serviceExtensionAdded(QUERY, 'isolates/7'));
-    server.notify(extensionEvent('flutterdeck.drift.tables', { early: true }, 'isolates/7'));
+    server.notify(extensionEvent('pitdeck.drift.tables', { early: true }, 'isolates/7'));
     // A round trip after the notifications: they have been handled once it answers.
     await s.reload();
     expect(s.extensions.has(LIST)).toBe(false);
     expect(s.extensions.has(QUERY)).toBe(false);
-    prefixes.push('ext.flutterdeck.drift.');
+    prefixes.push('ext.pitdeck.drift.');
     await until(() => s.extensions.has(QUERY));
     expect(s.extensions.has(LIST)).toBe(true);
     // The call goes to the isolate that announced the method, not the main one.
     server.handle(QUERY, (params) => params?.isolateId);
     await expect(s.extensions.call(QUERY, {})).resolves.toBe('isolates/7');
     const cb = vi.fn();
-    s.extensions.onEvent('flutterdeck.drift.tables', cb);
-    server.notify(extensionEvent('flutterdeck.drift.tables', { late: true }, 'isolates/7'));
+    s.extensions.onEvent('pitdeck.drift.tables', cb);
+    server.notify(extensionEvent('pitdeck.drift.tables', { late: true }, 'isolates/7'));
     await until(() => cb.mock.calls.length === 1);
     expect(cb).toHaveBeenCalledWith({ late: true });
   });
@@ -222,10 +222,10 @@ describe('DartAppSession extensions', () => {
   });
 
   it('keeps at most 10,000 allowed methods per session (N2)', async () => {
-    const allowed = Array.from({ length: 10_005 }, (_, i) => `ext.flutterdeck.drift.m${i}`);
+    const allowed = Array.from({ length: 10_005 }, (_, i) => `ext.pitdeck.drift.m${i}`);
     const { session } = await attach(allowed);
-    expect(session.extensions.has('ext.flutterdeck.drift.m0')).toBe(true);
-    expect(session.extensions.has('ext.flutterdeck.drift.m9999')).toBe(true);
-    expect(session.extensions.has('ext.flutterdeck.drift.m10000')).toBe(false);
+    expect(session.extensions.has('ext.pitdeck.drift.m0')).toBe(true);
+    expect(session.extensions.has('ext.pitdeck.drift.m9999')).toBe(true);
+    expect(session.extensions.has('ext.pitdeck.drift.m10000')).toBe(false);
   });
 });
