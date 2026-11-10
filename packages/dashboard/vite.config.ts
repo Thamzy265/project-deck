@@ -10,5 +10,8 @@ export default defineConfig({
     // The daemon's CSP is `default-src 'self'`: no inline scripts, styles or data: URLs.
     assetsInlineLimit: 0,
     modulePreload: { polyfill: false },
+    // The licences of the bundled libraries, shipped in the pitdeck npm package. Outside
+    // assets/, so the daemon never serves it.
+    license: { fileName: 'licenses.md' },
   },
 });
