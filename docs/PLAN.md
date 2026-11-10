@@ -430,7 +430,7 @@ The remaining risks are known and each has a mitigation; the open decisions don'
 
 **Open decisions**
 
-- [ ] **Project name.** Check npm, pub.dev and GitHub availability (before M5). 9 Oct 2026: npm packages use the `@project-deck/*` scope; the product name, CLI binary and `.flutterdeck/` folder are still open. 14 Oct 2026: the marketer prepares a shortlist of 3–5 names with availability; the PM chooses. Work continues as FlutterDeck until then.
+- [x] **Project name.** Check npm, pub.dev and GitHub availability (before M5). 9 Oct 2026: npm packages use the `@project-deck/*` scope; the product name, CLI binary and `.flutterdeck/` folder are still open. 14 Oct 2026: the marketer prepares a shortlist of 3–5 names with availability; the PM chooses. Work continues as FlutterDeck until then. Decided 10 Nov 2026: **Pitdeck** (from the [shortlist](marketing/name-shortlist.md)). Before anything is published, the PM checks the trademark registers (UK IPO, EUIPO, USPTO) and domains, which the shortlist did not cover.
 - [x] **Live Drift mechanism.** Own `flutterdeck_drift` package vs. reusing the Drift DevTools extension's hooks (before M3). Decided 14 Oct 2026: our own debug-only `flutterdeck_drift` package.
 - [x] **DTD URI discovery.** How much can be auto-detected vs. pasted by the user (during M1). Decided 11 Oct 2026 (research in [notes/dtd.md](notes/dtd.md)): scan Dart 3.12+ DTD pid files, fall back to `dart tooling-daemon --list --machine`, then a user-pasted DTD URI, then a user-pasted VM service URI.
 - [ ] **Also ship the inspector as a DevTools extension?** Would reach developers who don't use Claude (after M5).
