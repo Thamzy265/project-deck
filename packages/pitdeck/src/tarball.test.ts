@@ -35,11 +35,14 @@ const PackResult = z.array(
 );
 
 function dryRunPack() {
-  // A fixed command with fixed arguments; on Windows npm is npm.cmd, which needs a shell.
-  const out = execFileSync('npm', ['pack', '--dry-run', '--json', '--ignore-scripts'], {
+  // A fixed command with fixed arguments. On Windows npm is npm.cmd, which Node runs only
+  // through cmd.exe.
+  const args = ['pack', '--dry-run', '--json', '--ignore-scripts'];
+  const [command, argv] =
+    process.platform === 'win32' ? ['cmd.exe', ['/d', '/c', 'npm', ...args]] : ['npm', args];
+  const out = execFileSync(command, argv, {
     cwd: PKG_DIR,
     encoding: 'utf8',
-    shell: process.platform === 'win32',
     stdio: ['ignore', 'pipe', 'pipe'],
     timeout: 60_000,
   });
