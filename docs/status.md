@@ -2,6 +2,17 @@
 
 Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
 
+## 2026-11-10 — M5 started — plan approved
+
+- Changed: PM asked to start M5 ("start M5"). Branch `docs/m5-plan`. Size: large (public release, new outside services: npm, pub.dev, the Claude Code plugin marketplace). Design note and deck come first; the developer is briefed only after the PM approves the deck.
+- Decisions: PM (2026-11-10), asked whether M5 may run beside the open M3 validation checkpoint: "Run M5 in parallel (Recommended)". Asked how to decide the project name: "Marketer shortlist first (Recommended)" (the marketer checks 3–5 names on npm, pub.dev and GitHub; the PM chooses before anything is published).
+- Name (2026-11-10): the marketer's shortlist ([marketing/name-shortlist.md](marketing/name-shortlist.md)) found that FlutterDeck leads with Google's Flutter mark and clashes with pub.dev `flutter_deck`. PM chose: "Pitdeck (Recommended)". Not yet checked: trademark registers and domains (PM, before publishing).
+- Research: [notes/m5-release.md](notes/m5-release.md) (plugin marketplace, npm, pub.dev, doctor, smoke tests; sources read 2026-11-10).
+- Plan (2026-11-10): [design note](design/m5-release.md), [deck](slides/m5-release.html), ADRs 0006 and 0007. Asked to approve the plan and decisions D1–D7, the PM said: "Approve as recommended". ADRs 0006 and 0007 accepted. Next: batch 1, the rename to Pitdeck.
+- Gates: n/a — planning.
+- Open findings: none.
+- Blockers: Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead none.
+
 ## 2026-11-09 — CLI EPIPE crash on piped output — merged
 
 - Changed: `fix/cli-epipe`. Size: small (`packages/cli` only; no new data, integration or trust boundary). Found by QA during M4: `flutterdeck start … | head -1` crashed the CLI with an unhandled EPIPE. The PM asked to fix it in the M4 session: "Do this task here: “Fix CLI EPIPE crash on piped output”". Tracked here, not as a plan box, like earlier bug fixes.
