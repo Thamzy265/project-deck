@@ -1,0 +1,29 @@
+{
+  "name": "pitdeck",
+  "version": "0.1.0",
+  "description": "Dashboard and MCP server for Flutter apps in Claude Code: Drift database inspector, live logs and reload, attached to apps you already run.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Thamzy265/project-deck.git",
+    "directory": "packages/pitdeck"
+  },
+  "type": "module",
+  "bin": {
+    "pitdeck": "dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "zod": "^4.6.5"
+  }
+}
