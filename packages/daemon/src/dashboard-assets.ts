@@ -1,6 +1,8 @@
+import { existsSync } from 'node:fs';
 import { readFile, readdir } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { dirname, extname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 export interface DashboardAsset {
   body: Uint8Array<ArrayBuffer>;
@@ -22,10 +24,16 @@ async function read(path: string): Promise<Uint8Array<ArrayBuffer>> {
   return new Uint8Array(await readFile(path));
 }
 
-/** The built dashboard in `@project-deck/dashboard`, or undefined if it isn't installed. */
-export function defaultDashboardDir(): string | undefined {
+/**
+ * The built dashboard: a `dashboard/` folder next to this code (the `pitdeck` npm bundle
+ * copies it there), else the dist folder of `@project-deck/dashboard` (the workspace), or
+ * undefined if neither exists. `here` is a test seam for this file's URL.
+ */
+export function defaultDashboardDir(here: URL | string = import.meta.url): string | undefined {
+  const bundled = fileURLToPath(new URL('dashboard', here));
+  if (existsSync(join(bundled, 'index.html'))) return bundled;
   try {
-    const pkg = createRequire(import.meta.url).resolve('@project-deck/dashboard/package.json');
+    const pkg = createRequire(here).resolve('@project-deck/dashboard/package.json');
     return join(dirname(pkg), 'dist');
   } catch {
     return undefined;
