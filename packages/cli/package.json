@@ -1,6 +1,7 @@
 {
   "name": "@project-deck/cli",
   "version": "0.0.0",
+  "private": true,
   "description": "project-deck command line: init, start, stop, open and mcp for a Flutter project.",
   "type": "module",
   "license": "MIT",

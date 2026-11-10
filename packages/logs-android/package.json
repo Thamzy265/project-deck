@@ -1,6 +1,7 @@
 {
   "name": "@project-deck/logs-android",
   "version": "0.0.0",
+  "private": true,
   "description": "project-deck log feed for Android native logs: adb logcat for the attached app's process.",
   "type": "module",
   "license": "MIT",

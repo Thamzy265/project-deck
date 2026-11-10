@@ -1,6 +1,7 @@
 {
   "name": "@project-deck/dashboard",
   "version": "0.0.0",
+  "private": true,
   "description": "project-deck dashboard: the web page the daemon serves in Claude Desktop's Browser pane.",
   "type": "module",
   "license": "MIT",

@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
@@ -52,5 +52,18 @@ describe('the pitdeck package manifest', () => {
     expect(readFileSync(`${ROOT}packages/pitdeck/LICENSE`, 'utf8')).toBe(
       readFileSync(`${ROOT}LICENSE`, 'utf8'),
     );
+  });
+});
+
+describe('the workspace packages', () => {
+  const dirs = readdirSync(`${ROOT}packages`).filter((d) => d !== 'pitdeck');
+
+  it('are all private, so only pitdeck can be published (ADR 0006)', () => {
+    expect(dirs.length).toBeGreaterThan(5);
+    const publishable = dirs
+      .map((d) => manifest(`packages/${d}`))
+      .filter((m) => m.private !== true)
+      .map((m) => m.name);
+    expect(publishable).toEqual([]);
   });
 });
