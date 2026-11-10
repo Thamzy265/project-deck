@@ -217,10 +217,7 @@ void main() {
     });
 
     test('the developer.log name matches the README', () {
-      expect(
-        readme,
-        contains('`developer.log` line named `pitdeck.sample`'),
-      );
+      expect(readme, contains('`developer.log` line named `pitdeck.sample`'));
       expect(dart, contains("name: 'pitdeck.sample'"));
     });
 

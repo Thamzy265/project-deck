@@ -167,8 +167,7 @@ void main() {
       final r = await call('schema', {'db': 'mem'});
       expect(r['error'], {
         'code': ErrorCode.unsupported,
-        'message':
-            'This is an in-memory database, so Pitdeck cannot open it.',
+        'message': 'This is an in-memory database, so Pitdeck cannot open it.',
       });
     });
   });
