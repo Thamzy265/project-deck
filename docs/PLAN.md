@@ -410,6 +410,7 @@ _Changed 24 Oct 2026 (PM decisions, see "Task providers and the Linear handoff")
 
 ### M5 — Packaging and public release
 
+- Plan of record (10 Nov 2026): [design note](design/m5-release.md), [deck](slides/m5-release.html), ADRs [0006](adr/0006-single-bundled-npm-package.md) and [0007](adr/0007-plugin-runs-pinned-npx.md). PM approved all recommendations: D1 one bundled npm package `pitdeck`; D2 the plugin starts a pinned version with `npx`; D3 the marketplace stays in this repo; D4 keep bundling the Dart MCP server; D5 `doctor` only reads files; D6 lower the Dart SDK floor of `pitdeck_drift` to the oldest that works; D7 first version 0.1.0. PM tasks: npm account with 2FA, Google account for pub.dev, trademark and domain check for Pitdeck, first manual publish of each package.
 - PM decisions (10 Nov 2026): M5 runs in parallel with the open M3 validation checkpoint (as M4 did); publishing steps still need the PM's approval at the time. The project name is chosen by the PM from the marketer's shortlist before anything is published; name-independent M5 work goes on meanwhile.
 - [ ] Claude Code plugin and marketplace entry; npm release of the CLI; pub.dev release of `flutterdeck_drift`
 - [ ] `flutterdeck doctor`; smoke tests on Windows, macOS and Linux

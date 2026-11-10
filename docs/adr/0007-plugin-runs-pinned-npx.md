@@ -4,7 +4,7 @@ Date: 2026-11-10
 
 ## Status
 
-Proposed (waiting for the PM, M5 decision D2)
+Accepted (PM, 10 Nov 2026, M5 decision D2)
 
 ## Context
 

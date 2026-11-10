@@ -1,6 +1,6 @@
 # M5 Packaging and public release — design note
 
-Date: 2026-11-10 — Size: large — new outside services (npm, pub.dev, the Claude Code plugin marketplace), a new trust boundary (our published packages run on users' machines), and a project rename — Phase: MVP (this milestone ends it) — Status: draft, waiting for PM
+Date: 2026-11-10 — Size: large — new outside services (npm, pub.dev, the Claude Code plugin marketplace), a new trust boundary (our published packages run on users' machines), and a project rename — Phase: MVP (this milestone ends it) — Status: approved by the PM, 10 Nov 2026 (all recommendations)
 
 ## Context
 
@@ -52,7 +52,7 @@ n/a — no new stored data. The rename moves the project folder from `.flutterde
 
 ## Decision
 
-Waiting for PM: D1 and D2 (recommend A and A), plus D3–D7 below. ADRs once decided: [0006](../adr/0006-single-bundled-npm-package.md) (package shape), [0007](../adr/0007-plugin-runs-pinned-npx.md) (plugin to CLI). Both are hard to reverse once users install them.
+Approved by the PM on 10 Nov 2026: A for D1 and D2, and the recommendation for each of D3–D7 below. ADRs once decided: [0006](../adr/0006-single-bundled-npm-package.md) (package shape), [0007](../adr/0007-plugin-runs-pinned-npx.md) (plugin to CLI). Both are hard to reverse once users install them.
 
 Other decisions for the PM:
 
