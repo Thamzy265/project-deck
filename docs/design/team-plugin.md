@@ -9,7 +9,7 @@ The team-role skills began here as `.claude/skills/deck-*` (PR #1). They are now
 ## Requirements and non-goals
 
 - Every Claude session that opens and trusts this repo loads the plugin skills as `/my-tech-team:<role>`.
-- No FlutterDeck rule from the old skills is lost. Project-specific rules live in CLAUDE.md under "Team setup".
+- No Pitdeck rule from the old skills is lost. Project-specific rules live in CLAUDE.md under "Team setup".
 - Non-goals: no change to package code, tests, CI, the milestone process, the review gate, the Git workflow or the PR format.
 
 ## Decision

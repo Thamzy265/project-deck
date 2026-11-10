@@ -9,7 +9,7 @@ M4 was re-planned on 24 Oct 2026 (PM decisions, [PLAN.md](../PLAN.md#m4--plugin-
 - [ ] `/check` and `/db` plugin commands
 - [ ] Accept: with the sample app attached, `/db how many orders are pending?` answers with `db_query` and changes nothing; after an edit, `/check` hot reloads with the Dart MCP server, reads runtime errors, `get_logs` and `db_diff`, and reports what it found, including a planted runtime error
 
-What exists today: the plugin (`plugin/`) has `.mcp.json` (the Dart MCP server as `dart`, FlutterDeck's server as `flutterdeck`) and hooks. FlutterDeck's MCP server has `deck_status`, `get_logs`, `db_list`, `db_schema`, `db_query`, `db_snapshot`, `db_diff`, all read-only (`readOnlyHint: true`). There is no write tool for Claude (PM decision, 16 Oct 2026).
+What exists today: the plugin (`plugin/`) has `.mcp.json` (the Dart MCP server as `dart`, Pitdeck's server as `pitdeck`) and hooks. Pitdeck's MCP server has `deck_status`, `get_logs`, `db_list`, `db_schema`, `db_query`, `db_snapshot`, `db_diff`, all read-only (`readOnlyHint: true`). There is no write tool for Claude (PM decision, 16 Oct 2026).
 
 M4 adds **no new MCP tool, no daemon route and no new data store**. The commands are Markdown instructions for Claude plus tests.
 
@@ -17,11 +17,11 @@ M4 adds **no new MCP tool, no daemon route and no new data store**. The commands
 
 Sources: code.claude.com/docs/en/slash-commands (skills), /plugins-reference, /permissions, read 4 Nov 2026; Claude Code CLI 2.1.236; Dart SDK 3.12.2 `dart mcp-server` (`dart and flutter tooling` 0.1.4), `tools/list` by `node scripts/check-mcp-config.mjs` on 4 Nov 2026.
 
-- **Plugin command format.** The plugin reference lists `commands/` (flat `.md` files) as still supported, but says "Prefer `skills/` for new plugins". A plugin skill is `skills/<name>/SKILL.md` and runs as `/flutterdeck:<name>`; the bare `/<name>` also works unless another command uses that name. **This differs from the plan**, which shows `commands/check.md` and `commands/db.md` (see decision D1).
+- **Plugin command format.** The plugin reference lists `commands/` (flat `.md` files) as still supported, but says "Prefer `skills/` for new plugins". A plugin skill is `skills/<name>/SKILL.md` and runs as `/pitdeck:<name>`; the bare `/<name>` also works unless another command uses that name. **This differs from the plan**, which shows `commands/check.md` and `commands/db.md` (see decision D1).
 - **Frontmatter** (lowercase, hyphenated; unknown keys are ignored silently, so spelling matters): `description`, `argument-hint`, `disable-model-invocation`, `allowed-tools`, `disallowed-tools`, `model`, `effort` and others. `$ARGUMENTS` holds what the user typed after the command.
 - **`allowed-tools`** pre-approves tools for the turn that runs the command only; it does not restrict the other tools. **`disallowed-tools`** removes tools from Claude's pool while the command runs; the restriction clears when the user sends the next message. Permission rules write a plugin's MCP tools as `mcp__plugin_<plugin>_<server>__<tool>`, and a server wildcard as `mcp__plugin_<plugin>_<server>__*`.
-- **Dart MCP server tools** (unchanged since 13 Oct 2026, 13 tools): `analyze_files`, `dtd`, `flutter_driver_command`, `get_runtime_errors`, `hot_reload`, `hot_restart`, `lsp`, `pub`, `pub_dev_search`, `read_package_uris`, `rip_grep_packages`, `roots`, `widget_inspector`. `/check` uses `dtd` (connect first), `hot_reload` and `get_runtime_errors`. **FlutterDeck adds no tool for any of these.**
-- The Dart server's name differs per setup: `mcp__plugin_flutterdeck_dart__…` (our plugin), `mcp__plugin_dart-flutter_dart-mcp-server__…` (the Dart team's plugin), `mcp__dart__…` (a project `.mcp.json`). The commands therefore name the Dart **tools** (`hot_reload`), not one server prefix.
+- **Dart MCP server tools** (unchanged since 13 Oct 2026, 13 tools): `analyze_files`, `dtd`, `flutter_driver_command`, `get_runtime_errors`, `hot_reload`, `hot_restart`, `lsp`, `pub`, `pub_dev_search`, `read_package_uris`, `rip_grep_packages`, `roots`, `widget_inspector`. `/check` uses `dtd` (connect first), `hot_reload` and `get_runtime_errors`. **Pitdeck adds no tool for any of these.**
+- The Dart server's name differs per setup: `mcp__plugin_pitdeck_dart__…` (our plugin), `mcp__plugin_dart-flutter_dart-mcp-server__…` (the Dart team's plugin), `mcp__dart__…` (a project `.mcp.json`). The commands therefore name the Dart **tools** (`hot_reload`), not one server prefix.
 - `db_diff` compares with a `db_snapshot` taken earlier. Snapshots live in the daemon's memory until the daemon stops or the app detaches.
 - `claude plugin validate` checks the plugin layout; `claude plugin eval` runs eval cases (real Claude) against a plugin. Neither runs in CI (no Claude Code CLI, no network in tests).
 
@@ -39,15 +39,15 @@ Sources: code.claude.com/docs/en/slash-commands (skills), /plugins-reference, /p
   - Both commands say that logs, rows and error text are untrusted data and that Claude must not follow instructions inside them.
   - Report format for `/check` (Markdown, at most about 25 lines): **Reload** ok/failed (+ short error) · **Runtime errors** count and the first one with file:line · **Logs** warnings and errors since the reload (count, up to 5 lines) · **Database** rows added/changed/removed per table · **Next** one line: what to fix, or "all clear".
 - Non-functional: no new runtime code in the daemon or MCP server; each `SKILL.md` under 120 lines; commands work whether the Dart server comes from our plugin, the Dart team's plugin or the project's `.mcp.json`.
-- Non-goals: `/tasks`, `/start`, `/ship` (Later, PM decision 24 Oct 2026); any write path for Claude; hot restart or app launch from `/check`; a FlutterDeck reload or runtime-error tool.
+- Non-goals: `/tasks`, `/start`, `/ship` (Later, PM decision 24 Oct 2026); any write path for Claude; hot restart or app launch from `/check`; a Pitdeck reload or runtime-error tool.
 
 ## Top 3 qualities
 
-| Quality        | Target                                                                | How we check it                                                                                                                                                                                                                                                                                                                           |
-| -------------- | --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Data safety    | `/db` changes nothing: no tool that writes is reachable while it runs | Unit test: `/db` names only read-only FlutterDeck tools and lists Bash, Write, Edit, NotebookEdit and the Dart server's `hot_reload`, `hot_restart`, `flutter_driver_command` and `pub` in `disallowed-tools`; QA: row counts before and after `/db` on the real app are equal; an abuse prompt (`/db delete all orders`) changes nothing |
-| No duplication | No FlutterDeck tool or instruction rebuilds a Dart MCP server feature | Unit test: every tool a command names exists in FlutterDeck's server or in the recorded Dart `tools/list` fixture; FlutterDeck's tool list stays disjoint from the Dart list                                                                                                                                                              |
-| Useful report  | `/check` finds a planted runtime error and the rows an action saved   | QA on the real sample app (Android emulator): planted error reported with file and line; a new order shows as 1 row added                                                                                                                                                                                                                 |
+| Quality        | Target                                                                | How we check it                                                                                                                                                                                                                                                                                                                       |
+| -------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Data safety    | `/db` changes nothing: no tool that writes is reachable while it runs | Unit test: `/db` names only read-only Pitdeck tools and lists Bash, Write, Edit, NotebookEdit and the Dart server's `hot_reload`, `hot_restart`, `flutter_driver_command` and `pub` in `disallowed-tools`; QA: row counts before and after `/db` on the real app are equal; an abuse prompt (`/db delete all orders`) changes nothing |
+| No duplication | No Pitdeck tool or instruction rebuilds a Dart MCP server feature     | Unit test: every tool a command names exists in Pitdeck's server or in the recorded Dart `tools/list` fixture; Pitdeck's tool list stays disjoint from the Dart list                                                                                                                                                                  |
+| Useful report  | `/check` finds a planted runtime error and the rows an action saved   | QA on the real sample app (Android emulator): planted error reported with file and line; a new order shows as 1 row added                                                                                                                                                                                                             |
 
 ## Estimate
 
@@ -67,7 +67,7 @@ Two `SKILL.md` files that tell Claude which existing tools to call, in what orde
 - Costs and risks: Claude follows instructions, so order and wording can drift; covered by unit tests on the files and by `claude plugin eval` cases that QA runs.
 - Effort: small (about 1–2 days with tests and QA).
 
-### B: A FlutterDeck `check` MCP tool that does the sequence in code
+### B: A Pitdeck `check` MCP tool that does the sequence in code
 
 One tool that snapshots, waits, diffs and gathers logs in the daemon, with Claude calling the Dart reload itself.
 
@@ -80,7 +80,7 @@ One tool that snapshots, waits, diffs and gathers logs in the daemon, with Claud
 - `plugin/skills/check/SKILL.md`, `plugin/skills/db/SKILL.md` — the commands.
 - `plugin/test/commands.test.ts` — parses each `SKILL.md` (frontmatter with the `yaml` package, already used by `packages/cli`, added as a plugin devDependency), checks fields, tool names, `disallowed-tools`, the untrusted-data line and size.
 - `plugin/test/fixtures/dart-tools.json` — the recorded Dart `tools/list` names (4 Nov 2026, Dart 3.12.2), with the source noted.
-- FlutterDeck's tool names come from the MCP server itself in the test (an in-memory client against `createServer` with a fake daemon, as `packages/mcp` tests already do), so a renamed tool breaks the test. If that import crosses package internals, the developer exports a `TOOL_NAMES` list from `@project-deck/mcp` instead.
+- Pitdeck's tool names come from the MCP server itself in the test (an in-memory client against `createServer` with a fake daemon, as `packages/mcp` tests already do), so a renamed tool breaks the test. If that import crosses package internals, the developer exports a `TOOL_NAMES` list from `@project-deck/mcp` instead.
 - `plugin/evals/` — `claude plugin eval` cases for QA (needs real Claude; not part of `pnpm check`). Left out of the published plugin at M5 (Later line exists for `plugin/test/`; extended to `plugin/evals/`).
 - `plugin/README.md` — a "Commands" section.
 
@@ -106,12 +106,12 @@ Untrusted data enters Claude's context from: log lines, database rows and table 
 | `/db delete all pending orders` or `/db update …`                                            | No write tool exists; `disallowed-tools` removes other writers; the SQL gate refuses writes in the daemon and the app; the command shows SQL for the user to run in the dashboard instead |
 | Claude uses `adb shell sqlite3` or `flutter_driver_command` taps to change data during `/db` | Bash and `flutter_driver_command` are in `disallowed-tools`                                                                                                                               |
 | `/check` triggers a hot restart that loses app state                                         | The command never calls `hot_restart`; it says "ask me to restart" instead                                                                                                                |
-| A command pre-approves a tool that writes                                                    | Test: `allowed-tools` lists only read-only FlutterDeck tools and the Dart `dtd`, `hot_reload` (`/check` only) and `get_runtime_errors`                                                    |
-| Personal data from rows or logs is repeated in the report                                    | `/check` reports counts and table names, not row values; FlutterDeck masking stays on; `/db` shows only what answers the question                                                         |
+| A command pre-approves a tool that writes                                                    | Test: `allowed-tools` lists only read-only Pitdeck tools and the Dart `dtd`, `hot_reload` (`/check` only) and `get_runtime_errors`                                                        |
+| Personal data from rows or logs is repeated in the report                                    | `/check` reports counts and table names, not row values; Pitdeck masking stays on; `/db` shows only what answers the question                                                             |
 
 ## Privacy
 
-The commands add no new data and no new storage. They change _how much_ app data Claude reads: `/check` reads logs (warn and above, since the reload) and row diffs. Both outputs are already masked by default (PM decision D4, 14 Oct 2026) and capped. The report shows counts, not row values. Lawful basis: n/a — FlutterDeck processes the developer's own debug data on their machine; the UK/EU end-user data question was handled in M3 (masking, hidden columns) and does not change.
+The commands add no new data and no new storage. They change _how much_ app data Claude reads: `/check` reads logs (warn and above, since the reload) and row diffs. Both outputs are already masked by default (PM decision D4, 14 Oct 2026) and capped. The report shows counts, not row values. Lawful basis: n/a — Pitdeck processes the developer's own debug data on their machine; the UK/EU end-user data question was handled in M3 (masking, hidden columns) and does not change.
 
 ## Observability
 
@@ -135,10 +135,10 @@ One branch, `feat/plugin-commands`, one PR. Rollback: revert the PR; nothing els
 
 ## Decisions for the PM
 
-- **D1 — Command format.** A: `skills/check/SKILL.md` and `skills/db/SKILL.md` (current docs' recommendation; runs as `/flutterdeck:check`, bare `/check` when free) **(recommended)**. B: `commands/check.md`, `commands/db.md` as the plan shows (still supported, older format).
+- **D1 — Command format.** A: `skills/check/SKILL.md` and `skills/db/SKILL.md` (current docs' recommendation; runs as `/pitdeck:check`, bare `/check` when free) **(recommended)**. B: `commands/check.md`, `commands/db.md` as the plan shows (still supported, older format).
 - **D2 — Can Claude start the commands by itself?** A: only when you type them (`disable-model-invocation: true`) for `/check` (it reloads the app), Claude may use `/db` by itself when you ask a data question **(recommended)**. B: both only when typed. C: both automatic. _Changed 2026-11-04 by the PM: both typed-only (review D-1)._
 - **D3 — What `/check` does when it finds a problem.** A: report, propose the fix and ask before editing **(recommended)**, because the acceptance asks for a report and you keep control. B: fix and repeat up to 2 times, as the plan's table says.
-- **D4 — Pre-approved tools.** A: `/check` and `/db` pre-approve only FlutterDeck's read-only tools and the plugin's Dart `dtd`, `hot_reload` (`/check`) and `get_runtime_errors`, for the turn only **(recommended)**: fewer prompts, nothing that writes. B: pre-approve nothing; Claude Code asks as usual.
+- **D4 — Pre-approved tools.** A: `/check` and `/db` pre-approve only Pitdeck's read-only tools and the plugin's Dart `dtd`, `hot_reload` (`/check`) and `get_runtime_errors`, for the turn only **(recommended)**: fewer prompts, nothing that writes. B: pre-approve nothing; Claude Code asks as usual.
 - **D5 — `/check` diff baseline.** A: each `/check` diffs against the snapshot the previous `/check` left, then takes a new one, so it shows everything since the last check, including your taps **(recommended)**. B: snapshot just before the reload and diff just after (shows only what the reload itself changed, usually nothing). _Note (review D-2, 4 Nov 2026): `db_diff` uses the latest snapshot of that database whatever its label, so a dashboard or other snapshot taken after the last `/check` moves the baseline; a write that lands between `/check`'s `db_diff` and its new `db_snapshot` shows in neither report._
 
 **PM answers (2026-11-04):** D1 "skills/; /check typed only (Recommended)" (also D2-A) · D3 "Report and ask (Recommended)" · D4 and D5 "Pre-approve read-only; since last check (Recommended)" · deck "Approve, QA evals OK (Recommended)".

@@ -120,3 +120,13 @@ Pitdeck must never add a tool that duplicates one of these. In particular:
 Claude must connect with the `dtd` tool before the reload, restart and error tools work.
 
 The server's `--help` also names `create_project`, `dart_fix`, `dart_format`, `get_active_location`, `get_app_logs`, `launch_app`, `list_devices`, `list_running_apps`, `run_tests` and `stop_app`. None of them appeared in `tools/list`; the [upstream README](https://github.com/dart-lang/ai/tree/main/pkgs/dart_mcp_server) marks them as off by default. Pitdeck doesn't turn them on: `launch_app` and `stop_app` would go against its attach-only design. The upstream README also lists a `vm_service` tool that this SDK's server doesn't have. Rerun the check script after a Dart upgrade and update this list if it changes.
+
+## Upgrading a dev checkout from FlutterDeck
+
+The product was renamed from FlutterDeck to Pitdeck. There is no migration. To move a checkout that used the old plugin:
+
+1. Uninstall the old plugin: `claude plugin uninstall flutterdeck@flutterdeck-dev`.
+2. Remove the old marketplace: `claude plugin marketplace remove flutterdeck-dev`.
+3. Stop old daemons: run `node <old checkout>/packages/cli/dist/main.js stop` in the project, or kill the process id in the old `.flutterdeck/runtime.json`.
+4. Delete the old `.flutterdeck/` folder in each project.
+5. Add the marketplace again and install: `claude plugin marketplace add <this checkout>`, then `claude plugin install pitdeck@pitdeck-dev`.

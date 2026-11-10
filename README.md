@@ -1,10 +1,10 @@
-# FlutterDeck
+# Pitdeck
 
 [![CI](https://github.com/Thamzy265/project-deck/actions/workflows/ci.yml/badge.svg)](https://github.com/Thamzy265/project-deck/actions/workflows/ci.yml)
 
 > **Early development.** Nothing is installable yet. The name is a working title.
 
-FlutterDeck is an open-source dashboard and Claude Code plugin for Flutter developers. It puts a Drift database inspector, live logs, hot reload controls and Linear tasks next to Claude in Claude Desktop, so you can work from one window.
+Pitdeck is an open-source dashboard and Claude Code plugin for Flutter developers. It puts a Drift database inspector, live logs, hot reload controls and Linear tasks next to Claude in Claude Desktop, so you can work from one window.
 
 It **attaches to apps you already run** from Android Studio, VS Code or `flutter run`, and never launches them itself. Your IDE keeps control, so breakpoints keep working. It also builds on the official [Dart MCP server](https://github.com/dart-lang/ai) instead of re-creating it.
 
@@ -42,10 +42,10 @@ To run the daemon with a built-in fake app (no Flutter needed):
 node packages/daemon/dist/main.js --fake
 ```
 
-It listens on `http://127.0.0.1:9147`. If that port is busy it uses the next free one and says so; the actual port is always in `.flutterdeck/runtime.json`. Every request except `/api/health` needs the session token from `.flutterdeck/runtime.json`. For example:
+It listens on `http://127.0.0.1:9147`. If that port is busy it uses the next free one and says so; the actual port is always in `.pitdeck/runtime.json`. Every request except `/api/health` needs the session token from `.pitdeck/runtime.json`. For example:
 
 ```bash
-curl -s -H "x-deck-token: $(node -p "require('./.flutterdeck/runtime.json').token")" "http://127.0.0.1:$(node -p "require('./.flutterdeck/runtime.json').port")/api/status"
+curl -s -H "x-deck-token: $(node -p "require('./.pitdeck/runtime.json').token")" "http://127.0.0.1:$(node -p "require('./.pitdeck/runtime.json').port")/api/status"
 ```
 
 To see which running Dart and Flutter apps your tooling daemons know about:
@@ -59,7 +59,7 @@ node scripts/dtd-apps.mjs
 - **`packages/core`**: the shared interfaces (apps, logs, databases, tasks), validation schemas and test fakes.
 - **`packages/daemon`**: a local server that tracks running apps, buffers their logs, and serves an HTTP and WebSocket API.
 - **`packages/connector-dart`** (in review): finds running Flutter apps through the Dart Tooling Daemon and attaches over the VM service.
-- **`examples/sample_app`**: a one-screen Flutter app for trying FlutterDeck by hand, with a marked breakpoint line and logs on every tap. See its [README](examples/sample_app/README.md).
+- **`examples/sample_app`**: a one-screen Flutter app for trying Pitdeck by hand, with a marked breakpoint line and logs on every tap. See its [README](examples/sample_app/README.md).
 - Still to come: dashboard, CLI, MCP server, Drift inspector and the Linear integration.
 
 ## Security

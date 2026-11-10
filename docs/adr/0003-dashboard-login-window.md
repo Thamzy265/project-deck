@@ -17,13 +17,13 @@ Options: accept the risk for the MVP; a short login window opened by someone who
 We will hand out the cookie only while a **login window** is open:
 
 - The daemon opens a 2-minute window when it starts.
-- `POST /api/login-window` opens a new 2-minute window. It accepts **only** the `runtime.json` token header, never the cookie. The FlutterDeck MCP server calls it when it starts (so a new Claude session can open the dashboard), and `flutterdeck open` calls it and prints the dashboard address.
-- While the window is open, `GET /` as a top-level navigation sets the cookie as ADR 0001 describes. When it is closed, `GET /` serves a "Login needed" page that says to run `flutterdeck open` (or start a Claude session), and sets no cookie.
+- `POST /api/login-window` opens a new 2-minute window. It accepts **only** the `runtime.json` token header, never the cookie. The Pitdeck MCP server calls it when it starts (so a new Claude session can open the dashboard), and `pitdeck open` calls it and prints the dashboard address.
+- While the window is open, `GET /` as a top-level navigation sets the cookie as ADR 0001 describes. When it is closed, `GET /` serves a "Login needed" page that says to run `pitdeck open` (or start a Claude session), and sets no cookie.
 - A cookie already handed out stays valid until the daemon stops.
 
 ## Consequences
 
 - Another OS user can only get a cookie by racing the user during an open window; outside it they need the token, which they can't read.
 - The dashboard's one-time reload after a daemon restart (design note, "Session expiry") works because the restart opens a new window.
-- If the pane opens more than 2 minutes after the daemon started and no Claude session started since, the user sees "Login needed" and runs `flutterdeck open`.
+- If the pane opens more than 2 minutes after the daemon started and no Claude session started since, the user sees "Login needed" and runs `pitdeck open`.
 - The window length is a constant (2 minutes), not a setting.
