@@ -15,6 +15,7 @@ import { tmpdir } from 'node:os';
 import { join, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { IncompleteBundleError } from '@project-deck/core/node';
 import type { SpawnFn } from './spawn.js';
 import { daemonMainPath, spawnDaemon } from './spawn.js';
 
@@ -86,6 +87,30 @@ describe('spawnDaemon', () => {
       if (process.platform !== 'win32') expect((await stat(log)).mode & 0o777).toBe(0o600);
       child.emit('exit', 3);
       expect(exit).toBe(3);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps the last daemon.log when the bundle has no daemon.js (F4)', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'deck-spawn-'));
+    try {
+      await mkdir(join(dir, '.pitdeck'));
+      const log = join(dir, '.pitdeck', 'daemon.log');
+      await writeFile(log, 'last run failed: why\n');
+      const missing = new IncompleteBundleError(join(dir, 'daemon.js'));
+      let spawned = 0;
+      const spawn: SpawnFn = () => {
+        spawned++;
+        return Object.assign(new EventEmitter(), { unref: () => undefined });
+      };
+      const mainPath = () => {
+        throw missing;
+      };
+      expect(() => spawnDaemon(dir, { spawn, mainPath })).toThrow(missing);
+      expect(spawned).toBe(0);
+      // The previous start's errors are what the user needs to read.
+      expect(await readFile(log, 'utf8')).toBe('last run failed: why\n');
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

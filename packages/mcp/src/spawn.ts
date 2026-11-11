@@ -35,6 +35,8 @@ export interface SpawnOptions {
   onError?: (err: Error) => void;
   /** The daemon process ended; while this process still runs, so it is noticed. */
   onExit?: (code: number | null) => void;
+  /** Test seam for the daemon entry; defaults to daemonMainPath(). */
+  mainPath?: () => string;
 }
 
 export function daemonLogPath(projectDir: string): string {
@@ -78,9 +80,12 @@ export function daemonMainPath(
 /** Starts the daemon for `projectDir` and returns at once; it outlives this process. */
 export function spawnDaemon(projectDir: string, opts: SpawnOptions = {}): void {
   const spawn = opts.spawn ?? nodeSpawn;
+  // Before the log is replaced: an incomplete bundle throws here, and the last start's
+  // errors in daemon.log stay readable (finding F4).
+  const main = (opts.mainPath ?? daemonMainPath)();
   const log = openLog(projectDir);
   try {
-    const child = spawn(process.execPath, [daemonMainPath(), '--project', projectDir], {
+    const child = spawn(process.execPath, [main, '--project', projectDir], {
       detached: true,
       windowsHide: true,
       // Errors only: stdout has the address and the token file's path, which Claude
