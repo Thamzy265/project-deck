@@ -2,6 +2,19 @@
 
 Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
 
+## 2026-11-11 — M5 batch 2: bundled npm package `pitdeck` — merged
+
+- Changed: `build/npm-package`, PR #56. New package `packages/pitdeck` (`pitdeck` 0.1.0, bin `pitdeck`, no dependencies, no lifecycle scripts, `files: ["dist"]`). esbuild bundles the CLI, the daemon and both worker threads into one `dist` with the dashboard, `sqlite3.wasm`, fake-mode fixtures and generated licence notices (full Apache-2.0 text for sqlite-wasm). A build-time define `__PITDECK_BUNDLE__` makes the bundle use only its own files and fail with "The pitdeck package is incomplete … Reinstall pitdeck." instead of resolving look-alike packages. All `@project-deck/*` packages are private. `scripts/smoke/tarball.mjs` and the CI job `tarball-smoke` (Linux, macOS, Windows × Node 22.12 and 24) install the packed tarball with `--ignore-scripts` in a scratch HOME. The batch 1 PM check path bug is fixed in `docs/qa/M5.md`. Windows `npx` facts for D2 are in `docs/notes/m5-release.md`; batch 3 must test plain `npx` in `.mcp.json` with real Claude Code on Windows.
+- Tester: 95 tests (bundle lookups, guard and snapshot workers inside the bundle, tarball deny list, manifest hooks, smoke-script failure paths and token masking, `--fake` unreachable from the CLI). T1 (allowlist let QA helpers through) fixed in test code. O1/O2 (bundle fell back to `@project-deck/*` through node_modules or NODE_PATH, and to source fixtures) fixed by the developer.
+- Reviewer: code review at high and security review; every commit built and tested on its own with GIT_* unset. First verdict block on F2 (sqlite-wasm Apache-2.0 text missing); F1–F7 fixed; re-check: approve with notes, 0 security findings. F8 (stale bundle), F9 (init and messages from the installed package, old name in daemon logs and `/api/health`) and F10 (timing tests under load) are Low and in the plan's Later list with triggers.
+- Incident (2026-11-11): during a per-commit check with `git rebase --exec`, `packages/cli/src/rename-leftovers.test.ts` inherited GIT_DIR and set `core.bare = true` in the shared `.git/config`. The developer set it back to `false`; the lead confirmed every checkout works. F1 fixes the test (65f20cf) with a regression test.
+- QA (2026-11-11): 8/8 pass, [qa/M5.md](qa/M5.md) "Batch 2 — npm package". Tarball 24 files, 4.36 MiB unpacked; clean install and `npx pitdeck`; dashboard through the login window (screens), 401/403 checks, db_query and MCP 7 tools, DELETE refused; licence text for all 14 bundled libraries; incomplete install fails clearly; smoke script and all 6 CI smoke jobs; 68/68 e2e. PM check: nothing.
+- Gates: developer pass · tester pass · reviewer approve with notes · QA pass · CI pass · merged by the lead on green (standing approval, 24 Oct 2026).
+- Open findings: none on the branch; Later lines for F8, F9, F10 and the 300-character start error.
+- Decisions: none new.
+- Deleted after the merge: remote and local branch `build/npm-package`.
+- Blockers: Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead: PM decision on branch protection for `main`; PM plugin check for batch 1.
+
 ## 2026-11-10 — M5 batch 1: rename to Pitdeck — merged
 
 - Changed: `refactor/rename-pitdeck`. The CLI is `pitdeck`, the folders are `.pitdeck/` and `~/.pitdeck/`, the Dart package is `dart/pitdeck_drift` with `ext.pitdeck.drift.*` extensions, the plugin is `pitdeck` from the dev marketplace `pitdeck-dev`; CI jobs, scripts, README, CLAUDE.md and current docs follow. No behaviour change. History records (this log, `docs/qa/**`, old decks, dated PLAN lines) keep the old name. The npm scope `@project-deck/*` stays (ADR 0006). Developer commits 08b7759, 85e03d5, a41b5e7.
