@@ -66,6 +66,18 @@ describe('plugin manifest', () => {
     expect(manifest.name).toBe('pitdeck');
     expect(manifest.version).toBe(DECK_VERSION);
   });
+
+  it('carries the same version as the published pitdeck package and the daemon (F6)', () => {
+    const pkg = z
+      .object({ name: z.literal('pitdeck'), version: z.string() })
+      .parse(read('../packages/pitdeck/package.json'));
+    const manifest = Manifest.parse(read('.claude-plugin/plugin.json'));
+    // One release: `pitdeck --version`, /api/health and the plugin all report one number.
+    expect({ pkg: pkg.version, plugin: manifest.version }).toEqual({
+      pkg: DECK_VERSION,
+      plugin: DECK_VERSION,
+    });
+  });
 });
 
 describe('development marketplace', () => {
