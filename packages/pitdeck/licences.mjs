@@ -10,7 +10,9 @@ import { join, sep } from 'node:path';
  * @returns {Promise<string>}
  */
 export async function licencesMarkdown(inputs, base, licensesDir) {
-  const roots = new Map();
+  // Every package folder the bundle took code from. Two versions of one package (one
+  // nested under another's node_modules) are both bundled, so both are listed.
+  const roots = new Set();
   for (const input of inputs) {
     const parts = join(base, input).split(sep);
     const at = parts.lastIndexOf('node_modules');
@@ -18,15 +20,24 @@ export async function licencesMarkdown(inputs, base, licensesDir) {
     const name = parts[at + 1]?.startsWith('@')
       ? parts.slice(at + 1, at + 3).join('/')
       : parts[at + 1];
-    const end = at + 1 + (name?.split('/').length ?? 0);
-    if (name !== undefined) roots.set(name, parts.slice(0, end).join(sep));
+    if (name !== undefined) roots.add(parts.slice(0, at + 1 + name.split('/').length).join(sep));
+  }
+  // Keyed by name@version: one version found at two paths is listed once.
+  const packages = new Map();
+  for (const root of roots) {
+    const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
+    const id = `${pkg.name}@${pkg.version}`;
+    if (typeof pkg.license !== 'string') throw new Error(`No licence named by ${id} (${root})`);
+    if (!packages.has(id)) packages.set(id, { root, pkg });
   }
   const sections = [];
-  for (const [name, root] of [...roots].sort(([a], [b]) => (a < b ? -1 : 1))) {
-    const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
-    if (typeof pkg.license !== 'string') throw new Error(`No licence named by ${name}`);
+  const order = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+  const sorted = [...packages.values()].sort(
+    (a, b) => order(a.pkg.name, b.pkg.name) || order(a.pkg.version, b.pkg.version),
+  );
+  for (const { root, pkg } of sorted) {
     const text = await licenceText(root, pkg, licensesDir);
-    sections.push(`## ${name} - ${pkg.version} (${pkg.license})\n\n${text}\n`);
+    sections.push(`## ${pkg.name} - ${pkg.version} (${pkg.license})\n\n${text}\n`);
   }
   return `# Licenses\n\nThe pitdeck command bundles these libraries. The dashboard's libraries are listed in dashboard/licenses.md.\n\n${sections.join('\n')}`;
 }

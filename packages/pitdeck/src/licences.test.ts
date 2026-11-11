@@ -121,4 +121,27 @@ describe('licencesMarkdown', () => {
       /No licence text for nofile@1\.0\.0/,
     );
   });
+
+  it('lists every version of a package the bundle took code from (F3)', async () => {
+    const { licencesMarkdown } = await load();
+    const inputs = [
+      await pkg('node_modules/dup', { name: 'dup', version: '2.0.0', license: 'MIT' }, 'v2 text'),
+      await pkg(
+        'node_modules/user/node_modules/dup',
+        { name: 'dup', version: '1.0.0', license: 'ISC' },
+        'v1 text',
+      ),
+      // The same version at a second path is listed once.
+      await pkg(
+        'node_modules/other/node_modules/dup',
+        { name: 'dup', version: '2.0.0', license: 'MIT' },
+        'v2 text',
+      ),
+    ];
+    const md = await licencesMarkdown(inputs, base, LICENSES_DIR);
+    expect(sections(md)).toEqual([
+      { heading: 'dup - 1.0.0 (ISC)', body: 'v1 text' },
+      { heading: 'dup - 2.0.0 (MIT)', body: 'v2 text' },
+    ]);
+  });
 });
