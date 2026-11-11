@@ -6,6 +6,8 @@
 // Usage: pnpm build && node scripts/smoke/tarball.mjs [path/to/pitdeck-<version>.tgz]
 // Without a path it packs packages/pitdeck first (npm pack, into the scratch folder).
 //
+// Children get no NODE_PATH or NODE_OPTIONS, and the scratch folder must be outside the
+// workspace, so the install can't resolve the workspace's packages.
 // Safety: everything happens in one new scratch folder, which is removed at the end.
 // HOME, USERPROFILE and npm's cache point into it, so the real home is never touched.
 // Only 127.0.0.1 is contacted. The token is read from .pitdeck/runtime.json into memory
@@ -13,9 +15,9 @@
 // --ignore-scripts, and npx runs offline with "yes" off, so a missing local install fails
 // instead of fetching a package called pitdeck from the registry. Every step has a timeout.
 import { spawn } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 
@@ -155,8 +157,14 @@ async function main(scratch, tarballArg) {
   const app = join(scratch, 'app');
   await mkdir(home);
   await mkdir(app);
+  // Nothing that lets a child resolve or preload code from outside the install: NODE_PATH
+  // (pnpm sets it to this workspace's packages) and NODE_OPTIONS (--import, --require,
+  // --conditions). Otherwise a tarball missing its own files could pass.
+  const parent = { ...process.env };
+  delete parent.NODE_PATH;
+  delete parent.NODE_OPTIONS;
   const env = {
-    ...process.env,
+    ...parent,
     HOME: home,
     USERPROFILE: home,
     npm_config_cache: join(scratch, 'npm-cache'),
@@ -341,7 +349,12 @@ async function main(scratch, tarballArg) {
 
 const scratch = await mkdtemp(join(tmpdir(), 'pitdeck-smoke-'));
 try {
-  await main(scratch, process.argv[2]);
+  // Node looks for packages in every node_modules folder up the tree: inside the workspace
+  // the install could load the workspace's @project-deck packages.
+  const inside = relative(await realpath(ROOT), await realpath(scratch));
+  if (!inside.startsWith('..') && !isAbsolute(inside)) {
+    record('scratch folder outside the workspace', false, 'set TMPDIR to a folder outside it');
+  } else await main(scratch, process.argv[2]);
 } catch (err) {
   record('smoke test', false, err instanceof Error ? err.message : String(err));
 } finally {

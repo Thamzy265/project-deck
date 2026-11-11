@@ -43,6 +43,12 @@ else if (cmd === 'mcp') {
 const DAEMON = `const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
+if (process.env.SMOKE_FAKE_MODE === 'env') {
+  // Says what could let it resolve packages from outside the install.
+  const show = (name) => name + '=' + (process.env[name] === undefined ? '<unset>' : 'SET');
+  console.error(['NODE_PATH', 'NODE_OPTIONS'].map(show).join(' '));
+  process.exit(3);
+}
 if (process.env.SMOKE_FAKE_MODE === 'crash') {
   console.error('fake daemon failed to start');
   process.exit(3);
@@ -166,6 +172,41 @@ describe('the tarball smoke script, failing (scripts/smoke/tarball.mjs)', () => 
     expect(run.code).toBe(1);
     expect(run.out).toMatch(/daemon starts \(--fake\)\s+FAIL\s+daemon exited with 3/);
     expect(await leftovers()).toEqual([]);
+  });
+
+  it('runs every child without NODE_PATH or NODE_OPTIONS', async () => {
+    // Either could let the installed package resolve this workspace's packages or preload
+    // code, so a broken tarball could pass.
+    const run = await runSmoke(
+      [tarball],
+      scratchEnv({
+        SMOKE_FAKE_MODE: 'env',
+        NODE_PATH: join(scratch, 'lookalike', 'node_modules'),
+        NODE_OPTIONS: '--max-old-space-size=4096',
+      }),
+    );
+    expect(run.out).toMatch(/daemon starts \(--fake\)\s+FAIL\s+daemon exited with 3/);
+    expect(run.out).toContain('NODE_PATH=<unset> NODE_OPTIONS=<unset>');
+    expect(await leftovers()).toEqual([]);
+  });
+
+  it('refuses a scratch folder inside the workspace', async () => {
+    // node_modules folders up the tree would let the install load workspace packages.
+    const inside = await mkdtemp(
+      join(fileURLToPath(new URL('..', import.meta.url)), '.smoke-tmp-'),
+    );
+    try {
+      const run = await runSmoke(
+        [tarball],
+        scratchEnv({ TMPDIR: inside, TEMP: inside, TMP: inside }),
+      );
+      expect(run.code).toBe(1);
+      expect(run.out).toMatch(/scratch folder outside the workspace\s+FAIL/);
+      expect(run.out).not.toMatch(/npm install/);
+      expect(await readdir(inside)).toEqual([]);
+    } finally {
+      await rm(inside, { recursive: true, force: true });
+    }
   });
 
   it('masks the token, fails, stops its daemon and cleans up when the checks fail', async () => {
