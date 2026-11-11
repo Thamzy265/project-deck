@@ -1,6 +1,8 @@
 /**
  * defaultDashboardDir's two places (M5 batch 2): `dashboard/` next to the code in the npm
- * bundle, else the workspace package. The lookup must depend only on the code's own URL:
+ * bundle, else, in the workspace build only, the workspace package. In the bundle a missing
+ * `dashboard/index.html` is an error: users don't own the `@project-deck` scope, so a
+ * look-alike package up the tree must never be served (finding O1). The lookup must depend only on the code's own URL:
  * never on the current folder, which is the user's project.
  */
 import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
@@ -8,6 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
+import { IncompleteBundleError } from '@project-deck/core/node';
 import { defaultDashboardDir } from './dashboard-assets.js';
 
 const dirs: string[] = [];
@@ -43,14 +46,26 @@ describe('defaultDashboardDir in the bundle layout', () => {
       'pkg/dist/dashboard/index.html': '<!doctype html>bundle',
       ...WORKSPACE_DASHBOARD,
     });
-    expect(defaultDashboardDir(codeIn(dir))).toBe(join(dir, 'pkg', 'dist', 'dashboard'));
+    expect(defaultDashboardDir(codeIn(dir), true)).toBe(join(dir, 'pkg', 'dist', 'dashboard'));
+    expect(defaultDashboardDir(codeIn(dir), false)).toBe(join(dir, 'pkg', 'dist', 'dashboard'));
   });
 
-  it('falls back to the workspace package when the bundled folder is empty', async () => {
+  it('in the workspace build, falls back to the workspace package when the bundled folder is empty', async () => {
     const dir = await tree(WORKSPACE_DASHBOARD);
     await mkdir(join(dir, 'pkg', 'dist', 'dashboard'), { recursive: true });
-    expect(defaultDashboardDir(codeIn(dir))).toBe(
+    expect(defaultDashboardDir(codeIn(dir), false)).toBe(
       join(dir, 'node_modules', '@project-deck', 'dashboard', 'dist'),
+    );
+  });
+
+  // Was "falls back to the workspace package" for both builds: finding O1 makes it an
+  // error in the bundle.
+  it('in the bundle, refuses a look-alike dashboard package when index.html is missing', async () => {
+    const dir = await tree(WORKSPACE_DASHBOARD);
+    await mkdir(join(dir, 'pkg', 'dist', 'dashboard'), { recursive: true });
+    expect(() => defaultDashboardDir(codeIn(dir), true)).toThrow(IncompleteBundleError);
+    expect(() => defaultDashboardDir(codeIn(dir), true)).toThrow(
+      `The pitdeck package is incomplete: ${join(dir, 'pkg', 'dist', 'dashboard', 'index.html')} is missing`,
     );
   });
 
@@ -63,9 +78,10 @@ describe('defaultDashboardDir in the bundle layout', () => {
     const before = process.cwd();
     process.chdir(project);
     try {
-      // Without a bundled folder it may still find a workspace package (vitest's NODE_PATH
-      // reaches this repo's), but never the project's folder.
-      expect(defaultDashboardDir(codeIn(code))?.startsWith(project)).not.toBe(true);
+      expect(() => defaultDashboardDir(codeIn(code), true)).toThrow(IncompleteBundleError);
+      // The workspace build may still find a workspace package (vitest's NODE_PATH reaches
+      // this repo's), but never the project's folder.
+      expect(defaultDashboardDir(codeIn(code), false)?.startsWith(project)).not.toBe(true);
     } finally {
       process.chdir(before);
     }
@@ -76,7 +92,7 @@ describe('defaultDashboardDir in the bundle layout', () => {
       { 'pkg/dist/dashboard/index.html': '<!doctype html>' },
       'deck dash #1 %41 ',
     );
-    expect(defaultDashboardDir(codeIn(dir))).toBe(join(dir, 'pkg', 'dist', 'dashboard'));
-    expect(defaultDashboardDir(codeIn(dir).href)).toBe(join(dir, 'pkg', 'dist', 'dashboard'));
+    expect(defaultDashboardDir(codeIn(dir), true)).toBe(join(dir, 'pkg', 'dist', 'dashboard'));
+    expect(defaultDashboardDir(codeIn(dir).href, true)).toBe(join(dir, 'pkg', 'dist', 'dashboard'));
   });
 });
