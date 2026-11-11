@@ -21,3 +21,5 @@ qa-artifacts/
 
 # claude plugin eval output
 plugin/evals/results/
+# Written by packages/pitdeck/build.mjs for its tests; never published.
+packages/pitdeck/build-meta.json

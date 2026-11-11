@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { SnapshotEngine } from './engine.js';
 import { FakeLiveDatabase } from './testing/fake-live.js';
 
-const BUILT_WORKER = new URL('../dist/worker.js', import.meta.url);
+const BUILT_WORKER = new URL('../dist/snapshot-worker.js', import.meta.url);
 const open: FakeLiveDatabase[] = [];
 
 afterEach(async () => {

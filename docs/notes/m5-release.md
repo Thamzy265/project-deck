@@ -43,6 +43,12 @@ In a session: `/plugin marketplace add …`, then `/plugin install …`. Users w
 
 - A stdio server is `{ command, args, env }`; `${CLAUDE_PLUGIN_ROOT}`, `${CLAUDE_PLUGIN_DATA}` and `${CLAUDE_PROJECT_DIR}` substitute in `command`, `args`, `env`, and are exported to the process. `CLAUDE_PROJECT_DIR` is now exported to MCP servers (notes/claude-code-plugin.md said it wasn't, 15 Oct); our `--project` could use it.
 - The docs do not forbid `"command": "npx"`; any command on `PATH` works. Not verified: whether Windows needs `cmd /c npx` (npx is `npx.cmd`). The MCP page does not say. Smoke-test it on Windows.
+- _Added 10 Nov 2026 (M5 batch 2, developer):_ Windows and `npx`.
+  - Node's docs (child_process, "Spawning .bat and .cmd files on Windows") say a `.cmd` file runs only through a shell: `spawn()` with `shell`, `exec()`, or `cmd.exe /c`. `npx` on Windows is `npx.cmd`, so a launcher that spawns `npx` without a shell fails (ENOENT for `npx`; EINVAL for `npx.cmd` on Node >= 18.20.2 / 20.12.2, the CVE-2024-27980 fix). Not yet seen on a runner: the CI job `tarball-smoke` records both as `INFO` rows on `windows-latest`.
+  - The smoke test runs every npx call on Windows as `cmd.exe /d /c npx pitdeck …` (`--help`, `--version`, `mcp` over stdio, `stop`). It passed on macOS locally; the Windows result is the CI job `tarball-smoke` on `windows-latest` (first run on the batch 2 PR).
+  - The Claude Code MCP page (read 10 Nov 2026) no longer says how it starts a stdio `command` on Windows and has no `cmd /c` advice. Not verified: whether Claude Code resolves `npx` through a shell or PATHEXT on Windows.
+  - D2 impact for batch 3: a plugin has one `.mcp.json` for every OS, so `"command": "cmd"` is not an option there. Check with real Claude Code on Windows whether `"command": "npx"` starts; if not, `"command": "node"` on a small launcher in the plugin, or the Later line "ship the CLI inside the plugin", are the fall-backs.
+  - npx flags: `npx --no pitdeck --version` prints npm's own version, because npx reads the flag. The smoke test runs `npx pitdeck …` with `npm_config_offline=true` and `npm_config_yes=false`, so it can only run the local install.
 - `npx` assumes `--yes` when stdin is not a TTY (docs.npmjs.com/cli/v11/commands/npm-exec), so it won't hang on a prompt under Claude Code. Still pass `-y` and pin a version (`npx -y <pkg>@<x.y.z> mcp`) so a plugin version maps to one CLI version and no unpinned registry lookup happens on each start.
 - Alternative: `npm`-source plugin or vendoring the bundled CLI inside the plugin and running `node ${CLAUDE_PLUGIN_ROOT}/dist/cli.js mcp`. That removes the npx start-up cost and the version skew, at the price of committing a build artifact (or a release branch).
 
@@ -160,6 +166,6 @@ The "fresh machine under five minutes" acceptance can't run in CI (needs Flutter
 7. **Duplicate Dart MCP server** when the official `dart-flutter` plugin is also installed: keep bundling `dart mcp-server`, or depend on/recommend the official plugin instead. CLAUDE.md says "reuse, don't rebuild".
 8. **Doctor commands**: running `claude plugin list` or `dart mcp-server` would extend the fixed command list (security rule, PM decision like 14 and 16 Oct).
 9. **Dart SDK floor** `^3.12.2` for `flutterdeck_drift` may exclude many users; lowering it needs testing.
-10. **Windows `npx`** in `.mcp.json` is untested.
+10. **Windows `npx`** in `.mcp.json` is untested. _10 Nov 2026:_ CI `tarball-smoke` tests `cmd /c npx` and records plain `npx` without a shell; Node's docs say the latter fails. Claude Code's own behaviour is still untested (section 1).
 11. **Privacy (UK + EU)**: README and pub.dev page should say the tool is local-only and debug-only; any telemetry would need a decision (none planned).
 12. **Licence holder** reads "project-deck contributors" in `dart/flutterdeck_drift/LICENSE`; align with the chosen name and the root `LICENSE`.

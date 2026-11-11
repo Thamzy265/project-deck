@@ -1,6 +1,7 @@
 {
   "name": "@project-deck/dashboard",
   "version": "0.0.0",
+  "private": true,
   "description": "project-deck dashboard: the web page the daemon serves in Claude Desktop's Browser pane.",
   "type": "module",
   "license": "MIT",
@@ -16,7 +17,8 @@
     "dev": "vite",
     "test:e2e": "playwright test"
   },
-  "dependencies": {
+  "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
     "@codemirror/autocomplete": "6.20.3",
     "@codemirror/commands": "6.11.1",
     "@codemirror/lang-sql": "6.10.0",
@@ -24,16 +26,10 @@
     "@codemirror/state": "6.7.6",
     "@codemirror/view": "6.43.13",
     "@lezer/highlight": "1.2.5",
-    "@project-deck/core": "workspace:*",
-    "@tanstack/react-virtual": "3.14.14",
-    "react": "19.3.0",
-    "react-dom": "19.3.0",
-    "zod": "4.6.5"
-  },
-  "devDependencies": {
-    "@axe-core/playwright": "4.13.0",
     "@playwright/test": "1.64.0",
+    "@project-deck/core": "workspace:*",
     "@tailwindcss/vite": "4.3.3",
+    "@tanstack/react-virtual": "3.14.14",
     "@testing-library/dom": "10.4.2",
     "@testing-library/jest-dom": "7.0.1",
     "@testing-library/react": "16.3.3",
@@ -42,7 +38,10 @@
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "6.1.2",
     "jsdom": "28.1.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
     "tailwindcss": "4.3.3",
-    "vite": "8.3.4"
+    "vite": "8.3.4",
+    "zod": "4.6.5"
   }
 }

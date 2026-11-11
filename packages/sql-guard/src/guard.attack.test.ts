@@ -4,7 +4,7 @@ import type { SqlGuard, SqlGuardOptions } from './guard.js';
 import { createSqlGuard } from './guard.js';
 import type { GuardResult } from './types.js';
 
-const BUILT_WORKER = new URL('../dist/worker.js', import.meta.url);
+const BUILT_WORKER = new URL('../dist/guard-worker.js', import.meta.url);
 const SCRIPTED = new URL('./testing/scripted-worker.mjs', import.meta.url);
 const schemaSql = ['CREATE TABLE orders(id INTEGER PRIMARY KEY, status TEXT)'];
 const read = { schemaSql, mode: 'read' } as const;

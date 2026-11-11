@@ -6,7 +6,7 @@ import type { SqlGuard, SqlGuardOptions } from './guard.js';
 import { createSqlGuard } from './guard.js';
 
 // The real worker runs from the build, like the other packages' process tests.
-const BUILT_WORKER = new URL('../dist/worker.js', import.meta.url);
+const BUILT_WORKER = new URL('../dist/guard-worker.js', import.meta.url);
 const fixture = (mode: string) => new URL(`./testing/${mode}-worker.mjs`, import.meta.url);
 const schemaSql = ['CREATE TABLE orders(id INTEGER PRIMARY KEY, status TEXT)'];
 

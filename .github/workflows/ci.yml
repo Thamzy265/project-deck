@@ -52,6 +52,30 @@ jobs:
           path: qa-artifacts/m2-dashboard/
           retention-days: 7
 
+  # M5: install the packed pitdeck package (not the workspace) with --ignore-scripts and
+  # run it: npx, the daemon in fake mode, the dashboard, and the MCP server over stdio.
+  # 22.12 is the lowest Node in "engines".
+  tarball-smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node: ['22.12', '24']
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: node scripts/smoke/tarball.mjs
+
   # PM decision R1, 14 Oct 2026: CI runs the sample app's Flutter tests.
   # Ubuntu only to save runner minutes; the repo-hygiene tests are not
   # exercised on macOS or Windows. The SDK version matches .metadata.

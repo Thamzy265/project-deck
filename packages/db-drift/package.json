@@ -1,6 +1,7 @@
 {
   "name": "@project-deck/db-drift",
   "version": "0.0.0",
+  "private": true,
   "description": "project-deck live Drift inspector: reads the app's database through pitdeck_drift's service extensions.",
   "type": "module",
   "license": "MIT",

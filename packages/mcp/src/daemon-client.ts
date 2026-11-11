@@ -32,6 +32,7 @@ import {
   TOKEN_HEADER,
 } from '@project-deck/core';
 import {
+  IncompleteBundleError,
   StateDirError,
   checkStateDir,
   configPath,
@@ -461,7 +462,11 @@ export class DaemonClient {
         this.opts.spawnDaemon(this.opts.projectDir, (code) => {
           child.exitCode = code;
         });
-      } catch {
+      } catch (err) {
+        // The bundle's own daemon.js is missing: say so, with paths hidden.
+        if (err instanceof IncompleteBundleError) {
+          return { kind: 'failed', reason: this.scrub(err.message) };
+        }
         return { kind: 'failed', reason: NOT_RUNNING };
       }
       const deadline = Date.now() + this.readyTimeoutMs;

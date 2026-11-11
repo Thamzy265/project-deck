@@ -1,6 +1,6 @@
 /**
  * Reads a snapshot image with sqlite-wasm: schema, queries, diff hashes and rows by
- * key. Runs inside the snapshot worker (worker.ts), which the daemon terminates when a
+ * key. Runs inside the snapshot worker (snapshot-worker.ts), which the daemon terminates when a
  * call passes its budget, so nothing here needs to stop itself in time.
  *
  * The image is opened read-only (SQLITE_DESERIALIZE_READONLY plus query_only), every

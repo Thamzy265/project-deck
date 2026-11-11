@@ -4,10 +4,11 @@
  * in the project folder. The daemon's startup lock stops a second one.
  */
 import { spawn as nodeSpawn } from 'node:child_process';
-import { closeSync, openSync, rmSync } from 'node:fs';
+import { closeSync, existsSync, openSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
-import { STATE_DIR } from '@project-deck/core/node';
+import { fileURLToPath } from 'node:url';
+import { IN_PITDECK_BUNDLE, IncompleteBundleError, STATE_DIR } from '@project-deck/core/node';
 
 /** The daemon's stderr: its errors and warnings, never log lines or tokens. New at each start. */
 export const DAEMON_LOG = 'daemon.log';
@@ -34,6 +35,8 @@ export interface SpawnOptions {
   onError?: (err: Error) => void;
   /** The daemon process ended; while this process still runs, so it is noticed. */
   onExit?: (code: number | null) => void;
+  /** Test seam for the daemon entry; defaults to daemonMainPath(). */
+  mainPath?: () => string;
 }
 
 export function daemonLogPath(projectDir: string): string {
@@ -57,19 +60,32 @@ function openLog(projectDir: string): number | undefined {
 }
 
 /**
- * `packages/daemon/dist/main.js`, through the daemon package's `./main` export. Only the
- * path is resolved: no daemon code is loaded into this process.
+ * The daemon entry: `daemon.js` next to this code in the `pitdeck` npm bundle, else, in
+ * the workspace build only, `packages/daemon/dist/main.js` through the daemon package's
+ * `./main` export. The bundle never resolves a package: a look-alike `@project-deck/daemon`
+ * up the tree or on NODE_PATH would be started (finding O1). Only the path is resolved:
+ * no daemon code is loaded into this process. `here` and `bundled` are test seams for
+ * this file's URL and the build.
  */
-export function daemonMainPath(): string {
-  return createRequire(import.meta.url).resolve('@project-deck/daemon/main');
+export function daemonMainPath(
+  here: URL | string = import.meta.url,
+  bundled: boolean = IN_PITDECK_BUNDLE,
+): string {
+  const own = fileURLToPath(new URL('daemon.js', here));
+  if (existsSync(own)) return own;
+  if (bundled) throw new IncompleteBundleError(own);
+  return createRequire(here).resolve('@project-deck/daemon/main');
 }
 
 /** Starts the daemon for `projectDir` and returns at once; it outlives this process. */
 export function spawnDaemon(projectDir: string, opts: SpawnOptions = {}): void {
   const spawn = opts.spawn ?? nodeSpawn;
+  // Before the log is replaced: an incomplete bundle throws here, and the last start's
+  // errors in daemon.log stay readable (finding F4).
+  const main = (opts.mainPath ?? daemonMainPath)();
   const log = openLog(projectDir);
   try {
-    const child = spawn(process.execPath, [daemonMainPath(), '--project', projectDir], {
+    const child = spawn(process.execPath, [main, '--project', projectDir], {
       detached: true,
       windowsHide: true,
       // Errors only: stdout has the address and the token file's path, which Claude

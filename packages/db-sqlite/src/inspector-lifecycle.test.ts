@@ -11,7 +11,7 @@ import { SqliteSnapshotInspector } from './inspector.js';
 import { FakeSnapshotSource } from './testing/fake-source.js';
 import { plainDbFixture } from './testing/fixtures.js';
 
-const BUILT_WORKER = new URL('../dist/worker.js', import.meta.url);
+const BUILT_WORKER = new URL('../dist/snapshot-worker.js', import.meta.url);
 const NAME = 'app_flutter/app.sqlite';
 const made: SnapshotEngine[] = [];
 const engine = (): SnapshotEngine => {

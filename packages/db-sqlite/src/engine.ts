@@ -20,7 +20,10 @@ export interface SnapshotEngineOptions {
   hashBudgetMs?: number;
   /** Starting the worker and opening a copy (up to 50 MB). */
   openMs?: number;
-  /** Test seam: the worker script. Defaults to the built worker next to this file. */
+  /**
+   * Test seam: the worker script. Defaults to the built snapshot-worker.js next to this
+   * file; the name differs from the guard's worker, as the npm bundle holds both in one folder.
+   */
   workerUrl?: URL;
 }
 
@@ -58,7 +61,7 @@ export class SnapshotEngine {
     this.budgetMs = opts.budgetMs ?? 5000;
     this.hashBudgetMs = opts.hashBudgetMs ?? 20_000;
     this.openMs = opts.openMs ?? 10_000;
-    this.workerUrl = opts.workerUrl ?? new URL('./worker.js', import.meta.url);
+    this.workerUrl = opts.workerUrl ?? new URL('./snapshot-worker.js', import.meta.url);
   }
 
   /** Replaces the copy this engine reads. */

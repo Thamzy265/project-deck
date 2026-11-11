@@ -57,8 +57,12 @@ const init = () =>
     io: { out: () => undefined, err: () => undefined },
   });
 
+// Without the caller's GIT_* variables (GIT_DIR from `git rebase --exec` or a hook), git
+// works on the scratch project, never on the caller's repository (finding F1).
+const gitEnv = (): NodeJS.ProcessEnv =>
+  Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_')));
 const git = (...args: string[]) =>
-  spawnSync('git', args, { cwd: project, encoding: 'utf8', windowsHide: true });
+  spawnSync('git', args, { cwd: project, env: gitEnv(), encoding: 'utf8', windowsHide: true });
 const hasGit = spawnSync('git', ['--version']).status === 0;
 const ignored = (path: string): boolean => git('check-ignore', '-q', path).status === 0;
 
@@ -182,6 +186,39 @@ describe('a leftover FlutterDeck install', () => {
     expect(await init()).toBe(0);
     expect(await readFile(join(project, '.pitdeck', 'config.json'), 'utf8')).toBe(config);
     expect(await readFile(join(home, '.pitdeck', 'ports.json'), 'utf8')).toBe(registry);
+  });
+});
+
+describe.skipIf(!hasGit)('git under a caller that exports GIT_* variables', () => {
+  // `git rebase --exec` and hooks export GIT_DIR and friends. A git spawned with them inherited
+  // ran `init` against the caller's repository and rewrote its config (finding F1).
+  const saved = { ...process.env };
+  let outer: string;
+  let outerConfig: string;
+
+  beforeEach(async () => {
+    outer = join(base, 'outer');
+    await mkdir(outer);
+    expect(git('-C', outer, 'init', '-q').status).toBe(0);
+    outerConfig = await readFile(join(outer, '.git', 'config'), 'utf8');
+    process.env.GIT_DIR = join(outer, '.git');
+    process.env.GIT_WORK_TREE = outer;
+    process.env.GIT_INDEX_FILE = join(outer, '.git', 'index');
+  });
+
+  afterEach(() => {
+    for (const key of Object.keys(process.env)) {
+      if (key.startsWith('GIT_') && !(key in saved)) Reflect.deleteProperty(process.env, key);
+    }
+    Object.assign(process.env, saved);
+  });
+
+  it('runs git in the scratch project and leaves the outer repository config unchanged', async () => {
+    expect(git('init', '-q').status).toBe(0);
+    await writeFile(join(project, '.gitignore'), addIgnoreBlock(undefined) ?? '');
+    expect(ignored(`${STATE_DIR}/${RUNTIME_FILE}`)).toBe(true);
+    expect((await stat(join(project, '.git'))).isDirectory()).toBe(true);
+    expect(await readFile(join(outer, '.git', 'config'), 'utf8')).toBe(outerConfig);
   });
 });
 
