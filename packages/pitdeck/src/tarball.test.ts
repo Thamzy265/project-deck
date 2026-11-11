@@ -3,24 +3,9 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
+import { strayPaths } from './tarball-paths.js';
 
 const PKG_DIR = fileURLToPath(new URL('..', import.meta.url));
-
-/** Every path the published tarball may hold. Anything else fails the test. */
-const ALLOWED: readonly RegExp[] = [
-  /^package\.json$/,
-  /^LICENSE$/,
-  // Entry points: the CLI (bin), the daemon it starts, and the two worker threads.
-  /^dist\/(cli|daemon|guard-worker|snapshot-worker)\.js$/,
-  // Code shared between the entry points.
-  /^dist\/chunk-[A-Z0-9]+\.js$/,
-  /^dist\/sqlite3\.wasm$/,
-  /^dist\/licenses\.md$/,
-  // The daemon's fake mode reads these (`--fake`, used by the smoke test).
-  /^dist\/fixtures\/(snap\.sqlite|snap\.sqlite-wal|plain\.sqlite)$/,
-  /^dist\/dashboard\/(index\.html|licenses\.md)$/,
-  /^dist\/dashboard\/assets\/[\w-]+\.(js|css)$/,
-];
 
 /** The agreed cap (lead, M5 batch 2): the design estimates 4–5 MB unpacked. */
 const MAX_UNPACKED_BYTES = 8 * 1024 * 1024;
@@ -60,7 +45,7 @@ describe('the pitdeck tarball (run pnpm build first)', () => {
   });
 
   it('holds only allowlisted files', () => {
-    expect(paths.filter((p) => !ALLOWED.some((re) => re.test(p)))).toEqual([]);
+    expect(strayPaths(paths)).toEqual([]);
   });
 
   it('holds every file the package needs at run time', () => {
