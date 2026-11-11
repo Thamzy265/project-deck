@@ -12,12 +12,14 @@
 //   sqlite3.wasm        loaded by sqlite-wasm next to its own chunk
 //   dashboard/          the dashboard's built files
 //   fixtures/           the fake mode's database files (`daemon.js --fake`)
-//   licenses.md         licences of the bundled libraries (the dashboard has its own)
-import { copyFile, cp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+//   licenses.md         licence texts of the bundled libraries (the dashboard has its own);
+//                       licenses/ holds the texts of the few that ship none
+import { copyFile, cp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
-import { dirname, join, sep } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
+import { licencesMarkdown } from './licences.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const packages = join(here, '..');
@@ -81,32 +83,7 @@ for (const name of ['snap.sqlite', 'snap.sqlite-wal', 'plain.sqlite']) {
   );
 }
 
-await writeFile(join(dist, 'licenses.md'), await licences(Object.keys(result.metafile.inputs)));
-
-/** The licence text of every npm package the bundle took code from. */
-async function licences(inputs) {
-  const roots = new Map();
-  for (const input of inputs) {
-    const parts = join(here, input).split(sep);
-    const at = parts.lastIndexOf('node_modules');
-    if (at < 0) continue;
-    const name = parts[at + 1]?.startsWith('@')
-      ? parts.slice(at + 1, at + 3).join('/')
-      : parts[at + 1];
-    const end = at + 1 + (name?.split('/').length ?? 0);
-    if (name !== undefined) roots.set(name, parts.slice(0, end).join(sep));
-  }
-  const sections = [];
-  for (const [name, root] of [...roots].sort(([a], [b]) => (a < b ? -1 : 1))) {
-    const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
-    const file = (await readdir(root)).find((f) => /^(licen[cs]e|copying)(\.|$)/i.test(f));
-    if (typeof pkg.license !== 'string') throw new Error(`No licence named by ${name}`);
-    // A few packages (sqlite-wasm) ship no licence file: name the licence instead.
-    const text =
-      file === undefined
-        ? `The package ships no licence file. Its package.json names ${pkg.license}: https://spdx.org/licenses/${pkg.license}.html`
-        : (await readFile(join(root, file), 'utf8')).trim();
-    sections.push(`## ${name} - ${pkg.version} (${pkg.license})\n\n${text}\n`);
-  }
-  return `# Licenses\n\nThe pitdeck command bundles these libraries. The dashboard's libraries are listed in dashboard/licenses.md.\n\n${sections.join('\n')}`;
-}
+await writeFile(
+  join(dist, 'licenses.md'),
+  await licencesMarkdown(Object.keys(result.metafile.inputs), here, join(here, 'licenses')),
+);
