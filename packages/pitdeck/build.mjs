@@ -52,6 +52,11 @@ const result = await build({
   legalComments: 'eof',
   metafile: true,
   logLevel: 'warning',
+  // Tells the code it runs from this bundle (IN_PITDECK_BUNDLE in core): its files must
+  // then be next to it, and no @project-deck package is looked up through node_modules or
+  // NODE_PATH (findings O1, O2). Set here at build time, so no file on the user's machine
+  // can change it; tsc output leaves the name undeclared, which reads as false.
+  define: { __PITDECK_BUNDLE__: 'true' },
   // ws loads these native speed-ups if present and works without them (no native modules).
   external: ['bufferutil', 'utf-8-validate'],
   // CommonJS libraries (ws, among others) call require(); ESM output has none.
