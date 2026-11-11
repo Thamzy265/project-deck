@@ -1,14 +1,22 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { IN_PITDECK_BUNDLE, IncompleteBundleError } from '@project-deck/core/node';
 
 /**
  * Where a fixture file is: a `fixtures/` folder next to this code (the `pitdeck` npm
- * bundle copies them there for the daemon's fake mode), else the source folder, so they
- * work from `src` (tests) and `dist` alike. `here` is a test seam for this file's URL.
+ * bundle copies them there for the daemon's fake mode), else, in the workspace build only,
+ * the source folder, so they work from `src` (tests) and `dist` alike. The bundle never
+ * reads a file outside itself (finding O2). `here` and `bundled` are test seams for this
+ * file's URL and the build.
  */
-export function fixturePath(name: string, here: URL | string = import.meta.url): string {
-  const bundled = fileURLToPath(new URL(`fixtures/${name}`, here));
-  if (existsSync(bundled)) return bundled;
+export function fixturePath(
+  name: string,
+  here: URL | string = import.meta.url,
+  bundled: boolean = IN_PITDECK_BUNDLE,
+): string {
+  const own = fileURLToPath(new URL(`fixtures/${name}`, here));
+  if (existsSync(own)) return own;
+  if (bundled) throw new IncompleteBundleError(own);
   return fileURLToPath(new URL(`../../src/testing/fixtures/${name}`, here));
 }
 
