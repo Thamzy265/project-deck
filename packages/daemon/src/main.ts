@@ -43,7 +43,13 @@ if (!Number.isInteger(port) || port < 0 || port > 65535) {
 
 const registry = new Registry();
 if (values.fake) {
-  registerFake(registry);
+  try {
+    registerFake(registry);
+  } catch (err) {
+    // A bundle missing a fake-mode fixture file (IncompleteBundleError).
+    console.error(formatStartupError(err));
+    process.exit(1);
+  }
 } else {
   // Read on each use, so an edit applies without a restart. A config that can't be
   // read is reported by startDaemon; here it just means no ids from config.

@@ -14,7 +14,6 @@ import { dirname, join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
-import { z } from 'zod';
 
 const DIST = fileURLToPath(new URL('../dist', import.meta.url));
 const LOOKALIKE = 'LOOKALIKE: loaded from outside the bundle';
@@ -105,8 +104,6 @@ async function exitCode(child: ChildProcess, ms: number): Promise<number | null>
   });
 }
 
-const Runtime = z.object({ port: z.number(), token: z.string() });
-
 describe('the bundle with one of its own files missing (run pnpm build first)', () => {
   it('has the bundle flag compiled in', async () => {
     // build.mjs defines __PITDECK_BUNDLE__; a name left over means the define was lost.
@@ -135,41 +132,16 @@ describe('the bundle with one of its own files missing (run pnpm build first)', 
     await expect(readFile(join(l.scratch, 'lookalike-ran'))).rejects.toThrow();
   });
 
-  it('never reads a fake-mode fixture from outside the bundle', async () => {
+  // Was "answers not-found for that database": finding F7 makes a missing fixture fail the
+  // start, like a missing dashboard, so the user sees what is wrong.
+  it('never reads a fake-mode fixture from outside the bundle, and says so at start', async () => {
     const l = await layout(join('fixtures', 'plain.sqlite'));
     const { child, output } = run(l, 'daemon.js', ['--fake', '--port', '0']);
-    const end = Date.now() + 20_000;
-    let conn: z.infer<typeof Runtime> | undefined;
-    while (conn === undefined) {
-      if (child.exitCode !== null) throw new Error(`daemon exited: ${output.join('')}`);
-      try {
-        conn = Runtime.parse(
-          JSON.parse(await readFile(join(l.project, '.pitdeck', 'runtime.json'), 'utf8')),
-        );
-      } catch {
-        if (Date.now() > end) throw new Error(`no runtime.json: ${output.join('')}`);
-        await sleep(200);
-      }
-    }
-    const { port, token } = conn;
-    const api = (path: string, body?: unknown) =>
-      fetch(`http://127.0.0.1:${port}${path}`, {
-        ...(body === undefined ? {} : { method: 'POST', body: JSON.stringify(body) }),
-        headers: { 'x-deck-token': token, 'content-type': 'application/json' },
-        signal: AbortSignal.timeout(10_000),
-      });
-    // The live fake database needs no fixture file: once it answers, the app is attached.
-    for (;;) {
-      const live = await (await api('/api/db/query', { db: 'app', sql: 'SELECT 1' })).json();
-      if (z.object({ rows: z.array(z.unknown()) }).safeParse(live).success) break;
-      if (Date.now() > end) throw new Error(`the fake app never attached: ${output.join('')}`);
-      await sleep(200);
-    }
-    const legacy: unknown = await (
-      await api('/api/db/query', { db: 'databases/legacy.db', sql: 'SELECT count(*) FROM orders' })
-    ).json();
-    // The source-folder copy holds 2 orders: the bundle must not find it.
-    expect(z.object({ rows: z.array(z.unknown()) }).safeParse(legacy).success).toBe(false);
-    expect(legacy).toMatchObject({ code: 'not-found' });
+    expect(await exitCode(child, 20_000)).toBe(1);
+    const text = output.join('');
+    expect(text).toContain('The pitdeck package is incomplete');
+    expect(text).toContain(join('fixtures', 'plain.sqlite'));
+    expect(text).not.toContain('listening');
+    await expect(readFile(join(l.project, '.pitdeck', 'runtime.json'))).rejects.toThrow();
   });
 });
