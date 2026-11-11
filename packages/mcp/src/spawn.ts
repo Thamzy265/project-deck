@@ -8,7 +8,7 @@ import { closeSync, existsSync, openSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { STATE_DIR } from '@project-deck/core/node';
+import { IN_PITDECK_BUNDLE, IncompleteBundleError, STATE_DIR } from '@project-deck/core/node';
 
 /** The daemon's stderr: its errors and warnings, never log lines or tokens. New at each start. */
 export const DAEMON_LOG = 'daemon.log';
@@ -58,14 +58,20 @@ function openLog(projectDir: string): number | undefined {
 }
 
 /**
- * The daemon entry: `daemon.js` next to this code in the `pitdeck` npm bundle, else
- * `packages/daemon/dist/main.js` through the daemon package's `./main` export. Only the
- * path is resolved: no daemon code is loaded into this process. `here` is a test seam
- * for this file's URL.
+ * The daemon entry: `daemon.js` next to this code in the `pitdeck` npm bundle, else, in
+ * the workspace build only, `packages/daemon/dist/main.js` through the daemon package's
+ * `./main` export. The bundle never resolves a package: a look-alike `@project-deck/daemon`
+ * up the tree or on NODE_PATH would be started (finding O1). Only the path is resolved:
+ * no daemon code is loaded into this process. `here` and `bundled` are test seams for
+ * this file's URL and the build.
  */
-export function daemonMainPath(here: URL | string = import.meta.url): string {
-  const bundled = fileURLToPath(new URL('daemon.js', here));
-  if (existsSync(bundled)) return bundled;
+export function daemonMainPath(
+  here: URL | string = import.meta.url,
+  bundled: boolean = IN_PITDECK_BUNDLE,
+): string {
+  const own = fileURLToPath(new URL('daemon.js', here));
+  if (existsSync(own)) return own;
+  if (bundled) throw new IncompleteBundleError(own);
   return createRequire(here).resolve('@project-deck/daemon/main');
 }
 

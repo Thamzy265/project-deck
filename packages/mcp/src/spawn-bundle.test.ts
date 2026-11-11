@@ -1,13 +1,16 @@
 /**
  * daemonMainPath's two places (M5 batch 2): `daemon.js` next to the code in the npm bundle,
- * else the daemon package's `./main` export. Only the code's own URL decides: never the
- * current folder, which is the user's project.
+ * else, in the workspace build only, the daemon package's `./main` export. In the bundle a
+ * missing daemon.js is an error: users don't own the `@project-deck` scope, so a look-alike
+ * package up the tree must never be started (finding O1). Only the code's own URL decides:
+ * never the current folder, which is the user's project.
  */
 import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
+import { IncompleteBundleError } from '@project-deck/core/node';
 import { daemonMainPath } from './spawn.js';
 
 const dirs: string[] = [];
@@ -40,13 +43,24 @@ const codeIn = (dir: string) => pathToFileURL(join(dir, 'pkg', 'dist', 'chunk-AB
 describe('daemonMainPath in the bundle layout', () => {
   it('takes the bundled daemon.js when the workspace package exists too', async () => {
     const dir = await tree({ 'pkg/dist/daemon.js': '', ...WORKSPACE_DAEMON });
-    expect(daemonMainPath(codeIn(dir))).toBe(join(dir, 'pkg', 'dist', 'daemon.js'));
+    expect(daemonMainPath(codeIn(dir), true)).toBe(join(dir, 'pkg', 'dist', 'daemon.js'));
+    expect(daemonMainPath(codeIn(dir), false)).toBe(join(dir, 'pkg', 'dist', 'daemon.js'));
   });
 
-  it('falls back to the daemon package when daemon.js is missing', async () => {
+  it('in the workspace build, falls back to the daemon package when daemon.js is missing', async () => {
     const dir = await tree(WORKSPACE_DAEMON);
-    expect(daemonMainPath(codeIn(dir))).toBe(
+    expect(daemonMainPath(codeIn(dir), false)).toBe(
       join(dir, 'node_modules', '@project-deck', 'daemon', 'dist', 'main.js'),
+    );
+  });
+
+  // Was "falls back to the daemon package" for both builds: finding O1 makes it an error
+  // in the bundle.
+  it('in the bundle, refuses a look-alike daemon package when daemon.js is missing', async () => {
+    const dir = await tree(WORKSPACE_DAEMON);
+    expect(() => daemonMainPath(codeIn(dir), true)).toThrow(IncompleteBundleError);
+    expect(() => daemonMainPath(codeIn(dir), true)).toThrow(
+      `The pitdeck package is incomplete: ${join(dir, 'pkg', 'dist', 'daemon.js')} is missing`,
     );
   });
 
@@ -56,11 +70,12 @@ describe('daemonMainPath in the bundle layout', () => {
     const before = process.cwd();
     process.chdir(project);
     try {
-      // Without a bundled daemon.js it may still resolve a workspace package (vitest's
-      // NODE_PATH reaches this repo's), but never a file in the project's folder.
+      expect(() => daemonMainPath(codeIn(code), true)).toThrow(IncompleteBundleError);
+      // The workspace build may still resolve a workspace package (vitest's NODE_PATH
+      // reaches this repo's), but never a file in the project's folder.
       let found: string | undefined;
       try {
-        found = daemonMainPath(codeIn(code));
+        found = daemonMainPath(codeIn(code), false);
       } catch {
         found = undefined;
       }
@@ -72,7 +87,7 @@ describe('daemonMainPath in the bundle layout', () => {
 
   it('decodes a code URL whose path holds spaces, # and % (Windows profiles)', async () => {
     const dir = await tree({ 'pkg/dist/daemon.js': '' }, 'deck spawn #1 %41 ');
-    expect(daemonMainPath(codeIn(dir))).toBe(join(dir, 'pkg', 'dist', 'daemon.js'));
-    expect(daemonMainPath(codeIn(dir).href)).toBe(join(dir, 'pkg', 'dist', 'daemon.js'));
+    expect(daemonMainPath(codeIn(dir), true)).toBe(join(dir, 'pkg', 'dist', 'daemon.js'));
+    expect(daemonMainPath(codeIn(dir).href, true)).toBe(join(dir, 'pkg', 'dist', 'daemon.js'));
   });
 });
