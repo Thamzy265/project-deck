@@ -1,20 +1,25 @@
 /**
- * Tester edge cases for the plugin lines in `init`'s next steps: a CLI that is not in a
- * Pitdeck checkout must never be told to add some other folder's marketplace.
+ * The plugin lines in `init`'s next steps (M5 batch 3, D2/D3; reviewer F9 of batch 2).
+ * Whatever folder the CLI runs from (npx cache, a project's node_modules, a checkout),
+ * init prints the public install commands and an `.mcp.json` that starts the pinned
+ * release through npx: never a file path, so it can't point at a cache that npm cleans.
  */
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DECK_VERSION } from '@project-deck/core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { InitOptions } from './init.js';
 import { runInit } from './init.js';
+import { MARKETPLACE_NAME, MARKETPLACE_REPO, PLUGIN_NAME, pitdeckMcpServer } from './plugin.js';
 import type { RunTool } from './prerequisites.js';
 
 const PUBSPEC = 'name: shop_app\ndependencies:\n  flutter:\n    sdk: flutter\n';
+const REPO = join(import.meta.dirname, '..', '..', '..');
 
 let project: string;
 let home: string;
-let outside: string;
 let lines: string[];
 
 const tools: RunTool = () => Promise.resolve('version 1');
@@ -22,109 +27,70 @@ const tools: RunTool = () => Promise.resolve('version 1');
 beforeEach(async () => {
   project = await mkdtemp(join(tmpdir(), 'deck-cli-steps-'));
   home = await mkdtemp(join(tmpdir(), 'deck-cli-steps-home-'));
-  outside = await mkdtemp(join(tmpdir(), 'deck-cli-steps-outside-'));
   await writeFile(join(project, 'pubspec.yaml'), PUBSPEC);
   lines = [];
 });
 
 afterEach(async () => {
-  for (const dir of [project, home, outside]) await rm(dir, { recursive: true, force: true });
+  for (const dir of [project, home]) await rm(dir, { recursive: true, force: true });
 });
 
-function init(opts: Partial<InitOptions>): Promise<number> {
+function init(opts: Partial<InitOptions> = {}): Promise<number> {
   return runInit({
     projectDir: project,
     homeDir: home,
     run: tools,
-    cliMainPath: join(outside, 'packages', 'cli', 'dist', 'main.js'),
     isFree: () => Promise.resolve(true),
     io: { out: (l) => lines.push(l), err: () => undefined },
     ...opts,
   });
 }
 
-async function marketplace(root: string, body: unknown): Promise<void> {
-  await mkdir(join(root, '.claude-plugin'), { recursive: true });
-  await writeFile(join(root, '.claude-plugin', 'marketplace.json'), JSON.stringify(body));
-}
+const snippet = (text: string): unknown =>
+  JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1));
 
 describe('init next steps for the plugin', () => {
-  it('prints the MCP config only for a CLI near the file system root', async () => {
-    expect(await init({ cliMainPath: '/main.js' })).toBe(0);
+  it('prints the public marketplace and install commands', async () => {
+    expect(await init()).toBe(0);
     const text = lines.join('\n');
-    expect(text).not.toContain('claude plugin');
-    expect(text).toContain('"mcpServers"');
+    expect(text).toContain('claude plugin marketplace add Thamzy265/project-deck');
+    expect(text).toContain('claude plugin install pitdeck@pitdeck');
+    // The raw MCP config stays, for use without the plugin or with other agents.
+    expect(text.indexOf('claude plugin install')).toBeLessThan(text.indexOf('"mcpServers"'));
   });
 
-  // T-P5-9 too: only the path's existence is checked, so even a folder there counts.
-  it('T-P5-9 prints the MCP config only when the marketplace file is a folder', async () => {
-    await mkdir(join(outside, '.claude-plugin', 'marketplace.json'), { recursive: true });
-    expect(await init({})).toBe(0);
-    expect(lines.join('\n')).not.toContain('claude plugin marketplace add');
-  });
-
-  it('quotes a checkout path with spaces', async () => {
-    const checkout = join(outside, 'my deck');
-    await marketplace(checkout, {
-      name: 'pitdeck-dev',
-      plugins: [{ name: 'pitdeck', source: './plugin' }],
+  it('prints an .mcp.json that starts the pinned release through npx', async () => {
+    await init();
+    expect(snippet(lines.join('\n'))).toEqual({
+      mcpServers: {
+        dart: { type: 'stdio', command: 'dart', args: ['mcp-server'] },
+        pitdeck: { type: 'stdio', command: 'npx', args: ['-y', `pitdeck@${DECK_VERSION}`, 'mcp'] },
+      },
     });
-    await init({ cliMainPath: join(checkout, 'packages', 'cli', 'dist', 'main.js') });
-    expect(lines.join('\n')).toContain(`claude plugin marketplace add "${checkout}"`);
   });
 
-  // T-P5-9: any `.claude-plugin/marketplace.json` four folders above the CLI counts as
-  // Pitdeck's checkout. A CLI installed under a cloned project as
-  // `node_modules/pitdeck/dist/main.js` (the M5 `npx pitdeck` name) would tell the
-  // user to add that project's own marketplace.
-  it("T-P5-9 never tells the user to add another repo's marketplace", async () => {
-    await marketplace(project, { name: 'someone-elses', plugins: [] });
-    await init({ cliMainPath: join(project, 'node_modules', 'pitdeck', 'dist', 'main.js') });
-    expect(lines.join('\n')).not.toContain('claude plugin marketplace add');
+  it('prints no file path at all: no npx cache, node_modules or checkout path', async () => {
+    await init();
+    const steps = lines.slice(lines.indexOf('Next steps:')).join('\n');
+    expect(steps).not.toMatch(/_npx|node_modules|packages\/|\.js\b|[\\/]Users[\\/]|[A-Z]:\\/);
+    expect(steps).not.toContain(project);
+    expect(steps).not.toContain(home);
+    expect(steps).not.toContain('pitdeck-dev');
   });
 
-  it.each([
-    ['another name', { name: 'someone-elses', plugins: [{ name: 'pitdeck', source: './plugin' }] }],
-    ['no pitdeck plugin', { name: 'pitdeck-dev', plugins: [{ name: 'other', source: './x' }] }],
-    ['no plugins list', { name: 'pitdeck-dev' }],
-    ['not an object', ['pitdeck-dev']],
-  ])('T-P5-9 prints no plugin steps for a marketplace with %s', async (_, body) => {
-    await marketplace(outside, body);
-    await init({});
-    expect(lines.join('\n')).not.toContain('claude plugin');
+  it('prints the same .mcp.json server as the plugin ships', () => {
+    const plugin = JSON.parse(readFileSync(join(REPO, 'plugin', '.mcp.json'), 'utf8')) as {
+      mcpServers: { pitdeck: unknown };
+    };
+    expect(plugin.mcpServers.pitdeck).toEqual(pitdeckMcpServer(DECK_VERSION));
   });
 
-  it('T-P5-9 prints no plugin steps for a marketplace file that is not JSON', async () => {
-    await mkdir(join(outside, '.claude-plugin'), { recursive: true });
-    await writeFile(join(outside, '.claude-plugin', 'marketplace.json'), '{ not json');
-    await init({});
-    expect(lines.join('\n')).not.toContain('claude plugin');
-  });
-
-  (process.platform === 'win32' ? it.skip : it)(
-    'T-P5-9 never follows a link at marketplace.json',
-    async () => {
-      const real = join(project, 'real-marketplace.json');
-      await writeFile(
-        real,
-        JSON.stringify({
-          name: 'pitdeck-dev',
-          plugins: [{ name: 'pitdeck', source: './plugin' }],
-        }),
-      );
-      await mkdir(join(outside, '.claude-plugin'), { recursive: true });
-      await symlink(real, join(outside, '.claude-plugin', 'marketplace.json'));
-      await init({});
-      expect(lines.join('\n')).not.toContain('claude plugin');
-    },
-  );
-
-  it('T-P5-9 prints the plugin steps for the development marketplace', async () => {
-    await marketplace(outside, {
-      name: 'pitdeck-dev',
-      plugins: [{ name: 'pitdeck', source: './plugin' }],
-    });
-    await init({});
-    expect(lines.join('\n')).toContain('claude plugin install pitdeck@pitdeck-dev');
+  it('names the marketplace and plugin that the repo publishes', () => {
+    const market = JSON.parse(
+      readFileSync(join(REPO, '.claude-plugin', 'marketplace.json'), 'utf8'),
+    ) as { name: string; plugins: { name: string; source: { url?: string } }[] };
+    expect(market.name).toBe(MARKETPLACE_NAME);
+    expect(market.plugins.map((p) => p.name)).toEqual([PLUGIN_NAME]);
+    expect(market.plugins[0]?.source.url).toBe(MARKETPLACE_REPO);
   });
 });

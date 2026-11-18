@@ -57,7 +57,6 @@ function init(opts: Partial<InitOptions> = {}): Promise<number> {
     projectDir: project,
     homeDir: home,
     run: () => Promise.reject(new Error('not installed')),
-    cliMainPath: '/opt/deck/main.js',
     isFree: () => Promise.resolve(true),
     io: { out: (l) => lines.push(l), err: (l) => errors.push(l) },
     ...opts,

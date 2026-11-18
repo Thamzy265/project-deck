@@ -46,7 +46,6 @@ function init(opts: Partial<InitOptions> = {}): Promise<number> {
     projectDir: project,
     homeDir: home,
     run: tools,
-    cliMainPath: '/opt/deck/packages/cli/dist/main.js',
     isFree: () => Promise.resolve(true),
     io: { out: (l) => lines.push(l), err: (l) => errors.push(l) },
     ...opts,

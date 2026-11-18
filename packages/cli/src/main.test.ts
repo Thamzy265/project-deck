@@ -12,6 +12,7 @@ import {
   StdioClientTransport,
   getDefaultEnvironment,
 } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { DECK_VERSION } from '@project-deck/core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 /** deck_status, get_logs and the read-only database tools; no write tool. */
@@ -68,16 +69,16 @@ describe('main.js', () => {
     const result = await run(['init', '--project', project]);
     expect(result.code).toBe(0);
     expect(result.stdout).toContain('Changes:');
-    // The snippet is JSON, so a Windows path shows with escaped backslashes: parse it.
+    // The snippet starts the pinned release, never this file (reviewer F9, batch 2).
     const out = result.stdout;
     const snippet = JSON.parse(out.slice(out.indexOf('{'), out.lastIndexOf('}') + 1)) as {
       mcpServers: { pitdeck: { command: string; args: string[] } };
     };
-    const { command, args } = snippet.mcpServers.pitdeck;
-    expect(command).toBe('node');
-    expect(args).toHaveLength(2);
-    expect(args[0]?.endsWith(join('packages', 'cli', 'dist', 'main.js'))).toBe(true);
-    expect(args[1]).toBe('mcp');
+    expect(snippet.mcpServers.pitdeck).toEqual({
+      type: 'stdio',
+      command: 'npx',
+      args: ['-y', `pitdeck@${DECK_VERSION}`, 'mcp'],
+    });
     const config = JSON.parse(await readFile(join(project, '.pitdeck', 'config.json'), 'utf8')) as {
       port: number;
     };

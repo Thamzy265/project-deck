@@ -19,7 +19,6 @@ export interface CliDeps {
   cwd: string;
   homeDir: string;
   run: RunTool;
-  cliMainPath: string;
   spawnDaemon: DaemonClientOptions['spawnDaemon'];
   openBrowser: (url: string) => boolean;
   runMcp: (projectDir: string) => Promise<void>;
@@ -110,7 +109,6 @@ export async function runCli(argv: readonly string[], deps: CliDeps): Promise<nu
         projectDir,
         homeDir: deps.homeDir,
         run: deps.run,
-        cliMainPath: deps.cliMainPath,
         io,
       });
     case 'start':
