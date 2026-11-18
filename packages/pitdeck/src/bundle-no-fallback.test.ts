@@ -28,8 +28,9 @@ afterEach(async () => {
     child.kill();
     await Promise.race([exited, sleep(5000)]);
   }
-  for (const dir of scratches.splice(0)) await rm(dir, { recursive: true, force: true });
-});
+  for (const dir of scratches.splice(0))
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+}, 30_000);
 
 interface Layout {
   scratch: string;

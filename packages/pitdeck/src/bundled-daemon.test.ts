@@ -117,8 +117,9 @@ afterAll(async () => {
     daemon.kill();
     await Promise.race([exited, sleep(5000)]);
   }
-  if (scratch !== '') await rm(scratch, { recursive: true, force: true });
-});
+  if (scratch !== '')
+    await rm(scratch, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+}, 30_000);
 
 describe('the bundled daemon, run from the user project (run pnpm build first)', () => {
   it('serves its own dashboard, not one in the current folder', async () => {

@@ -71,12 +71,13 @@ beforeAll(async () => {
   const parent = await mkdtemp(join(tmpdir(), 'pitdeck bundle #1 %41 '));
   copy = join(parent, 'dist');
   await cp(DIST, copy, { recursive: true });
-});
+}, 60_000);
 
 afterAll(async () => {
   await Promise.all(workers.map((w) => w.terminate()));
-  if (copy !== '') await rm(join(copy, '..'), { recursive: true, force: true });
-});
+  if (copy !== '')
+    await rm(join(copy, '..'), { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+}, 30_000);
 
 describe('the bundled guard worker, outside the workspace (run pnpm build first)', () => {
   let guard: Worker;
@@ -86,7 +87,7 @@ describe('the bundled guard worker, outside the workspace (run pnpm build first)
     expect(await ask(guard, { kind: 'schema', key: 'k', schemaSql: [ORDERS] })).toMatchObject({
       schema: true,
     });
-  });
+  }, 30_000);
 
   const check = async (sql: string): Promise<unknown> => {
     const reply = await ask(guard, {
@@ -153,7 +154,7 @@ describe('the bundled snapshot worker, outside the workspace (run pnpm build fir
     workers.push(snap);
     const bytes = new Uint8Array(await readFile(join(copy, 'fixtures', 'plain.sqlite')));
     expect(await ask(snap, { op: 'open', bytes })).toMatchObject({ ok: true });
-  });
+  }, 30_000);
 
   it('reads the bundled fixture with sqlite3.wasm from the bundle folder', async () => {
     const reply = await ask(snap, {
@@ -193,7 +194,7 @@ describe('a bundle without sqlite3.wasm (run pnpm build first)', () => {
       });
       await expect(startWorker(join(partial, file))).rejects.toThrow(/did not start/);
     } finally {
-      await rm(parent, { recursive: true, force: true });
+      await rm(parent, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
     }
   });
 });

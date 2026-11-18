@@ -29,8 +29,9 @@ beforeAll(async () => {
   scratch = await mkdtemp(join(tmpdir(), 'pitdeck-fake-flag-'));
 });
 afterAll(async () => {
-  if (scratch !== '') await rm(scratch, { recursive: true, force: true });
-});
+  if (scratch !== '')
+    await rm(scratch, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+}, 30_000);
 
 describe('the bundled pitdeck command (run pnpm build first)', () => {
   it.each([

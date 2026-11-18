@@ -112,11 +112,13 @@ describe('npm pack of a dist folder with stray files (run pnpm build first)', ()
     if (result === undefined) throw new Error('npm pack printed no result');
     paths = result.files.map((f) => f.path.replaceAll('\\', '/'));
     unpackedSize = result.unpackedSize;
-  });
+    // Above npm pack's own 60 s limit, as the copy and pack are slow on Windows runners.
+  }, 90_000);
 
   afterAll(async () => {
-    if (scratch !== '') await rm(scratch, { recursive: true, force: true });
-  });
+    if (scratch !== '')
+      await rm(scratch, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  }, 30_000);
 
   it('flags every stray file npm would publish', () => {
     // npm drops a few names itself (node_modules); every other stray must be packed and flagged.

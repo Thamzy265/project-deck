@@ -149,11 +149,14 @@ beforeAll(async () => {
   });
   const name = (JSON.parse(packed) as { filename: string }[])[0]?.filename ?? '';
   tarball = join(scratch, 'pkg', name);
-});
+  // Above npm pack's own 60 s limit: on Windows runners it goes through cmd.exe and is slow.
+}, 90_000);
 
 afterAll(async () => {
-  if (scratch !== '') await rm(scratch, { recursive: true, force: true });
-});
+  // npm can still hold the pkg folder for a moment on Windows (EBUSY), hence the retries.
+  if (scratch !== '')
+    await rm(scratch, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+}, 30_000);
 
 describe('the tarball smoke script, failing (scripts/smoke/tarball.mjs)', () => {
   it('fails and cleans up when the tarball does not exist', async () => {
@@ -205,7 +208,7 @@ describe('the tarball smoke script, failing (scripts/smoke/tarball.mjs)', () => 
       expect(run.out).not.toMatch(/npm install/);
       expect(await readdir(inside)).toEqual([]);
     } finally {
-      await rm(inside, { recursive: true, force: true });
+      await rm(inside, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
     }
   });
 
