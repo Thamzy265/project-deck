@@ -2,6 +2,15 @@
 
 Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
 
+## 2026-11-18 — M5 npm name `pitdeck` — PM decision
+
+- Changed: batch 2 merged as PR #56 (03c747b). Batch 3 (plugin for release, `feat/plugin-release`) started. On 18 Nov 2026 `pitdeck` (npm) and `pitdeck_drift` (pub.dev) are both unclaimed. Once batch 3 is on the public `main`, the plugin runs `npx -y pitdeck@0.1.0 mcp`, so a third party who publishes `pitdeck` first would run code on users' machines (design note abuse case 1).
+- Checked: a placeholder package is not allowed. npm: package names "are considered squatted if the package has no genuine function", and accounts "may be removed or renamed without notice" (docs.npmjs.com/policies/disputes). pub.dev: packages may not be published "solely to reserve a name for future use" (pub.dev/policy). The PM first chose "Claim with a placeholder"; the lead reported the policies and asked again.
+- Decisions: PM (2026-11-18), first answer: "Claim with a placeholder (Recommended)" — withdrawn by the lead because of the policies above. PM (2026-11-18), final: "Publish a working preview". After the PM's trademark check (UK IPO, EUIPO, USPTO) and domain check, the PM publishes a working build of `main` as `pitdeck@0.1.0-preview.0` from the PM's npm account with 2FA. Batch 3 merges only after `pitdeck` is published by the project. `pitdeck_drift` on pub.dev waits for batch 5 (it is not on the plugin's start path).
+- Gates: n/a — PM decision, no code change.
+- Open findings: none.
+- Blockers: Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead: PM trademark and domain check, then the PM's npm publish of the preview; PM plugin check for batch 1.
+
 ## 2026-11-11 — M5 batch 2: bundled npm package `pitdeck` — merged
 
 - Changed: `build/npm-package`, PR #56. New package `packages/pitdeck` (`pitdeck` 0.1.0, bin `pitdeck`, no dependencies, no lifecycle scripts, `files: ["dist"]`). esbuild bundles the CLI, the daemon and both worker threads into one `dist` with the dashboard, `sqlite3.wasm`, fake-mode fixtures and generated licence notices (full Apache-2.0 text for sqlite-wasm). A build-time define `__PITDECK_BUNDLE__` makes the bundle use only its own files and fail with "The pitdeck package is incomplete … Reinstall pitdeck." instead of resolving look-alike packages. All `@project-deck/*` packages are private. `scripts/smoke/tarball.mjs` and the CI job `tarball-smoke` (Linux, macOS, Windows × Node 22.12 and 24) install the packed tarball with `--ignore-scripts` in a scratch HOME. The batch 1 PM check path bug is fixed in `docs/qa/M5.md`. Windows `npx` facts for D2 are in `docs/notes/m5-release.md`; batch 3 must test plain `npx` in `.mcp.json` with real Claude Code on Windows.
