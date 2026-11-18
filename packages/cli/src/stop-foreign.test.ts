@@ -91,7 +91,9 @@ describe('stop with a daemon it can’t stop', () => {
     expect(code).toBe(1);
     const text = errors.join('\n');
     expect(text).toContain(`port ${port}`);
-    expect(text).toContain('packages/daemon/dist/main.js');
+    // The installed package has no packages/daemon folder (reviewer F9, batch 2).
+    expect(text).toContain(`quitting the program that listens on port ${port}`);
+    expect(text).not.toMatch(/packages\/|main\.js|daemon\.js/);
     expect(text).toContain('delete .pitdeck/runtime.json');
     expect(text).not.toContain('run `pitdeck stop`');
     // Still running, and its runtime.json is left for the user to decide.

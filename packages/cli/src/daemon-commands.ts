@@ -89,7 +89,7 @@ export function runStop(opts: DaemonCommandOptions): Promise<number> {
       // the pid in runtime.json may belong to another program by now.
       if (err instanceof ForeignDaemonError) {
         opts.io.err(
-          `The program on port ${err.port} doesn't accept this project's key, so \`${CLI_NAME} stop\` can't stop it. Stop it by quitting the process that runs packages/daemon/dist/main.js (port ${err.port}), or delete .pitdeck/runtime.json if no Pitdeck runs.`,
+          `The program on port ${err.port} doesn't accept this project's key, so \`${CLI_NAME} stop\` can't stop it. Stop it by quitting the program that listens on port ${err.port}, or delete .pitdeck/runtime.json if no Pitdeck runs.`,
         );
         return 1;
       }
