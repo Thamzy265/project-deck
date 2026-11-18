@@ -188,7 +188,9 @@ async function main(scratch, tarballArg) {
     if (!record('npm pack', typeof name === 'string', name ?? why(r))) return;
     tarball = join(scratch, name);
   }
-  record('tarball name', /pitdeck-\d+\.\d+\.\d+\.tgz$/.test(tarball), tarball.split(/[\\/]/).pop());
+  // An exact semver version, prereleases included (the PM's first publish is a preview).
+  const named = /pitdeck-\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?\.tgz$/;
+  record('tarball name', named.test(tarball), tarball.split(/[\\/]/).pop());
 
   // 2. Install it like a user would, with no install scripts.
   await writeFile(join(app, 'package.json'), '{ "name": "smoke-app", "private": true }\n');
