@@ -199,6 +199,16 @@ describe('.mcp.json', () => {
   });
 });
 
+describe('versions in the install docs', () => {
+  it.each(['README.md', '../README.md'])('%s names only this release', (file) => {
+    const text = readFileSync(join(ROOT, file), 'utf8');
+    // Version-like pins only: `pitdeck@pitdeck` is the plugin id, `<version>` a placeholder.
+    const pins = [...text.matchAll(/\bpitdeck@(\d[^\s`"')]*)/g)].map((m) => m[1]);
+    expect(pins.length).toBeGreaterThan(0);
+    expect(new Set(pins)).toEqual(new Set([DECK_VERSION]));
+  });
+});
+
 describe('the npx pin check', () => {
   it.each(['0.1.0', '0.1.0-preview.0', '1.2.3-rc.1', '10.20.30-alpha-1.beta'])(
     'accepts the exact version %s',
