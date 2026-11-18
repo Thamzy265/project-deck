@@ -9,11 +9,13 @@ Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry re
 - Reviewer: code review at high and security review; every commit built and tested on its own with GIT_* unset. First verdict block on F2 (sqlite-wasm Apache-2.0 text missing); F1–F7 fixed; re-check: approve with notes, 0 security findings. F8 (stale bundle), F9 (init and messages from the installed package, old name in daemon logs and `/api/health`) and F10 (timing tests under load) are Low and in the plan's Later list with triggers.
 - Incident (2026-11-11): during a per-commit check with `git rebase --exec`, `packages/cli/src/rename-leftovers.test.ts` inherited GIT_DIR and set `core.bare = true` in the shared `.git/config`. The developer set it back to `false`; the lead confirmed every checkout works. F1 fixes the test (65f20cf) with a regression test.
 - QA (2026-11-11): 8/8 pass, [qa/M5.md](qa/M5.md) "Batch 2 — npm package". Tarball 24 files, 4.36 MiB unpacked; clean install and `npx pitdeck`; dashboard through the login window (screens), 401/403 checks, db_query and MCP 7 tools, DELETE refused; licence text for all 14 bundled libraries; incomplete install fails clearly; smoke script and all 6 CI smoke jobs; 68/68 e2e. PM check: nothing.
+- CI: the first ready run failed on `check (windows-latest, 22)`: `smoke-script.test.ts` ran `npm pack` (60 s limit) in a `beforeAll` with vitest's 10 s hook limit, then cleanup hit EBUSY. Test-only fix b735fff (hook timeouts and `rm` retries in six pitdeck test files).
+- Branch protection (2026-11-18): `main` protected on the PM's instruction (PM said: "turn on main branch protection, go ahead and merge"). Pull request required (0 approvals: one maintainer can't approve their own PR), all 15 CI jobs required, not strict, enforced for admins, no force-push, no deletion. Undo: repo Settings → Branches. A new CI job must be added to the required list when it is added to ci.yml.
 - Gates: developer pass · tester pass · reviewer approve with notes · QA pass · CI pass · merged by the lead on green (standing approval, 24 Oct 2026).
 - Open findings: none on the branch; Later lines for F8, F9, F10 and the 300-character start error.
-- Decisions: none new.
+- Decisions: PM (2026-11-18): protect `main` and merge #56.
 - Deleted after the merge: remote and local branch `build/npm-package`.
-- Blockers: Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead: PM decision on branch protection for `main`; PM plugin check for batch 1.
+- Blockers: Developer none · Tester none · Reviewer none · QA none · Marketer none · Lead: PM plugin check for batch 1.
 
 ## 2026-11-10 — M5 batch 1: rename to Pitdeck — merged
 
