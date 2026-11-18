@@ -23,3 +23,5 @@ qa-artifacts/
 plugin-dev/evals/results/
 # Written by packages/pitdeck/build.mjs for its tests; never published.
 packages/pitdeck/build-meta.json
+# Written by scripts/dev-marketplace.mjs for contributors.
+plugin-dev/marketplace/

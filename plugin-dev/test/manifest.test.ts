@@ -124,17 +124,41 @@ describe('the shipped plugin folder', () => {
   });
 });
 
-describe('development marketplace', () => {
-  it('lists this folder as a relative path, so Claude Code loads it in place', () => {
-    const market = z
-      .object({
-        name: z.string(),
-        owner: z.object({ name: z.string().min(1) }),
-        plugins: z.tuple([z.object({ name: z.string(), source: z.string() })]),
-      })
-      .parse(read('../.claude-plugin/marketplace.json'));
-    expect(market.name).toBe('pitdeck-dev');
-    expect(market.plugins[0]).toMatchObject({ name: 'pitdeck', source: './plugin' });
+describe('public marketplace (.claude-plugin/marketplace.json at the repo root)', () => {
+  const market = z
+    .strictObject({
+      name: z.string(),
+      owner: z.strictObject({ name: z.string().min(1), url: z.url() }),
+      description: z.string().min(1),
+      plugins: z.tuple([
+        z.strictObject({
+          name: z.string(),
+          description: z.string().min(1),
+          source: z.strictObject({
+            source: z.literal('git-subdir'),
+            url: z.string(),
+            path: z.string(),
+          }),
+        }),
+      ]),
+    })
+    .parse(read('../.claude-plugin/marketplace.json'));
+
+  it('is named pitdeck and lists the pitdeck plugin, as `pitdeck@pitdeck`', () => {
+    expect(market.name).toBe('pitdeck');
+    expect(market.plugins[0].name).toBe(Manifest.parse(read('.claude-plugin/plugin.json')).name);
+  });
+
+  it('installs only plugin/ from the GitHub repo, never a checkout (D3)', () => {
+    expect(market.plugins[0].source).toEqual({
+      source: 'git-subdir',
+      url: 'Thamzy265/project-deck',
+      path: 'plugin',
+    });
+  });
+
+  it('leaves the version to plugin.json, so the two can never disagree', () => {
+    expect(market.plugins[0]).not.toHaveProperty('version');
   });
 });
 

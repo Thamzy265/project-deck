@@ -10,6 +10,7 @@ export default tseslint.config(
       'examples/**',
       '.claude/worktrees/**',
       'qa-artifacts/**',
+      'plugin-dev/marketplace/**',
     ],
   },
   {
