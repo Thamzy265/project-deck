@@ -255,6 +255,10 @@ describe('the tarball smoke script, failing (scripts/smoke/tarball.mjs)', () => 
     // The fake daemon reports the token as its version and the fake MCP server quotes it.
     expect(run.out).toMatch(/GET \/api\/health\s+FAIL\s+<token>/);
     expect(run.out).toMatch(/MCP server\s+FAIL.*<token>/);
+    // The stand-in is 0.0.1 and plugin/.mcp.json pins the release: that must fail, not pass.
+    expect(run.out).toMatch(
+      /plugin \.mcp\.json pins this tarball\s+FAIL\s+npx -y pitdeck@\S+ mcp vs 0\.0\.1/,
+    );
     expect(run.out).not.toContain(TOKEN);
     const pid = Number(await readFile(pidFile, 'utf8'));
     expect(alive(pid)).toBe(false);

@@ -15,11 +15,14 @@
 // --ignore-scripts, and npx runs offline with "yes" off, so a missing local install fails
 // instead of fetching a package called pitdeck from the registry. Every step has a timeout.
 import { spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
+import { createServer } from 'node:http';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const { fetch, AbortSignal } = globalThis;
 
@@ -346,6 +349,140 @@ async function main(scratch, tarballArg) {
   } finally {
     if (daemon.exitCode === null && daemon.signalCode === null) daemon.kill();
     await Promise.race([exited, sleep(5000)]);
+  }
+
+  // 8. The plugin's own .mcp.json command, exactly as written, the way an MCP client
+  // starts it: the MCP SDK's stdio transport (cross-spawn, no shell; it finds npx.cmd on
+  // Windows). npx gets an empty cache and a registry on 127.0.0.1 that serves only this
+  // tarball, so it resolves pitdeck@<pin> as it would for a user, with nothing published.
+  await pluginCommand({ scratch, env, tarball, version, pkgDir });
+}
+
+/** A one-package npm registry on 127.0.0.1: the packument and the tarball, nothing else. */
+async function tarballRegistry(tarball, manifest) {
+  const bytes = await readFile(tarball);
+  const integrity = `sha512-${createHash('sha512').update(bytes).digest('base64')}`;
+  const shasum = createHash('sha1').update(bytes).digest('hex');
+  const file = `${manifest.name}-${manifest.version}.tgz`;
+  const requests = [];
+  const server = createServer((req, res) => {
+    requests.push(`${req.method} ${req.url}`);
+    const port = server.address().port;
+    if (req.url === `/${manifest.name}`) {
+      const doc = {
+        name: manifest.name,
+        'dist-tags': { latest: manifest.version },
+        versions: {
+          [manifest.version]: {
+            ...manifest,
+            _id: `${manifest.name}@${manifest.version}`,
+            dist: {
+              tarball: `http://127.0.0.1:${port}/${manifest.name}/-/${file}`,
+              integrity,
+              shasum,
+            },
+          },
+        },
+      };
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify(doc));
+    } else if (req.url === `/${manifest.name}/-/${file}`) {
+      res.writeHead(200, { 'content-type': 'application/octet-stream' });
+      res.end(bytes);
+    } else {
+      res.writeHead(404, { 'content-type': 'application/json' });
+      res.end('{"error":"not found"}');
+    }
+  });
+  server.on('error', () => undefined);
+  await new Promise((done) => server.listen(0, '127.0.0.1', done));
+  return { server, requests, url: `http://127.0.0.1:${server.address().port}/` };
+}
+
+async function pluginCommand({ scratch, env, tarball, version, pkgDir }) {
+  const mcpJson = JSON.parse(await readFile(join(ROOT, 'plugin', '.mcp.json'), 'utf8'));
+  const entry = mcpJson.mcpServers.pitdeck;
+  const shown = [entry.command, ...entry.args].join(' ');
+  const pin = /^pitdeck@(.+)$/.exec(entry.args.find((a) => a.startsWith('pitdeck@')) ?? '')?.[1];
+  if (!record('plugin .mcp.json pins this tarball', pin === version, `${shown} vs ${version}`))
+    return;
+  const manifest = JSON.parse(await readFile(join(pkgDir, 'package.json'), 'utf8'));
+  const registry = await tarballRegistry(tarball, manifest);
+  // A project that has never seen pitdeck: no node_modules, so npx must fetch it.
+  const project = join(scratch, 'plugin-project');
+  await mkdir(join(project, '.pitdeck'), { recursive: true });
+  await writeFile(join(project, '.pitdeck', 'config.json'), '{ "version": 1 }\n');
+  const require = createRequire(join(ROOT, 'packages', 'mcp', 'package.json'));
+  const { StdioClientTransport } = await import(
+    pathToFileURL(require.resolve('@modelcontextprotocol/sdk/client/stdio.js')).href
+  );
+  const transport = new StdioClientTransport({
+    command: entry.command,
+    args: entry.args,
+    cwd: project,
+    stderr: 'pipe',
+    env: {
+      ...env,
+      npm_config_registry: registry.url,
+      npm_config_cache: join(scratch, 'npx-cache'),
+      npm_config_offline: 'false',
+      npm_config_prefer_online: 'false',
+    },
+  });
+  const stderr = [];
+  const pending = new Map();
+  let nextId = 1;
+  transport.onmessage = (msg) => {
+    pending.get(msg.id)?.(msg);
+    pending.delete(msg.id);
+  };
+  transport.onerror = () => undefined;
+  const request = (method, params = {}) =>
+    new Promise((done, fail) => {
+      const id = nextId++;
+      const timer = setTimeout(() => {
+        pending.delete(id);
+        fail(new Error(`${method}: no answer in ${STEP_MS} ms`));
+      }, STEP_MS);
+      pending.set(id, (msg) => {
+        clearTimeout(timer);
+        if (msg.error) fail(new Error(`${method}: ${msg.error.message}`));
+        else done(msg.result);
+      });
+      transport.send({ jsonrpc: '2.0', id, method, params }).catch(fail);
+    });
+  try {
+    await transport.start();
+    transport.stderr?.on('data', (d) => stderr.push(String(d)));
+    const init = await request('initialize', {
+      protocolVersion: '2025-06-18',
+      capabilities: {},
+      clientInfo: { name: 'pitdeck-smoke', version: '0' },
+    });
+    await transport.send({ jsonrpc: '2.0', method: 'notifications/initialized', params: {} });
+    const { tools } = await request('tools/list');
+    const missing = TOOLS.filter((t) => !tools.some((tool) => tool.name === t));
+    record(
+      `plugin .mcp.json: ${shown}`,
+      init?.serverInfo?.name === 'pitdeck' && missing.length === 0,
+      missing.length ? `missing ${missing}` : `${init?.serverInfo?.name} ${tools.length} tools`,
+    );
+    const fetched = registry.requests.filter((r) => r.endsWith('.tgz')).length;
+    record(
+      'npx fetched the pin from the loopback registry',
+      fetched === 1,
+      registry.requests.join(' '),
+    );
+  } catch (err) {
+    record(`plugin .mcp.json: ${shown}`, false, `${err.message} ${stderr.join(' ')}`);
+  } finally {
+    await transport.close().catch(() => undefined);
+    registry.server.close();
+    // tools/list starts no daemon; stop one anyway if something did.
+    await run([process.execPath, [join(pkgDir, 'dist', 'cli.js'), 'stop', '--project', project]], {
+      cwd: project,
+      env,
+    });
   }
 }
 
