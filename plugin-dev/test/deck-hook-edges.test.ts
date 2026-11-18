@@ -8,13 +8,13 @@ import { execFileSync } from 'node:child_process';
 import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { HookEventInput, MAX_RELOAD_MESSAGE, MAX_WAITING_MESSAGE } from '@project-deck/core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import * as hook from '../hooks/deck-hook.mjs';
+import * as hook from '../../plugin/hooks/deck-hook.mjs';
 import * as fx from './fixtures.js';
 import { growth } from './timing.js';
+import { PLUGIN } from './paths.js';
 
 const { scrubReloadMessage, scrubText, toDeckEvent, projectDirOf, readDaemonAddress } = hook;
 const posix = process.platform === 'win32' ? it.skip : it;
@@ -198,7 +198,7 @@ describe('toDeckEvent: tool names', () => {
 });
 
 describe('the hooks.json matcher and the script agree on tool names', () => {
-  const file = join(dirname(fileURLToPath(import.meta.url)), '..', 'hooks', 'hooks.json');
+  const file = join(PLUGIN, 'hooks', 'hooks.json');
   const parsed: unknown = JSON.parse(readFileSync(file, 'utf8'));
   const matcher =
     typeof parsed === 'object' &&

@@ -267,7 +267,7 @@ importers:
         specifier: ^4.6.5
         version: 4.6.5
 
-  plugin:
+  plugin-dev:
     devDependencies:
       '@modelcontextprotocol/sdk':
         specifier: 1.32.1

@@ -6,7 +6,7 @@ import {
   TOKEN_HEADER,
 } from '@project-deck/core';
 import { describe, expect, it } from 'vitest';
-import * as hook from '../hooks/deck-hook.mjs';
+import * as hook from '../../plugin/hooks/deck-hook.mjs';
 import * as fx from './fixtures.js';
 
 const { scrubReloadMessage, toDeckEvent, projectDirOf } = hook;

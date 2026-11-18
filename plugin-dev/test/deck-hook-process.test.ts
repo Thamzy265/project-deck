@@ -10,14 +10,14 @@ import type { IncomingHttpHeaders, Server, ServerResponse } from 'node:http';
 import { createServer } from 'node:http';
 import type { Socket } from 'node:net';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { projectIdFor, projectKey, readProjectIdentity } from '@project-deck/core/node';
-import { ownProjectId } from '../hooks/deck-hook.mjs';
+import { ownProjectId } from '../../plugin/hooks/deck-hook.mjs';
 import * as fx from './fixtures.js';
+import { PLUGIN } from './paths.js';
 
-const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'hooks', 'deck-hook.mjs');
+const SCRIPT = join(PLUGIN, 'hooks', 'deck-hook.mjs');
 const TOKEN = 'tok-0123456789abcdef0123456789abcdef0123456789';
 const links = process.platform === 'win32' ? it.skip : it;
 

@@ -3,15 +3,15 @@
  * (code.claude.com/docs/en/plugins-reference and /hooks, read 15 Oct 2026). The
  * authoritative check is `claude plugin validate ./plugin`, which needs the Claude Code CLI.
  */
-import { readFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { DECK_VERSION } from '@project-deck/core';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { PLUGIN_RELOAD_TOOL } from './fixtures.js';
+import { PLUGIN } from './paths.js';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const ROOT = PLUGIN;
 const read = (path: string): unknown => JSON.parse(readFileSync(join(ROOT, path), 'utf8'));
 
 const Manifest = z.object({
@@ -77,6 +77,19 @@ describe('plugin manifest', () => {
       pkg: DECK_VERSION,
       plugin: DECK_VERSION,
     });
+  });
+});
+
+describe('the shipped plugin folder', () => {
+  // A git-subdir install copies this whole folder into users' plugin caches; the format
+  // has no way to leave files out, so tests, evals and dev config live in plugin-dev/.
+  it('holds only the files Claude Code loads, and the README', () => {
+    // Git-ignored, so never in a git-subdir checkout: Finder's file and the node_modules
+    // that an older checkout's `pnpm install` left in plugin/.
+    const ignored = new Set(['.DS_Store', 'node_modules']);
+    const entries = readdirSync(ROOT).filter((name) => !ignored.has(name));
+    expect(entries.sort()).toEqual(['.claude-plugin', '.mcp.json', 'README.md', 'hooks', 'skills']);
+    expect(readdirSync(join(ROOT, '.claude-plugin'))).toEqual(['plugin.json']);
   });
 });
 

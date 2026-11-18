@@ -6,8 +6,7 @@
 import { randomBytes } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   REGISTRY_DIR,
@@ -18,9 +17,10 @@ import {
   projectKey,
 } from '@project-deck/core/node';
 import { TOKEN_HEADER as DAEMON_TOKEN_HEADER } from '@project-deck/core';
-import * as hook from '../hooks/deck-hook.mjs';
+import * as hook from '../../plugin/hooks/deck-hook.mjs';
+import { PLUGIN } from './paths.js';
 
-const HOOK = join(dirname(fileURLToPath(import.meta.url)), '..', 'hooks', 'deck-hook.mjs');
+const HOOK = join(PLUGIN, 'hooks', 'deck-hook.mjs');
 const TOKEN = 'tok-0123456789abcdef0123456789abcdef0123456789';
 
 let base: string;

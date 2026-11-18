@@ -6,8 +6,7 @@
  */
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { DaemonClient, createDeckServer } from '@project-deck/mcp';
@@ -15,13 +14,14 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 import { z } from 'zod';
 import { splitFrontmatter } from './frontmatter.js';
+import { DEV, PLUGIN } from './paths.js';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const ROOT = PLUGIN;
 const MAX_LINES = 120;
 
 const DART_TOOLS = z
   .object({ source: z.string().min(1), tools: z.array(z.string()).length(13) })
-  .parse(JSON.parse(readFileSync(join(ROOT, 'test/fixtures/dart-tools.json'), 'utf8'))).tools;
+  .parse(JSON.parse(readFileSync(join(DEV, 'test/fixtures/dart-tools.json'), 'utf8'))).tools;
 
 /** Every name the Dart MCP server's tools can have: our plugin, the Dart team's plugin, a project entry. */
 const DART_PREFIXES = [

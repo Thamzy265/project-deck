@@ -11,12 +11,12 @@ import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import { createServer } from 'node:http';
 import type { Socket } from 'node:net';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import * as fx from './fixtures.js';
+import { PLUGIN } from './paths.js';
 
-const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'hooks', 'deck-hook.mjs');
+const SCRIPT = join(PLUGIN, 'hooks', 'deck-hook.mjs');
 const posix = process.platform === 'win32' ? it.skip : it;
 
 interface Seen {

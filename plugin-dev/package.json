@@ -2,7 +2,7 @@
   "name": "@project-deck/plugin",
   "version": "0.0.0",
   "private": true,
-  "description": "Pitdeck's Claude Code plugin. This file only lets the repo typecheck and test the plugin; Claude Code doesn't read it.",
+  "description": "Tests, eval cases and dev tools for Pitdeck's Claude Code plugin in ../plugin. Nothing here is installed by users.",
   "type": "module",
   "license": "MIT",
   "scripts": {
