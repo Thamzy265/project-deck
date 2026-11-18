@@ -74,6 +74,15 @@ function exitedPid(): Promise<number> {
   });
 }
 
+describe('StartupLockBusyError', () => {
+  it('names the product, not the repo', () => {
+    expect(new StartupLockBusyError(42, 3000).message).toBe(
+      'Another Pitdeck daemon (pid 42) is still starting for this project. If it crashed, ' +
+        'its startup lock is treated as stale in about 3 s; try again then.',
+    );
+  });
+});
+
 describe('acquireStartupLock', () => {
   it('creates a private lock file holding this pid and removes it on release', async () => {
     const release = await acquireStartupLock(projectDir, FAST);

@@ -28,7 +28,7 @@ beforeEach(async () => {
     if (route === 'GET /api/health') {
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(
-        JSON.stringify({ ok: true, name: 'project-deck', version: '0.0.0', projectId: PROJECT_ID }),
+        JSON.stringify({ ok: true, name: 'pitdeck', version: '0.0.0', projectId: PROJECT_ID }),
       );
       return;
     }

@@ -83,7 +83,7 @@ async function raw(handler: Handler, health = true): Promise<RawDaemon> {
       res.end(
         JSON.stringify({
           ok: true,
-          name: 'project-deck',
+          name: 'pitdeck',
           version: '0.0.0',
           projectId: 'aaaaaaaaaaaa',
         }),

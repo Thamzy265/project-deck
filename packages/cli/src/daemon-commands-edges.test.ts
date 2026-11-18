@@ -181,7 +181,7 @@ describe('open with crafted daemon answers', () => {
       const route = `${req.method ?? ''} ${req.url ?? ''}`;
       const body =
         route === 'GET /api/health'
-          ? { ok: true, name: 'project-deck', version: '0.0.0', projectId: PROJECT_ID }
+          ? { ok: true, name: 'pitdeck', version: '0.0.0', projectId: PROJECT_ID }
           : route === 'POST /api/login-window'
             ? { ok: true, until: Date.now() + 120_000 }
             : route === 'GET /api/status'

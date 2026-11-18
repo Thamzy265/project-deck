@@ -91,7 +91,7 @@ export interface Daemon {
 
 export class DaemonAlreadyRunningError extends Error {
   constructor(readonly port: number) {
-    super(`A project-deck daemon is already running for this project on port ${port}`);
+    super(`A Pitdeck daemon is already running for this project on port ${port}`);
   }
 }
 

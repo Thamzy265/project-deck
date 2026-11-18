@@ -83,11 +83,8 @@ async function stop(): Promise<{ code: number; errors: string[] }> {
 
 describe('stop with a daemon it can’t stop', () => {
   it.each([
-    [
-      'refuses the token',
-      { ok: true, name: 'project-deck', version: '0.0.0', projectId: PROJECT_ID },
-    ],
-    ['names no project', { ok: true, name: 'project-deck', version: '0.0.0' }],
+    ['refuses the token', { ok: true, name: 'pitdeck', version: '0.0.0', projectId: PROJECT_ID }],
+    ['names no project', { ok: true, name: 'pitdeck', version: '0.0.0' }],
   ])('gives a way out when the daemon %s, and kills nothing', async (_label, health) => {
     await startServer(health);
     const { code, errors } = await stop();
@@ -107,7 +104,7 @@ describe('stop with a daemon it can’t stop', () => {
 describe('stop with a daemon that answers health but drops the shutdown (R-O1-1)', () => {
   it('fails with the port and pid instead of "not running", and kills nothing', async () => {
     await startServer(
-      { ok: true, name: 'project-deck', version: '0.0.0', projectId: PROJECT_ID },
+      { ok: true, name: 'pitdeck', version: '0.0.0', projectId: PROJECT_ID },
       { dropShutdown: true },
     );
     const outs: string[] = [];

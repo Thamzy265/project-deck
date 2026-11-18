@@ -63,7 +63,7 @@ export class StartupLockBusyError extends Error {
         ? 'shortly'
         : `in about ${Math.max(1, Math.ceil(staleInMs / 1000))} s`;
     super(
-      `Another project-deck daemon${holder} is still starting for this project. If it ` +
+      `Another Pitdeck daemon${holder} is still starting for this project. If it ` +
         `crashed, its startup lock is treated as stale ${when}; try again then.`,
     );
   }

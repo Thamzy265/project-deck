@@ -149,8 +149,8 @@ describe('findRunningDaemon', () => {
     expect((await readRuntime(projectDir))?.token).toBe(d.token);
   });
 
-  it('ignores a server that answers health as project-deck but rejects the token', async () => {
-    await record(await httpOn(health('project-deck')));
+  it('ignores a server that answers health as pitdeck but rejects the token', async () => {
+    await record(await httpOn(health('pitdeck')));
     expect(await findRunningDaemon(projectDir)).toBeUndefined();
   });
 
@@ -169,7 +169,7 @@ describe('findRunningDaemon', () => {
     await record(
       await httpOn((_req, res) => {
         res.statusCode = 500;
-        res.end(JSON.stringify({ name: 'project-deck' }));
+        res.end(JSON.stringify({ name: 'pitdeck' }));
       }),
     );
     expect(await findRunningDaemon(projectDir)).toBeUndefined();

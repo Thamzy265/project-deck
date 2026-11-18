@@ -21,7 +21,7 @@ export class PortBusyError extends Error {
 }
 
 const HealthSchema = z.object({
-  name: z.literal('project-deck'),
+  name: z.literal('pitdeck'),
   projectId: z
     .string()
     .regex(/^[0-9a-f]{12}$/)

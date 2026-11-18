@@ -58,7 +58,7 @@ async function dyingDaemon(healthy: boolean): Promise<void> {
       res.end(
         JSON.stringify({
           ok: true,
-          name: 'project-deck',
+          name: 'pitdeck',
           version: '0.0.0',
           projectId: 'aaaaaaaaaaaa',
         }),

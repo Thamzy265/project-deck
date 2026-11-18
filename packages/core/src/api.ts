@@ -334,7 +334,7 @@ export type HookEvent = z.infer<typeof HookEventInput>;
  */
 export const HealthResponse = z.object({
   ok: z.literal(true),
-  name: z.literal('project-deck'),
+  name: z.literal('pitdeck'),
   // Bounded: clients repeat both in messages to Claude.
   version: z.string().max(64),
   /** Salted hash of the project path; absent when the daemon has no port registry. */

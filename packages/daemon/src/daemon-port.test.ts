@@ -80,7 +80,7 @@ describe('fixed port from .pitdeck/config.json', () => {
     const health = (await (await fetch(`${d.url}/api/health`)).json()) as Record<string, unknown>;
     expect(health).toEqual({
       ok: true,
-      name: 'project-deck',
+      name: 'pitdeck',
       version: d.version,
       projectId: await projectIdentity(projectDir, { homeDir }),
     });
@@ -163,7 +163,7 @@ describe('fixed port from .pitdeck/config.json', () => {
     const d = await start({ port: 0, messages });
     expect(d.projectId).toBeUndefined();
     const health = (await (await fetch(`${d.url}/api/health`)).json()) as Record<string, unknown>;
-    expect(health).toEqual({ ok: true, name: 'project-deck', version: d.version });
+    expect(health).toEqual({ ok: true, name: 'pitdeck', version: d.version });
     expect(messages.some((m) => m.startsWith('No project id:') && m.includes('is damaged'))).toBe(
       true,
     );

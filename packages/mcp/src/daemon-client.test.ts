@@ -117,7 +117,7 @@ describe('DaemonClient', () => {
 
   it("sends no token to a daemon that doesn't say its project when ours is known", async () => {
     const f = await fake();
-    f.health = { ok: true, name: 'project-deck', version: '0.0.0' };
+    f.health = { ok: true, name: 'pitdeck', version: '0.0.0' };
     let spawned = 0;
     const c = client({
       spawnDaemon: () => {
@@ -285,7 +285,7 @@ describe('DaemonClient when the daemon is down', () => {
         track(
           writeFile(
             join(projectDir, '.pitdeck', 'daemon.log'),
-            'project-deck daemon starting\nAnother program uses port 9147. Change "port" in .pitdeck/config.json.\n\n',
+            'Pitdeck daemon starting\nAnother program uses port 9147. Change "port" in .pitdeck/config.json.\n\n',
           ).then(() => onExit(1)),
         );
       },

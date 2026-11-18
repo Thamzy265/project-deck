@@ -58,7 +58,7 @@ async function fakeDaemon(mode: Mode = 'ok', projectId?: string): Promise<FakeDa
             ? { hello: 'world' }
             : {
                 ok: true,
-                name: 'project-deck',
+                name: 'pitdeck',
                 version: '0.0.0',
                 ...(projectId === undefined ? {} : { projectId }),
               },

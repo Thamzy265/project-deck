@@ -71,7 +71,7 @@ describe('main.js startup failures', () => {
       expect(run.code).toBe(1);
       expect(run.stdout).toBe('');
       expect(run.stderr).toBe(
-        `A project-deck daemon is already running for this project on port ${d.port}\n`,
+        `A Pitdeck daemon is already running for this project on port ${d.port}\n`,
       );
     } finally {
       await d.stop();
@@ -86,7 +86,7 @@ describe('main.js startup failures', () => {
     expect(run.stdout).toBe('');
     const lines = run.stderr.split('\n').filter((l) => l !== '');
     expect(lines).toHaveLength(1);
-    expect(lines[0]).toMatch(/^project-deck daemon could not start: /);
+    expect(lines[0]).toMatch(/^Pitdeck daemon could not start: /);
     expect(run.stderr).not.toMatch(/\n\s+at /);
   });
 
@@ -95,7 +95,7 @@ describe('main.js startup failures', () => {
     try {
       const port = (busy.address() as AddressInfo).port;
       const run = await runMain(['--project', projectDir, '--port', String(port)], 'Token in');
-      const match = /listening on http:\/\/127\.0\.0\.1:(\d+)/.exec(run.stdout);
+      const match = /^Pitdeck daemon listening on http:\/\/127\.0\.0\.1:(\d+)/.exec(run.stdout);
       const chosen = Number(match?.[1]);
       expect(chosen).not.toBe(port);
       expect(chosen).toBeGreaterThan(0);

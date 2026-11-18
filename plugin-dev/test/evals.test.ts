@@ -239,7 +239,7 @@ beforeAll(async () => {
       const key = `${req.method ?? 'GET'} ${path}`;
       const answer =
         path === '/api/health'
-          ? { ok: true, name: 'project-deck', version: '0.0.0' }
+          ? { ok: true, name: 'pitdeck', version: '0.0.0' }
           : req.headers['x-deck-token'] !== token
             ? { error: 'Missing or invalid token' }
             : ROUTES[key];
