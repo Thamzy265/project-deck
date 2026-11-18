@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { SnapshotEngine } from './engine.js';
 import { plainDbFixture } from './testing/fixtures.js';
 
-const BUILT_WORKER = new URL('../dist/worker.js', import.meta.url);
+const BUILT_WORKER = new URL('../dist/snapshot-worker.js', import.meta.url);
 const engines: SnapshotEngine[] = [];
 
 function make(budgetMs = 5000): SnapshotEngine {

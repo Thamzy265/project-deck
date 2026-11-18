@@ -1,6 +1,7 @@
 {
   "name": "@project-deck/db-sqlite",
   "version": "0.0.0",
+  "private": true,
   "description": "project-deck SQLite snapshot inspector: copies the app's database off an Android device or the iOS simulator and reads it read-only with sqlite-wasm.",
   "type": "module",
   "license": "MIT",

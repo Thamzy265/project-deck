@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { defaultDashboardDir, loadDashboardAssets } from './dashboard-assets.js';
 
@@ -55,5 +56,17 @@ describe('loadDashboardAssets', () => {
 
   it('finds the dashboard package dist folder', () => {
     expect(defaultDashboardDir()).toMatch(/dashboard[\\/]dist$/);
+  });
+
+  it('prefers a dashboard folder next to the code, as in the npm bundle', async () => {
+    const dir = await built({ 'dashboard/index.html': '<!doctype html>' });
+    const here = pathToFileURL(join(dir, 'chunk-abc.js'));
+    expect(defaultDashboardDir(here)).toBe(join(dir, 'dashboard'));
+  });
+
+  it('ignores a dashboard folder without index.html next to the code', async () => {
+    const dir = await built({ 'dashboard/assets/x.js': '' });
+    const here = pathToFileURL(join(dir, 'chunk-abc.js'));
+    expect(defaultDashboardDir(here)).toMatch(/dashboard[\\/]dist$/);
   });
 });

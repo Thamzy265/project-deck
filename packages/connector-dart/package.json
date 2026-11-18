@@ -1,6 +1,7 @@
 {
   "name": "@project-deck/connector-dart",
   "version": "0.0.0",
+  "private": true,
   "description": "project-deck AppConnector for Dart and Flutter apps: DTD discovery plus VM service attach.",
   "type": "module",
   "license": "MIT",

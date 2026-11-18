@@ -4,7 +4,7 @@ import { plainDbFixture, walDbFixture, walFixture } from './testing/fixtures.js'
 import { mergeWal } from './wal.js';
 
 // The real worker runs from the build, like sql-guard's.
-const BUILT_WORKER = new URL('../dist/worker.js', import.meta.url);
+const BUILT_WORKER = new URL('../dist/snapshot-worker.js', import.meta.url);
 let engine: SnapshotEngine | undefined;
 
 function make(budgetMs = 5000): SnapshotEngine {

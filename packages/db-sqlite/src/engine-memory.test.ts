@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { SnapshotEngine } from './engine.js';
 import { plainDbFixture } from './testing/fixtures.js';
 
-const BUILT_WORKER = new URL('../dist/worker.js', import.meta.url);
+const BUILT_WORKER = new URL('../dist/snapshot-worker.js', import.meta.url);
 const MB = 1024 * 1024;
 let engine: SnapshotEngine | undefined;
 

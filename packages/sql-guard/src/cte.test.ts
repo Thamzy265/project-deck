@@ -2,7 +2,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { createSqlGuard } from './guard.js';
 
 // The real worker runs from the build, like the other gate tests.
-const guard = createSqlGuard({ workerUrl: new URL('../dist/worker.js', import.meta.url) });
+const guard = createSqlGuard({ workerUrl: new URL('../dist/guard-worker.js', import.meta.url) });
 afterAll(async () => {
   await guard.close();
 });

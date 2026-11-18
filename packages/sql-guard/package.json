@@ -1,6 +1,7 @@
 {
   "name": "@project-deck/sql-guard",
   "version": "0.0.0",
+  "private": true,
   "description": "project-deck read-only SQL gate: judges statements with the real SQLite engine (sqlite-wasm) before they reach a database.",
   "type": "module",
   "license": "MIT",

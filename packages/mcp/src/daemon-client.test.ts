@@ -3,7 +3,11 @@ import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { WriteRuntimeOptions } from '@project-deck/core/node';
-import { BUSY_RETRY_DELAYS_MS, retryWhileBusy } from '@project-deck/core/node';
+import {
+  BUSY_RETRY_DELAYS_MS,
+  IncompleteBundleError,
+  retryWhileBusy,
+} from '@project-deck/core/node';
 import type { DaemonClientOptions } from './daemon-client.js';
 import { DaemonClient, DaemonError, NOT_RUNNING, NOT_SET_UP } from './daemon-client.js';
 import { FakeDaemon, initProject } from './testing/fake-daemon.js';
@@ -479,6 +483,21 @@ describe('DaemonClient when the daemon is down', () => {
       },
     });
     expect((await rejection(c.status())).message).toBe(NOT_RUNNING);
+  });
+
+  it('says the pitdeck package is incomplete when its daemon.js is missing', async () => {
+    // Finding O1: the bundle refuses to look for the daemon anywhere else.
+    const missing = join(homedir(), 'npx', 'pitdeck', 'dist', 'daemon.js');
+    const c = client({
+      spawnDaemon: () => {
+        throw new IncompleteBundleError(missing);
+      },
+    });
+    const message = (await rejection(c.status())).message;
+    expect(message).toBe(
+      `The pitdeck package is incomplete: ${join('~', 'npx', 'pitdeck', 'dist', 'daemon.js')} is missing. Reinstall pitdeck.`,
+    );
+    expect(message).not.toContain(homedir());
   });
 
   it('starts it eagerly without a tool call, and opens the login window', async () => {

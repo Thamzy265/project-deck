@@ -123,6 +123,9 @@ async function startLocked(opts: DaemonOptions): Promise<Daemon> {
   const running = await findRunningDaemon(opts.projectDir);
   if (running !== undefined) throw new DaemonAlreadyRunningError(running);
 
+  // Before the port claim and the registry writes: a bundle without its dashboard throws
+  // here and leaves nothing behind (finding F5).
+  const dashboardDir = opts.dashboardDir ?? defaultDashboardDir();
   const config = await readConfig(opts.projectDir);
   const registryOpts = opts.homeDir === undefined ? {} : { homeDir: opts.homeDir };
   const sharedWith =
@@ -131,7 +134,6 @@ async function startLocked(opts: DaemonOptions): Promise<Daemon> {
       : await claimConfigPort(opts.projectDir, config.port, registryOpts);
   const projectId = await optionalProjectId(opts.projectDir, registryOpts, log);
 
-  const dashboardDir = opts.dashboardDir ?? defaultDashboardDir();
   const dashboard =
     dashboardDir === undefined ? undefined : await loadDashboardAssets(dashboardDir);
   if (dashboard === undefined) log('Dashboard not built; serving a placeholder page at /');

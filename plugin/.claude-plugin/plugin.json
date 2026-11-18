@@ -1,7 +1,7 @@
 {
   "name": "pitdeck",
   "displayName": "Pitdeck",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Flutter dashboard next to Claude: the Dart MCP server for reloads and runtime errors, Pitdeck's MCP server for logs, and hooks that show Claude's progress in the dashboard.",
   "author": { "name": "Pitdeck contributors" },
   "license": "MIT",

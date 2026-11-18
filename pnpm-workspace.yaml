@@ -1,3 +1,6 @@
 packages:
   - packages/*
   - plugin
+# esbuild works from its platform package; its postinstall only checks the binary.
+ignoredBuiltDependencies:
+  - esbuild

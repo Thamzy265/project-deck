@@ -1,6 +1,7 @@
 {
   "name": "@project-deck/daemon",
   "version": "0.0.0",
+  "private": true,
   "description": "project-deck daemon: tracks running apps and serves the local HTTP + WebSocket API.",
   "type": "module",
   "license": "MIT",
