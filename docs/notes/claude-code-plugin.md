@@ -36,6 +36,6 @@ Date: 2026-10-15. Sources: code.claude.com/docs/en/plugins-reference (manifest),
 
 ## Open points for QA
 
-- The fixtures in `plugin/test/fixtures.ts` are built from the docs. Record real hook inputs in a Claude Desktop session (with the token, paths and personal data removed) and replace them.
+- The fixtures in `plugin-dev/test/fixtures.ts` are built from the docs. Record real hook inputs in a Claude Desktop session (with the token, paths and personal data removed) and replace them.
 - The Pitdeck MCP server uses its working folder as the project (`--project` defaults to `process.cwd()`). The docs don't say which folder a plugin's stdio server starts in, and `CLAUDE_PROJECT_DIR` isn't exported to MCP servers. Check in Claude Desktop that `deck_status` names the right project.
 - The hook looks for `.pitdeck/` in `CLAUDE_PROJECT_DIR`, the folder the session started in. Check a Claude Desktop session that runs in a worktree: if that folder is the worktree, it has no `runtime.json` (git-ignored) and the hook does nothing.
