@@ -21,6 +21,7 @@ import {
   droppedShutdownText,
   portTakenText,
   stalledText,
+  unresponsiveText,
 } from './daemon-client.js';
 import { FAKE_PROJECT_ID, initProject } from './testing/fake-daemon.js';
 
@@ -138,6 +139,9 @@ async function deadPid(): Promise<number> {
 }
 
 describe('a health probe that times out when runtime.json is stale (R4)', () => {
+  // The client's time limit in these tests is 100 ms.
+  const held = () => unresponsiveText(port, 0.1);
+
   beforeEach(async () => {
     // Something unrelated listens on the old port and never answers.
     handler = () => undefined;
@@ -145,18 +149,21 @@ describe('a health probe that times out when runtime.json is stale (R4)', () => 
     await writeRuntime(projectDir, { pid, port, token: 'x'.repeat(43), startedAt: Date.now() });
   });
 
-  it('is not a stalled daemon when its pid is gone: status says not running', async () => {
+  it('is not a stalled daemon when its pid is gone: status says who may hold the port', async () => {
     const err = await client()
       .status({ start: false })
       .catch((e: unknown) => e);
-    expect((err as Error).message).toBe(NOT_RUNNING);
+    expect((err as Error).message).toBe(held());
   });
 
-  it('lets stop() finish instead of throwing', async () => {
-    await expect(client().stop()).resolves.toEqual({ stopped: false });
+  it('makes stop() say the same instead of "not running"', async () => {
+    const err = await client()
+      .stop()
+      .catch((e: unknown) => e);
+    expect((err as Error).message).toBe(held());
   });
 
-  it('lets a tool call start a daemon', async () => {
+  it('starts no daemon for a tool call: it could not bind the port', async () => {
     let spawned = 0;
     const c = new DaemonClient({
       projectDir,
@@ -170,8 +177,9 @@ describe('a health probe that times out when runtime.json is stale (R4)', () => 
       stopTimeoutMs: 200,
       pollMs: 10,
     });
-    await c.status().catch(() => undefined);
-    expect(spawned).toBe(1);
+    const err = await c.status().catch((e: unknown) => e);
+    expect(spawned).toBe(0);
+    expect((err as Error).message).toBe(held());
   });
 });
 

@@ -33,6 +33,7 @@ import {
   deckCommand,
   portTakenText,
   stalledText,
+  unresponsiveText,
 } from '@project-deck/core';
 import {
   IncompleteBundleError,
@@ -68,7 +69,7 @@ export function droppedShutdownText(port: number, pid: number): string {
   return `Pitdeck daemon on port ${port} (pid ${pid}) answers health but dropped POST /api/shutdown. Quit process ${pid} by hand, then try again.`;
 }
 /** A daemon that holds the port but doesn't answer health: shared words with the daemon. */
-export { stalledText };
+export { stalledText, unresponsiveText };
 /** Another program holds the port (shared words, so the daemon says the same). */
 export { portTakenText };
 const TOKEN_REJECTED = `Pitdeck daemon rejected the token in .pitdeck/runtime.json. Run \`${deckCommand('stop')}\`, then try again.`;
@@ -135,6 +136,7 @@ type Probe =
   | { kind: 'none' }
   | { kind: 'other'; port: number }
   | { kind: 'stalled'; port: number; pid: number }
+  | { kind: 'held'; port: number }
   | { kind: 'connected'; conn: Connection };
 
 const connectionOf = (p: Probe): Connection | undefined =>
@@ -314,6 +316,9 @@ export class DaemonClient {
   private notRunning(probe: Probe): DaemonError {
     if (probe.kind === 'other') return new DaemonError(portTakenText(probe.port));
     if (probe.kind === 'stalled') return new DaemonError(stalledText(probe.port, probe.pid));
+    if (probe.kind === 'held') {
+      return new DaemonError(unresponsiveText(probe.port, this.timeoutMs / 1000));
+    }
     return new DaemonError(NOT_RUNNING);
   }
 
@@ -339,7 +344,7 @@ export class DaemonClient {
    */
   async stop(): Promise<{ stopped: boolean; otherPort?: number }> {
     const probe = await this.probeChecked();
-    if (probe.kind === 'stalled') throw this.notRunning(probe);
+    if (probe.kind === 'stalled' || probe.kind === 'held') throw this.notRunning(probe);
     const conn = connectionOf(probe);
     if (conn === undefined) {
       return probe.kind === 'other'
@@ -432,8 +437,8 @@ export class DaemonClient {
       }
       // Gone: start it and retry. Twice at most, for a daemon that stopped again
       // between its start (perhaps one another call was waiting for) and this call.
-      // A stalled daemon holds the port: a second one would only fail on it (R3).
-      if (!canStart || starts >= MAX_STARTS || seen.kind === 'stalled') {
+      // A stalled daemon, or a silent program, holds the port: a second daemon would only fail on it (R3).
+      if (!canStart || starts >= MAX_STARTS || seen.kind === 'stalled' || seen.kind === 'held') {
         throw this.notRunning(seen);
       }
       starts++;
@@ -479,11 +484,12 @@ export class DaemonClient {
       // a Pitdeck of this release is never ours, and only that keeps the port busy.
       if (err instanceof Unreachable) return { kind: 'none' };
       if (err instanceof RequestTimeout) {
-        // A dead pid means runtime.json is stale and something unrelated holds the port:
-        // nothing of ours to wait for or to quit (R4).
+        // A dead pid means runtime.json is stale, so the pid is no use to the user. But
+        // something silent still holds the port: a daemon started now could not bind it
+        // and would cost a whole start timeout per call, so nothing starts (R4).
         return pidAlive(info.pid)
           ? { kind: 'stalled', port: info.port, pid: info.pid }
-          : { kind: 'none' };
+          : { kind: 'held', port: info.port };
       }
       if (err instanceof DaemonError) return { kind: 'other', port: info.port };
       return { kind: 'none' };
