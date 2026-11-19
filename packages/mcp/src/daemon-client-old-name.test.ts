@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { writeRuntime } from '@project-deck/daemon';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { DaemonClient, DaemonError, NOT_RUNNING } from './daemon-client.js';
+import { DaemonClient, DaemonError, NOT_RUNNING, portTakenText } from './daemon-client.js';
 import { FAKE_PROJECT_ID, initProject } from './testing/fake-daemon.js';
 
 let projectDir: string;
@@ -79,11 +79,13 @@ const onlyUntokenedHealth = (): void => {
 };
 
 describe('the MCP client against a daemon that still says project-deck', () => {
-  it('status without starting: not running, and the token stays home', async () => {
+  it('status without starting: says another program holds the port, and the token stays home', async () => {
     const { client: c, spawned } = client();
     const err = await c.status({ start: false }).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(DaemonError);
-    expect((err as DaemonError).message).toBe(NOT_RUNNING);
+    const { port } = server.address() as AddressInfo;
+    expect((err as DaemonError).message).toBe(portTakenText(port));
+    expect((err as DaemonError).message).not.toBe(NOT_RUNNING);
     expect(spawned()).toBe(0);
     onlyUntokenedHealth();
   });

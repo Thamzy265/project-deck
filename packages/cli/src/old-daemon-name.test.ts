@@ -118,16 +118,21 @@ describe.each([
   });
 });
 
-// Repro of a message gap, not a security gap: the old daemon still holds the port, yet
-// `stop` says nothing runs. Marked as expected to fail until the developer words it.
+// The old daemon still holds the port: say so, instead of "isn't running".
 describe('stop against a daemon that still says project-deck, the message', () => {
-  it.fails(
-    'does not claim "isn\'t running" while something answers health on the port',
-    async () => {
-      const outcome = await run(runStop);
-      const { port } = server.address() as AddressInfo;
-      expect(outcome.text).not.toMatch(/isn't running/);
-      expect(outcome.text).toContain(String(port));
-    },
-  );
+  it('does not claim "isn\'t running" while something answers health on the port', async () => {
+    const outcome = await run(runStop);
+    const { port } = server.address() as AddressInfo;
+    expect(outcome.text).not.toMatch(/isn't running/);
+    expect(outcome.text).toContain(String(port));
+  });
+});
+
+describe('open against a daemon that still says project-deck, the message', () => {
+  it('names the port instead of telling the user to run start', async () => {
+    const outcome = await run(runOpen);
+    const { port } = server.address() as AddressInfo;
+    expect(outcome.text).toContain(`Another program uses port ${String(port)}`);
+    expect(outcome.text).not.toMatch(/isn't running/);
+  });
 });

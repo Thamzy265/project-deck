@@ -4,7 +4,7 @@
  * daemon on the port must say it serves this project). Nothing here signals a process.
  */
 import type { DaemonClientOptions } from '@project-deck/mcp';
-import { DaemonClient, DaemonError, ForeignDaemonError } from '@project-deck/mcp';
+import { DaemonClient, DaemonError, ForeignDaemonError, portTakenText } from '@project-deck/mcp';
 import { DECK_VERSION } from '@project-deck/core';
 import { isDashboardUrl } from './browser.js';
 import type { Io } from './io.js';
@@ -82,8 +82,9 @@ export function runStart(opts: DaemonCommandOptions): Promise<number> {
 export function runStop(opts: DaemonCommandOptions): Promise<number> {
   return guarded(opts.io, async () => {
     let stopped: boolean;
+    const client = clientFor(opts);
     try {
-      stopped = await clientFor(opts).shutdown();
+      stopped = await client.shutdown();
     } catch (err) {
       // `stop` can't help here, so say what can. Pitdeck never kills a process itself:
       // the pid in runtime.json may belong to another program by now.
@@ -94,6 +95,12 @@ export function runStop(opts: DaemonCommandOptions): Promise<number> {
         return 1;
       }
       throw err;
+    }
+    const other = client.otherProgramPort();
+    if (!stopped && other !== undefined) {
+      // Not ours, so it never got the key and `stop` can't help; saying "not running" would be wrong.
+      opts.io.err(portTakenText(other));
+      return 1;
     }
     opts.io.out(stopped ? 'Pitdeck stopped.' : "Pitdeck isn't running for this project.");
     return 0;

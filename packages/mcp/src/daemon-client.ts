@@ -64,6 +64,14 @@ export function droppedCallText(port: number, pid: number, route: string): strin
 export function droppedShutdownText(port: number, pid: number): string {
   return `Pitdeck daemon on port ${port} (pid ${pid}) answers health but dropped POST /api/shutdown. Quit process ${pid} by hand, then try again.`;
 }
+/**
+ * Something answers HTTP on the port in runtime.json but isn't this release's Pitdeck
+ * daemon (for example one from a dev checkout that predates the rename). It never gets
+ * the token, so the user has to stop it. Same words as the daemon's own port message.
+ */
+export function portTakenText(port: number): string {
+  return `Another program uses port ${port}. Stop it, or pick another port: run \`pitdeck init\`, or change "port" in .pitdeck/config.json and the url in .claude/launch.json.`;
+}
 const TOKEN_REJECTED =
   'Pitdeck daemon rejected the token in .pitdeck/runtime.json. Run `pitdeck stop`, then try again.';
 export const DEFAULT_TIMEOUT_MS = 5000;
@@ -173,6 +181,7 @@ export class DaemonClient {
   private readonly pollMs: number;
   private ownId: string | undefined;
   private starting: Promise<StartResult> | undefined;
+  private occupiedPort: number | undefined;
   /** Daemons that dropped a call of someone waiting on `starting`: never the new one. */
   private readonly startStale: DaemonId[] = [];
 
@@ -261,8 +270,23 @@ export class DaemonClient {
   /** Like withDaemon, but a daemon that isn't running is an error, never started. */
   private async withRunning<T>(call: (c: Connection) => Promise<T>): Promise<Answer<T>> {
     const conn = await this.connectChecked();
-    if (conn === undefined) throw new DaemonError(NOT_RUNNING);
+    if (conn === undefined) throw this.notRunning();
     return this.callDaemon(call, conn, false);
+  }
+
+  /** NOT_RUNNING, unless the last look found another program answering on the port. */
+  private notRunning(): DaemonError {
+    return new DaemonError(
+      this.occupiedPort === undefined ? NOT_RUNNING : portTakenText(this.occupiedPort),
+    );
+  }
+
+  /**
+   * The port of a program that answered the last health check without being this
+   * project's Pitdeck daemon, or undefined. `stop` reads it after `shutdown()` says false.
+   */
+  otherProgramPort(): number | undefined {
+    return this.occupiedPort;
   }
 
   /** Whether this project's daemon answers. Never starts one. */
@@ -362,7 +386,7 @@ export class DaemonClient {
       }
       // Gone: start it and retry. Twice at most, for a daemon that stopped again
       // between its start (perhaps one another call was waiting for) and this call.
-      if (!canStart || starts >= MAX_STARTS) throw new DaemonError(NOT_RUNNING);
+      if (!canStart || starts >= MAX_STARTS) throw this.notRunning();
       starts++;
       const started = await this.start(dropped);
       // 'gone': it came up and stopped again, so this counts as a start and we look again.
@@ -384,6 +408,7 @@ export class DaemonClient {
 
   /** The daemon for this project, or undefined when none answers. */
   private async connect(): Promise<Connection | undefined> {
+    this.occupiedPort = undefined;
     const info = await readRuntime(this.opts.projectDir);
     if (info === undefined) return undefined;
     let health: Health;
@@ -394,8 +419,10 @@ export class DaemonClient {
         '/api/health',
         HealthResponse,
       );
-    } catch {
-      // Nothing listens, it hangs, or it isn't a Pitdeck: either way not ours.
+    } catch (err) {
+      // Nothing listens (Unreachable), or something answers that isn't a Pitdeck of this
+      // release: never ours, and only the second keeps the port busy.
+      if (err instanceof DaemonError) this.occupiedPort = info.port;
       return undefined;
     }
     const ours = await this.ownProjectId();
