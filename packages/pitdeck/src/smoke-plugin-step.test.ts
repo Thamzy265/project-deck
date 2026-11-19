@@ -37,6 +37,12 @@ else if (cmd === 'stop') {
       const msg = JSON.parse(buf.slice(0, at));
       buf = buf.slice(at + 1);
       if (msg.id === undefined) continue;
+      // Like the real server: the first call starts a daemon in the background, which
+      // writes runtime.json a little later. A stop that runs before then would miss it.
+      if (msg.method === 'initialize')
+        require('node:child_process')
+          .spawn(process.execPath, [require('node:path').join(__dirname, 'daemon.js'), '--project', process.cwd()], { detached: true, stdio: 'ignore' })
+          .unref();
       let result = {};
       if (msg.method === 'initialize')
         result = { protocolVersion: msg.params.protocolVersion, capabilities: { tools: {} }, serverInfo: { name: 'pitdeck', version: '0' } };
@@ -67,10 +73,10 @@ const server = http.createServer((req, res) => {
   if (req.headers['x-deck-token'] !== token) { res.statusCode = 401; return res.end('{}'); }
   res.end(JSON.stringify({ attached: { id: 'fake' } }));
 });
-server.listen(0, '127.0.0.1', () => {
+server.listen(0, '127.0.0.1', () => setTimeout(() => {
   fs.writeFileSync(path.join(project, '.pitdeck', 'runtime.json'),
     JSON.stringify({ token, port: server.address().port, pid: process.pid }));
-});
+}, 1500));
 `;
 
 let scratch = '';
@@ -155,6 +161,8 @@ describe('the tarball smoke script, plugin step (scripts/smoke/tarball.mjs)', ()
     expect(
       (await readdir(join(scratch, 'tmp'))).filter((n) => n.startsWith('pitdeck-smoke-')),
     ).toEqual([]);
+    // The daemon the MCP server started late was found and stopped, not left running.
+    expect(run.out).toMatch(/plugin step: pitdeck stop\s+PASS\s+Pitdeck stopped/);
     expect(run.out).not.toMatch(/\bFAIL\b/);
     expect(run.code).toBe(0);
   }, 150_000);

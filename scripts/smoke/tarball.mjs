@@ -16,7 +16,16 @@
 // instead of fetching a package called pitdeck from the registry. Every step has a timeout.
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
+import {
+  access,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  realpath,
+  rm,
+  writeFile,
+} from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
@@ -29,6 +38,8 @@ const { fetch, AbortSignal } = globalThis;
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const WIN = process.platform === 'win32';
 const STEP_MS = 60_000;
+/** How long to wait for the daemon the MCP server starts to write runtime.json. */
+const DAEMON_WAIT_MS = 15_000;
 /** Tools Pitdeck's MCP server must list (CLAUDE.md: no Dart MCP server duplicates). */
 const TOOLS = ['deck_status', 'get_logs', 'db_list', 'db_schema', 'db_query', 'db_snapshot'];
 
@@ -485,11 +496,31 @@ async function pluginCommand({ scratch, env, tarball, version, pkgDir }) {
   } finally {
     await transport.close().catch(() => undefined);
     registry.server.close();
-    // tools/list starts no daemon; stop one anyway if something did.
-    await run([process.execPath, [join(pkgDir, 'dist', 'cli.js'), 'stop', '--project', project]], {
-      cwd: project,
-      env,
-    });
+    // The MCP server starts a daemon in the background as soon as it runs, and that daemon
+    // writes runtime.json a moment later. Stopping before then would leave it running
+    // (and on Windows hold files in the scratch folder), so wait for the file first.
+    const runtime = join(project, '.pitdeck', 'runtime.json');
+    const deadline = Date.now() + DAEMON_WAIT_MS;
+    let up = false;
+    while (!up && Date.now() < deadline) {
+      up = await access(runtime).then(
+        () => true,
+        () => false,
+      );
+      if (!up) await sleep(100);
+    }
+    if (up) {
+      const stopped = await run(
+        [process.execPath, [join(pkgDir, 'dist', 'cli.js'), 'stop', '--project', project]],
+        { cwd: project, env },
+      );
+      record(
+        'plugin step: pitdeck stop',
+        stopped.code === 0,
+        stopped.error ? stopped.error.message : `${stopped.stdout} ${stopped.stderr}`,
+      );
+    } else
+      info('plugin step: pitdeck stop', `no daemon wrote runtime.json within ${DAEMON_WAIT_MS} ms`);
   }
 }
 
