@@ -5,7 +5,7 @@
  * hand-made: an MCP server that answers initialize and tools/list, and a daemon that
  * writes runtime.json. Nothing here reaches a real registry; HOME and npm's cache are scratch.
  */
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { createServer, type Server } from 'node:http';
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -75,26 +75,30 @@ const path = require('node:path');
 const version = require('../package.json').version;
 const project = process.argv[process.argv.indexOf('--project') + 1];
 const token = 'stand-in-' + process.pid;
-// A test reads this list afterwards to prove that no stand-in daemon is left running.
-if (process.env.STAND_IN_PIDS) fs.appendFileSync(process.env.STAND_IN_PIDS, process.pid + '\\n');
 // Never outlives a run that forgot it: a daemon with no one to stop it exits by itself.
-setTimeout(() => process.exit(0), 30000);
+setTimeout(() => process.exit(0), 120000);
 const server = http.createServer((req, res) => {
   res.setHeader('content-type', req.url === '/' ? 'text/html' : 'application/json');
-  if (req.url === '/api/health') return res.end(JSON.stringify({ ok: true, version }));
+  if (req.url === '/api/health') return res.end(JSON.stringify({ ok: true, version, pid: process.pid }));
   if (req.url === '/') return res.end('<script src="/assets/app.js"></script>');
   if (req.url === '/assets/app.js') { res.setHeader('content-type', 'text/javascript'); return res.end('0'); }
   if (req.headers['x-deck-token'] !== token) { res.statusCode = 401; return res.end('{}'); }
   res.end(JSON.stringify({ attached: { id: 'fake' } }));
 });
-server.listen(0, '127.0.0.1', () => setTimeout(() => {
+server.listen(0, '127.0.0.1', () => {
+  // A test reads this list afterwards to prove that no stand-in daemon is left running. The
+  // port lets it check, before it signals a pid, that the pid is still a stand-in.
+  if (process.env.STAND_IN_PIDS)
+    fs.appendFileSync(process.env.STAND_IN_PIDS, process.pid + ' ' + server.address().port + '\\n');
+  setTimeout(() => {
   try {
     fs.writeFileSync(path.join(project, '.pitdeck', 'runtime.json'),
       JSON.stringify({ token, port: server.address().port, pid: process.pid }));
   } catch {
     process.exit(1); // its folder is gone: nobody can find or stop it
   }
-}, 1500));
+  }, 1500);
+});
 `;
 
 let scratch = '';
@@ -150,21 +154,32 @@ beforeAll(async () => {
 
 /** Pids the stand-in daemons wrote, still alive: each is killed so a failure leaves nothing. */
 async function aliveStandIns(): Promise<number[]> {
-  const listed = await readFile(join(scratch, 'stand-in-pids.txt'), 'utf8').catch(() => '');
-  const alive: number[] = [];
-  for (const pid of listed
-    .split('\n')
-    .filter((l) => l !== '')
-    .map(Number)) {
+  return killStandIns(await readFile(join(scratch, 'stand-in-pids.txt'), 'utf8').catch(() => ''));
+}
+
+/**
+ * Kills the listed stand-ins ("pid port" per line) and returns their pids. A pid is only
+ * signalled when the program on its port still answers health with that same pid: after
+ * a stand-in exits the number can belong to any other process.
+ */
+async function killStandIns(listed: string): Promise<number[]> {
+  const killed: number[] = [];
+  for (const line of listed.split('\n').filter((l) => l !== '')) {
+    const [pid, port] = line.split(' ').map(Number);
+    if (pid === undefined || port === undefined || !Number.isInteger(pid) || pid <= 0) continue;
     try {
-      process.kill(pid, 0);
-      alive.push(pid);
+      const res = await fetch(`http://127.0.0.1:${port}/api/health`, {
+        signal: AbortSignal.timeout(1500),
+      });
+      const body = (await res.json()) as { pid?: unknown };
+      if (body.pid !== pid) continue;
       process.kill(pid);
+      killed.push(pid);
     } catch {
-      // already gone
+      // nothing answers there, or the process is gone
     }
   }
-  return alive;
+  return killed;
 }
 
 afterAll(async () => {
@@ -250,6 +265,28 @@ describe('the tarball smoke script, plugin step (scripts/smoke/tarball.mjs)', ()
       decoy.close();
     }
   }, 150_000);
+});
+
+describe('cleaning up stand-in daemons', () => {
+  it('leaves alone a pid that no stand-in answers for (a reused pid)', async () => {
+    // A process that is not a stand-in, listed as if it were one.
+    const other = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 20000)'], {
+      stdio: 'ignore',
+    });
+    // A server on the listed port that answers health with a different pid.
+    const impostor = createServer((_req, res) => res.end(JSON.stringify({ ok: true, pid: 1 })));
+    await new Promise<void>((done) => impostor.listen(0, '127.0.0.1', done));
+    const { port } = impostor.address() as { port: number };
+    try {
+      await killStandIns(`${other.pid} ${port}\n`);
+      await sleep(200);
+      expect(other.exitCode).toBeNull();
+      expect(other.signalCode).toBeNull();
+    } finally {
+      other.kill();
+      impostor.close();
+    }
+  });
 });
 
 describe('the stand-in package', () => {
