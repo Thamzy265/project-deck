@@ -4,6 +4,7 @@
  * leave the real HOME and Claude config alone, and never commit its output.
  */
 import { execFile, execFileSync } from 'node:child_process';
+import { copyFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import {
   mkdir,
   mkdtemp,
@@ -15,7 +16,7 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { isAbsolute, join } from 'node:path';
+import { dirname, isAbsolute, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { PLUGIN, REPO } from './paths.js';
 
@@ -172,13 +173,26 @@ describe('dev marketplace script: what it touches', () => {
   });
 });
 
-describe('the generated marketplace is never committed', () => {
-  const env = (): NodeJS.ProcessEnv => {
-    // Without any GIT_* variable, which would point git somewhere else.
-    return Object.fromEntries(
-      Object.entries(process.env).filter(([name]) => !name.startsWith('GIT_')),
-    );
-  };
+// Without any GIT_* variable, which would point git somewhere else.
+const gitEnv = (): NodeJS.ProcessEnv =>
+  Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith('GIT_')));
+
+// A source archive or a copy of the folder has no git history to ask.
+const inGit = ((): boolean => {
+  try {
+    execFileSync('git', ['rev-parse', '--is-inside-work-tree'], {
+      cwd: REPO,
+      env: gitEnv(),
+      stdio: 'ignore',
+    });
+    return true;
+  } catch {
+    return false;
+  }
+})();
+
+describe.skipIf(!inGit)('the generated marketplace is never committed', () => {
+  const env = gitEnv;
 
   it('is git-ignored at its default location, whole and file by file', () => {
     let ignored: string;
@@ -227,5 +241,93 @@ describe('dev marketplace script: arguments checked before anything is deleted',
     } finally {
       await rm(out, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     }
+  });
+});
+
+describe('dev marketplace script: overlap with plugin/ is judged on real paths', () => {
+  // The folder name `..dev` starts with two dots but is a child of plugin/.
+  it('refuses --out plugin/..dev, which is inside plugin/', async () => {
+    const out = join(PLUGIN, '..dev');
+    try {
+      const result = await run(['--out', out, '--cli', await fakeCli('o1')]);
+      expect(result.code).toBe(1);
+      expect(existsSync(out)).toBe(false);
+    } finally {
+      await rm(out, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    }
+  });
+
+  const foldsCase = existsSync(join(REPO, 'PLUGIN'));
+  (foldsCase ? it : it.skip)('refuses --out Plugin/dev on a case-insensitive disk', async () => {
+    const out = join(REPO, 'Plugin', 'zz-case-probe');
+    try {
+      const result = await run(['--out', out, '--cli', await fakeCli('o2')]);
+      expect(result.code).toBe(1);
+      expect(existsSync(join(PLUGIN, 'zz-case-probe'))).toBe(false);
+    } finally {
+      await rm(join(PLUGIN, 'zz-case-probe'), { recursive: true, force: true });
+    }
+  });
+
+  links('refuses an --out reached through a link to plugin/', async () => {
+    const link = join(scratch, 'to-plugin');
+    await symlink(PLUGIN, link, 'dir');
+    const inside = join(PLUGIN, 'zz-link-probe');
+    try {
+      const result = await run([
+        '--out',
+        join(link, 'zz-link-probe'),
+        '--cli',
+        await fakeCli('o3'),
+      ]);
+      expect(result.code).toBe(1);
+      expect(existsSync(inside)).toBe(false);
+    } finally {
+      await rm(inside, { recursive: true, force: true });
+    }
+  });
+
+  links('refuses a --cli that is inside --out through a link, and deletes nothing', async () => {
+    const out = join(scratch, 'out');
+    expect((await run(['--out', out, '--cli', await fakeCli('o4')])).code).toBe(0);
+    await writeFile(join(out, 'cli.js'), '');
+    const link = join(scratch, 'to-out');
+    await symlink(out, link, 'dir');
+    const result = await run(['--out', out, '--cli', join(link, 'cli.js')]);
+    expect(result.code).toBe(1);
+    expect(existsSync(join(out, 'cli.js'))).toBe(true);
+  });
+});
+
+describe('dev marketplace script: a failed run', () => {
+  it('leaves the marker, so the next run may replace the folder', async () => {
+    // A copy of the script beside a plugin/ whose .mcp.json is broken: the run fails after
+    // it made the folder and copied plugin/.
+    const root = join(scratch, 'fake-root');
+    mkdirSync(join(root, 'scripts'), { recursive: true });
+    mkdirSync(join(root, 'plugin'), { recursive: true });
+    copyFileSync(SCRIPT, join(root, 'scripts', 'dev-marketplace.mjs'));
+    const mcp = join(root, 'plugin', '.mcp.json');
+    writeFileSync(mcp, '{ not json');
+    const cli = await fakeCli('o5');
+    const out = join(scratch, 'out');
+    const env = { ...process.env, HOME: home, USERPROFILE: home };
+    const go = (): Promise<number> =>
+      new Promise((done) =>
+        execFile(
+          process.execPath,
+          [join(root, 'scripts', 'dev-marketplace.mjs'), '--out', out, '--cli', cli],
+          { env },
+          (err) => done(err === null ? 0 : 1),
+        ),
+      );
+    expect(await go()).toBe(1);
+    expect(existsSync(join(out, '.pitdeck-dev-marketplace'))).toBe(true);
+    writeFileSync(
+      mcp,
+      JSON.stringify({ mcpServers: { pitdeck: { type: 'stdio', command: 'npx', args: [] } } }),
+    );
+    expect(await go()).toBe(0);
+    expect(dirname(out)).toBe(scratch);
   });
 });

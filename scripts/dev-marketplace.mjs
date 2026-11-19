@@ -11,8 +11,9 @@
 // loads the change, because a marketplace added from a folder loads its plugins in place.
 //
 // Safety: it writes only <out>, and replaces <out> only if this script wrote it before.
+import { realpathSync } from 'node:fs';
 import { access, cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 
@@ -37,17 +38,39 @@ function fail(message) {
   process.exit(1);
 }
 
-// True when `path` is `folder` or lies inside it.
+// The path as the disk sees it: links resolved, and the on-disk spelling of each folder. The
+// last parts may not exist yet, so only the nearest folder that exists is resolved.
+function real(path) {
+  const rest = [];
+  for (let at = path; ;) {
+    try {
+      return join(realpathSync.native(at), ...rest.reverse());
+    } catch {
+      const parent = dirname(at);
+      if (parent === at) return path;
+      rest.push(basename(at));
+      at = parent;
+    }
+  }
+}
+
+// Windows and macOS usually fold case: `Plugin/dev` is `plugin/dev` there.
+const foldsCase = process.platform === 'win32' || (await exists(ROOT.toUpperCase()));
+const fold = (path) => (foldsCase ? path.toLowerCase() : path);
+
+// True when `path` is `folder` or lies inside it. A name like `..dev` is inside.
 const within = (folder, path) => {
-  const rel = relative(folder, path);
-  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
+  const rel = relative(fold(folder), fold(path));
+  return rel === '' || (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
 };
-const source = join(ROOT, 'plugin');
+const source = real(join(ROOT, 'plugin'));
+const realOut = real(out);
+const realCli = real(cli);
 
 // Check every argument before anything is deleted or written.
-if (within(source, out) || within(out, source))
+if (within(source, realOut) || within(realOut, source))
   fail(`--out ${out} overlaps plugin/, which this script copies; pick a folder outside it.`);
-if (within(out, cli))
+if (within(realOut, realCli))
   fail(`--cli ${cli} is inside --out ${out}, which this script replaces; pick another --cli.`);
 if (!(await exists(cli))) fail(`No CLI build at ${cli}. Run \`pnpm build\` first.`);
 if ((await exists(out)) && !(await exists(join(out, MARKER))))
@@ -56,6 +79,8 @@ if ((await exists(out)) && !(await exists(join(out, MARKER))))
 await rm(out, { recursive: true, force: true });
 const plugin = join(out, 'pitdeck');
 await mkdir(join(out, '.claude-plugin'), { recursive: true });
+// First, so a run that fails below doesn't lock the folder against the next run.
+await writeFile(join(out, MARKER), 'Written by scripts/dev-marketplace.mjs; safe to delete.\n');
 await cp(source, plugin, { recursive: true });
 
 const mcp = JSON.parse(await readFile(join(plugin, '.mcp.json'), 'utf8'));
@@ -78,7 +103,6 @@ await writeFile(
   join(out, '.claude-plugin', 'marketplace.json'),
   `${JSON.stringify(market, null, 2)}\n`,
 );
-await writeFile(join(out, MARKER), 'Written by scripts/dev-marketplace.mjs; safe to delete.\n');
 
 console.log(`Wrote the ${NAME} marketplace to ${out}`);
 console.log(`Its pitdeck MCP server runs: node ${cli} mcp`);
