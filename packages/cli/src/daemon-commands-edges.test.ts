@@ -188,23 +188,15 @@ describe('stop with a bad runtime.json', () => {
   }, 30_000);
 
   it('start probes a stalled daemon once, not once to look and once to start', async () => {
-    let connections = 0;
-    const seen: string[] = [];
-    const start = Date.now();
-    const sockets: Socket[] = [];
-    const stalled = createServer((socket) => {
-      connections++;
-      const t0 = Date.now();
-      seen.push(
-        `CONN#${connections} remote=${socket.remoteAddress}:${socket.remotePort} t=${t0 - start}ms`,
-      );
-      socket.on('data', (d) =>
-        seen.push(`DATA remote=${socket.remotePort} ${JSON.stringify(d.toString().slice(0, 300))}`),
-      );
-      socket.on('error', () => undefined);
-      sockets.push(socket);
+    // Counts HTTP requests, not TCP connections: after a timeout abort, Node 22 and 24's
+    // fetch opens one more socket that never carries a request (Node 26 doesn't).
+    const requests: string[] = [];
+    const stalled = createHttpServer((req) => {
+      requests.push(`${req.method ?? ''} ${req.url ?? ''}`);
+      // Never answers: a daemon that stalled but holds the port.
     });
     stalled.on('error', () => undefined);
+    stalled.on('clientError', () => undefined);
     await new Promise<void>((resolve) => stalled.listen(0, '127.0.0.1', resolve));
     const { port } = stalled.address() as AddressInfo;
     try {
@@ -217,9 +209,9 @@ describe('stop with a bad runtime.json', () => {
       });
       expect(await runStart(options(project))).toBe(1);
       expect(errors.join('\n')).toContain(`Quit process ${process.pid} by hand`);
-      expect(connections, `DIAG pid=${process.pid} ${seen.join(' | ')}`).toBe(1);
+      expect(requests).toEqual(['GET /api/health']);
     } finally {
-      for (const socket of sockets) socket.destroy();
+      stalled.closeAllConnections();
       await new Promise((resolve) => stalled.close(resolve));
     }
   }, 30_000);
