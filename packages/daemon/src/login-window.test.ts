@@ -2,7 +2,7 @@ import { request as httpRequest } from 'node:http';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { LoginWindowResponse, Registry } from '@project-deck/core';
+import { LoginWindowResponse, Registry, deckCommand } from '@project-deck/core';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Daemon } from './daemon.js';
 import { startDaemon } from './daemon.js';
@@ -80,8 +80,7 @@ function send(
 }
 
 const NAVIGATION = { 'sec-fetch-site': 'none', 'sec-fetch-mode': 'navigate' };
-const LOGIN_NEEDED =
-  'Login needed. Run `pitdeck open` in your project (or start a Claude session with the plugin), then reload this page.';
+const LOGIN_NEEDED = `Login needed. Run ${deckCommand('open')} in your project (or start a Claude session with the plugin), then reload this page.`;
 
 const cookieOf = (reply: Reply): string => (reply.setCookie[0] ?? '').split(';')[0] ?? '';
 const sameOrigin = (d: Daemon, cookie: string) => ({
@@ -121,7 +120,7 @@ describe('dashboard login window', () => {
     clock.advance(LOGIN_WINDOW_MS + 1);
     const res = await send(d, '/', NAVIGATION);
     expect(res.setCookie).toEqual([]);
-    expect(res.body.replace(/<[^>]+>/g, '')).toContain(LOGIN_NEEDED.replaceAll('`', ''));
+    expect(res.body.replace(/<[^>]+>/g, '')).toContain(LOGIN_NEEDED);
   });
 
   it('reopens for 2 minutes with the runtime.json token', async () => {

@@ -44,7 +44,9 @@ test('"Login needed" once the 2-minute window has closed; an old cookie still wo
   const late = await browser.newContext();
   const latePage = await late.newPage();
   await latePage.goto(deck.url);
-  await expect(latePage.getByText(/Login needed\. Run pitdeck open in your project/)).toBeVisible();
+  await expect(
+    latePage.getByText(/Login needed\. Run npx -y pitdeck@\S+ open in your project/),
+  ).toBeVisible();
   expect(await late.cookies()).toEqual([]);
   await late.close();
   await page.reload();

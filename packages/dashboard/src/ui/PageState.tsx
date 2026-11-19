@@ -1,3 +1,4 @@
+import { deckCommand } from '@project-deck/core';
 import type { ReactNode } from 'react';
 import { Spinner } from './Spinner.js';
 
@@ -27,8 +28,8 @@ export function ReauthPage() {
 export function DaemonDownPage() {
   return (
     <Centered>
-      Can't reach Pitdeck. Run <code className={code}>pitdeck start</code> in your project, or start
-      a Claude session with the plugin.
+      Can't reach Pitdeck. Run <code className={code}>{deckCommand('start')}</code> in your project,
+      or start a Claude session with the plugin.
     </Centered>
   );
 }
@@ -36,8 +37,8 @@ export function DaemonDownPage() {
 export function LoginNeededPage() {
   return (
     <Centered>
-      Login needed. Run <code className={code}>pitdeck open</code> in your project (or start a
-      Claude session with the plugin), then reload this page.
+      Login needed. Run <code className={code}>{deckCommand('open')}</code> in your project (or
+      start a Claude session with the plugin), then reload this page.
     </Centered>
   );
 }
