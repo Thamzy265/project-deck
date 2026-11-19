@@ -195,8 +195,12 @@ describe('stop with a bad runtime.json', () => {
     const stalled = createServer((socket) => {
       connections++;
       const t0 = Date.now();
-      seen.push(`CONN#${connections} remote=${socket.remoteAddress}:${socket.remotePort} t=${t0 - start}ms`);
-      socket.on('data', (d) => seen.push(`DATA remote=${socket.remotePort} ${JSON.stringify(d.toString().slice(0, 300))}`));
+      seen.push(
+        `CONN#${connections} remote=${socket.remoteAddress}:${socket.remotePort} t=${t0 - start}ms`,
+      );
+      socket.on('data', (d) =>
+        seen.push(`DATA remote=${socket.remotePort} ${JSON.stringify(d.toString().slice(0, 300))}`),
+      );
       socket.on('error', () => undefined);
       sockets.push(socket);
     });
