@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { setTimeout as sleep } from 'node:timers/promises';
 
 const ROOT = fileURLToPath(new URL('../../..', import.meta.url));
 const SCRIPT = join(ROOT, 'scripts', 'smoke', 'tarball.mjs');
@@ -22,6 +23,14 @@ const CLI = `#!/usr/bin/env node
 const fs = require('node:fs');
 const [cmd] = process.argv.slice(2);
 const tools = ${JSON.stringify(TOOLS)};
+function daemonAlive() {
+  try {
+    process.kill(JSON.parse(fs.readFileSync('.pitdeck/runtime.json', 'utf8')).pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
 if (cmd === '--help') console.log('Usage: pitdeck <command>');
 else if (cmd === '--version') console.log(require('../package.json').version);
 else if (cmd === 'stop') {
@@ -39,7 +48,8 @@ else if (cmd === 'stop') {
       if (msg.id === undefined) continue;
       // Like the real server: the first call starts a daemon in the background, which
       // writes runtime.json a little later. A stop that runs before then would miss it.
-      if (msg.method === 'initialize')
+      // Only when none answers, as the real server does (it never starts a second one).
+      if (msg.method === 'initialize' && !daemonAlive())
         require('node:child_process')
           .spawn(process.execPath, [require('node:path').join(__dirname, 'daemon.js'), '--project', process.cwd()], { detached: true, stdio: 'ignore' })
           .unref();
@@ -65,6 +75,10 @@ const path = require('node:path');
 const version = require('../package.json').version;
 const project = process.argv[process.argv.indexOf('--project') + 1];
 const token = 'stand-in-' + process.pid;
+// A test reads this list afterwards to prove that no stand-in daemon is left running.
+if (process.env.STAND_IN_PIDS) fs.appendFileSync(process.env.STAND_IN_PIDS, process.pid + '\\n');
+// Never outlives a run that forgot it: a daemon with no one to stop it exits by itself.
+setTimeout(() => process.exit(0), 30000);
 const server = http.createServer((req, res) => {
   res.setHeader('content-type', req.url === '/' ? 'text/html' : 'application/json');
   if (req.url === '/api/health') return res.end(JSON.stringify({ ok: true, version }));
@@ -74,8 +88,12 @@ const server = http.createServer((req, res) => {
   res.end(JSON.stringify({ attached: { id: 'fake' } }));
 });
 server.listen(0, '127.0.0.1', () => setTimeout(() => {
-  fs.writeFileSync(path.join(project, '.pitdeck', 'runtime.json'),
-    JSON.stringify({ token, port: server.address().port, pid: process.pid }));
+  try {
+    fs.writeFileSync(path.join(project, '.pitdeck', 'runtime.json'),
+      JSON.stringify({ token, port: server.address().port, pid: process.pid }));
+  } catch {
+    process.exit(1); // its folder is gone: nobody can find or stop it
+  }
 }, 1500));
 `;
 
@@ -96,6 +114,7 @@ function scratchEnv(extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
     npm_config_cache: join(scratch, 'npm-cache'),
     npm_config_userconfig: join(scratch, 'npmrc'),
     npm_config_update_notifier: 'false',
+    STAND_IN_PIDS: join(scratch, 'stand-in-pids.txt'),
   };
 }
 
@@ -129,7 +148,27 @@ beforeAll(async () => {
   tarball = join(scratch, 'pkg', (JSON.parse(packed) as { filename: string }[])[0]?.filename ?? '');
 }, 90_000);
 
+/** Pids the stand-in daemons wrote, still alive: each is killed so a failure leaves nothing. */
+async function aliveStandIns(): Promise<number[]> {
+  const listed = await readFile(join(scratch, 'stand-in-pids.txt'), 'utf8').catch(() => '');
+  const alive: number[] = [];
+  for (const pid of listed
+    .split('\n')
+    .filter((l) => l !== '')
+    .map(Number)) {
+    try {
+      process.kill(pid, 0);
+      alive.push(pid);
+      process.kill(pid);
+    } catch {
+      // already gone
+    }
+  }
+  return alive;
+}
+
 afterAll(async () => {
+  await aliveStandIns();
   if (scratch !== '')
     await rm(scratch, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
 }, 30_000);
@@ -211,4 +250,14 @@ describe('the tarball smoke script, plugin step (scripts/smoke/tarball.mjs)', ()
       decoy.close();
     }
   }, 150_000);
+});
+
+describe('the stand-in package', () => {
+  it('leaves no daemon running after the smoke runs', async () => {
+    await sleep(500); // a stopped daemon needs a moment to exit
+    expect(await aliveStandIns()).toEqual([]);
+    // Without this the test would pass when no run happened (for example a skipped step).
+    const listed = await readFile(join(scratch, 'stand-in-pids.txt'), 'utf8');
+    expect(listed.split('\n').filter((l) => l !== '').length).toBeGreaterThan(0);
+  });
 });
