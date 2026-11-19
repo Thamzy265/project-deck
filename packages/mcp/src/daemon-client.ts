@@ -290,6 +290,19 @@ export class DaemonClient {
     return (await answer).value;
   }
 
+  /**
+   * `openLoginWindow`, starting the daemon when needed, and whether one already answered.
+   * One look decides both, so a stalled daemon costs one time limit, not two.
+   */
+  async startLoginWindow(): Promise<{ window: LoginWindowResult; wasRunning: boolean }> {
+    const call = (c: Connection) =>
+      this.request(c, 'POST', '/api/login-window', LoginWindowResponse);
+    const first = await this.probeChecked();
+    if (!(await this.isSetUp())) throw new DaemonError(NOT_SET_UP);
+    const answer = await this.callDaemon(call, first, true);
+    return { window: answer.value, wasRunning: first.kind === 'connected' };
+  }
+
   /** Like withDaemon, but a daemon that isn't running is an error, never started. */
   private async withRunning<T>(call: (c: Connection) => Promise<T>): Promise<Answer<T>> {
     const probe = await this.probeChecked();

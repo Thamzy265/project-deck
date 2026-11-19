@@ -187,6 +187,34 @@ describe('stop with a bad runtime.json', () => {
     }
   }, 30_000);
 
+  it('start probes a stalled daemon once, not once to look and once to start', async () => {
+    let connections = 0;
+    const sockets: Socket[] = [];
+    const stalled = createServer((socket) => {
+      connections++;
+      socket.on('error', () => undefined);
+      sockets.push(socket);
+    });
+    stalled.on('error', () => undefined);
+    await new Promise<void>((resolve) => stalled.listen(0, '127.0.0.1', resolve));
+    const { port } = stalled.address() as AddressInfo;
+    try {
+      const project = await newProject(port);
+      await writeRuntime(project, {
+        pid: process.pid,
+        port,
+        token: randomBytes(32).toString('base64url'),
+        startedAt: 1,
+      });
+      expect(await runStart(options(project))).toBe(1);
+      expect(errors.join('\n')).toContain(`Quit process ${process.pid} by hand`);
+      expect(connections).toBe(1);
+    } finally {
+      for (const socket of sockets) socket.destroy();
+      await new Promise((resolve) => stalled.close(resolve));
+    }
+  }, 30_000);
+
   it("never stops another project's daemon through a copied runtime.json", async () => {
     const port = await freePort();
     const first = await newProject(port);

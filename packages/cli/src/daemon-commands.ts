@@ -64,9 +64,8 @@ function loginLines(url: string, until: number): string[] {
 export function runStart(opts: DaemonCommandOptions): Promise<number> {
   return guarded(opts.io, async () => {
     const client = clientFor(opts);
-    const wasRunning = await client.running();
     // Starts the daemon when it isn't running, and waits until it answers.
-    const window = await client.openLoginWindow();
+    const { window, wasRunning } = await client.startLoginWindow();
     const url = await dashboard(client, opts.io, true);
     opts.io.out(
       wasRunning
