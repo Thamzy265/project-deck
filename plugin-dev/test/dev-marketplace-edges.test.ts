@@ -16,7 +16,7 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, isAbsolute, join } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { PLUGIN, REPO } from './paths.js';
 
@@ -328,6 +328,8 @@ describe('dev marketplace script: a failed run', () => {
       JSON.stringify({ mcpServers: { pitdeck: { type: 'stdio', command: 'npx', args: [] } } }),
     );
     expect(await go()).toBe(0);
-    expect(dirname(out)).toBe(scratch);
+    // The second run really wrote the marketplace into the folder it was allowed to replace.
+    expect(existsSync(join(out, '.claude-plugin', 'marketplace.json'))).toBe(true);
+    expect(existsSync(join(out, 'pitdeck', '.mcp.json'))).toBe(true);
   });
 });
