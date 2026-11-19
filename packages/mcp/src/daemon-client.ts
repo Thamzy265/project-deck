@@ -32,6 +32,7 @@ import {
   TOKEN_HEADER,
   deckCommand,
   portTakenText,
+  stalledText,
 } from '@project-deck/core';
 import {
   IncompleteBundleError,
@@ -66,14 +67,8 @@ export function droppedCallText(port: number, pid: number, route: string): strin
 export function droppedShutdownText(port: number, pid: number): string {
   return `Pitdeck daemon on port ${port} (pid ${pid}) answers health but dropped POST /api/shutdown. Quit process ${pid} by hand, then try again.`;
 }
-/**
- * The daemon in runtime.json holds the port but didn't answer health in time. It may
- * still be ours, so no call says "not running" and none starts a second one beside it
- * (that one would only fail on the busy port): the user quits it.
- */
-export function stalledText(port: number, pid: number): string {
-  return `Pitdeck daemon on port ${port} (pid ${pid}) didn't answer within the time limit. Quit process ${pid} by hand, then try again.`;
-}
+/** A daemon that holds the port but doesn't answer health: shared words with the daemon. */
+export { stalledText };
 /** Another program holds the port (shared words, so the daemon says the same). */
 export { portTakenText };
 const TOKEN_REJECTED = `Pitdeck daemon rejected the token in .pitdeck/runtime.json. Run \`${deckCommand('stop')}\`, then try again.`;

@@ -3,7 +3,7 @@ import { createServer } from 'node:http';
 import type { AddressInfo, Socket } from 'node:net';
 import { createServer as createNetServer } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
-import { DECK_VERSION } from '@project-deck/core';
+import { DECK_VERSION, stalledText } from '@project-deck/core';
 import { HEALTH_PROBE_TIMEOUT_MS, PortBusyError, identifyPortHolder } from './port-busy.js';
 
 const cleanups: (() => Promise<unknown>)[] = [];
@@ -65,7 +65,7 @@ describe('identifyPortHolder', () => {
       // Too slow is not "another program": it may be a stalled Pitdeck (R3).
       expect(err.holder).toEqual({ kind: 'unresponsive' });
       expect(err.message).toContain(`port ${port}`);
-      expect(err.message).toContain("didn't answer");
+      expect(err.message).toContain(stalledText(port));
       expect(err.message).not.toContain('Another program');
       expect(ms).toBeLessThan(HEALTH_PROBE_TIMEOUT_MS + 1500);
     },

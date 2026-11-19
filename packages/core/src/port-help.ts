@@ -20,3 +20,13 @@ export const HOW_TO_CHANGE_PORT = `run \`${deckCommand('init')}\`, or change "po
 export function portTakenText(port: number): string {
   return `Another program uses port ${port}. Stop it, or pick another port: ${HOW_TO_CHANGE_PORT}`;
 }
+
+/**
+ * The program on the daemon's port didn't answer health in time. It may still be a Pitdeck
+ * daemon, so nothing says "not running" and nothing starts a second one beside it. The
+ * pid, when runtime.json gave one, is only a name for the user: Pitdeck never signals it.
+ */
+export function stalledText(port: number, pid?: number): string {
+  const who = pid === undefined ? '' : ` (pid ${pid})`;
+  return `Pitdeck daemon on port ${port}${who} didn't answer within the time limit. Quit ${pid === undefined ? 'it' : `process ${pid}`} by hand, then try again.`;
+}

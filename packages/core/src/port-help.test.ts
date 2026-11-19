@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DECK_VERSION } from './constants.js';
-import { deckCommand, deckNpxArgs, portTakenText } from './port-help.js';
+import { deckCommand, deckNpxArgs, portTakenText, stalledText } from './port-help.js';
 
 describe('port help text', () => {
   it('names a command that works without pitdeck on the PATH', () => {
@@ -18,5 +18,14 @@ describe('port help text', () => {
     expect(text).toContain(`\`${deckCommand('init')}\``);
     expect(text).toContain('.pitdeck/config.json');
     expect(text).not.toContain('`pitdeck init`');
+  });
+
+  it('says the same words for a stalled daemon, with or without its pid', () => {
+    expect(stalledText(9147, 42)).toBe(
+      "Pitdeck daemon on port 9147 (pid 42) didn't answer within the time limit. Quit process 42 by hand, then try again.",
+    );
+    expect(stalledText(9147)).toBe(
+      "Pitdeck daemon on port 9147 didn't answer within the time limit. Quit it by hand, then try again.",
+    );
   });
 });
