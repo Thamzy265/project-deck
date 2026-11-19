@@ -22,10 +22,10 @@ describe('port help text', () => {
 
   it('says the same words for a stalled daemon, with or without its pid', () => {
     expect(stalledText(9147, 42)).toBe(
-      "Pitdeck daemon on port 9147 (pid 42) didn't answer within the time limit. Quit process 42 by hand, then try again.",
+      "Pitdeck daemon on port 9147 (pid 42) didn't answer within the time limit. Quit process 42 by hand, or delete .pitdeck/runtime.json if no Pitdeck runs, then try again.",
     );
     expect(stalledText(9147)).toBe(
-      "Pitdeck daemon on port 9147 didn't answer within the time limit. Quit it by hand, then try again.",
+      "Pitdeck daemon on port 9147 didn't answer within the time limit. Quit it by hand, or delete .pitdeck/runtime.json if no Pitdeck runs, then try again.",
     );
   });
 });

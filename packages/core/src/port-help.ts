@@ -28,5 +28,5 @@ export function portTakenText(port: number): string {
  */
 export function stalledText(port: number, pid?: number): string {
   const who = pid === undefined ? '' : ` (pid ${pid})`;
-  return `Pitdeck daemon on port ${port}${who} didn't answer within the time limit. Quit ${pid === undefined ? 'it' : `process ${pid}`} by hand, then try again.`;
+  return `Pitdeck daemon on port ${port}${who} didn't answer within the time limit. Quit ${pid === undefined ? 'it' : `process ${pid}`} by hand, or delete .pitdeck/runtime.json if no Pitdeck runs, then try again.`;
 }

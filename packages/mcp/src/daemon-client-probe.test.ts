@@ -4,6 +4,8 @@
  * and a tool call starts nothing beside it (R2, R3). And what one call finds must not leak
  * into another call that runs at the same time.
  */
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
 import { randomBytes } from 'node:crypto';
 import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import { createServer } from 'node:http';
@@ -41,7 +43,7 @@ beforeEach(async () => {
   port = (server.address() as AddressInfo).port;
   // Built at run time so it never looks like a real credential.
   const token = randomBytes(32).toString('base64url');
-  await writeRuntime(projectDir, { pid: 424_242, port, token, startedAt: Date.now() });
+  await writeRuntime(projectDir, { pid: process.pid, port, token, startedAt: Date.now() });
 });
 
 afterEach(async () => {
@@ -78,7 +80,7 @@ describe('a health probe that times out', () => {
     const err = await client()
       .status({ start: false })
       .catch((e: unknown) => e);
-    expect((err as Error).message).toBe(stalledText(port, 424_242));
+    expect((err as Error).message).toBe(stalledText(port, process.pid));
     expect((err as Error).message).not.toContain('Another program');
   });
 
@@ -98,7 +100,7 @@ describe('a health probe that times out', () => {
       pollMs: 10,
     });
     const err = await c.status().catch((e: unknown) => e);
-    expect((err as Error).message).toBe(stalledText(port, 424_242));
+    expect((err as Error).message).toBe(stalledText(port, process.pid));
     expect(spawned).toBe(0);
   });
 
@@ -106,28 +108,81 @@ describe('a health probe that times out', () => {
     const err = await client()
       .shutdown()
       .catch((e: unknown) => e);
-    expect((err as Error).message).toContain(`pid 424242`);
+    expect((err as Error).message).toContain(`pid ${process.pid}`);
     expect((err as Error).message).toContain(`port ${port}`);
     expect((err as Error).message).toContain("didn't answer");
-    expect((err as Error).message).toContain('Quit process 424242 by hand');
-    expect((err as Error).message).not.toBe(droppedShutdownText(port, 424_242));
+    expect((err as Error).message).toContain(`Quit process ${process.pid} by hand`);
+    expect((err as Error).message).not.toBe(droppedShutdownText(port, process.pid));
+  });
+
+  it('tells the user the way out when no Pitdeck runs', async () => {
+    const err = await client()
+      .status({ start: false })
+      .catch((e: unknown) => e);
+    expect((err as Error).message).toContain('delete .pitdeck/runtime.json if no Pitdeck runs');
   });
 
   it('stop() fails the same way, after a single look', async () => {
     const result = await client()
       .stop()
       .catch((e: unknown) => e);
-    expect((result as Error).message).toContain('Quit process 424242 by hand');
+    expect((result as Error).message).toContain(`Quit process ${process.pid} by hand`);
+  });
+});
+
+/** A pid that no process holds now: a child that has already exited. */
+async function deadPid(): Promise<number> {
+  const child = spawn(process.execPath, ['-e', '0'], { stdio: 'ignore' });
+  await once(child, 'exit');
+  return child.pid ?? 0;
+}
+
+describe('a health probe that times out when runtime.json is stale (R4)', () => {
+  beforeEach(async () => {
+    // Something unrelated listens on the old port and never answers.
+    handler = () => undefined;
+    const pid = await deadPid();
+    await writeRuntime(projectDir, { pid, port, token: 'x'.repeat(43), startedAt: Date.now() });
+  });
+
+  it('is not a stalled daemon when its pid is gone: status says not running', async () => {
+    const err = await client()
+      .status({ start: false })
+      .catch((e: unknown) => e);
+    expect((err as Error).message).toBe(NOT_RUNNING);
+  });
+
+  it('lets stop() finish instead of throwing', async () => {
+    await expect(client().stop()).resolves.toEqual({ stopped: false });
+  });
+
+  it('lets a tool call start a daemon', async () => {
+    let spawned = 0;
+    const c = new DaemonClient({
+      projectDir,
+      version: '0.0.0',
+      projectId: () => Promise.resolve(FAKE_PROJECT_ID),
+      spawnDaemon: () => {
+        spawned++;
+      },
+      timeoutMs: 100,
+      readyTimeoutMs: 200,
+      stopTimeoutMs: 200,
+      pollMs: 10,
+    });
+    await c.status().catch(() => undefined);
+    expect(spawned).toBe(1);
   });
 });
 
 describe('a program that answers health without being Pitdeck', () => {
   it('is still reported as another program', async () => {
     handler = (_req, res) => foreign(res);
-    const c = client();
-    const err = await c.status({ start: false }).catch((e: unknown) => e);
+    const err = await client()
+      .status({ start: false })
+      .catch((e: unknown) => e);
     expect((err as Error).message).toBe(portTakenText(port));
-    await expect(c.otherProgramPort()).resolves.toBe(port);
+    await expect(client().stop()).resolves.toEqual({ stopped: false, otherPort: port });
   });
 });
 

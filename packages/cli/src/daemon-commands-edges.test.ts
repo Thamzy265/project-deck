@@ -170,7 +170,7 @@ describe('stop with a bad runtime.json', () => {
     try {
       const project = await newProject(port);
       await writeRuntime(project, {
-        pid: 424_242,
+        pid: process.pid,
         port,
         token: randomBytes(32).toString('base64url'),
         startedAt: 1,
@@ -179,7 +179,7 @@ describe('stop with a bad runtime.json', () => {
       expect(lines).toEqual([]);
       const text = errors.join('\n');
       expect(text).toContain(`port ${port}`);
-      expect(text).toContain('Quit process 424242 by hand');
+      expect(text).toContain(`Quit process ${process.pid} by hand`);
       expect(text).not.toContain("isn't running");
     } finally {
       for (const socket of sockets) socket.destroy();

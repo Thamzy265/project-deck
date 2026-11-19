@@ -140,6 +140,16 @@ type Probe =
 const connectionOf = (p: Probe): Connection | undefined =>
   p.kind === 'connected' ? p.conn : undefined;
 
+/** Whether a process with this pid exists. EPERM means it does, owned by someone else. */
+function pidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0); // signal 0 only checks; Pitdeck never signals a process
+    return true;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === 'EPERM';
+  }
+}
+
 /** No daemon answered: nothing listens, or it isn't a Pitdeck. */
 class Unreachable extends Error {
   constructor(readonly route: string) {
@@ -294,15 +304,6 @@ export class DaemonClient {
     return new DaemonError(NOT_RUNNING);
   }
 
-  /**
-   * The port of a program that answers health without being this project's Pitdeck
-   * daemon, or undefined. A daemon that only answers slowly is not another program.
-   */
-  async otherProgramPort(): Promise<number | undefined> {
-    const probe = await this.probeChecked();
-    return probe.kind === 'other' ? probe.port : undefined;
-  }
-
   /** Whether this project's daemon answers. Never starts one. */
   async running(): Promise<boolean> {
     return (await this.probeChecked()).kind === 'connected';
@@ -312,6 +313,7 @@ export class DaemonClient {
    * Asks this project's daemon to stop and waits until its runtime.json is gone or holds
    * another daemon's details. False when none was running. Never starts one, and never
    * signals a process: the pid in runtime.json may belong to another program by now.
+   * Throws when the daemon is stalled: it holds the port, so "isn't running" would be wrong.
    */
   async shutdown(): Promise<boolean> {
     return (await this.stop()).stopped;
@@ -463,7 +465,13 @@ export class DaemonClient {
       // and maybe still ours): neither is another program. Something that answers but isn't
       // a Pitdeck of this release is never ours, and only that keeps the port busy.
       if (err instanceof Unreachable) return { kind: 'none' };
-      if (err instanceof RequestTimeout) return { kind: 'stalled', port: info.port, pid: info.pid };
+      if (err instanceof RequestTimeout) {
+        // A dead pid means runtime.json is stale and something unrelated holds the port:
+        // nothing of ours to wait for or to quit (R4).
+        return pidAlive(info.pid)
+          ? { kind: 'stalled', port: info.port, pid: info.pid }
+          : { kind: 'none' };
+      }
       if (err instanceof DaemonError) return { kind: 'other', port: info.port };
       return { kind: 'none' };
     }
