@@ -6,6 +6,7 @@
  * writes runtime.json. Nothing here reaches a real registry; HOME and npm's cache are scratch.
  */
 import { execFile } from 'node:child_process';
+import { createServer, type Server } from 'node:http';
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -76,8 +77,8 @@ let scratch = '';
 let pin = '';
 let tarball = '';
 
-function scratchEnv(): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { ...process.env };
+function scratchEnv(extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env, ...extra };
   delete env['NODE_PATH']; // pnpm points it at this workspace's packages
   return {
     ...env,
@@ -156,5 +157,50 @@ describe('the tarball smoke script, plugin step (scripts/smoke/tarball.mjs)', ()
     ).toEqual([]);
     expect(run.out).not.toMatch(/\bFAIL\b/);
     expect(run.code).toBe(0);
+  }, 150_000);
+
+  it('ignores npm settings in the parent environment, in any letter case', async () => {
+    // A decoy registry on loopback records any request. A real leak would go to a public
+    // host; the decoy proves the same thing without the network. Keys in three cases cover
+    // pnpm (lower), a developer shell (upper) and Windows' mixed spelling.
+    const hits: string[] = [];
+    const decoy: Server = createServer((req, res) => {
+      hits.push(`${req.method ?? ''} ${req.url ?? ''}`);
+      res.statusCode = 404;
+      res.end('{}');
+    });
+    await new Promise<void>((ok) => decoy.listen(0, '127.0.0.1', ok));
+    try {
+      const address = decoy.address();
+      const url = `http://127.0.0.1:${typeof address === 'object' && address !== null ? address.port : 0}/`;
+      const decoyRc = join(scratch, 'decoy-npmrc');
+      await writeFile(decoyRc, `registry=${url}\n`);
+      const hostile: NodeJS.ProcessEnv = {
+        NPM_CONFIG_REGISTRY: url,
+        npm_config_registry: url,
+        Npm_Config_Registry: url,
+        NPM_CONFIG_USERCONFIG: decoyRc,
+        NPM_CONFIG_GLOBALCONFIG: decoyRc,
+        npm_config_globalconfig: decoyRc,
+      };
+      const run = await new Promise<{ code: number | null; out: string }>((done) => {
+        execFile(
+          process.execPath,
+          [SCRIPT, tarball],
+          { env: scratchEnv(hostile), timeout: 140_000, encoding: 'utf8' },
+          (err, stdout, stderr) =>
+            done({
+              code: err === null ? 0 : typeof err.code === 'number' ? err.code : null,
+              out: `${stdout}\n${stderr}`,
+            }),
+        );
+      });
+      expect(hits).toEqual([]);
+      expect(run.out).toMatch(/npx fetched the pin from the loopback registry\s+PASS/);
+      expect(run.out).not.toMatch(/\bFAIL\b/);
+      expect(run.code).toBe(0);
+    } finally {
+      decoy.close();
+    }
   }, 150_000);
 });

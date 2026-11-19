@@ -163,20 +163,27 @@ async function main(scratch, tarballArg) {
   // Nothing that lets a child resolve or preload code from outside the install: NODE_PATH
   // (pnpm sets it to this workspace's packages) and NODE_OPTIONS (--import, --require,
   // --conditions). Otherwise a tarball missing its own files could pass.
-  const parent = { ...process.env };
+  const parent = Object.fromEntries(
+    Object.entries(process.env).filter(([key]) => !/^npm_config_/i.test(key)),
+  );
   delete parent.NODE_PATH;
   delete parent.NODE_OPTIONS;
+  // Every npm setting from the caller goes too, in any letter case. pnpm exports
+  // npm_config_*; a shell may export NPM_CONFIG_*. Windows treats the spellings as one
+  // variable, so if both stay, the child can get the caller's registry instead of ours.
   const env = {
     ...parent,
     HOME: home,
     USERPROFILE: home,
     npm_config_cache: join(scratch, 'npm-cache'),
     npm_config_userconfig: join(scratch, 'npmrc'),
+    npm_config_globalconfig: join(scratch, 'npmrc-global'),
     npm_config_update_notifier: 'false',
     npm_config_fund: 'false',
     npm_config_audit: 'false',
   };
   await writeFile(join(scratch, 'npmrc'), '');
+  await writeFile(join(scratch, 'npmrc-global'), '');
   // npx must run the local install or fail, never fetch a package named pitdeck.
   const npxEnv = { ...env, npm_config_yes: 'false', npm_config_offline: 'true' };
 
