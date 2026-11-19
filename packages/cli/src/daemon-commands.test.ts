@@ -2,6 +2,7 @@
  * start, stop and open against the real daemon (built dist), started with --fake so no
  * Flutter, DTD or adb is needed. HOME is the scratch folder from the global setup.
  */
+import { deckCommand } from '@project-deck/core';
 import type { ChildProcess } from 'node:child_process';
 import { spawn } from 'node:child_process';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -145,14 +146,14 @@ describe('without a running daemon', () => {
   it('open says to run start, and starts nothing', async () => {
     const code = await runOpen({ ...options(), browser: true, openBrowser: () => true });
     expect(code).toBe(1);
-    expect(errors.join('\n')).toContain('pitdeck start');
+    expect(errors.join('\n')).toContain(deckCommand('start'));
     expect(children).toEqual([]);
   });
 
   it('start refuses a folder init never set up', async () => {
     await rm(join(project, '.pitdeck'), { recursive: true });
     expect(await runStart(options())).toBe(1);
-    expect(errors.join('\n')).toContain('pitdeck init');
+    expect(errors.join('\n')).toContain(deckCommand('init'));
     expect(children).toEqual([]);
   });
 });

@@ -33,7 +33,6 @@ import { readBundleId } from './ios-bundle-id.js';
 import type { Io } from './io.js';
 import { messageOf } from './io.js';
 import { launchJsonProblem, mergeLaunchJson } from './launch-json.js';
-import { CLI_NAME } from './name.js';
 import { MARKETPLACE_NAME, MARKETPLACE_REPO, PLUGIN_NAME, pitdeckMcpServer } from './plugin.js';
 import type { RunTool } from './prerequisites.js';
 import { checkPrerequisites, formatPrerequisites } from './prerequisites.js';
@@ -158,7 +157,7 @@ const INIT_LOCK = 'init.lock';
  * missing, and removed again (only if still empty) when `fn` fails, so a refused init
  * leaves the project as it was.
  */
-const ANOTHER_INIT = `Another \`${CLI_NAME} init\` is running in this project; try again.`;
+const ANOTHER_INIT = `Another \`${deckCommand('init')}\` is running in this project; try again.`;
 
 async function withInitLock<T>(
   projectDir: string,
@@ -234,7 +233,7 @@ async function inspect(projectDir: string): Promise<Plan> {
       settings = await readConfig(projectDir);
     } catch (err) {
       if (err instanceof ConfigError) {
-        throw new Refused(`${err.message} Fix it, then run \`${CLI_NAME} init\` again.`);
+        throw new Refused(`${err.message} Fix it, then run \`${deckCommand('init')}\` again.`);
       }
       throw err;
     }
@@ -285,7 +284,7 @@ async function choosePort(
   const other = await claimConfigPort(opts.projectDir, configured, registry);
   const chosen: ChosenPort = { port: configured, source: `kept from ${CONFIG_SHOWN}` };
   if (other !== undefined) {
-    chosen.warning = `port ${configured} is also registered to another project (project ${other}); if both run at once, one will fail. Remove "port" from ${CONFIG_SHOWN} and run \`${CLI_NAME} init\` to pick a new one.`;
+    chosen.warning = `port ${configured} is also registered to another project (project ${other}); if both run at once, one will fail. Remove "port" from ${CONFIG_SHOWN} and run \`${deckCommand('init')}\` to pick a new one.`;
   }
   return chosen;
 }

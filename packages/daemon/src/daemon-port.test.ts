@@ -5,7 +5,7 @@ import type { AddressInfo, Socket } from 'node:net';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { DECK_VERSION, Registry } from '@project-deck/core';
+import { DECK_VERSION, Registry, deckCommand } from '@project-deck/core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ConfigError } from './config.js';
 import type { Daemon } from './daemon.js';
@@ -126,7 +126,7 @@ describe('fixed port from .pitdeck/config.json', () => {
     expect(d.port).toBe(port);
     const otherId = await projectIdentity(otherDir, { homeDir });
     expect(messages).toContain(
-      `Port ${port} is also registered to another project (project ${otherId}); if both run at once one will fail. Run \`pitdeck init\` to pick a new port.`,
+      `Port ${port} is also registered to another project (project ${otherId}); if both run at once one will fail. Run \`${deckCommand('init')}\` to pick a new port.`,
     );
   });
 

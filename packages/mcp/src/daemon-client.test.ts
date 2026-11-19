@@ -1,3 +1,4 @@
+import { deckCommand } from '@project-deck/core';
 import { mkdtemp, readdir, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -126,7 +127,7 @@ describe('DaemonClient', () => {
     });
     const err = await rejection(c.status());
     expect(err.message).toBe(
-      `The program on port ${f.port} didn't say which project it serves, so Pitdeck didn't send it the token. Run \`pitdeck stop\` and try again.`,
+      `The program on port ${f.port} didn't say which project it serves, so Pitdeck didn't send it the token. Run \`${deckCommand('stop')}\` and try again.`,
     );
     expect(f.requests.every((r) => r.headers['x-deck-token'] === undefined)).toBe(true);
     expect(spawned).toBe(0);
@@ -156,7 +157,7 @@ describe('DaemonClient', () => {
     f.health = { ...f.health, version: '0.0.1' };
     const answer = await client({ version: '0.1.0' }).status();
     expect(answer.warnings).toEqual([
-      'Pitdeck daemon version 0.0.1 differs from this MCP server (0.1.0). Run `pitdeck stop`; the next call starts the matching daemon.',
+      `Pitdeck daemon version 0.0.1 differs from this MCP server (0.1.0). Run \`${deckCommand('stop')}\`; the next call starts the matching daemon.`,
     ]);
   });
 
@@ -472,7 +473,7 @@ describe('DaemonClient when the daemon is down', () => {
       }).status(),
     );
     expect(err.message).toBe(NOT_RUNNING);
-    expect(NOT_RUNNING).toBe("Pitdeck daemon isn't running: run `pitdeck start`");
+    expect(NOT_RUNNING).toBe(`Pitdeck daemon isn't running: run \`${deckCommand('start')}\``);
     expect(spawned).toBe(1);
   });
 
@@ -532,7 +533,9 @@ describe('DaemonClient in a folder without Pitdeck', () => {
         const err = await rejection(call());
         expect(err.message).toBe(NOT_SET_UP);
       }
-      expect(NOT_SET_UP).toBe("Pitdeck isn't set up in this folder. Run `pitdeck init` first.");
+      expect(NOT_SET_UP).toBe(
+        `Pitdeck isn't set up in this folder. Run \`${deckCommand('init')}\` first.`,
+      );
       expect(spawned).toBe(0);
       expect(await readdir(bare)).toEqual([]);
     } finally {

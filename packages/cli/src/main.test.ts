@@ -12,7 +12,7 @@ import {
   StdioClientTransport,
   getDefaultEnvironment,
 } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { DECK_VERSION } from '@project-deck/core';
+import { DECK_VERSION, deckCommand } from '@project-deck/core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 /** deck_status, get_logs and the read-only database tools; no write tool. */
@@ -122,6 +122,6 @@ describe('main.js', () => {
     expect(tools.map((t) => t.name).sort()).toEqual(ALL_TOOLS);
     const status = await client.callTool({ name: 'deck_status', arguments: {} });
     const text = (status.content as { text: string }[])[0]?.text ?? '';
-    expect(text).toContain('pitdeck init');
+    expect(text).toContain(deckCommand('init'));
   }, 30_000);
 });

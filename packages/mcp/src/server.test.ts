@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import type { LogEntry } from '@project-deck/core';
-import { DECK_VERSION, Registry } from '@project-deck/core';
+import { DECK_VERSION, Registry, deckCommand } from '@project-deck/core';
 import { FakeAppConnector, fakeApp } from '@project-deck/core/testing';
 import type { Daemon } from '@project-deck/daemon';
 import { projectIdentity, startDaemon } from '@project-deck/daemon';
@@ -144,7 +144,7 @@ describe('a folder without Pitdeck', () => {
     });
     const status = await call(client, 'deck_status');
     const logs = await call(client, 'get_logs');
-    const message = "Pitdeck isn't set up in this folder. Run `pitdeck init` first.";
+    const message = `Pitdeck isn't set up in this folder. Run \`${deckCommand('init')}\` first.`;
     expect(status.json.problem).toBe(message);
     expect(logs.isError).toBe(true);
     expect(logs.text).toBe(message);
@@ -432,7 +432,7 @@ describe('get_logs', () => {
   it("says the daemon isn't running when it can't be started", async () => {
     const out = await call(await connect(), 'get_logs');
     expect(out.isError).toBe(true);
-    expect(out.text).toBe("Pitdeck daemon isn't running: run `pitdeck start`");
+    expect(out.text).toBe(`Pitdeck daemon isn't running: run \`${deckCommand('start')}\``);
   });
 });
 

@@ -2,6 +2,7 @@
  * `init` on unusual projects: odd files, odd folders, two runs at once. Tests marked
  * `it.fails` are repros of open bugs (BUG-CLI-Tn) and pass once the bug is fixed.
  */
+import { deckCommand } from '@project-deck/core';
 import {
   chmod,
   link,
@@ -486,7 +487,9 @@ describe('init: concurrency and partial failures', () => {
     });
     const before = await snapshot();
     expect(await init({ acquireLock: () => Promise.reject(gone) })).toBe(1);
-    expect(errors.join('\n')).toContain('Another `pitdeck init` is running in this project');
+    expect(errors.join('\n')).toContain(
+      `Another \`${deckCommand('init')}\` is running in this project`,
+    );
     expect(errors.join('\n')).not.toContain(base);
     expect(await snapshot()).toEqual(before);
   });

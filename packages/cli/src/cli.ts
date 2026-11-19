@@ -5,7 +5,7 @@
 import { stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { DECK_VERSION } from '@project-deck/core';
+import { DECK_VERSION, deckCommand } from '@project-deck/core';
 import type { DaemonClientOptions } from '@project-deck/mcp';
 import { runOpen, runStart, runStop } from './daemon-commands.js';
 import { runInit } from './init.js';
@@ -87,7 +87,7 @@ export async function runCli(argv: readonly string[], deps: CliDeps): Promise<nu
     return 2;
   }
   if (command !== 'open' && values.browser !== undefined) {
-    io.err(`--browser is an option of \`${CLI_NAME} open\` only`);
+    io.err(`--browser is an option of \`${deckCommand('open')}\` only`);
     return 2;
   }
 

@@ -2,7 +2,7 @@ import type { Server } from 'node:http';
 import { createServer } from 'node:http';
 import { basename } from 'node:path';
 import type { Registry } from '@project-deck/core';
-import { DECK_VERSION, EventBus } from '@project-deck/core';
+import { DECK_VERSION, EventBus, deckCommand } from '@project-deck/core';
 import { checkStateDir } from '@project-deck/core/node';
 import { getRequestListener } from '@hono/node-server';
 import type { SqlGuard } from '@project-deck/sql-guard';
@@ -219,7 +219,7 @@ async function startLocked(opts: DaemonOptions): Promise<Daemon> {
   }
   if (sharedWith !== undefined) {
     log(
-      `Port ${port} is also registered to another project (project ${sharedWith}); if both run at once one will fail. Run \`pitdeck init\` to pick a new port.`,
+      `Port ${port} is also registered to another project (project ${sharedWith}); if both run at once one will fail. Run \`${deckCommand('init')}\` to pick a new port.`,
     );
   }
   try {

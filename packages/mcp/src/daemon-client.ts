@@ -30,6 +30,7 @@ import {
   OkResponse,
   StatusResponse,
   TOKEN_HEADER,
+  deckCommand,
   portTakenText,
 } from '@project-deck/core';
 import {
@@ -47,8 +48,8 @@ import { daemonLogPath } from './spawn.js';
 import { setTimeout as sleep } from 'node:timers/promises';
 import type { z } from 'zod';
 
-export const NOT_RUNNING = "Pitdeck daemon isn't running: run `pitdeck start`";
-export const NOT_SET_UP = "Pitdeck isn't set up in this folder. Run `pitdeck init` first.";
+export const NOT_RUNNING = `Pitdeck daemon isn't running: run \`${deckCommand('start')}\``;
+export const NOT_SET_UP = `Pitdeck isn't set up in this folder. Run \`${deckCommand('init')}\` first.`;
 /**
  * The daemon still answers /api/health but dropped the same call twice. Starting another
  * would only exit at once (one daemon per project), so the user has to stop this one.
@@ -56,7 +57,7 @@ export const NOT_SET_UP = "Pitdeck isn't set up in this folder. Run `pitdeck ini
  * wording is easy to change.
  */
 export function droppedCallText(port: number, pid: number, route: string): string {
-  return `Pitdeck daemon on port ${port} (pid ${pid}) answers but dropped ${route}. Run \`pitdeck stop\`, then try again.`;
+  return `Pitdeck daemon on port ${port} (pid ${pid}) answers but dropped ${route}. Run \`${deckCommand('stop')}\`, then try again.`;
 }
 /**
  * The daemon answers health but dropped POST /api/shutdown (R-O1-1). `stop` has no other
@@ -75,8 +76,7 @@ export function stalledText(port: number, pid: number): string {
 }
 /** Another program holds the port (shared words, so the daemon says the same). */
 export { portTakenText };
-const TOKEN_REJECTED =
-  'Pitdeck daemon rejected the token in .pitdeck/runtime.json. Run `pitdeck stop`, then try again.';
+const TOKEN_REJECTED = `Pitdeck daemon rejected the token in .pitdeck/runtime.json. Run \`${deckCommand('stop')}\`, then try again.`;
 export const DEFAULT_TIMEOUT_MS = 5000;
 export const DEFAULT_READY_TIMEOUT_MS = 10_000;
 export const DEFAULT_STOP_TIMEOUT_MS = 10_000;
@@ -476,7 +476,7 @@ export class DaemonClient {
     if (ours !== undefined && health.projectId === undefined) {
       // Can't tell it is ours, so it doesn't get the token.
       throw new ForeignDaemonError(
-        `The program on port ${info.port} didn't say which project it serves, so Pitdeck didn't send it the token. Run \`pitdeck stop\` and try again.`,
+        `The program on port ${info.port} didn't say which project it serves, so Pitdeck didn't send it the token. Run \`${deckCommand('stop')}\` and try again.`,
         info.port,
       );
     }
@@ -489,7 +489,7 @@ export class DaemonClient {
       health.version === this.opts.version
         ? []
         : [
-            `Pitdeck daemon version ${health.version} differs from this MCP server (${this.opts.version}). Run \`pitdeck stop\`; the next call starts the matching daemon.`,
+            `Pitdeck daemon version ${health.version} differs from this MCP server (${this.opts.version}). Run \`${deckCommand('stop')}\`; the next call starts the matching daemon.`,
           ];
     return {
       kind: 'connected',

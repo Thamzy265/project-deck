@@ -2,6 +2,7 @@
  * `open` never starts a daemon, even when the daemon goes away between its calls
  * (tester observation on batch 4).
  */
+import { deckCommand } from '@project-deck/core';
 import { randomBytes } from 'node:crypto';
 import type { Server } from 'node:http';
 import { createServer } from 'node:http';
@@ -76,6 +77,6 @@ describe('open', () => {
     });
     expect(spawned).toBe(0);
     expect(code).toBe(1);
-    expect(errors.join('\n')).toContain('pitdeck start');
+    expect(errors.join('\n')).toContain(deckCommand('start'));
   });
 });

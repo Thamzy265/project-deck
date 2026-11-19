@@ -5,11 +5,10 @@
  */
 import type { DaemonClientOptions } from '@project-deck/mcp';
 import { DaemonClient, DaemonError, ForeignDaemonError, portTakenText } from '@project-deck/mcp';
-import { DECK_VERSION } from '@project-deck/core';
+import { DECK_VERSION, deckCommand } from '@project-deck/core';
 import { isDashboardUrl } from './browser.js';
 import type { Io } from './io.js';
 import { messageOf } from './io.js';
-import { CLI_NAME } from './name.js';
 
 export interface DaemonCommandOptions {
   projectDir: string;
@@ -58,7 +57,7 @@ function loginLines(url: string, until: number): string[] {
   const minutes = Math.max(1, Math.round((until - Date.now()) / 60_000));
   return [
     `Dashboard: ${url}`,
-    `Open it within ${minutes} minute${minutes === 1 ? '' : 's'} to log in (in Claude Desktop: the Browser pane, "Pitdeck"). After that, run \`${CLI_NAME} open\` again.`,
+    `Open it within ${minutes} minute${minutes === 1 ? '' : 's'} to log in (in Claude Desktop: the Browser pane, "Pitdeck"). After that, run \`${deckCommand('open')}\` again.`,
   ];
 }
 
@@ -90,7 +89,7 @@ export function runStop(opts: DaemonCommandOptions): Promise<number> {
       // the pid in runtime.json may belong to another program by now.
       if (err instanceof ForeignDaemonError) {
         opts.io.err(
-          `The program on port ${err.port} doesn't accept this project's key, so \`${CLI_NAME} stop\` can't stop it. Stop it by quitting the program that listens on port ${err.port}, or delete .pitdeck/runtime.json if no Pitdeck runs.`,
+          `The program on port ${err.port} doesn't accept this project's key, so \`${deckCommand('stop')}\` can't stop it. Stop it by quitting the program that listens on port ${err.port}, or delete .pitdeck/runtime.json if no Pitdeck runs.`,
         );
         return 1;
       }
