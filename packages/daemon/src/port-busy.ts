@@ -1,4 +1,9 @@
-import { HOW_TO_CHANGE_PORT, deckCommand, portTakenText, stalledText } from '@project-deck/core';
+import {
+  HOW_TO_CHANGE_PORT,
+  deckCommand,
+  portTakenText,
+  unresponsiveText,
+} from '@project-deck/core';
 import { z } from 'zod';
 
 /** How long the health probe of a busy port may take. */
@@ -17,7 +22,7 @@ export class PortBusyError extends Error {
       holder.kind === 'pitdeck'
         ? `Another Pitdeck (project ${holder.projectId ?? 'unknown'}) uses port ${port}. Stop it with \`${deckCommand('stop')}\` in that project, or pick another port here: ${HOW_TO_CHANGE_PORT}`
         : holder.kind === 'unresponsive'
-          ? `${stalledText(port)} Or pick another port: ${HOW_TO_CHANGE_PORT}`
+          ? unresponsiveText(port, HEALTH_PROBE_TIMEOUT_MS / 1000)
           : portTakenText(port),
     );
   }

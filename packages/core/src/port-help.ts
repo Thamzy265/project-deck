@@ -22,11 +22,20 @@ export function portTakenText(port: number): string {
 }
 
 /**
- * The program on the daemon's port didn't answer health in time. It may still be a Pitdeck
+ * The daemon named in runtime.json didn't answer health in time. It may still be that
  * daemon, so nothing says "not running" and nothing starts a second one beside it. The
- * pid, when runtime.json gave one, is only a name for the user: Pitdeck never signals it.
+ * pid is only a name for the user: Pitdeck never signals it.
  */
-export function stalledText(port: number, pid?: number): string {
-  const who = pid === undefined ? '' : ` (pid ${pid})`;
-  return `Pitdeck daemon on port ${port}${who} didn't answer within the time limit. Quit ${pid === undefined ? 'it' : `process ${pid}`} by hand, or delete .pitdeck/runtime.json if no Pitdeck runs, then try again.`;
+export function stalledText(port: number, pid: number): string {
+  return `Pitdeck daemon on port ${port} (pid ${pid}) didn't answer within the time limit. Quit process ${pid} by hand, or delete .pitdeck/runtime.json if no Pitdeck runs, then try again.`;
+}
+
+/**
+ * Something on `port` didn't answer health in time and no live daemon is on record for
+ * it (the daemon at start-up, or a runtime.json whose pid is gone). It may be a stalled
+ * Pitdeck daemon or any other program, so this says neither, and deleting runtime.json
+ * would not help.
+ */
+export function unresponsiveText(port: number, seconds: number): string {
+  return `The program on port ${port} didn't answer within ${seconds} s. It may be a stalled Pitdeck daemon. Quit it, or pick another port: ${HOW_TO_CHANGE_PORT}`;
 }
