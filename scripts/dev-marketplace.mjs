@@ -12,7 +12,7 @@
 //
 // Safety: it writes only <out>, and replaces <out> only if this script wrote it before.
 import { access, cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 
@@ -37,6 +37,18 @@ function fail(message) {
   process.exit(1);
 }
 
+// True when `path` is `folder` or lies inside it.
+const within = (folder, path) => {
+  const rel = relative(folder, path);
+  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
+};
+const source = join(ROOT, 'plugin');
+
+// Check every argument before anything is deleted or written.
+if (within(source, out) || within(out, source))
+  fail(`--out ${out} overlaps plugin/, which this script copies; pick a folder outside it.`);
+if (within(out, cli))
+  fail(`--cli ${cli} is inside --out ${out}, which this script replaces; pick another --cli.`);
 if (!(await exists(cli))) fail(`No CLI build at ${cli}. Run \`pnpm build\` first.`);
 if ((await exists(out)) && !(await exists(join(out, MARKER))))
   fail(`${out} exists and was not written by this script; pick another --out.`);
@@ -44,7 +56,7 @@ if ((await exists(out)) && !(await exists(join(out, MARKER))))
 await rm(out, { recursive: true, force: true });
 const plugin = join(out, 'pitdeck');
 await mkdir(join(out, '.claude-plugin'), { recursive: true });
-await cp(join(ROOT, 'plugin'), plugin, { recursive: true });
+await cp(source, plugin, { recursive: true });
 
 const mcp = JSON.parse(await readFile(join(plugin, '.mcp.json'), 'utf8'));
 mcp.mcpServers.pitdeck = { type: 'stdio', command: 'node', args: [cli, 'mcp'] };

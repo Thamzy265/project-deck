@@ -204,10 +204,10 @@ describe('the generated marketplace is never committed', () => {
   });
 });
 
-describe('dev marketplace script: known gaps (expected to fail until fixed)', () => {
-  // T-B3-1: --cli inside --out. The script deletes --out first, so the CLI it was told to
+describe('dev marketplace script: arguments checked before anything is deleted', () => {
+  // T-B3-1: --cli inside --out. The script used to delete --out first, so the CLI it was told to
   // run is gone and the generated .mcp.json points at a missing file, with exit code 0.
-  it.fails('does not report success when --cli lives inside the folder it replaces', async () => {
+  it('does not report success when --cli lives inside the folder it replaces', async () => {
     const out = join(scratch, 'out');
     expect((await run(['--out', out, '--cli', await fakeCli('j')])).code).toBe(0);
     const inside = join(out, 'cli.js');
@@ -217,9 +217,9 @@ describe('dev marketplace script: known gaps (expected to fail until fixed)', ()
     expect(again.code === 0 && gone).toBe(false);
   });
 
-  // T-B3-2: --out inside plugin/. cp refuses to copy into itself, after the script has
+  // T-B3-2: --out inside plugin/. cp used to refuse to copy into itself, after the script had
   // already made the folder, so plugin/<out> is left behind in the shipped folder.
-  it.fails('leaves nothing behind when --out is inside plugin/', async () => {
+  it('leaves nothing behind when --out is inside plugin/', async () => {
     const out = join(PLUGIN, `zz-tester-probe-${String(process.pid)}`);
     try {
       await run(['--out', out, '--cli', await fakeCli('k')]);
