@@ -5,7 +5,12 @@ import { DECK_VERSION } from './constants.js';
  * every command we print names the exact version this build belongs to.
  */
 export function deckCommand(sub: string): string {
-  return `npx -y pitdeck@${DECK_VERSION} ${sub}`;
+  return ['npx', ...deckNpxArgs(sub)].join(' ');
+}
+
+/** The arguments after `npx` that run one pinned release: the same spec `.mcp.json` uses. */
+export function deckNpxArgs(sub: string, version: string = DECK_VERSION): string[] {
+  return ['-y', `pitdeck@${version}`, sub];
 }
 
 /** How to pick another port. Shared so the daemon and the MCP server say the same words. */

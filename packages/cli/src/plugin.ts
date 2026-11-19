@@ -3,7 +3,7 @@
  * repo, and the pinned release that its `.mcp.json` starts. `init` prints these; a test
  * keeps them equal to plugin/.mcp.json and .claude-plugin/marketplace.json.
  */
-import { CLI_NAME } from './name.js';
+import { deckNpxArgs } from '@project-deck/core';
 
 export const MARKETPLACE_REPO = 'Thamzy265/project-deck';
 export const MARKETPLACE_NAME = 'pitdeck';
@@ -18,5 +18,5 @@ export function pitdeckMcpServer(version: string): {
   command: 'npx';
   args: string[];
 } {
-  return { type: 'stdio', command: 'npx', args: ['-y', `${CLI_NAME}@${version}`, 'mcp'] };
+  return { type: 'stdio', command: 'npx', args: deckNpxArgs('mcp', version) };
 }
