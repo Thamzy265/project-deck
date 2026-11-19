@@ -96,7 +96,7 @@ export function runStop(opts: DaemonCommandOptions): Promise<number> {
       }
       throw err;
     }
-    const other = client.otherProgramPort();
+    const other = stopped ? undefined : await client.otherProgramPort();
     if (!stopped && other !== undefined) {
       // Not ours, so it never got the key and `stop` can't help; saying "not running" would be wrong.
       opts.io.err(portTakenText(other));
