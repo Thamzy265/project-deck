@@ -69,6 +69,13 @@ describe('init next steps for the plugin', () => {
     });
   });
 
+  it('tells npx users how to start the dashboard, without pitdeck on the PATH', async () => {
+    await init();
+    const steps = lines.slice(lines.indexOf('Next steps:')).join('\n');
+    expect(steps).toContain(`Start the dashboard: npx -y pitdeck@${DECK_VERSION} start`);
+    expect(steps).not.toContain('dashboard: pitdeck start');
+  });
+
   it('prints no file path at all: no npx cache, node_modules or checkout path', async () => {
     await init();
     const steps = lines.slice(lines.indexOf('Next steps:')).join('\n');

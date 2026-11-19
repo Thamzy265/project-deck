@@ -30,6 +30,7 @@ import {
   OkResponse,
   StatusResponse,
   TOKEN_HEADER,
+  portTakenText,
 } from '@project-deck/core';
 import {
   IncompleteBundleError,
@@ -64,14 +65,8 @@ export function droppedCallText(port: number, pid: number, route: string): strin
 export function droppedShutdownText(port: number, pid: number): string {
   return `Pitdeck daemon on port ${port} (pid ${pid}) answers health but dropped POST /api/shutdown. Quit process ${pid} by hand, then try again.`;
 }
-/**
- * Something answers HTTP on the port in runtime.json but isn't this release's Pitdeck
- * daemon (for example one from a dev checkout that predates the rename). It never gets
- * the token, so the user has to stop it. Same words as the daemon's own port message.
- */
-export function portTakenText(port: number): string {
-  return `Another program uses port ${port}. Stop it, or pick another port: run \`pitdeck init\`, or change "port" in .pitdeck/config.json and the url in .claude/launch.json.`;
-}
+/** Another program holds the port (shared words, so the daemon says the same). */
+export { portTakenText };
 const TOKEN_REJECTED =
   'Pitdeck daemon rejected the token in .pitdeck/runtime.json. Run `pitdeck stop`, then try again.';
 export const DEFAULT_TIMEOUT_MS = 5000;

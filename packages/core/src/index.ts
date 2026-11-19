@@ -8,5 +8,6 @@ export * from './db-diff.js';
 export * from './events.js';
 export * from './extensions.js';
 export * from './logs.js';
+export * from './port-help.js';
 export * from './registry.js';
 export * from './tasks.js';

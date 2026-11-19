@@ -1,10 +1,8 @@
+import { HOW_TO_CHANGE_PORT, deckCommand, portTakenText } from '@project-deck/core';
 import { z } from 'zod';
 
 /** How long the health probe of a busy port may take. */
 export const HEALTH_PROBE_TIMEOUT_MS = 2000;
-
-const HOW_TO_CHANGE =
-  'run `pitdeck init`, or change "port" in .pitdeck/config.json and the url in .claude/launch.json.';
 
 /** The configured port is taken. Never names a process: we never run a process lookup. */
 export class PortBusyError extends Error {
@@ -14,8 +12,8 @@ export class PortBusyError extends Error {
   ) {
     super(
       holder.kind === 'pitdeck'
-        ? `Another Pitdeck (project ${holder.projectId ?? 'unknown'}) uses port ${port}. Stop it with \`pitdeck stop\` in that project, or pick another port here: ${HOW_TO_CHANGE}`
-        : `Another program uses port ${port}. Stop it, or pick another port: ${HOW_TO_CHANGE}`,
+        ? `Another Pitdeck (project ${holder.projectId ?? 'unknown'}) uses port ${port}. Stop it with \`${deckCommand('stop')}\` in that project, or pick another port here: ${HOW_TO_CHANGE_PORT}`
+        : portTakenText(port),
     );
   }
 }

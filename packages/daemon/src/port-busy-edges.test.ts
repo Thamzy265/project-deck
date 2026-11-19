@@ -3,6 +3,7 @@ import { createServer } from 'node:http';
 import type { AddressInfo, Socket } from 'node:net';
 import { createServer as createNetServer } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
+import { DECK_VERSION } from '@project-deck/core';
 import { HEALTH_PROBE_TIMEOUT_MS, PortBusyError, identifyPortHolder } from './port-busy.js';
 
 const cleanups: (() => Promise<unknown>)[] = [];
@@ -133,7 +134,7 @@ describe('identifyPortHolder', () => {
     expect(err).toBeInstanceOf(PortBusyError);
     expect(err.holder).toEqual({ kind: 'other' });
     expect(err.message).toBe(
-      `Another program uses port ${port}. Stop it, or pick another port: run \`pitdeck init\`, or change "port" in .pitdeck/config.json and the url in .claude/launch.json.`,
+      `Another program uses port ${port}. Stop it, or pick another port: run \`npx -y pitdeck@${DECK_VERSION} init\`, or change "port" in .pitdeck/config.json and the url in .claude/launch.json.`,
     );
   });
 
@@ -152,7 +153,7 @@ describe('identifyPortHolder', () => {
     const err = await identifyPortHolder(port);
     expect(err.holder).toEqual({ kind: 'pitdeck', projectId: undefined });
     expect(err.message).toContain('Another Pitdeck (project unknown)');
-    expect(err.message).toContain('pitdeck stop');
+    expect(err.message).toContain(`npx -y pitdeck@${DECK_VERSION} stop`);
   });
 
   it.each([
@@ -173,6 +174,7 @@ describe('identifyPortHolder', () => {
     const err = await identifyPortHolder(port);
     expect(err.holder).toEqual({ kind: 'pitdeck', projectId: '0123456789ab' });
     expect(err.message).toContain(`Another Pitdeck (project 0123456789ab) uses port ${port}`);
+    expect(err.message).toContain(`\`npx -y pitdeck@${DECK_VERSION} stop\``);
   });
 
   it('copes with a large JSON answer', async () => {

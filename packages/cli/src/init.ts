@@ -6,7 +6,7 @@
  */
 import { join } from 'node:path';
 import type { DeckConfig } from '@project-deck/core';
-import { DECK_VERSION } from '@project-deck/core';
+import { DECK_VERSION, deckCommand } from '@project-deck/core';
 import {
   ConfigError,
   STATE_DIR,
@@ -398,7 +398,7 @@ function nextSteps(): string[] {
   ];
   return [
     'Next steps:',
-    `  1. Start the dashboard: ${CLI_NAME} start`,
+    `  1. Start the dashboard: ${deckCommand('start')}`,
     '  2. In Claude Desktop, open the Browser pane and choose "Pitdeck".',
     ...mcp,
     '',

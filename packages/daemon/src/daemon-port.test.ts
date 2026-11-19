@@ -3,7 +3,7 @@ import type { AddressInfo, Server, Socket } from 'node:net';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { Registry } from '@project-deck/core';
+import { DECK_VERSION, Registry } from '@project-deck/core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ConfigError } from './config.js';
 import type { Daemon } from './daemon.js';
@@ -92,9 +92,9 @@ describe('fixed port from .pitdeck/config.json', () => {
     const err = await start().catch((e: unknown) => e);
     expect(err).toBeInstanceOf(PortBusyError);
     expect((err as Error).message).toBe(
-      `Another program uses port ${port}. Stop it, or pick another port: run \`pitdeck init\`, or change "port" in .pitdeck/config.json and the url in .claude/launch.json.`,
+      `Another program uses port ${port}. Stop it, or pick another port: run \`npx -y pitdeck@${DECK_VERSION} init\`, or change "port" in .pitdeck/config.json and the url in .claude/launch.json.`,
     );
-    expect((err as Error).message).toContain('pitdeck init');
+    expect((err as Error).message).toContain(`pitdeck@${DECK_VERSION} init`);
     expect(await readRuntime(projectDir)).toBeUndefined();
   });
 
