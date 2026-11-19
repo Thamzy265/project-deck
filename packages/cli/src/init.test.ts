@@ -12,7 +12,6 @@ import type { RunTool } from './prerequisites.js';
 const links = process.platform === 'win32' ? it.skip : it;
 
 const PUBSPEC = 'name: shop_app\ndependencies:\n  flutter:\n    sdk: flutter\n';
-const MCP_MAIN = '/opt/deck/packages/mcp/dist/main.js';
 
 let project: string;
 let home: string;
@@ -47,7 +46,6 @@ function init(opts: Partial<InitOptions> = {}): Promise<number> {
     projectDir: project,
     homeDir: home,
     run: tools,
-    cliMainPath: MCP_MAIN,
     isFree: () => Promise.resolve(true),
     io: { out: (l) => lines.push(l), err: (l) => errors.push(l) },
     ...opts,
@@ -96,49 +94,6 @@ describe('init in a fresh Flutter project', () => {
       projects: Record<string, number>;
     };
     expect(Object.values(registry.projects)).toEqual([9147]);
-  });
-
-  it('prints an .mcp.json snippet that runs `pitdeck mcp` through the CLI, as valid JSON', async () => {
-    await init({ cliMainPath: 'C:\\Users\\Jo Doe\\deck\\packages\\cli\\dist\\main.js' });
-    const text = lines.join('\n');
-    const json = text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1);
-    expect(JSON.parse(json)).toEqual({
-      mcpServers: {
-        dart: { type: 'stdio', command: 'dart', args: ['mcp-server'] },
-        pitdeck: {
-          type: 'stdio',
-          command: 'node',
-          args: ['C:\\Users\\Jo Doe\\deck\\packages\\cli\\dist\\main.js', 'mcp'],
-        },
-      },
-    });
-  });
-
-  it('prints how to install the plugin from the checkout this CLI runs from', async () => {
-    const checkout = join(outside, 'deck checkout');
-    await mkdir(join(checkout, '.claude-plugin'), { recursive: true });
-    await writeFile(
-      join(checkout, '.claude-plugin', 'marketplace.json'),
-      JSON.stringify({
-        name: 'pitdeck-dev',
-        plugins: [{ name: 'pitdeck', source: './plugin' }],
-      }),
-    );
-    await init({ cliMainPath: join(checkout, 'packages', 'cli', 'dist', 'main.js') });
-    const text = lines.join('\n');
-    expect(text).toContain(`claude plugin marketplace add "${checkout}"`);
-    expect(text).toContain('claude plugin install pitdeck@pitdeck-dev');
-    // The raw MCP config stays, for use without the plugin or with other agents.
-    expect(text.indexOf('claude plugin install')).toBeLessThan(text.indexOf('"mcpServers"'));
-    const json = text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1);
-    expect(JSON.parse(json)).toHaveProperty('mcpServers.pitdeck.command', 'node');
-  });
-
-  it('prints the MCP config only when the CLI is not in a checkout with the plugin', async () => {
-    await init();
-    const text = lines.join('\n');
-    expect(text).not.toContain('claude plugin');
-    expect(text).toContain('"mcpServers"');
   });
 
   it('never fails because a tool is missing', async () => {

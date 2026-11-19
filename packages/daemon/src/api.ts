@@ -129,7 +129,7 @@ export function createApi(ctx: ApiContext): Hono<DeckEnv> {
   api.get('/api/health', (c) =>
     c.json<Health>({
       ok: true,
-      name: 'project-deck',
+      name: 'pitdeck',
       version: ctx.version,
       ...(ctx.projectId === undefined ? {} : { projectId: ctx.projectId }),
     }),

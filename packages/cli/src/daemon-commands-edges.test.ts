@@ -157,6 +157,65 @@ describe('stop with a bad runtime.json', () => {
     expect(children).toEqual([]);
   });
 
+  it('fails, naming the pid to quit, when the daemon stalls (R2)', async () => {
+    // Accepts connections and never answers: a daemon that stalled but holds the port.
+    const sockets: Socket[] = [];
+    const stalled = createServer((socket) => {
+      socket.on('error', () => undefined);
+      sockets.push(socket);
+    });
+    stalled.on('error', () => undefined);
+    await new Promise<void>((resolve) => stalled.listen(0, '127.0.0.1', resolve));
+    const { port } = stalled.address() as AddressInfo;
+    try {
+      const project = await newProject(port);
+      await writeRuntime(project, {
+        pid: process.pid,
+        port,
+        token: randomBytes(32).toString('base64url'),
+        startedAt: 1,
+      });
+      expect(await runStop(options(project))).toBe(1);
+      expect(lines).toEqual([]);
+      const text = errors.join('\n');
+      expect(text).toContain(`port ${port}`);
+      expect(text).toContain(`Quit process ${process.pid} by hand`);
+      expect(text).not.toContain("isn't running");
+    } finally {
+      for (const socket of sockets) socket.destroy();
+      await new Promise((resolve) => stalled.close(resolve));
+    }
+  }, 30_000);
+
+  it('start probes a stalled daemon once, not once to look and once to start', async () => {
+    // Counts HTTP requests, not TCP connections: after a timeout abort, Node 22 and 24's
+    // fetch opens one more socket that never carries a request (Node 26 doesn't).
+    const requests: string[] = [];
+    const stalled = createHttpServer((req) => {
+      requests.push(`${req.method ?? ''} ${req.url ?? ''}`);
+      // Never answers: a daemon that stalled but holds the port.
+    });
+    stalled.on('error', () => undefined);
+    stalled.on('clientError', () => undefined);
+    await new Promise<void>((resolve) => stalled.listen(0, '127.0.0.1', resolve));
+    const { port } = stalled.address() as AddressInfo;
+    try {
+      const project = await newProject(port);
+      await writeRuntime(project, {
+        pid: process.pid,
+        port,
+        token: randomBytes(32).toString('base64url'),
+        startedAt: 1,
+      });
+      expect(await runStart(options(project))).toBe(1);
+      expect(errors.join('\n')).toContain(`Quit process ${process.pid} by hand`);
+      expect(requests).toEqual(['GET /api/health']);
+    } finally {
+      stalled.closeAllConnections();
+      await new Promise((resolve) => stalled.close(resolve));
+    }
+  }, 30_000);
+
   it("never stops another project's daemon through a copied runtime.json", async () => {
     const port = await freePort();
     const first = await newProject(port);
@@ -181,7 +240,7 @@ describe('open with crafted daemon answers', () => {
       const route = `${req.method ?? ''} ${req.url ?? ''}`;
       const body =
         route === 'GET /api/health'
-          ? { ok: true, name: 'project-deck', version: '0.0.0', projectId: PROJECT_ID }
+          ? { ok: true, name: 'pitdeck', version: '0.0.0', projectId: PROJECT_ID }
           : route === 'POST /api/login-window'
             ? { ok: true, until: Date.now() + 120_000 }
             : route === 'GET /api/status'

@@ -30,6 +30,10 @@ import {
   OkResponse,
   StatusResponse,
   TOKEN_HEADER,
+  deckCommand,
+  portTakenText,
+  stalledText,
+  unresponsiveText,
 } from '@project-deck/core';
 import {
   IncompleteBundleError,
@@ -46,8 +50,8 @@ import { daemonLogPath } from './spawn.js';
 import { setTimeout as sleep } from 'node:timers/promises';
 import type { z } from 'zod';
 
-export const NOT_RUNNING = "Pitdeck daemon isn't running: run `pitdeck start`";
-export const NOT_SET_UP = "Pitdeck isn't set up in this folder. Run `pitdeck init` first.";
+export const NOT_RUNNING = `Pitdeck daemon isn't running: run \`${deckCommand('start')}\``;
+export const NOT_SET_UP = `Pitdeck isn't set up in this folder. Run \`${deckCommand('init')}\` first.`;
 /**
  * The daemon still answers /api/health but dropped the same call twice. Starting another
  * would only exit at once (one daemon per project), so the user has to stop this one.
@@ -55,7 +59,7 @@ export const NOT_SET_UP = "Pitdeck isn't set up in this folder. Run `pitdeck ini
  * wording is easy to change.
  */
 export function droppedCallText(port: number, pid: number, route: string): string {
-  return `Pitdeck daemon on port ${port} (pid ${pid}) answers but dropped ${route}. Run \`pitdeck stop\`, then try again.`;
+  return `Pitdeck daemon on port ${port} (pid ${pid}) answers but dropped ${route}. Run \`${deckCommand('stop')}\`, then try again.`;
 }
 /**
  * The daemon answers health but dropped POST /api/shutdown (R-O1-1). `stop` has no other
@@ -64,8 +68,11 @@ export function droppedCallText(port: number, pid: number, route: string): strin
 export function droppedShutdownText(port: number, pid: number): string {
   return `Pitdeck daemon on port ${port} (pid ${pid}) answers health but dropped POST /api/shutdown. Quit process ${pid} by hand, then try again.`;
 }
-const TOKEN_REJECTED =
-  'Pitdeck daemon rejected the token in .pitdeck/runtime.json. Run `pitdeck stop`, then try again.';
+/** A daemon that holds the port but doesn't answer health: shared words with the daemon. */
+export { stalledText, unresponsiveText };
+/** Another program holds the port (shared words, so the daemon says the same). */
+export { portTakenText };
+const TOKEN_REJECTED = `Pitdeck daemon rejected the token in .pitdeck/runtime.json. Run \`${deckCommand('stop')}\`, then try again.`;
 export const DEFAULT_TIMEOUT_MS = 5000;
 export const DEFAULT_READY_TIMEOUT_MS = 10_000;
 export const DEFAULT_STOP_TIMEOUT_MS = 10_000;
@@ -115,6 +122,33 @@ export class DaemonDbError extends DaemonError {
     readonly warnings: string[] = [],
   ) {
     super(message);
+  }
+}
+
+/** The daemon answered nothing within the time allowed: slow, not necessarily gone. */
+class RequestTimeout extends DaemonError {}
+
+/**
+ * What a look at runtime.json and /api/health found. Returned, never stored, so calls
+ * that overlap can't overwrite each other's answer.
+ */
+type Probe =
+  | { kind: 'none' }
+  | { kind: 'other'; port: number }
+  | { kind: 'stalled'; port: number; pid: number }
+  | { kind: 'held'; port: number }
+  | { kind: 'connected'; conn: Connection };
+
+const connectionOf = (p: Probe): Connection | undefined =>
+  p.kind === 'connected' ? p.conn : undefined;
+
+/** Whether a process with this pid exists. EPERM means it does, owned by someone else. */
+function pidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0); // signal 0 only checks; Pitdeck never signals a process
+    return true;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === 'EPERM';
   }
 }
 
@@ -258,26 +292,65 @@ export class DaemonClient {
     return (await answer).value;
   }
 
+  /**
+   * `openLoginWindow`, starting the daemon when needed, and whether one already answered.
+   * One look decides both, so a stalled daemon costs one time limit, not two.
+   */
+  async startLoginWindow(): Promise<{ window: LoginWindowResult; wasRunning: boolean }> {
+    const call = (c: Connection) =>
+      this.request(c, 'POST', '/api/login-window', LoginWindowResponse);
+    const first = await this.probeChecked();
+    if (!(await this.isSetUp())) throw new DaemonError(NOT_SET_UP);
+    const answer = await this.callDaemon(call, first, true);
+    return { window: answer.value, wasRunning: first.kind === 'connected' };
+  }
+
   /** Like withDaemon, but a daemon that isn't running is an error, never started. */
   private async withRunning<T>(call: (c: Connection) => Promise<T>): Promise<Answer<T>> {
-    const conn = await this.connectChecked();
-    if (conn === undefined) throw new DaemonError(NOT_RUNNING);
-    return this.callDaemon(call, conn, false);
+    const probe = await this.probeChecked();
+    if (probe.kind !== 'connected') throw this.notRunning(probe);
+    return this.callDaemon(call, probe, false);
+  }
+
+  /** NOT_RUNNING, unless that look found another program answering on the port. */
+  private notRunning(probe: Probe): DaemonError {
+    if (probe.kind === 'other') return new DaemonError(portTakenText(probe.port));
+    if (probe.kind === 'stalled') return new DaemonError(stalledText(probe.port, probe.pid));
+    if (probe.kind === 'held') {
+      return new DaemonError(unresponsiveText(probe.port, this.timeoutMs / 1000));
+    }
+    return new DaemonError(NOT_RUNNING);
   }
 
   /** Whether this project's daemon answers. Never starts one. */
   async running(): Promise<boolean> {
-    return (await this.connectChecked()) !== undefined;
+    return (await this.probeChecked()).kind === 'connected';
   }
 
   /**
    * Asks this project's daemon to stop and waits until its runtime.json is gone or holds
    * another daemon's details. False when none was running. Never starts one, and never
    * signals a process: the pid in runtime.json may belong to another program by now.
+   * Throws when the daemon is stalled: it holds the port, so "isn't running" would be wrong.
    */
   async shutdown(): Promise<boolean> {
-    const conn = await this.connectChecked();
-    if (conn === undefined) return false;
+    return (await this.stop()).stopped;
+  }
+
+  /**
+   * `shutdown`, and when it stopped nothing, the port of another program that answers
+   * health there, from the same single look. A stalled daemon is an error: it holds the
+   * port, so "isn't running" would be wrong (R2).
+   */
+  async stop(): Promise<{ stopped: boolean; otherPort?: number }> {
+    const probe = await this.probeChecked();
+    if (probe.kind === 'stalled' || probe.kind === 'held') throw this.notRunning(probe);
+    const conn = connectionOf(probe);
+    if (conn === undefined) {
+      return probe.kind === 'other'
+        ? { stopped: false, otherPort: probe.port }
+        : { stopped: false };
+    }
     try {
       await this.request(conn, 'POST', '/api/shutdown', OkResponse);
     } catch (err) {
@@ -288,13 +361,13 @@ export class DaemonClient {
       if (again !== undefined && sameDaemon(again, conn)) {
         throw new DaemonError(droppedShutdownText(conn.port, conn.pid));
       }
-      return false;
+      return { stopped: false };
     }
     const deadline = Date.now() + this.stopTimeoutMs;
     while (Date.now() < deadline) {
       // Gone, or replaced by another daemon's (a new start): either way this one stopped.
       const now = await readRuntime(this.opts.projectDir);
-      if (now === undefined || !sameDaemon(now, conn)) return true;
+      if (now === undefined || !sameDaemon(now, conn)) return { stopped: true };
       await sleep(this.pollMs);
     }
     throw new DaemonError(
@@ -302,22 +375,22 @@ export class DaemonClient {
     );
   }
 
-  /** `connect`, after refusing a linked `.pitdeck` (its files would be read through it). */
-  private async connectChecked(): Promise<Connection | undefined> {
+  /** `probe`, after refusing a linked `.pitdeck` (its files would be read through it). */
+  private async probeChecked(): Promise<Probe> {
     try {
       await checkStateDir(this.opts.projectDir);
     } catch (err) {
       if (err instanceof StateDirError) throw new DaemonError(err.message);
       throw err;
     }
-    return this.connect();
+    return this.probe();
   }
 
   private async withDaemon<T>(call: (c: Connection) => Promise<T>): Promise<Answer<T>> {
     // Lead decision 14 Oct 2026: only a folder `pitdeck init` set up gets a daemon,
     // so opening Claude in any other folder starts nothing and writes nothing there.
     if (!(await this.isSetUp())) throw new DaemonError(NOT_SET_UP);
-    return this.callDaemon(call, await this.connect(), true);
+    return this.callDaemon(call, await this.probe(), true);
   }
 
   /**
@@ -327,7 +400,7 @@ export class DaemonClient {
    */
   private async callDaemon<T>(
     call: (c: Connection) => Promise<T>,
-    first: Connection | undefined,
+    first: Probe,
     canStart: boolean,
   ): Promise<Answer<T>> {
     // The daemon that last dropped this call. If health still finds that same one, it
@@ -337,7 +410,8 @@ export class DaemonClient {
     // Each daemon gets the call at most twice, and a new one appears only through a start
     // (or someone else's), so this bounds the loop even if runtime.json keeps changing.
     let drops = 0;
-    let conn = first;
+    let seen = first;
+    let conn = connectionOf(seen);
     for (let starts = 0; ;) {
       if (conn !== undefined) {
         try {
@@ -356,18 +430,23 @@ export class DaemonClient {
           }
           dropped = { port: conn.port, token: conn.token, pid: conn.pid };
           // Look again before starting anything: the same daemon gets one more try.
-          conn = await this.connect();
+          seen = await this.probe();
+          conn = connectionOf(seen);
           continue;
         }
       }
       // Gone: start it and retry. Twice at most, for a daemon that stopped again
       // between its start (perhaps one another call was waiting for) and this call.
-      if (!canStart || starts >= MAX_STARTS) throw new DaemonError(NOT_RUNNING);
+      // A stalled daemon, or a silent program, holds the port: a second daemon would only fail on it (R3).
+      if (!canStart || starts >= MAX_STARTS || seen.kind === 'stalled' || seen.kind === 'held') {
+        throw this.notRunning(seen);
+      }
       starts++;
       const started = await this.start(dropped);
       // 'gone': it came up and stopped again, so this counts as a start and we look again.
       if (started.kind !== 'failed') {
-        conn = await this.connect();
+        seen = await this.probe();
+        conn = connectionOf(seen);
         continue;
       }
       // A failed start is judged by the daemons of every caller that shared it, and its
@@ -376,16 +455,21 @@ export class DaemonClient {
       // gets its one retry like anywhere else, and the check above calls it stuck only
       // on a second drop (PM decision 27 Oct 2026, R-O1-6). Still bounded: starts and
       // drops are counted as above.
-      const after = await this.connect();
-      if (after === undefined) throw new DaemonError(started.reason);
-      conn = after;
+      seen = await this.probe();
+      conn = connectionOf(seen);
+      if (conn === undefined) throw new DaemonError(started.reason);
     }
   }
 
   /** The daemon for this project, or undefined when none answers. */
   private async connect(): Promise<Connection | undefined> {
+    return connectionOf(await this.probe());
+  }
+
+  /** Looks for this project's daemon and says what it found. Never changes the client. */
+  private async probe(): Promise<Probe> {
     const info = await readRuntime(this.opts.projectDir);
-    if (info === undefined) return undefined;
+    if (info === undefined) return { kind: 'none' };
     let health: Health;
     try {
       health = await this.request(
@@ -394,15 +478,27 @@ export class DaemonClient {
         '/api/health',
         HealthResponse,
       );
-    } catch {
-      // Nothing listens, it hangs, or it isn't a Pitdeck: either way not ours.
-      return undefined;
+    } catch (err) {
+      // Nothing listens (Unreachable), or the daemon is too slow (RequestTimeout: stalled,
+      // and maybe still ours): neither is another program. Something that answers but isn't
+      // a Pitdeck of this release is never ours, and only that keeps the port busy.
+      if (err instanceof Unreachable) return { kind: 'none' };
+      if (err instanceof RequestTimeout) {
+        // A dead pid means runtime.json is stale, so the pid is no use to the user. But
+        // something silent still holds the port: a daemon started now could not bind it
+        // and would cost a whole start timeout per call, so nothing starts (R4).
+        return pidAlive(info.pid)
+          ? { kind: 'stalled', port: info.port, pid: info.pid }
+          : { kind: 'held', port: info.port };
+      }
+      if (err instanceof DaemonError) return { kind: 'other', port: info.port };
+      return { kind: 'none' };
     }
     const ours = await this.ownProjectId();
     if (ours !== undefined && health.projectId === undefined) {
       // Can't tell it is ours, so it doesn't get the token.
       throw new ForeignDaemonError(
-        `The program on port ${info.port} didn't say which project it serves, so Pitdeck didn't send it the token. Run \`pitdeck stop\` and try again.`,
+        `The program on port ${info.port} didn't say which project it serves, so Pitdeck didn't send it the token. Run \`${deckCommand('stop')}\` and try again.`,
         info.port,
       );
     }
@@ -415,9 +511,12 @@ export class DaemonClient {
       health.version === this.opts.version
         ? []
         : [
-            `Pitdeck daemon version ${health.version} differs from this MCP server (${this.opts.version}). Run \`pitdeck stop\`; the next call starts the matching daemon.`,
+            `Pitdeck daemon version ${health.version} differs from this MCP server (${this.opts.version}). Run \`${deckCommand('stop')}\`; the next call starts the matching daemon.`,
           ];
-    return { port: info.port, token: info.token, pid: info.pid, warnings };
+    return {
+      kind: 'connected',
+      conn: { port: info.port, token: info.token, pid: info.pid, warnings },
+    };
   }
 
   private async isSetUp(): Promise<boolean> {
@@ -527,7 +626,9 @@ export class DaemonClient {
       });
     } catch {
       if (signal.aborted) {
-        throw new DaemonError(`Pitdeck daemon didn't answer ${route} within ${timeoutMs / 1000} s`);
+        throw new RequestTimeout(
+          `Pitdeck daemon didn't answer ${route} within ${timeoutMs / 1000} s`,
+        );
       }
       throw new Unreachable(route);
     }

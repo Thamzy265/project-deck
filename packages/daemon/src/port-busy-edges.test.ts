@@ -3,6 +3,7 @@ import { createServer } from 'node:http';
 import type { AddressInfo, Socket } from 'node:net';
 import { createServer as createNetServer } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
+import { DECK_VERSION, unresponsiveText } from '@project-deck/core';
 import { HEALTH_PROBE_TIMEOUT_MS, PortBusyError, identifyPortHolder } from './port-busy.js';
 
 const cleanups: (() => Promise<unknown>)[] = [];
@@ -51,7 +52,7 @@ const SLOW = HEALTH_PROBE_TIMEOUT_MS + 3000;
 
 describe('identifyPortHolder', () => {
   it('asks only GET /api/health on 127.0.0.1', async () => {
-    const { port, requests } = await serve(json({ ok: true, name: 'project-deck' }));
+    const { port, requests } = await serve(json({ ok: true, name: 'pitdeck' }));
     await identifyPortHolder(port);
     expect(requests).toEqual(['GET /api/health']);
   });
@@ -61,7 +62,12 @@ describe('identifyPortHolder', () => {
     async () => {
       const { port } = await serve(() => undefined);
       const { err, ms } = await timed(port);
-      expect(err.holder).toEqual({ kind: 'other' });
+      // Too slow is not "another program": it may be a stalled Pitdeck (R3).
+      expect(err.holder).toEqual({ kind: 'unresponsive' });
+      expect(err.message).toContain(`port ${port}`);
+      expect(err.message).toBe(unresponsiveText(port, HEALTH_PROBE_TIMEOUT_MS / 1000));
+      expect(err.message).not.toContain('runtime.json');
+      expect(err.message).not.toContain('Another program');
       expect(ms).toBeLessThan(HEALTH_PROBE_TIMEOUT_MS + 1500);
     },
     SLOW + 2000,
@@ -72,10 +78,14 @@ describe('identifyPortHolder', () => {
     async () => {
       const { port } = await serve((_req, res) => {
         res.writeHead(200, { 'content-type': 'application/json' });
-        res.write('{"ok":true,"name":"project-deck"');
+        res.write('{"ok":true,"name":"pitdeck"');
       });
       const { err, ms } = await timed(port);
-      expect(err.holder).toEqual({ kind: 'other' });
+      // Too slow is not "another program": it may be a stalled Pitdeck (R3).
+      expect(err.holder).toEqual({ kind: 'unresponsive' });
+      expect(err.message).toContain(`port ${port}`);
+      expect(err.message).toContain("didn't answer");
+      expect(err.message).not.toContain('Another program');
       expect(ms).toBeLessThan(HEALTH_PROBE_TIMEOUT_MS + 1500);
     },
     SLOW + 2000,
@@ -115,11 +125,11 @@ describe('identifyPortHolder', () => {
   it.each([
     ['HTML', (_req: IncomingMessage, res: ServerResponse) => res.end('<html>dev server</html>')],
     ['empty 200', (_req: IncomingMessage, res: ServerResponse) => res.end()],
-    ['a JSON string', json('project-deck')],
+    ['a JSON string', json('pitdeck')],
     ['JSON null', json(null)],
     ['another name', json({ ok: true, name: 'vite' })],
-    ['the right body on a 500', json({ ok: true, name: 'project-deck' }, 500)],
-    ['the right body on a 401', json({ ok: true, name: 'project-deck' }, 401)],
+    ['the right body on a 500', json({ ok: true, name: 'pitdeck' }, 500)],
+    ['the right body on a 401', json({ ok: true, name: 'pitdeck' }, 401)],
     [
       'a redirect to a Pitdeck',
       (_req: IncomingMessage, res: ServerResponse) => {
@@ -133,12 +143,12 @@ describe('identifyPortHolder', () => {
     expect(err).toBeInstanceOf(PortBusyError);
     expect(err.holder).toEqual({ kind: 'other' });
     expect(err.message).toBe(
-      `Another program uses port ${port}. Stop it, or pick another port: run \`pitdeck init\`, or change "port" in .pitdeck/config.json and the url in .claude/launch.json.`,
+      `Another program uses port ${port}. Stop it, or pick another port: run \`npx -y pitdeck@${DECK_VERSION} init\`, or change "port" in .pitdeck/config.json and the url in .claude/launch.json.`,
     );
   });
 
   it('never follows a redirect', async () => {
-    const target = await serve(json({ ok: true, name: 'project-deck', projectId: 'abcdefabcdef' }));
+    const target = await serve(json({ ok: true, name: 'pitdeck', projectId: 'abcdefabcdef' }));
     const { port } = await serve((_req, res) => {
       res.writeHead(307, { location: `http://127.0.0.1:${target.port}/api/health` });
       res.end();
@@ -148,11 +158,11 @@ describe('identifyPortHolder', () => {
   });
 
   it('recognises an older Pitdeck without a project id', async () => {
-    const { port } = await serve(json({ ok: true, name: 'project-deck', version: '0.0.0' }));
+    const { port } = await serve(json({ ok: true, name: 'pitdeck', version: '0.0.0' }));
     const err = await identifyPortHolder(port);
     expect(err.holder).toEqual({ kind: 'pitdeck', projectId: undefined });
     expect(err.message).toContain('Another Pitdeck (project unknown)');
-    expect(err.message).toContain('pitdeck stop');
+    expect(err.message).toContain(`npx -y pitdeck@${DECK_VERSION} stop`);
   });
 
   it.each([
@@ -162,24 +172,23 @@ describe('identifyPortHolder', () => {
     ['terminal escapes', '\u001b[2J\u001b[31mpwned'],
     ['a number', 123456789012],
   ])('never echoes a project id that is %s', async (_name, projectId) => {
-    const { port } = await serve(json({ ok: true, name: 'project-deck', projectId }));
+    const { port } = await serve(json({ ok: true, name: 'pitdeck', projectId }));
     const err = await identifyPortHolder(port);
     expect(err.message).not.toContain(String(projectId));
     expect(err.message).not.toContain('\u001b');
   });
 
   it('echoes a well-formed project id', async () => {
-    const { port } = await serve(
-      json({ ok: true, name: 'project-deck', projectId: '0123456789ab' }),
-    );
+    const { port } = await serve(json({ ok: true, name: 'pitdeck', projectId: '0123456789ab' }));
     const err = await identifyPortHolder(port);
     expect(err.holder).toEqual({ kind: 'pitdeck', projectId: '0123456789ab' });
     expect(err.message).toContain(`Another Pitdeck (project 0123456789ab) uses port ${port}`);
+    expect(err.message).toContain(`\`npx -y pitdeck@${DECK_VERSION} stop\``);
   });
 
   it('copes with a large JSON answer', async () => {
     const { port } = await serve(
-      json({ ok: true, name: 'project-deck', projectId: '0123456789ab', pad: 'x'.repeat(5e6) }),
+      json({ ok: true, name: 'pitdeck', projectId: '0123456789ab', pad: 'x'.repeat(5e6) }),
     );
     expect((await identifyPortHolder(port)).holder.kind).toBe('pitdeck');
   });

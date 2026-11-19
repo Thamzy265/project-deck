@@ -1,5 +1,5 @@
 /**
- * The `claude plugin eval` cases in plugin/evals. The eval command is early access on this
+ * The `claude plugin eval` cases in plugin-dev/evals. The eval command is early access on this
  * CLI, so it cannot run here; these tests check what it would reject or what would make a
  * case pass or fail for the wrong reason.
  * Format: code.claude.com/docs/en/plugin-evals, read 4 Nov 2026 (prompt.md keys, grader
@@ -19,8 +19,7 @@ import type { IncomingMessage, Server } from 'node:http';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { writeRuntime } from '@project-deck/core/node';
@@ -29,13 +28,14 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 import { posixRelative, walk } from './files.js';
 import { splitFrontmatter } from './frontmatter.js';
+import { DEV, PLUGIN } from './paths.js';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const EVALS = join(ROOT, 'evals');
+const ROOT = PLUGIN;
+const EVALS = join(DEV, 'evals');
 const SERVER_PREFIX = 'mcp__plugin_pitdeck_';
 
 const DART_TOOLS = (
-  JSON.parse(readFileSync(join(ROOT, 'test/fixtures/dart-tools.json'), 'utf8')) as {
+  JSON.parse(readFileSync(join(DEV, 'test/fixtures/dart-tools.json'), 'utf8')) as {
     tools: string[];
   }
 ).tools;
@@ -56,7 +56,7 @@ function front(path: string): { meta: Obj; body: string } {
   return { meta: (meta ?? {}) as Obj, body: split.body };
 }
 
-/** Paths below plugin/evals with `/` on every OS: filters and splits below rely on it (review C1). */
+/** Paths below plugin-dev/evals with `/` on every OS: filters and splits below rely on it (review C1). */
 const rel = (f: string) => posixRelative(EVALS, f);
 const files = walk(EVALS).filter((f) => !rel(f).startsWith('results/'));
 const graderFiles = () => files.filter((f) => rel(f).includes('/graders/'));
@@ -239,7 +239,7 @@ beforeAll(async () => {
       const key = `${req.method ?? 'GET'} ${path}`;
       const answer =
         path === '/api/health'
-          ? { ok: true, name: 'project-deck', version: '0.0.0' }
+          ? { ok: true, name: 'pitdeck', version: '0.0.0' }
           : req.headers['x-deck-token'] !== token
             ? { error: 'Missing or invalid token' }
             : ROUTES[key];

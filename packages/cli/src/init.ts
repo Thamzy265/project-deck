@@ -4,8 +4,9 @@
  * change, so a refusal leaves the project as it was. It only adds: a missing port and
  * missing app ids in config.json, one .gitignore block, one launch.json entry.
  */
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import type { DeckConfig } from '@project-deck/core';
+import { DECK_VERSION, deckCommand } from '@project-deck/core';
 import {
   ConfigError,
   STATE_DIR,
@@ -26,31 +27,23 @@ import { access, mkdir, rmdir } from 'node:fs/promises';
 import type { JSONPath } from 'jsonc-parser';
 import type { AppIds } from './config-merge.js';
 import { newConfigText, withValues } from './config-merge.js';
-import { detectFlutterProject, isRecord, readApplicationId } from './flutter-project.js';
+import { detectFlutterProject, readApplicationId } from './flutter-project.js';
 import { addIgnoreBlock } from './gitignore.js';
 import { readBundleId } from './ios-bundle-id.js';
 import type { Io } from './io.js';
 import { messageOf } from './io.js';
 import { launchJsonProblem, mergeLaunchJson } from './launch-json.js';
-import { CLI_NAME } from './name.js';
+import { MARKETPLACE_NAME, MARKETPLACE_REPO, PLUGIN_NAME, pitdeckMcpServer } from './plugin.js';
 import type { RunTool } from './prerequisites.js';
 import { checkPrerequisites, formatPrerequisites } from './prerequisites.js';
 import type { FileState } from './project-files.js';
-import {
-  UnsafeFileError,
-  inspectDir,
-  inspectFile,
-  readProjectFile,
-  writeAtomic,
-} from './project-files.js';
+import { UnsafeFileError, inspectDir, inspectFile, writeAtomic } from './project-files.js';
 
 export interface InitOptions {
   projectDir: string;
   /** Where the per-user port registry lives (the user's home folder). */
   homeDir: string;
   run: RunTool;
-  /** Absolute path of this CLI's main.js: the printed .mcp.json runs `node <it> mcp`. */
-  cliMainPath: string;
   /** Test seam: whether nothing listens on a port. */
   isFree?: (port: number) => Promise<boolean>;
   /** Test seam: the cross-process lock (the daemon's acquireFileLock). */
@@ -132,7 +125,7 @@ export async function runInit(opts: InitOptions): Promise<number> {
       );
     }
     io.out('');
-    for (const line of await nextSteps(opts.cliMainPath)) io.out(line);
+    for (const line of nextSteps()) io.out(line);
     return 0;
   } catch (err) {
     // Every form of the project and home folders (Windows slashes, case, 8.3 names) is
@@ -164,7 +157,7 @@ const INIT_LOCK = 'init.lock';
  * missing, and removed again (only if still empty) when `fn` fails, so a refused init
  * leaves the project as it was.
  */
-const ANOTHER_INIT = `Another \`${CLI_NAME} init\` is running in this project; try again.`;
+const ANOTHER_INIT = `Another \`${deckCommand('init')}\` is running in this project; try again.`;
 
 async function withInitLock<T>(
   projectDir: string,
@@ -240,7 +233,7 @@ async function inspect(projectDir: string): Promise<Plan> {
       settings = await readConfig(projectDir);
     } catch (err) {
       if (err instanceof ConfigError) {
-        throw new Refused(`${err.message} Fix it, then run \`${CLI_NAME} init\` again.`);
+        throw new Refused(`${err.message} Fix it, then run \`${deckCommand('init')}\` again.`);
       }
       throw err;
     }
@@ -291,7 +284,7 @@ async function choosePort(
   const other = await claimConfigPort(opts.projectDir, configured, registry);
   const chosen: ChosenPort = { port: configured, source: `kept from ${CONFIG_SHOWN}` };
   if (other !== undefined) {
-    chosen.warning = `port ${configured} is also registered to another project (project ${other}); if both run at once, one will fail. Remove "port" from ${CONFIG_SHOWN} and run \`${CLI_NAME} init\` to pick a new one.`;
+    chosen.warning = `port ${configured} is also registered to another project (project ${other}); if both run at once, one will fail. Remove "port" from ${CONFIG_SHOWN} and run \`${deckCommand('init')}\` to pick a new one.`;
   }
   return chosen;
 }
@@ -388,53 +381,23 @@ async function apply(
   return changes;
 }
 
-/** The development marketplace at the root of a checkout (plugin/README.md). */
-const DEV_MARKETPLACE = 'pitdeck-dev';
-const PLUGIN_NAME = 'pitdeck';
-
-/**
- * The checkout this CLI runs from (`<root>/packages/cli/dist/main.js`), if it holds the
- * plugin's development marketplace: a regular file (never through a link) named
- * `pitdeck-dev` that lists the `pitdeck` plugin. Any other marketplace there, such
- * as a project's own when the CLI is installed inside it, isn't ours. Until the M5 release
- * that marketplace is how the plugin loads.
- */
-async function pluginCheckout(cliMainPath: string): Promise<string | undefined> {
-  const root = dirname(dirname(dirname(dirname(cliMainPath))));
-  try {
-    const file = await readProjectFile(join(root, '.claude-plugin', 'marketplace.json'));
-    if (file.kind !== 'file') return undefined;
-    const market: unknown = JSON.parse(file.text);
-    if (!isRecord(market) || market.name !== DEV_MARKETPLACE) return undefined;
-    const plugins = market.plugins;
-    if (!Array.isArray(plugins)) return undefined;
-    return plugins.some((p) => isRecord(p) && p.name === PLUGIN_NAME) ? root : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-async function nextSteps(cliMainPath: string): Promise<string[]> {
-  const checkout = await pluginCheckout(cliMainPath);
+function nextSteps(): string[] {
   const snippet = {
     mcpServers: {
       dart: { type: 'stdio', command: 'dart', args: ['mcp-server'] },
-      pitdeck: { type: 'stdio', command: 'node', args: [cliMainPath, 'mcp'] },
+      pitdeck: pitdeckMcpServer(DECK_VERSION),
     },
   };
-  const mcp =
-    checkout === undefined
-      ? ['  3. Give Claude the MCP servers: add these to .mcp.json in the project:']
-      : [
-          '  3. Give Claude the Pitdeck plugin (the Dart MCP server, the Pitdeck MCP server',
-          '     and the hooks), then start a new Claude session in this project:',
-          `       claude plugin marketplace add "${checkout}"`,
-          `       claude plugin install ${PLUGIN_NAME}@${DEV_MARKETPLACE}`,
-          '     Without the plugin, or for another agent, add these to .mcp.json in the project:',
-        ];
+  const mcp = [
+    '  3. Give Claude the Pitdeck plugin (the Dart MCP server, the Pitdeck MCP server',
+    '     and the hooks), then start a new Claude session in this project:',
+    `       claude plugin marketplace add ${MARKETPLACE_REPO}`,
+    `       claude plugin install ${PLUGIN_NAME}@${MARKETPLACE_NAME}`,
+    '     Without the plugin, or for another agent, add these to .mcp.json in the project:',
+  ];
   return [
     'Next steps:',
-    `  1. Start the dashboard: ${CLI_NAME} start`,
+    `  1. Start the dashboard: ${deckCommand('start')}`,
     '  2. In Claude Desktop, open the Browser pane and choose "Pitdeck".',
     ...mcp,
     '',

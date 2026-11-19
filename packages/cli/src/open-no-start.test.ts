@@ -2,6 +2,7 @@
  * `open` never starts a daemon, even when the daemon goes away between its calls
  * (tester observation on batch 4).
  */
+import { deckCommand } from '@project-deck/core';
 import { randomBytes } from 'node:crypto';
 import type { Server } from 'node:http';
 import { createServer } from 'node:http';
@@ -28,7 +29,7 @@ beforeEach(async () => {
     if (route === 'GET /api/health') {
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(
-        JSON.stringify({ ok: true, name: 'project-deck', version: '0.0.0', projectId: PROJECT_ID }),
+        JSON.stringify({ ok: true, name: 'pitdeck', version: '0.0.0', projectId: PROJECT_ID }),
       );
       return;
     }
@@ -76,6 +77,6 @@ describe('open', () => {
     });
     expect(spawned).toBe(0);
     expect(code).toBe(1);
-    expect(errors.join('\n')).toContain('pitdeck start');
+    expect(errors.join('\n')).toContain(deckCommand('start'));
   });
 });

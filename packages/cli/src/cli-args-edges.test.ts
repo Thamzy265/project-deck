@@ -40,7 +40,6 @@ function deps(): CliDeps {
     cwd,
     homeDir: home,
     run: () => Promise.reject(new Error('not installed')),
-    cliMainPath: '/x/main.js',
     spawnDaemon: () => {
       spawned++;
     },

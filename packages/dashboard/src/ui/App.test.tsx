@@ -1,3 +1,4 @@
+import { deckCommand } from '@project-deck/core';
 import { fakeApp } from '@project-deck/core/testing';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -30,6 +31,8 @@ describe('page states', () => {
     t.client.status.mockRejectedValue(new TypeError('Failed to fetch'));
     await t.drop();
     expect(await screen.findByText(/Can't reach Pitdeck/)).toBeInTheDocument();
+    // The command works for someone with no `pitdeck` on their PATH.
+    expect(screen.getByText(deckCommand('start'))).toBeInTheDocument();
   });
 
   it('reloads once on a refused cookie, then shows "Login needed"', async () => {
@@ -47,6 +50,7 @@ describe('page states', () => {
     again.client.status.mockRejectedValue(new HttpError(401, 'Missing or invalid token'));
     await again.drop();
     expect(await screen.findByText(/Login needed/)).toBeInTheDocument();
+    expect(screen.getByText(deckCommand('open'))).toBeInTheDocument();
     expect(again.reloadPage).not.toHaveBeenCalled();
   });
 

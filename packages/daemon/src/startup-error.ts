@@ -6,7 +6,7 @@ import { DaemonAlreadyRunningError } from './daemon.js';
  */
 export function formatStartupError(err: unknown): string {
   if (err instanceof DaemonAlreadyRunningError) return err.message;
-  return `project-deck daemon could not start: ${oneLine(describe(err))}`;
+  return `Pitdeck daemon could not start: ${oneLine(describe(err))}`;
 }
 
 function oneLine(text: string): string {

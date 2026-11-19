@@ -5,14 +5,14 @@
  * off silently. This test ties the patterns to the real `plugin.json` and `.mcp.json`.
  */
 import { readFileSync, readdirSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 import { z } from 'zod';
 import { splitFrontmatter } from './frontmatter.js';
+import { PLUGIN } from './paths.js';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const ROOT = PLUGIN;
 const JsonObject = z.record(z.string(), z.unknown());
 const json = (path: string): Record<string, unknown> =>
   JsonObject.parse(JSON.parse(readFileSync(join(ROOT, path), 'utf8')));

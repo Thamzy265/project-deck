@@ -9,7 +9,7 @@ This folder is the Pitdeck plugin for Claude Code (see [docs/PLAN.md](../docs/PL
 | [`hooks/hooks.json`](hooks/hooks.json)                                                       | Runs [`hooks/deck-hook.mjs`](hooks/deck-hook.mjs) when Claude finishes, waits for you, or reloads the app through the Dart MCP server. |
 | [`skills/check/SKILL.md`](skills/check/SKILL.md), [`skills/db/SKILL.md`](skills/db/SKILL.md) | The `/check` and `/db` slash commands (see "Commands" below).                                                                          |
 
-`package.json`, `tsconfig.json`, `vitest.config.ts` and `test/` only let this repo typecheck and test the plugin. Claude Code doesn't read them.
+Users get exactly this folder. Its tests, eval cases and dev config live in [`plugin-dev/`](../plugin-dev), which is never installed.
 
 The slash commands `/check` and `/db` came with M4 (see "Commands"). Findings about the plugin format are in [docs/notes/claude-code-plugin.md](../docs/notes/claude-code-plugin.md).
 
@@ -28,23 +28,31 @@ Both commands pre-approve only Pitdeck's read-only tools and, for `/check`, the 
 
 - Node.js 22.12 or later on your `PATH` (the hooks and the Pitdeck MCP server run with `node`).
 - Dart SDK **3.9 or later** on your `PATH` (Flutter ships one). Check with `dart --version`. Older SDKs need the extra `--experimental-mcp-server` flag; Pitdeck doesn't support them.
-- Until the M5 release, a built checkout of this repo: run `pnpm install` and `pnpm build` at its root. The plugin's Pitdeck server runs `packages/cli/dist/main.js` from the same checkout.
-- In your Flutter project, run `pitdeck init` once (`node <this repo>/packages/cli/dist/main.js init`). The hooks do nothing in a folder without `.pitdeck/config.json`.
+- In your Flutter project, run `npx -y pitdeck@0.1.0 init` once. The hooks do nothing in a folder without `.pitdeck/config.json`.
 
-## Load it from this checkout
-
-The plugin must load **in place**, so that `${CLAUDE_PLUGIN_ROOT}/..` is this repo. Claude Code does that for `--plugin-dir` and for a marketplace added from a local folder. A plugin installed from any other marketplace is copied into a cache, where `../packages` doesn't exist.
-
-**Claude Desktop (and the terminal).** The repo root holds a development marketplace, [`.claude-plugin/marketplace.json`](../.claude-plugin/marketplace.json), named `pitdeck-dev`. Add it and install the plugin once:
+## Install
 
 ```bash
-claude plugin marketplace add /path/to/project-deck
+claude plugin marketplace add Thamzy265/project-deck
+claude plugin install pitdeck@pitdeck
+```
+
+In Claude Desktop, use **+ → Plugins** with the same marketplace (`Thamzy265/project-deck`). Then start a new session in your Flutter project. Without a GitHub SSH key, set `CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1` first. Updates are off by default for this marketplace: run `claude plugin update pitdeck@pitdeck`, or turn on auto-update under `/plugin` → Marketplaces. To remove it: `claude plugin uninstall pitdeck@pitdeck`, then `claude plugin marketplace remove pitdeck`.
+
+The marketplace entry fetches only this `plugin/` folder (a `git-subdir` source). Each plugin version starts one pinned `pitdeck` release from npm; the first start downloads it, later starts use npm's cache.
+
+## Run it from a checkout (contributors)
+
+The public entry always installs from GitHub and starts the npm release. To run the plugin with your checkout's build instead, write the development marketplace `pitdeck-dev`, a copy of this folder whose `pitdeck` server runs `packages/pitdeck/dist/cli.js`:
+
+```bash
+pnpm install && pnpm build
+node scripts/dev-marketplace.mjs
+claude plugin marketplace add ./plugin-dev/marketplace
 claude plugin install pitdeck@pitdeck-dev
 ```
 
-Then start a new session in your Flutter project (in Claude Desktop, a new Code session; in the terminal, `claude`). Open **+ → Plugins** in Desktop, or run `/plugin` in the terminal, to check that `pitdeck` is enabled. After you change files in `plugin/`, run `/reload-plugins` or start a new session. To remove it: `claude plugin uninstall pitdeck@pitdeck-dev`, then `claude plugin marketplace remove pitdeck-dev`.
-
-**Terminal only, for one session.** `claude --plugin-dir /path/to/project-deck/plugin` loads it for that session without installing anything.
+Don't install `pitdeck@pitdeck` at the same time: both plugins are named `pitdeck`. After you change `plugin/` or rebuild, run the script again, then `/reload-plugins` or start a new session. `claude --plugin-dir ./plugin` loads this folder for one session, but its `pitdeck` server is the npm release.
 
 ## `.mcp.json`
 
@@ -54,15 +62,15 @@ Then start a new session in your Flutter project (in Claude Desktop, a new Code 
     "dart": { "type": "stdio", "command": "dart", "args": ["mcp-server"] },
     "pitdeck": {
       "type": "stdio",
-      "command": "node",
-      "args": ["${CLAUDE_PLUGIN_ROOT}/../packages/cli/dist/main.js", "mcp"]
+      "command": "npx",
+      "args": ["-y", "pitdeck@0.1.0", "mcp"]
     }
   }
 }
 ```
 
 - **`dart`** is the official Dart MCP server (`dart mcp-server`), which ships with the Dart SDK. It gives Claude hot reload, hot restart, runtime errors and the other Dart and Flutter tools, so Pitdeck doesn't build its own.
-- **`pitdeck`** is Pitdeck's MCP server: `deck_status`, `get_logs`, and the read-only database tools `db_list`, `db_schema`, `db_query`, `db_snapshot` and `db_diff` (M3). There is no tool that changes data: Claude never writes (PM decision, 16 Oct 2026); the user edits rows in the dashboard's Database tab. It starts the project's daemon when it starts. In M2 it runs this checkout's CLI build; the M5 release changes it to `npx pitdeck mcp`. JSON has no comments, which is why this note lives here.
+- **`pitdeck`** is Pitdeck's MCP server: `deck_status`, `get_logs`, and the read-only database tools `db_list`, `db_schema`, `db_query`, `db_snapshot` and `db_diff` (M3). There is no tool that changes data: Claude never writes (PM decision, 16 Oct 2026); the user edits rows in the dashboard's Database tab. It starts the project's daemon when it starts. It runs the `pitdeck` npm package at exactly the plugin's version (ADR 0007), so a plugin version always means one CLI version; a test keeps the two equal. JSON has no comments, which is why this note lives here.
 - Claude Code names plugin tools `mcp__plugin_pitdeck_<server>__<tool>`, for example `mcp__plugin_pitdeck_dart__hot_reload`.
 - If your Flutter project also has its own `.mcp.json` with a `dart` entry (the M1 instructions), Claude gets two Dart servers. Remove the project entry, or leave it: the hooks work with either.
 
@@ -74,7 +82,7 @@ From the root of this repo, run:
 node scripts/check-mcp-config.mjs
 ```
 
-The script starts each server listed in `plugin/.mcp.json`, sends the MCP `initialize` and `tools/list` requests, prints the server name and its tools, and stops the server. It skips `pitdeck`, because only Claude Code expands `${CLAUDE_PLUGIN_ROOT}`. Pass another path to check a different file, for example `node scripts/check-mcp-config.mjs ../my_app/.mcp.json`. It prints `FAILED` and exits with code 1 if a server doesn't start or answer within 30 seconds.
+The script starts each server listed in `plugin/.mcp.json`, sends the MCP `initialize` and `tools/list` requests, prints the server name and its tools, and stops the server. For `pitdeck` it runs `npx -y pitdeck@<version> mcp`, which downloads that release from npm; to check it without npm, use `node scripts/smoke/tarball.mjs`, which serves the packed tarball from a registry on 127.0.0.1. Pass another path to check a different file, for example `node scripts/check-mcp-config.mjs ../my_app/.mcp.json`. It prints `FAILED` and exits with code 1 if a server doesn't start or answer within 30 seconds.
 
 This runs the commands in the file. Only point it at files you trust. Before starting each server it prints the command and arguments it is about to run (never `env` values). A relative `command` (such as `./bin/server`) resolves against the directory you run the script from, not the directory of the JSON file, so run it from the folder that file expects.
 
@@ -129,4 +137,6 @@ The product was renamed from FlutterDeck to Pitdeck. There is no migration. To m
 2. Remove the old marketplace: `claude plugin marketplace remove flutterdeck-dev`.
 3. Stop old daemons: run `node <old checkout>/packages/cli/dist/main.js stop` in the project, or kill the process id in the old `.flutterdeck/runtime.json`.
 4. Delete the old `.flutterdeck/` folder in each project.
-5. Add the marketplace again and install: `claude plugin marketplace add <this checkout>`, then `claude plugin install pitdeck@pitdeck-dev`.
+5. Install the plugin as in "Install", or for a checkout as in "Run it from a checkout".
+
+A checkout that added `pitdeck-dev` from the repo root before the M5 release: the repo root is now the public `pitdeck` marketplace. Run `claude plugin uninstall pitdeck@pitdeck-dev` and `claude plugin marketplace remove pitdeck-dev`, then follow "Run it from a checkout".

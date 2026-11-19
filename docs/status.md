@@ -2,6 +2,18 @@
 
 Kept by the lead (`/my-tech-team:lead` skill). Newest entry first. Each entry records what changed, open findings and blockers, so PM updates can say what changed "since last update".
 
+## 2026-11-19 — M5 batch 3: plugin for release — in review
+
+- Changed: `feat/plugin-release`, PR #58 (draft). The plugin's `.mcp.json` runs `npx -y pitdeck@0.1.0 mcp`. The repo root holds the public marketplace `pitdeck` (`git-subdir` source, path `plugin`). Tests, evals and dev config moved to `plugin-dev/`; `scripts/dev-marketplace.mjs` writes a git-ignored dev marketplace `pitdeck-dev`. `init` prints the public install steps and `npx -y pitdeck@<version>` commands. `/api/health` says `pitdeck`; an old `project-deck` daemon is refused as another program. CI runs `claude plugin validate --strict` (Claude Code 2.1.317 pinned). The smoke test runs the exact `.mcp.json` command against the packed tarball.
+- Tester: 7 test commits (ceb41d0..0cbe9e2); T-B3-1..3 fixed by the developer.
+- Reviewer (high + security): verdict block. S1: merge waits for the PM's npm publish of `pitdeck` (as decided 2026-11-18). L1/L2: two Later lines had no measurable trigger. C1–C9 (Low and cleanup): fixed by the developer in a798894, 24f6e4f, 1567998, fb8f70d, 6d8c730, 2dae8d1 with tests; 4186 tests pass.
+- QA (2026-11-19): [qa/M5.md](qa/M5.md) "Batch 3 — plugin for release". 6/8 pass first run; B3-1 (Windows `npx` reached the public registry because pnpm's `npm_config_*` keys beat the smoke test's loopback registry) fixed in edcfddf; criterion 7 to be re-checked on the final head. PM check after merge.
+- Lead (2026-11-19): set measurable triggers for the marketplace `ref` pin and the plugin icon Later lines, named the box in the Windows `npx` line, and closed three Later lines this batch resolves (dev files out of the published plugin; public marketplace and `npx` in `.mcp.json`; F9 paths and old name).
+- Gates: developer pass · tester pass · reviewer re-check pending · QA re-check of criterion 7 pending · CI pending · PM merge: waits for the npm publish of `pitdeck`.
+- Open findings: S1 (needs the PM's publish). None other once the re-check passes.
+- Decisions: none new.
+- Blockers: Developer none · Tester none · Reviewer re-check · QA re-check criterion 7 · Marketer none · Lead: PM trademark and domain check and `pitdeck@0.1.0-preview.0` publish; PM plugin check for batch 1.
+
 ## 2026-11-18 — M5 npm name `pitdeck` — PM decision
 
 - Changed: batch 2 merged as PR #56 (03c747b). Batch 3 (plugin for release, `feat/plugin-release`) started. On 18 Nov 2026 `pitdeck` (npm) and `pitdeck_drift` (pub.dev) are both unclaimed. Once batch 3 is on the public `main`, the plugin runs `npx -y pitdeck@0.1.0 mcp`, so a third party who publishes `pitdeck` first would run code on users' machines (design note abuse case 1).

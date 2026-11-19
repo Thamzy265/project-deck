@@ -1,9 +1,11 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
-import type { AddressInfo, Server, Socket } from 'node:net';
+import { createServer as createHttpServer } from 'node:http';
+import type { Server } from 'node:http';
+import type { AddressInfo, Socket } from 'node:net';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { Registry } from '@project-deck/core';
+import { DECK_VERSION, Registry, deckCommand } from '@project-deck/core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ConfigError } from './config.js';
 import type { Daemon } from './daemon.js';
@@ -49,11 +51,15 @@ async function start(
 
 async function occupy(): Promise<number> {
   const srv = await new Promise<Server>((resolve, reject) => {
-    const s = createServer();
+    // A dev server: it answers HTTP, but not as Pitdeck. (One that never answers is
+    // reported as unresponsive, not as another program: port-busy-edges.test.ts.)
+    const s = createHttpServer((req, res) => {
+      req.on('error', () => undefined);
+      res.end('<html>dev server</html>');
+    });
     s.once('error', reject);
     s.listen(0, '127.0.0.1', () => resolve(s));
   });
-  // It accepts connections and never answers, like a program that doesn't speak HTTP.
   const sockets = new Set<Socket>();
   srv.on('connection', (socket) => sockets.add(socket));
   cleanups.push(() => {
@@ -80,7 +86,7 @@ describe('fixed port from .pitdeck/config.json', () => {
     const health = (await (await fetch(`${d.url}/api/health`)).json()) as Record<string, unknown>;
     expect(health).toEqual({
       ok: true,
-      name: 'project-deck',
+      name: 'pitdeck',
       version: d.version,
       projectId: await projectIdentity(projectDir, { homeDir }),
     });
@@ -92,9 +98,9 @@ describe('fixed port from .pitdeck/config.json', () => {
     const err = await start().catch((e: unknown) => e);
     expect(err).toBeInstanceOf(PortBusyError);
     expect((err as Error).message).toBe(
-      `Another program uses port ${port}. Stop it, or pick another port: run \`pitdeck init\`, or change "port" in .pitdeck/config.json and the url in .claude/launch.json.`,
+      `Another program uses port ${port}. Stop it, or pick another port: run \`npx -y pitdeck@${DECK_VERSION} init\`, or change "port" in .pitdeck/config.json and the url in .claude/launch.json.`,
     );
-    expect((err as Error).message).toContain('pitdeck init');
+    expect((err as Error).message).toContain(`pitdeck@${DECK_VERSION} init`);
     expect(await readRuntime(projectDir)).toBeUndefined();
   });
 
@@ -120,7 +126,7 @@ describe('fixed port from .pitdeck/config.json', () => {
     expect(d.port).toBe(port);
     const otherId = await projectIdentity(otherDir, { homeDir });
     expect(messages).toContain(
-      `Port ${port} is also registered to another project (project ${otherId}); if both run at once one will fail. Run \`pitdeck init\` to pick a new port.`,
+      `Port ${port} is also registered to another project (project ${otherId}); if both run at once one will fail. Run \`${deckCommand('init')}\` to pick a new port.`,
     );
   });
 
@@ -163,7 +169,7 @@ describe('fixed port from .pitdeck/config.json', () => {
     const d = await start({ port: 0, messages });
     expect(d.projectId).toBeUndefined();
     const health = (await (await fetch(`${d.url}/api/health`)).json()) as Record<string, unknown>;
-    expect(health).toEqual({ ok: true, name: 'project-deck', version: d.version });
+    expect(health).toEqual({ ok: true, name: 'pitdeck', version: d.version });
     expect(messages.some((m) => m.startsWith('No project id:') && m.includes('is damaged'))).toBe(
       true,
     );

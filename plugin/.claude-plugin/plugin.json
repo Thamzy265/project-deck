@@ -2,8 +2,10 @@
   "name": "pitdeck",
   "displayName": "Pitdeck",
   "version": "0.1.0",
-  "description": "Flutter dashboard next to Claude: the Dart MCP server for reloads and runtime errors, Pitdeck's MCP server for logs, and hooks that show Claude's progress in the dashboard.",
-  "author": { "name": "Pitdeck contributors" },
+  "description": "Flutter dashboard next to Claude: Drift database inspector, live logs and reload for apps you already run. Bundles the Dart MCP server, Pitdeck's MCP server, the /check and /db commands, and hooks that show Claude's progress.",
+  "author": { "name": "Pitdeck contributors", "url": "https://github.com/Thamzy265/project-deck" },
+  "homepage": "https://github.com/Thamzy265/project-deck#readme",
+  "repository": "https://github.com/Thamzy265/project-deck",
   "license": "MIT",
-  "keywords": ["flutter", "dart", "drift", "logs", "dashboard"]
+  "keywords": ["flutter", "dart", "drift", "sqlite", "logs", "dashboard", "mcp"]
 }

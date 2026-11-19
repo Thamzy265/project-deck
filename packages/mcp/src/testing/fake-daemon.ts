@@ -50,7 +50,7 @@ export async function initProject(projectDir: string): Promise<void> {
 export class FakeDaemon {
   readonly requests: FakeRequest[] = [];
   readonly routes = new Map<string, FakeRoute>();
-  health: Health = { ok: true, name: 'project-deck', version: '0.0.0', projectId: FAKE_PROJECT_ID };
+  health: Health = { ok: true, name: 'pitdeck', version: '0.0.0', projectId: FAKE_PROJECT_ID };
   status: Status = FAKE_STATUS;
   logs: LogsResult = { entries: [], truncated: false };
 

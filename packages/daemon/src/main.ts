@@ -82,7 +82,7 @@ const daemon = await startDaemon({
   console.error(formatStartupError(err));
   process.exit(1);
 });
-console.log(`project-deck daemon listening on ${daemon.url}`);
+console.log(`Pitdeck daemon listening on ${daemon.url}`);
 console.log(`Token in ${resolve(values.project, '.pitdeck/runtime.json')}`);
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {

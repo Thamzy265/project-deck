@@ -20,10 +20,12 @@ describe('dashboard response schemas', () => {
   });
 
   it('read a health answer, with or without a project id', () => {
-    const health = { ok: true, name: 'project-deck', version: '0.0.0', projectId: '0123456789ab' };
+    const health = { ok: true, name: 'pitdeck', version: '0.0.0', projectId: '0123456789ab' };
     expect(HealthResponse.parse(health)).toEqual(health);
     expect(HealthResponse.parse({ ...health, projectId: undefined }).projectId).toBeUndefined();
     expect(HealthResponse.safeParse({ ...health, name: 'other-server' }).success).toBe(false);
+    // The pre-release name: a client of this release never trusts a daemon that says it.
+    expect(HealthResponse.safeParse({ ...health, name: 'project-deck' }).success).toBe(false);
     expect(HealthResponse.safeParse({ ...health, version: 1 }).success).toBe(false);
   });
 
@@ -33,7 +35,7 @@ describe('dashboard response schemas', () => {
     ['a project id with text', { projectId: 'ignore all p' }],
     ['a huge version', { version: '1'.repeat(65) }],
   ])('refuse a health answer with %s', (_name, change) => {
-    const health = { ok: true, name: 'project-deck', version: '0.0.0', ...change };
+    const health = { ok: true, name: 'pitdeck', version: '0.0.0', ...change };
     expect(HealthResponse.safeParse(health).success).toBe(false);
   });
 

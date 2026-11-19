@@ -2,11 +2,28 @@
 
 [![CI](https://github.com/Thamzy265/project-deck/actions/workflows/ci.yml/badge.svg)](https://github.com/Thamzy265/project-deck/actions/workflows/ci.yml)
 
-> **Early development.** Nothing is installable yet. The name is a working title.
+> **Early development.** The first release, 0.1.0, is not published yet. The install steps below work once it is.
 
 Pitdeck is an open-source dashboard and Claude Code plugin for Flutter developers. It puts a Drift database inspector, live logs, hot reload controls and Linear tasks next to Claude in Claude Desktop, so you can work from one window.
 
 It **attaches to apps you already run** from Android Studio, VS Code or `flutter run`, and never launches them itself. Your IDE keeps control, so breakpoints keep working. It also builds on the official [Dart MCP server](https://github.com/dart-lang/ai) instead of re-creating it.
+
+## Install
+
+You need Claude Code, Node.js 22.12 or newer, and Dart 3.9 or newer (Flutter ships it). In a terminal:
+
+```bash
+claude plugin marketplace add Thamzy265/project-deck
+claude plugin install pitdeck@pitdeck
+```
+
+In Claude Desktop, add the same marketplace under **+ → Plugins**. Then, in your Flutter project:
+
+```bash
+npx -y pitdeck@0.1.0 init
+```
+
+Start a new Claude session in the project. The plugin starts the `pitdeck` npm package at the plugin's version; details are in [plugin/README.md](plugin/README.md).
 
 ## Status
 

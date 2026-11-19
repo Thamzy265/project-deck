@@ -117,7 +117,7 @@ async function halfAlive(
       res.end(
         JSON.stringify({
           ok: true,
-          name: 'project-deck',
+          name: 'pitdeck',
           version: '0.0.0',
           projectId: FAKE_PROJECT_ID,
         }),
@@ -609,7 +609,7 @@ describe('the new daemon exits at once while the stale one is still there', () =
   it('says the daemon is stuck when its log has a reason, never the token', async () => {
     const { err, spawned, old } = await stuckWithExitingChild(
       // The daemon's own DaemonAlreadyRunning message (packages/daemon/src/daemon.ts).
-      'A project-deck daemon is already running for this project on port 9147\n',
+      'A Pitdeck daemon is already running for this project on port 9147\n',
     );
     // Only seen when the stale daemon's health flickers off and on during the start. The
     // failed start looks once more and finds the daemon that dropped this very call, so
@@ -661,7 +661,7 @@ describe('a call that joined a start that failed (R-O1-2)', () => {
             .then(() =>
               writeFile(
                 daemonLogPath(dir),
-                'A project-deck daemon is already running for this project on port 9147\n',
+                'A Pitdeck daemon is already running for this project on port 9147\n',
               ),
             )
             .then(() => {

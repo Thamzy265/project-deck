@@ -9,6 +9,7 @@ import { link, mkdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { deckCommand } from '@project-deck/core';
 import type { PortRegistry } from '@project-deck/core/node';
 import {
   REGISTRY_DIR,
@@ -179,7 +180,9 @@ async function load(homeDir: string): Promise<PortRegistry> {
     );
   }
   // Replacing it would change every project id and forget every port, so leave it be.
-  throw new PortRegistryError(`${path} is damaged. Fix or delete it, then run \`pitdeck init\`.`);
+  throw new PortRegistryError(
+    `${path} is damaged. Fix or delete it, then run \`${deckCommand('init')}\`.`,
+  );
 }
 
 /**

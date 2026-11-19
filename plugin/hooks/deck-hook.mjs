@@ -409,7 +409,7 @@ export async function send(daemon, event, deadline, projectDir) {
   } catch {
     return false;
   }
-  if (!isObject(parsed) || parsed.name !== 'project-deck') return false;
+  if (!isObject(parsed) || parsed.name !== 'pitdeck') return false;
   // Both sides must agree: an id only one of them knows is a mismatch too (R2-3). Neither
   // knowing one (no port registry on this machine) still sends.
   if (parsed.projectId !== (await ownProjectId(projectDir))) return false;

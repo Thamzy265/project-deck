@@ -167,6 +167,35 @@ describe('the tarball smoke script, failing (scripts/smoke/tarball.mjs)', () => 
     expect(await leftovers()).toEqual([]);
   });
 
+  it('accepts a prerelease tarball name such as pitdeck-0.1.0-preview.0.tgz', async () => {
+    // The PM publishes 0.1.0-preview.0 first; the name check must not fail on it.
+    const dir = join(scratch, 'prerelease');
+    await mkdir(dir);
+    const named = join(dir, 'pitdeck-0.1.0-preview.0.tgz');
+    await writeFile(named, await readFile(tarball));
+    const run = await runSmoke(
+      [named],
+      scratchEnv({ SMOKE_FAKE_MODE: 'crash', SMOKE_FAKE_PIDFILE: join(scratch, 'pid-pre') }),
+    );
+    expect(run.out).toMatch(/tarball name\s+PASS\s+pitdeck-0\.1\.0-preview\.0\.tgz/);
+    expect(await leftovers()).toEqual([]);
+  });
+
+  it.each(['pitdeck-0.1.tgz', 'pitdeck-latest.tgz', 'pitdeck-0.1.0-.tgz'])(
+    'fails the name row for %s',
+    async (file) => {
+      const dir = await mkdtemp(join(scratch, 'badname-'));
+      const named = join(dir, file);
+      await writeFile(named, await readFile(tarball));
+      const run = await runSmoke(
+        [named],
+        scratchEnv({ SMOKE_FAKE_MODE: 'crash', SMOKE_FAKE_PIDFILE: join(dir, 'pid') }),
+      );
+      expect(run.code).toBe(1);
+      expect(run.out).toMatch(/tarball name\s+FAIL/);
+    },
+  );
+
   it('fails and cleans up when the daemon exits without writing a port', async () => {
     const run = await runSmoke(
       [tarball],
@@ -226,6 +255,10 @@ describe('the tarball smoke script, failing (scripts/smoke/tarball.mjs)', () => 
     // The fake daemon reports the token as its version and the fake MCP server quotes it.
     expect(run.out).toMatch(/GET \/api\/health\s+FAIL\s+<token>/);
     expect(run.out).toMatch(/MCP server\s+FAIL.*<token>/);
+    // The stand-in is 0.0.1 and plugin/.mcp.json pins the release: that must fail, not pass.
+    expect(run.out).toMatch(
+      /plugin \.mcp\.json pins this tarball\s+FAIL\s+npx -y pitdeck@\S+ mcp vs 0\.0\.1/,
+    );
     expect(run.out).not.toContain(TOKEN);
     const pid = Number(await readFile(pidFile, 'utf8'));
     expect(alive(pid)).toBe(false);

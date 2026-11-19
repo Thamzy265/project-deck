@@ -11,12 +11,12 @@ import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import { createServer } from 'node:http';
 import type { Socket } from 'node:net';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import * as fx from './fixtures.js';
+import { PLUGIN } from './paths.js';
 
-const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'hooks', 'deck-hook.mjs');
+const SCRIPT = join(PLUGIN, 'hooks', 'deck-hook.mjs');
 const posix = process.platform === 'win32' ? it.skip : it;
 
 interface Seen {
@@ -36,7 +36,7 @@ interface Fake {
 
 const healthy = (res: ServerResponse) => {
   res.writeHead(200, { 'content-type': 'application/json' });
-  res.end(JSON.stringify({ ok: true, name: 'project-deck', version: '0.0.0' }));
+  res.end(JSON.stringify({ ok: true, name: 'pitdeck', version: '0.0.0' }));
 };
 
 const okDaemon: Handler = (req, res) => {
@@ -244,21 +244,28 @@ describe('the hook process under load and failure', () => {
       'a health body over 64 kB',
       (res: ServerResponse) => {
         res.writeHead(200, { 'content-type': 'application/json' });
-        res.end(JSON.stringify({ name: 'project-deck', pad: 'x'.repeat(70_000) }));
+        res.end(JSON.stringify({ name: 'pitdeck', pad: 'x'.repeat(70_000) }));
       },
     ],
     [
       'a name that only starts like Pitdeck',
       (res: ServerResponse) => {
         res.writeHead(200, { 'content-type': 'application/json' });
-        res.end(JSON.stringify({ name: 'project-deck-evil' }));
+        res.end(JSON.stringify({ name: 'pitdeck-evil' }));
+      },
+    ],
+    [
+      'the pre-release name project-deck',
+      (res: ServerResponse) => {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, name: 'project-deck', version: '0.0.0' }));
       },
     ],
     [
       'a health answer that is a JSON array',
       (res: ServerResponse) => {
         res.writeHead(200, { 'content-type': 'application/json' });
-        res.end('[{"name":"project-deck"}]');
+        res.end('[{"name":"pitdeck"}]');
       },
     ],
   ])('never sends the token after %s', async (_, answer) => {

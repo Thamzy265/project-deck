@@ -4,12 +4,11 @@
  * daemon on the port must say it serves this project). Nothing here signals a process.
  */
 import type { DaemonClientOptions } from '@project-deck/mcp';
-import { DaemonClient, DaemonError, ForeignDaemonError } from '@project-deck/mcp';
-import { DECK_VERSION } from '@project-deck/core';
+import { DaemonClient, DaemonError, ForeignDaemonError, portTakenText } from '@project-deck/mcp';
+import { DECK_VERSION, deckCommand } from '@project-deck/core';
 import { isDashboardUrl } from './browser.js';
 import type { Io } from './io.js';
 import { messageOf } from './io.js';
-import { CLI_NAME } from './name.js';
 
 export interface DaemonCommandOptions {
   projectDir: string;
@@ -58,16 +57,15 @@ function loginLines(url: string, until: number): string[] {
   const minutes = Math.max(1, Math.round((until - Date.now()) / 60_000));
   return [
     `Dashboard: ${url}`,
-    `Open it within ${minutes} minute${minutes === 1 ? '' : 's'} to log in (in Claude Desktop: the Browser pane, "Pitdeck"). After that, run \`${CLI_NAME} open\` again.`,
+    `Open it within ${minutes} minute${minutes === 1 ? '' : 's'} to log in (in Claude Desktop: the Browser pane, "Pitdeck"). After that, run \`${deckCommand('open')}\` again.`,
   ];
 }
 
 export function runStart(opts: DaemonCommandOptions): Promise<number> {
   return guarded(opts.io, async () => {
     const client = clientFor(opts);
-    const wasRunning = await client.running();
     // Starts the daemon when it isn't running, and waits until it answers.
-    const window = await client.openLoginWindow();
+    const { window, wasRunning } = await client.startLoginWindow();
     const url = await dashboard(client, opts.io, true);
     opts.io.out(
       wasRunning
@@ -81,21 +79,27 @@ export function runStart(opts: DaemonCommandOptions): Promise<number> {
 
 export function runStop(opts: DaemonCommandOptions): Promise<number> {
   return guarded(opts.io, async () => {
-    let stopped: boolean;
+    const client = clientFor(opts);
+    let result: { stopped: boolean; otherPort?: number };
     try {
-      stopped = await clientFor(opts).shutdown();
+      result = await client.stop();
     } catch (err) {
       // `stop` can't help here, so say what can. Pitdeck never kills a process itself:
       // the pid in runtime.json may belong to another program by now.
       if (err instanceof ForeignDaemonError) {
         opts.io.err(
-          `The program on port ${err.port} doesn't accept this project's key, so \`${CLI_NAME} stop\` can't stop it. Stop it by quitting the process that runs packages/daemon/dist/main.js (port ${err.port}), or delete .pitdeck/runtime.json if no Pitdeck runs.`,
+          `The program on port ${err.port} doesn't accept this project's key, so \`${deckCommand('stop')}\` can't stop it. Stop it by quitting the program that listens on port ${err.port}, or delete .pitdeck/runtime.json if no Pitdeck runs.`,
         );
         return 1;
       }
       throw err;
     }
-    opts.io.out(stopped ? 'Pitdeck stopped.' : "Pitdeck isn't running for this project.");
+    if (!result.stopped && result.otherPort !== undefined) {
+      // Not ours, so it never got the key and `stop` can't help; saying "not running" would be wrong.
+      opts.io.err(portTakenText(result.otherPort));
+      return 1;
+    }
+    opts.io.out(result.stopped ? 'Pitdeck stopped.' : "Pitdeck isn't running for this project.");
     return 0;
   });
 }

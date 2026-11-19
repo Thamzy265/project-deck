@@ -52,7 +52,6 @@ const init = () =>
     projectDir: project,
     homeDir: home,
     run: () => Promise.reject(new Error('not installed')),
-    cliMainPath: '/opt/deck/main.js',
     isFree: () => Promise.resolve(true),
     io: { out: () => undefined, err: () => undefined },
   });

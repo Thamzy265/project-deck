@@ -7,15 +7,14 @@
  * Design abuse cases: docs/design/m4-plugin-commands.md "Trust boundaries and abuse cases".
  */
 import { readFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { DbErrorCodeSchema } from '@project-deck/core';
 import { describe, expect, it } from 'vitest';
 import { parse, parseDocument } from 'yaml';
 import { splitFrontmatter } from './frontmatter.js';
+import { PLUGIN, REPO } from './paths.js';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const REPO = resolve(ROOT, '..');
+const ROOT = PLUGIN;
 
 /** The 20 keys the skills page lists. Anything else is ignored by Claude Code without a message. */
 const DOCUMENTED_KEYS = [

@@ -83,18 +83,17 @@ async function stop(): Promise<{ code: number; errors: string[] }> {
 
 describe('stop with a daemon it can’t stop', () => {
   it.each([
-    [
-      'refuses the token',
-      { ok: true, name: 'project-deck', version: '0.0.0', projectId: PROJECT_ID },
-    ],
-    ['names no project', { ok: true, name: 'project-deck', version: '0.0.0' }],
+    ['refuses the token', { ok: true, name: 'pitdeck', version: '0.0.0', projectId: PROJECT_ID }],
+    ['names no project', { ok: true, name: 'pitdeck', version: '0.0.0' }],
   ])('gives a way out when the daemon %s, and kills nothing', async (_label, health) => {
     await startServer(health);
     const { code, errors } = await stop();
     expect(code).toBe(1);
     const text = errors.join('\n');
     expect(text).toContain(`port ${port}`);
-    expect(text).toContain('packages/daemon/dist/main.js');
+    // The installed package has no packages/daemon folder (reviewer F9, batch 2).
+    expect(text).toContain(`quitting the program that listens on port ${port}`);
+    expect(text).not.toMatch(/packages\/|main\.js|daemon\.js/);
     expect(text).toContain('delete .pitdeck/runtime.json');
     expect(text).not.toContain('run `pitdeck stop`');
     // Still running, and its runtime.json is left for the user to decide.
@@ -107,7 +106,7 @@ describe('stop with a daemon it can’t stop', () => {
 describe('stop with a daemon that answers health but drops the shutdown (R-O1-1)', () => {
   it('fails with the port and pid instead of "not running", and kills nothing', async () => {
     await startServer(
-      { ok: true, name: 'project-deck', version: '0.0.0', projectId: PROJECT_ID },
+      { ok: true, name: 'pitdeck', version: '0.0.0', projectId: PROJECT_ID },
       { dropShutdown: true },
     );
     const outs: string[] = [];

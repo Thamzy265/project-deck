@@ -1,3 +1,4 @@
+import { deckCommand } from '@project-deck/core';
 import { createHash } from 'node:crypto';
 
 /** The CSP of every other answer. */
@@ -26,5 +27,7 @@ export const LOGIN_NEEDED_PAGE =
   '<!doctype html><html lang="en"><meta charset="utf-8">' +
   '<meta name="viewport" content="width=device-width, initial-scale=1">' +
   `<title>Pitdeck</title><style>${STYLE}</style>` +
-  '<main><p>Login needed. Run <code>pitdeck open</code> in your project (or start a ' +
+  '<main><p>Login needed. Run <code>' +
+  deckCommand('open') +
+  '</code> in your project (or start a ' +
   'Claude session with the plugin), then reload this page.</p></main></html>';

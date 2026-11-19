@@ -1,12 +1,16 @@
 {
-  "name": "pitdeck-dev",
-  "owner": { "name": "Pitdeck contributors" },
-  "description": "Development only: loads the Pitdeck plugin from this checkout, in place. The public marketplace entry comes with the M5 release.",
+  "name": "pitdeck",
+  "owner": { "name": "Pitdeck contributors", "url": "https://github.com/Thamzy265/project-deck" },
+  "description": "Pitdeck: a Flutter dashboard next to Claude, with a Drift database inspector, live logs and reload.",
   "plugins": [
     {
       "name": "pitdeck",
-      "source": "./plugin",
-      "description": "Pitdeck from this checkout (needs `pnpm build` first)"
+      "description": "Drift database inspector, live logs and reload for Flutter apps you already run, with /check and /db.",
+      "source": {
+        "source": "git-subdir",
+        "url": "Thamzy265/project-deck",
+        "path": "plugin"
+      }
     }
   ]
 }
