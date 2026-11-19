@@ -6,7 +6,7 @@
  */
 import { execFileSync } from 'node:child_process';
 import { lstatSync, readFileSync, readdirSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join, relative, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { PLUGIN, REPO } from './paths.js';
 
@@ -110,8 +110,9 @@ describe('plugin/ on disk', () => {
   }
 
   it('has no symlink and no stray .DS_Store below the top level', () => {
-    const all = walk(PLUGIN).map((p) => relative(PLUGIN, p));
-    const links = all.filter((p) => lstatSync(join(PLUGIN, p)).isSymbolicLink());
+    // Slashes on every OS: path.relative gives backslashes on Windows.
+    const all = walk(PLUGIN).map((p) => relative(PLUGIN, p).split(sep).join('/'));
+    const links = all.filter((p) => lstatSync(join(PLUGIN, ...p.split('/'))).isSymbolicLink());
     expect(links).toEqual([]);
     expect(all.filter((p) => p.includes('/') && p.endsWith('.DS_Store'))).toEqual([]);
   });
