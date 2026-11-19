@@ -189,9 +189,14 @@ describe('stop with a bad runtime.json', () => {
 
   it('start probes a stalled daemon once, not once to look and once to start', async () => {
     let connections = 0;
+    const seen: string[] = [];
+    const start = Date.now();
     const sockets: Socket[] = [];
     const stalled = createServer((socket) => {
       connections++;
+      const t0 = Date.now();
+      seen.push(`CONN#${connections} remote=${socket.remoteAddress}:${socket.remotePort} t=${t0 - start}ms`);
+      socket.on('data', (d) => seen.push(`DATA remote=${socket.remotePort} ${JSON.stringify(d.toString().slice(0, 300))}`));
       socket.on('error', () => undefined);
       sockets.push(socket);
     });
@@ -208,7 +213,7 @@ describe('stop with a bad runtime.json', () => {
       });
       expect(await runStart(options(project))).toBe(1);
       expect(errors.join('\n')).toContain(`Quit process ${process.pid} by hand`);
-      expect(connections).toBe(1);
+      expect(connections, `DIAG pid=${process.pid} ${seen.join(' | ')}`).toBe(1);
     } finally {
       for (const socket of sockets) socket.destroy();
       await new Promise((resolve) => stalled.close(resolve));
