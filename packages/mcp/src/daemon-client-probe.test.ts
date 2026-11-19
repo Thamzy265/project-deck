@@ -1,6 +1,7 @@
 /**
  * A daemon that stalls is still ours (C1): a health probe that times out says "didn't
- * answer", never "another program uses the port". And what one call finds must not leak
+ * answer", never "another program uses the port" and never "not running": `stop` fails,
+ * and a tool call starts nothing beside it (R2, R3). And what one call finds must not leak
  * into another call that runs at the same time.
  */
 import { randomBytes } from 'node:crypto';
@@ -12,7 +13,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { writeRuntime } from '@project-deck/daemon';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { DaemonClient, NOT_RUNNING, portTakenText } from './daemon-client.js';
+import {
+  DaemonClient,
+  NOT_RUNNING,
+  droppedShutdownText,
+  portTakenText,
+  stalledText,
+} from './daemon-client.js';
 import { FAKE_PROJECT_ID, initProject } from './testing/fake-daemon.js';
 
 let projectDir: string;
@@ -67,17 +74,50 @@ describe('a health probe that times out', () => {
     handler = () => undefined;
   });
 
-  it('is not another program: a tool call says not running', async () => {
+  it('says it stalled, not "not running" and not another program', async () => {
     const err = await client()
       .status({ start: false })
       .catch((e: unknown) => e);
-    expect((err as Error).message).toBe(NOT_RUNNING);
+    expect((err as Error).message).toBe(stalledText(port, 424_242));
+    expect((err as Error).message).not.toContain('Another program');
   });
 
-  it('is not another program: stop has no other-program port to report', async () => {
-    const c = client();
-    await expect(c.shutdown()).resolves.toBe(false);
-    await expect(c.otherProgramPort()).resolves.toBeUndefined();
+  it('starts nothing beside it when a tool call may start a daemon', async () => {
+    let spawned = 0;
+    const c = new DaemonClient({
+      projectDir,
+      version: '0.0.0',
+      projectId: () => Promise.resolve(FAKE_PROJECT_ID),
+      spawnDaemon: () => {
+        spawned++;
+        return undefined;
+      },
+      timeoutMs: 100,
+      readyTimeoutMs: 200,
+      stopTimeoutMs: 200,
+      pollMs: 10,
+    });
+    const err = await c.status().catch((e: unknown) => e);
+    expect((err as Error).message).toBe(stalledText(port, 424_242));
+    expect(spawned).toBe(0);
+  });
+
+  it('is not "isn\'t running" for stop: it fails and names the pid to quit', async () => {
+    const err = await client()
+      .shutdown()
+      .catch((e: unknown) => e);
+    expect((err as Error).message).toContain(`pid 424242`);
+    expect((err as Error).message).toContain(`port ${port}`);
+    expect((err as Error).message).toContain("didn't answer");
+    expect((err as Error).message).toContain('Quit process 424242 by hand');
+    expect((err as Error).message).not.toBe(droppedShutdownText(port, 424_242));
+  });
+
+  it('stop() fails the same way, after a single look', async () => {
+    const result = await client()
+      .stop()
+      .catch((e: unknown) => e);
+    expect((result as Error).message).toContain('Quit process 424242 by hand');
   });
 });
 

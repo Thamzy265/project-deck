@@ -1,5 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
-import type { AddressInfo, Server, Socket } from 'node:net';
+import { createServer as createHttpServer } from 'node:http';
+import type { Server } from 'node:http';
+import type { AddressInfo, Socket } from 'node:net';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -49,11 +51,15 @@ async function start(
 
 async function occupy(): Promise<number> {
   const srv = await new Promise<Server>((resolve, reject) => {
-    const s = createServer();
+    // A dev server: it answers HTTP, but not as Pitdeck. (One that never answers is
+    // reported as unresponsive, not as another program: port-busy-edges.test.ts.)
+    const s = createHttpServer((req, res) => {
+      req.on('error', () => undefined);
+      res.end('<html>dev server</html>');
+    });
     s.once('error', reject);
     s.listen(0, '127.0.0.1', () => resolve(s));
   });
-  // It accepts connections and never answers, like a program that doesn't speak HTTP.
   const sockets = new Set<Socket>();
   srv.on('connection', (socket) => sockets.add(socket));
   cleanups.push(() => {

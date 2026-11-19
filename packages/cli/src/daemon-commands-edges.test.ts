@@ -157,6 +157,36 @@ describe('stop with a bad runtime.json', () => {
     expect(children).toEqual([]);
   });
 
+  it('fails, naming the pid to quit, when the daemon stalls (R2)', async () => {
+    // Accepts connections and never answers: a daemon that stalled but holds the port.
+    const sockets: Socket[] = [];
+    const stalled = createServer((socket) => {
+      socket.on('error', () => undefined);
+      sockets.push(socket);
+    });
+    stalled.on('error', () => undefined);
+    await new Promise<void>((resolve) => stalled.listen(0, '127.0.0.1', resolve));
+    const { port } = stalled.address() as AddressInfo;
+    try {
+      const project = await newProject(port);
+      await writeRuntime(project, {
+        pid: 424_242,
+        port,
+        token: randomBytes(32).toString('base64url'),
+        startedAt: 1,
+      });
+      expect(await runStop(options(project))).toBe(1);
+      expect(lines).toEqual([]);
+      const text = errors.join('\n');
+      expect(text).toContain(`port ${port}`);
+      expect(text).toContain('Quit process 424242 by hand');
+      expect(text).not.toContain("isn't running");
+    } finally {
+      for (const socket of sockets) socket.destroy();
+      await new Promise((resolve) => stalled.close(resolve));
+    }
+  }, 30_000);
+
   it("never stops another project's daemon through a copied runtime.json", async () => {
     const port = await freePort();
     const first = await newProject(port);

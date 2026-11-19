@@ -62,7 +62,11 @@ describe('identifyPortHolder', () => {
     async () => {
       const { port } = await serve(() => undefined);
       const { err, ms } = await timed(port);
-      expect(err.holder).toEqual({ kind: 'other' });
+      // Too slow is not "another program": it may be a stalled Pitdeck (R3).
+      expect(err.holder).toEqual({ kind: 'unresponsive' });
+      expect(err.message).toContain(`port ${port}`);
+      expect(err.message).toContain("didn't answer");
+      expect(err.message).not.toContain('Another program');
       expect(ms).toBeLessThan(HEALTH_PROBE_TIMEOUT_MS + 1500);
     },
     SLOW + 2000,
@@ -76,7 +80,11 @@ describe('identifyPortHolder', () => {
         res.write('{"ok":true,"name":"pitdeck"');
       });
       const { err, ms } = await timed(port);
-      expect(err.holder).toEqual({ kind: 'other' });
+      // Too slow is not "another program": it may be a stalled Pitdeck (R3).
+      expect(err.holder).toEqual({ kind: 'unresponsive' });
+      expect(err.message).toContain(`port ${port}`);
+      expect(err.message).toContain("didn't answer");
+      expect(err.message).not.toContain('Another program');
       expect(ms).toBeLessThan(HEALTH_PROBE_TIMEOUT_MS + 1500);
     },
     SLOW + 2000,

@@ -81,10 +81,10 @@ export function runStart(opts: DaemonCommandOptions): Promise<number> {
 
 export function runStop(opts: DaemonCommandOptions): Promise<number> {
   return guarded(opts.io, async () => {
-    let stopped: boolean;
     const client = clientFor(opts);
+    let result: { stopped: boolean; otherPort?: number };
     try {
-      stopped = await client.shutdown();
+      result = await client.stop();
     } catch (err) {
       // `stop` can't help here, so say what can. Pitdeck never kills a process itself:
       // the pid in runtime.json may belong to another program by now.
@@ -96,13 +96,12 @@ export function runStop(opts: DaemonCommandOptions): Promise<number> {
       }
       throw err;
     }
-    const other = stopped ? undefined : await client.otherProgramPort();
-    if (!stopped && other !== undefined) {
+    if (!result.stopped && result.otherPort !== undefined) {
       // Not ours, so it never got the key and `stop` can't help; saying "not running" would be wrong.
-      opts.io.err(portTakenText(other));
+      opts.io.err(portTakenText(result.otherPort));
       return 1;
     }
-    opts.io.out(stopped ? 'Pitdeck stopped.' : "Pitdeck isn't running for this project.");
+    opts.io.out(result.stopped ? 'Pitdeck stopped.' : "Pitdeck isn't running for this project.");
     return 0;
   });
 }

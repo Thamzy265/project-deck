@@ -8,12 +8,17 @@ export const HEALTH_PROBE_TIMEOUT_MS = 2000;
 export class PortBusyError extends Error {
   constructor(
     readonly port: number,
-    readonly holder: { kind: 'pitdeck'; projectId: string | undefined } | { kind: 'other' },
+    readonly holder:
+      | { kind: 'pitdeck'; projectId: string | undefined }
+      | { kind: 'unresponsive' }
+      | { kind: 'other' },
   ) {
     super(
       holder.kind === 'pitdeck'
         ? `Another Pitdeck (project ${holder.projectId ?? 'unknown'}) uses port ${port}. Stop it with \`${deckCommand('stop')}\` in that project, or pick another port here: ${HOW_TO_CHANGE_PORT}`
-        : portTakenText(port),
+        : holder.kind === 'unresponsive'
+          ? `The program on port ${port} didn't answer within ${HEALTH_PROBE_TIMEOUT_MS / 1000} s. It may be a stalled Pitdeck daemon. Quit it, or pick another port: ${HOW_TO_CHANGE_PORT}`
+          : portTakenText(port),
     );
   }
 }
@@ -41,8 +46,12 @@ export async function identifyPortHolder(port: number): Promise<PortBusyError> {
     } else {
       await res.body?.cancel();
     }
-  } catch {
-    // Not HTTP, not JSON, too slow, or reserved by the system: not ours either way.
+  } catch (err) {
+    // Too slow is not "another program": a stalled Pitdeck holds its port the same way.
+    if (err instanceof Error && err.name === 'TimeoutError') {
+      return new PortBusyError(port, { kind: 'unresponsive' });
+    }
+    // Not HTTP, not JSON, or reserved by the system: not ours.
   }
   return new PortBusyError(port, { kind: 'other' });
 }
